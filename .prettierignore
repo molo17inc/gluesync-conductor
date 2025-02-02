@@ -1,0 +1,17 @@
+.yarn
+
+**/node_modules
+**/build
+**/dist
+**/lib
+# scripts package custom conf
+!packages/scripts/lib
+packages/scripts/lib/generated
+
+**/*.md
+.pnp.cjs
+.pnp.loader.mjs
+.gitlab-ci.yml
+
+**/src/locales/**/*.ts
+!**/src/locales/**/*.d.ts

@@ -1,0 +1,7 @@
+{
+  "name": "container-mate",
+  "packageManager": "yarn@4.6.0",
+  "workspaces": [
+    "packages/*"
+  ]
+}
