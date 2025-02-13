@@ -1138,6 +1138,7 @@ const RAW_RUNTIME_STATE =
           ["@types/node", "npm:22.13.0"],\
           ["dockerode", "npm:4.0.4"],\
           ["fastify", "npm:5.2.1"],\
+          ["fastify-plugin", "npm:5.0.1"],\
           ["nodemon", "npm:3.1.9"],\
           ["ts-node", "virtual:3d33b049617b3fe1cd7800fc182eddee4bbabf110fe1abf73403d7c95e72c7a9d02d8cfff6510d29db88e97310c39420e641c5ad69ddc427da5f5853edd06b57#npm:10.9.2"],\
           ["typescript", "patch:typescript@npm%3A5.7.3#optional!builtin<compat/typescript>::version=5.7.3&hash=5786d5"]\
@@ -1496,6 +1497,15 @@ const RAW_RUNTIME_STATE =
           ["secure-json-parse", "npm:3.0.2"],\
           ["semver", "npm:7.7.0"],\
           ["toad-cache", "npm:3.7.0"]\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
+    ["fastify-plugin", [\
+      ["npm:5.0.1", {\
+        "packageLocation": "./.yarn/cache/fastify-plugin-npm-5.0.1-270d511cc9-76f6960558.zip/node_modules/fastify-plugin/",\
+        "packageDependencies": [\
+          ["fastify-plugin", "npm:5.0.1"]\
         ],\
         "linkType": "HARD"\
       }]\
