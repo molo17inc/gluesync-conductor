@@ -1,0 +1,22 @@
+name: 'debug-container'
+
+services:
+  apache:
+    image: httpd:latest
+    environment:
+      - AAA='xia weoifoew'
+      - BBA:"xia weiofhoewif"
+      - file=debug-container/compose.yml wioefnew
+      - 1sffile:debug-container/compose.yml oiewfjoew
+    ports:
+      - 8080:80
+    volumes:
+      - ./public-html:/usr/local/apache2/htdocs/
+  portainer:
+    image: portainer/portainer-ce:latest
+    ports:
+      - 8000:8000
+      - 9443:9443
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # - ./portainer_data:/data
