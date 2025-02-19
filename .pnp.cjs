@@ -1141,7 +1141,8 @@ const RAW_RUNTIME_STATE =
           ["fastify-plugin", "npm:5.0.1"],\
           ["nodemon", "npm:3.1.9"],\
           ["ts-node", "virtual:3d33b049617b3fe1cd7800fc182eddee4bbabf110fe1abf73403d7c95e72c7a9d02d8cfff6510d29db88e97310c39420e641c5ad69ddc427da5f5853edd06b57#npm:10.9.2"],\
-          ["typescript", "patch:typescript@npm%3A5.7.3#optional!builtin<compat/typescript>::version=5.7.3&hash=5786d5"]\
+          ["typescript", "patch:typescript@npm%3A5.7.3#optional!builtin<compat/typescript>::version=5.7.3&hash=5786d5"],\
+          ["yaml", "npm:2.7.0"]\
         ],\
         "linkType": "SOFT"\
       }]\
@@ -3226,6 +3227,15 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./.yarn/cache/yallist-npm-5.0.0-8732dd9f1c-1884d272d4.zip/node_modules/yallist/",\
         "packageDependencies": [\
           ["yallist", "npm:5.0.0"]\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
+    ["yaml", [\
+      ["npm:2.7.0", {\
+        "packageLocation": "./.yarn/cache/yaml-npm-2.7.0-bb348b356b-c8c314c62f.zip/node_modules/yaml/",\
+        "packageDependencies": [\
+          ["yaml", "npm:2.7.0"]\
         ],\
         "linkType": "HARD"\
       }]\
