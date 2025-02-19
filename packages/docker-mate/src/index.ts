@@ -1,4 +1,15 @@
 import fastify from 'fastify';
+import Docker from 'dockerode';
+
+import dockerPlugin from './plugins/docker';
+
+import listContainers from './functions/listContainers/listContainers';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    docker: Docker;
+  }
+}
 
 const fastifyLogger: boolean = process.env.DEBUG === 'true';
 const port: number = 50000;
@@ -6,6 +17,8 @@ const port: number = 50000;
 const server = fastify({
   logger: fastifyLogger,
 });
+
+server.register(dockerPlugin);
 
 server.get('/health', async (req, reply) => {
   try {
@@ -19,14 +32,16 @@ server.get('/health', async (req, reply) => {
   reply.send({ success: true, data: 'Health check OK!' });
 });
 
+server.get('/containers', listContainers);
+
 // Run the server!
 const start = async () => {
   try {
     await server.listen({ host: '0.0.0.0', port });
 
     console.log(`Server started on port ${port}`);
-  } catch (err) {
-    server.log.error(err);
+  } catch (error) {
+    server.log.error(`Start error: ${error}`);
     process.exit(1);
   }
 };
