@@ -3,6 +3,8 @@ import Docker from 'dockerode';
 
 import dockerPlugin from './plugins/docker';
 
+import info from './functions/info/info';
+import version from './functions/version/version';
 import listContainers from './functions/listContainers/listContainers';
 
 declare module 'fastify' {
@@ -32,6 +34,8 @@ server.get('/health', async (req, reply) => {
   reply.send({ success: true, data: 'Health check OK!' });
 });
 
+server.get('/info', info);
+server.get('/version', version);
 server.get('/containers', listContainers);
 
 // Run the server!
