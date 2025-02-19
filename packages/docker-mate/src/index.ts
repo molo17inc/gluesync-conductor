@@ -5,7 +5,7 @@ import dockerPlugin from './plugins/docker';
 
 import info from './functions/info/info';
 import version from './functions/version/version';
-import listContainers from './functions/listContainers/listContainers';
+import listContainers from './functions/containers/listContainers/listContainers';
 
 declare module 'fastify' {
   interface FastifyInstance {
