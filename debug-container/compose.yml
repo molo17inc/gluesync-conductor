@@ -8,7 +8,7 @@ services:
     environment:
       - AAA='xia weoifoew'
       - BBA:"xia weiofhoewif"
-      - file=debug-container/compose.yml wioefnew
+      - file = debug-container/compose.yml wioefnew
       - 1sffile:debug-container/compose.yml oiewfjoew
     ports:
       - 8080:80
