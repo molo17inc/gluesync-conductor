@@ -3,6 +3,8 @@ name: 'debug-container'
 services:
   apache:
     image: httpd:latest
+    container_name: apache
+    restart: unless-stopped
     environment:
       - AAA='xia weoifoew'
       - BBA:"xia weiofhoewif"
@@ -14,6 +16,8 @@ services:
       - ./public-html:/usr/local/apache2/htdocs/
   portainer:
     image: portainer/portainer-ce:latest
+    container_name: apache
+    restart: unless-stopped
     ports:
       - 8000:8000
       - 9443:9443
