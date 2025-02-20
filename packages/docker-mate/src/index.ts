@@ -7,6 +7,7 @@ import composeToJSON from './functions/composeToJSON/composeToJSON';
 import info from './functions/info/info';
 import version from './functions/version/version';
 import listContainers from './functions/container/listContainers/listContainers';
+import addAgent from './functions/agent/addAgent/addAgent';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -39,6 +40,8 @@ server.get('/compose-to-json', composeToJSON);
 server.get('/info', info);
 server.get('/version', version);
 server.get('/containers', listContainers);
+
+server.post('/agents/add', addAgent);
 
 // Run the server!
 const start = async () => {
