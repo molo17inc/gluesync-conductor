@@ -6,7 +6,7 @@ import dockerPlugin from './plugins/docker';
 import composeToJSON from './functions/composeToJSON/composeToJSON';
 import info from './functions/info/info';
 import version from './functions/version/version';
-import listContainers from './functions/containers/listContainers/listContainers';
+import listContainers from './functions/container/listContainers/listContainers';
 
 declare module 'fastify' {
   interface FastifyInstance {
