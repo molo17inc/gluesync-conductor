@@ -3,12 +3,9 @@ import { writeFile } from 'fs/promises';
 
 import { stringify } from 'yaml';
 
-import { ReadComposeFile } from './writeComposeFile.model';
+import { WriteYmlFile } from './writeYmlFile.model';
 
-const writeComposeFile: ReadComposeFile = async (
-  json,
-  filename = 'compose.yml',
-) => {
+const writeYmlFile: WriteYmlFile = async (json, filename = 'compose.yml') => {
   const parsedJson = stringify(json, { indent: 2 });
 
   const path = join(process.env.PROJECT_CWD as string, filename);
@@ -18,4 +15,4 @@ const writeComposeFile: ReadComposeFile = async (
   return;
 };
 
-export default writeComposeFile;
+export default writeYmlFile;

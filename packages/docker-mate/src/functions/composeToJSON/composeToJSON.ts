@@ -1,10 +1,10 @@
 import { RouteHandlerMethod } from 'fastify';
 
-import readComposeFile from '../../helpers/readComposeFile/readComposeFile';
+import readYmlFile from '../../helpers/readYmlFile/readYmlFile';
 
 const handler: RouteHandlerMethod = async (req, reply) => {
   try {
-    const parsedJson = await readComposeFile('compose.yml');
+    const parsedJson = await readYmlFile('debug-container/compose.yml');
 
     reply.statusCode = 200;
     reply.send({ success: true, data: parsedJson });

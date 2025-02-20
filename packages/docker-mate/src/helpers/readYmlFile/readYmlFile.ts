@@ -3,9 +3,9 @@ import { readFile } from 'fs/promises';
 
 import { parse } from 'yaml';
 
-import { ReadComposeFile } from './readComposeFile.model';
+import { ReadYmlFile } from './readYmlFile.model';
 
-const readComposeFile: ReadComposeFile = async (filename = 'compose.yml') => {
+const readYmlFile: ReadYmlFile = async (filename = 'compose.yml') => {
   const path = join(process.env.PROJECT_CWD as string, filename);
 
   const yamlFile = await readFile(path, 'utf8');
@@ -13,4 +13,4 @@ const readComposeFile: ReadComposeFile = async (filename = 'compose.yml') => {
   return parse(yamlFile);
 };
 
-export default readComposeFile;
+export default readYmlFile;
