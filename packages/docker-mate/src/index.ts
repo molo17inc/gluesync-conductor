@@ -8,6 +8,7 @@ import info from './functions/info/info';
 import version from './functions/version/version';
 import listContainers from './functions/container/listContainers/listContainers';
 import addAgent from './functions/agent/addAgent/addAgent';
+import removeAgent from './functions/agent/removeAgent/removeAgent';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -42,6 +43,7 @@ server.get('/version', version);
 server.get('/containers', listContainers);
 
 server.post('/agents/add', addAgent);
+server.delete('/agents/remove', removeAgent);
 
 // Run the server!
 const start = async () => {
