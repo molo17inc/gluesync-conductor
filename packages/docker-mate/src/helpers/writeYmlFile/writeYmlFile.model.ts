@@ -1,4 +1,4 @@
 export type WriteYmlFile = (
   json: Record<string, any>,
-  filename?: string,
+  filename: string,
 ) => Promise<void>;

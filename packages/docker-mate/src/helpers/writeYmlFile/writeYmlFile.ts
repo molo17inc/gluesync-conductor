@@ -5,7 +5,7 @@ import { stringify } from 'yaml';
 
 import { WriteYmlFile } from './writeYmlFile.model';
 
-const writeYmlFile: WriteYmlFile = async (json, filename = 'compose.yml') => {
+const writeYmlFile: WriteYmlFile = async (json, filename) => {
   const parsedJson = stringify(json, { indent: 2 });
 
   const path = join(process.env.PROJECT_CWD as string, filename);

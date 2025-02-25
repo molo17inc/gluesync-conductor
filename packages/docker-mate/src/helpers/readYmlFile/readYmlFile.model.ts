@@ -1,3 +1,3 @@
 export type ReadYmlFile = <T = any>(
-  filename?: string,
+  filename: string,
 ) => Promise<Record<string, T>>;
