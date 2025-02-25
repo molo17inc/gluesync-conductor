@@ -41,7 +41,7 @@ const handler: AddAgentHandler = async (req, reply) => {
       {},
     );
 
-    await writeYmlFile(composeFile, 'compose.generated.yml');
+    await writeYmlFile(composeFile, 'compose.agents.yml');
 
     reply.statusCode = 200;
     reply.send({ success: true, data: composeFile });

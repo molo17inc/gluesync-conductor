@@ -5,9 +5,11 @@ import writeYmlFile from '../../../helpers/writeYmlFile/writeYmlFile';
 import readYmlFile from '../../../helpers/readYmlFile/readYmlFile';
 import removeKey from '../../../helpers/removeKey/removeKey';
 
+const filename = 'compose.agents.yml';
+
 const handler: AddAgentHandler = async (req, reply) => {
   try {
-    const parsedJson = await readYmlFile<ComposeFile>('compose.generated.yml');
+    const parsedJson = await readYmlFile<ComposeFile>(filename);
 
     const duplicatedAgent = (req.body.agents || []).reduce<
       AddAgentBody['agents']
@@ -36,7 +38,7 @@ const handler: AddAgentHandler = async (req, reply) => {
       {},
     );
 
-    await writeYmlFile(composeFile, 'compose.generated.yml');
+    await writeYmlFile(composeFile, filename);
 
     reply.statusCode = 200;
     reply.send({ success: true, data: composeFile });
