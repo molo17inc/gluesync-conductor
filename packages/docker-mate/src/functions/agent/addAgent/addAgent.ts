@@ -19,7 +19,7 @@ const handler: AddAgentHandler = async (req, reply) => {
             ...acc.services,
             [containerName]: {
               ...acc?.services?.[containerName],
-              image: `molo17/gluesync-${imageName}:${tag || 'latest'}`,
+              image: `molo17/${imageName}:${tag || 'latest'}`,
               container_name: nickname || containerName,
               restart: 'unless-stopped',
               environment: [`type=${type}`],
