@@ -4,9 +4,10 @@ import { ErrorResponse, SuccessResponse } from '../../../models/common.model';
 
 export type AddAgentBody = Readonly<{
   agents: ReadonlyArray<{
-    dockerHubRepoName: string;
-    isTarget: boolean;
-    isSource: boolean;
+    imageName: string;
+    type: 'target' | 'source';
+    nickname?: string;
+    tag?: string;
   }>;
 }>;
 export type AddAgentResponse = SuccessResponse<any> | ErrorResponse;

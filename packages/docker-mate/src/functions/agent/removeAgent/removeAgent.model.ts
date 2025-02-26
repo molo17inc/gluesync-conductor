@@ -2,21 +2,20 @@ import { RouteHandlerMethod } from 'fastify';
 
 import { ErrorResponse, SuccessResponse } from '../../../models/common.model';
 
-export type AddAgentBody = Readonly<{
+export type RemoveAgentBody = Readonly<{
   agents: ReadonlyArray<{
-    dockerHubRepoName: string;
-    isTarget?: boolean;
-    isSource?: boolean;
+    imageName: string;
+    type: 'target' | 'source';
   }>;
 }>;
-export type AddAgentResponse = SuccessResponse<any> | ErrorResponse;
+export type RemoveAgentResponse = SuccessResponse<any> | ErrorResponse;
 
-export type AddAgentHandler = RouteHandlerMethod<
+export type RemoveAgentHandler = RouteHandlerMethod<
   any,
   any,
   any,
   {
-    Body: Partial<AddAgentBody>;
-    Reply: AddAgentResponse;
+    Body: Partial<RemoveAgentBody>;
+    Reply: RemoveAgentResponse;
   }
 >;

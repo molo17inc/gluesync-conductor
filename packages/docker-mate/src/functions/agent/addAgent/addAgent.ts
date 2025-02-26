@@ -1,28 +1,17 @@
-import { AddAgentBody, AddAgentHandler } from './addAgent.model';
+import { AddAgentHandler } from './addAgent.model';
 import { ComposeFile } from '../../../models/composeFile.model';
 
 import writeYmlFile from '../../../helpers/writeYmlFile/writeYmlFile';
 
 const handler: AddAgentHandler = async (req, reply) => {
   try {
-    const duplicatedAgent = (req.body.agents || []).reduce<
-      AddAgentBody['agents']
-    >(
-      (acc, { isSource, isTarget, ...agent }) => [
-        ...acc,
-        ...(isSource ? [{ ...agent, isSource, isTarget: !isSource }] : []),
-        ...(isTarget ? [{ ...agent, isTarget, isSource: !isTarget }] : []),
-      ],
-      [],
-    );
-
-    const composeFile = duplicatedAgent.reduce<ComposeFile>(
-      (acc, { dockerHubRepoName, isSource, isTarget }) => {
-        if (!isSource && !isTarget) {
+    const composeFile = (req.body.agents || []).reduce<ComposeFile>(
+      (acc, { imageName, type, nickname, tag }) => {
+        if (!type) {
           return acc;
         }
 
-        const containerName = `${dockerHubRepoName}-${isSource ? 'source' : 'target'}-agent`;
+        const containerName = `${imageName}-${type}-agent`;
 
         return {
           ...acc,
@@ -30,10 +19,10 @@ const handler: AddAgentHandler = async (req, reply) => {
             ...acc.services,
             [containerName]: {
               ...acc?.services?.[containerName],
-              image: `molo17/gluesync-${dockerHubRepoName}:latest`,
-              container_name: containerName,
+              image: `molo17/gluesync-${imageName}:${tag || 'latest'}`,
+              container_name: nickname || containerName,
               restart: 'unless-stopped',
-              environment: [`type=${isSource ? 'source' : 'target'}`],
+              environment: [`type=${type}`],
             },
           },
         };

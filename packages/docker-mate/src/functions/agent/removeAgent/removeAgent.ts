@@ -1,4 +1,4 @@
-import { AddAgentBody, AddAgentHandler } from './removeAgent.model';
+import { RemoveAgentHandler } from './removeAgent.model';
 import { ComposeFile } from '../../../models/composeFile.model';
 
 import writeYmlFile from '../../../helpers/writeYmlFile/writeYmlFile';
@@ -7,28 +7,17 @@ import removeKey from '../../../helpers/removeKey/removeKey';
 
 const filename = 'compose.agents.yml';
 
-const handler: AddAgentHandler = async (req, reply) => {
+const handler: RemoveAgentHandler = async (req, reply) => {
   try {
     const parsedJson = await readYmlFile<ComposeFile>(filename);
 
-    const duplicatedAgent = (req.body.agents || []).reduce<
-      AddAgentBody['agents']
-    >(
-      (acc, { isSource, isTarget, ...agent }) => [
-        ...acc,
-        ...(isSource ? [{ ...agent, isSource, isTarget: !isSource }] : []),
-        ...(isTarget ? [{ ...agent, isTarget, isSource: !isTarget }] : []),
-      ],
-      [],
-    );
-
-    const composeFile = duplicatedAgent.reduce<ComposeFile>(
-      (acc, { dockerHubRepoName, isSource, isTarget }) => {
-        if (!isSource && !isTarget) {
+    const composeFile = (req.body.agents || []).reduce<ComposeFile>(
+      (acc, { imageName, type }) => {
+        if (!type) {
           return acc;
         }
 
-        const containerName = `${dockerHubRepoName}-${isSource ? 'source' : 'target'}-agent`;
+        const containerName = `${imageName}-${type}-agent`;
 
         return {
           ...acc,
