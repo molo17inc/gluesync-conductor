@@ -10,6 +10,10 @@ services:
       - BBA:"xia weiofhoewif"
       - file = debug-container/compose.yml wioefnew
       - 1sffile:debug-container/compose.yml oiewfjoew
+      - ENABLED=true
+      - DEBUG=false
+      - MAX_RETRIES=5
+      - TIMEOUT=3.5
     ports:
       - 8080:80
     volumes:

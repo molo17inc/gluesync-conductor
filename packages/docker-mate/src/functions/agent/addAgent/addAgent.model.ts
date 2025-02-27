@@ -8,6 +8,7 @@ export type AddAgentBody = Readonly<{
     type: 'target' | 'source';
     nickname?: string;
     tag?: string;
+    environment?: Record<string, any>;
   }>;
 }>;
 export type AddAgentResponse = SuccessResponse<any> | ErrorResponse;

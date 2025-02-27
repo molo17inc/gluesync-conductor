@@ -6,7 +6,7 @@ import writeYmlFile from '../../../helpers/writeYmlFile/writeYmlFile';
 const handler: AddAgentHandler = async (req, reply) => {
   try {
     const composeFile = (req.body.agents || []).reduce<ComposeFile>(
-      (acc, { imageName, type, nickname, tag }) => {
+      (acc, { imageName, type, nickname, tag, environment }) => {
         if (!type) {
           return acc;
         }
@@ -22,7 +22,9 @@ const handler: AddAgentHandler = async (req, reply) => {
               image: `molo17/${imageName}:${tag || 'latest'}`,
               container_name: nickname || containerName,
               restart: 'unless-stopped',
-              environment: [`type=${type}`],
+              environment: Object.entries({ type, ...environment }).map(
+                ([key, value]) => `${key}=${value}`,
+              ),
             },
           },
         };
