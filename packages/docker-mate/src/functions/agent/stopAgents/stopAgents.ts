@@ -14,6 +14,8 @@ const handler: StopAgentsHandler = async (req, reply) => {
       log: true,
     });
 
+    req.log.info(result);
+
     reply.statusCode = 200;
     reply.send({
       success: true,
