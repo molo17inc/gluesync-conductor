@@ -2,9 +2,15 @@ import { AddAgentHandler } from './addAgent.model';
 import { ComposeFile } from '../../../models/composeFile.model';
 
 import writeYmlFile from '../../../helpers/writeYmlFile/writeYmlFile';
+import readYmlFile from '../../../helpers/readYmlFile/readYmlFile';
+import mergeComposeFiles from '../../../helpers/mergeComposeFiles/mergeComposeFiles';
+
+const filename = 'compose.agents.yml';
 
 const handler: AddAgentHandler = async (req, reply) => {
   try {
+    const parsedJson = await readYmlFile<ComposeFile>(filename);
+
     const composeFile = (req.body.agents || []).reduce<ComposeFile>(
       (acc, { imageName, type, nickname, tag, environment }) => {
         if (!type) {
@@ -32,10 +38,12 @@ const handler: AddAgentHandler = async (req, reply) => {
       {},
     );
 
-    await writeYmlFile(composeFile, 'compose.agents.yml');
+    const newComposeFile = mergeComposeFiles([parsedJson, composeFile]);
+
+    await writeYmlFile(newComposeFile, 'compose.agents.yml');
 
     reply.statusCode = 200;
-    reply.send({ success: true, data: composeFile });
+    reply.send({ success: true, data: newComposeFile });
   } catch (error) {
     req.log.error(`Error: ${JSON.stringify(error)}`);
     process.exit(1);
