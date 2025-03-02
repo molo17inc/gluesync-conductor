@@ -21,20 +21,16 @@ const mergeTwoEnvironments = (
 const mergeTwoServices = (
   service1?: ComposeService,
   service2?: ComposeService,
-): ComposeService => {
-  console.log('service1', service1);
-  console.log('service2', service2);
-  return {
-    ...service1,
-    ...service2,
-    environment: mergeTwoEnvironments(
-      service1?.environment,
-      service2?.environment,
-    ),
-    ports: mergeArrays(service1?.ports || [], service2?.ports || []),
-    volumes: mergeArrays(service1?.volumes || [], service2?.volumes || []),
-  };
-};
+): ComposeService => ({
+  ...service1,
+  ...service2,
+  environment: mergeTwoEnvironments(
+    service1?.environment,
+    service2?.environment,
+  ),
+  ports: mergeArrays(service1?.ports || [], service2?.ports || []),
+  volumes: mergeArrays(service1?.volumes || [], service2?.volumes || []),
+});
 
 const mergeServices = (servicesList: Record<string, any>[]) =>
   servicesList.reduce(

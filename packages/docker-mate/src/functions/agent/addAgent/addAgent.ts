@@ -12,7 +12,10 @@ const handler: AddAgentHandler = async (req, reply) => {
     const parsedJson = await readYmlFile<ComposeFile>(filename);
 
     const composeFile = (req.body.agents || []).reduce<ComposeFile>(
-      (acc, { imageName, type, nickname, tag, environment }) => {
+      (
+        acc,
+        { imageName, type, nickname, tag, environment, ports, volumes },
+      ) => {
         if (!type) {
           return acc;
         }
@@ -31,6 +34,8 @@ const handler: AddAgentHandler = async (req, reply) => {
               environment: Object.entries({ type, ...environment }).map(
                 ([key, value]) => `${key}=${value}`,
               ),
+              ports,
+              volumes,
             },
           },
         };

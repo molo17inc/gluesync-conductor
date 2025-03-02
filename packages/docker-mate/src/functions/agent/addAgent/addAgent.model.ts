@@ -9,6 +9,8 @@ export type AddAgentBody = Readonly<{
     nickname?: string;
     tag?: string;
     environment?: Record<string, any>;
+    ports?: ReadonlyArray<string>;
+    volumes?: ReadonlyArray<string>;
   }>;
 }>;
 export type AddAgentResponse = SuccessResponse<any> | ErrorResponse;
