@@ -1,3 +1,3 @@
 export type ExtractKeyValue = (
-  array: ReadonlyArray<string>,
+  array?: ReadonlyArray<string>,
 ) => Partial<Record<string, string | boolean | number | null | undefined>>;

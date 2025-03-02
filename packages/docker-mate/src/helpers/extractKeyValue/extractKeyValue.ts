@@ -28,7 +28,7 @@ const castValue = (
   return lowerValue;
 };
 
-const extractKeyValue: ExtractKeyValue = array =>
+const extractKeyValue: ExtractKeyValue = (array = []) =>
   array.reduce<Partial<Record<string, any>>>((acc, entry) => {
     const match = entry.match(/^([\w\d_-]+)\s*[:=]\s*["']?([^"'\n]+)["']?.*$/);
 
