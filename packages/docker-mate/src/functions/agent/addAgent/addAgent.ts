@@ -14,7 +14,15 @@ const handler: AddAgentHandler = async (req, reply) => {
     const composeFile = (req.body.agents || []).reduce<ComposeFile>(
       (
         acc,
-        { imageName, type, nickname, tag, environment, ports, volumes },
+        {
+          imageName,
+          type,
+          nickname,
+          tag,
+          environment,
+          ports = [],
+          volumes = [],
+        },
       ) => {
         if (!type) {
           return acc;
@@ -31,11 +39,22 @@ const handler: AddAgentHandler = async (req, reply) => {
               image: `molo17/${imageName}:${tag || 'latest'}`,
               container_name: nickname || containerName,
               restart: 'unless-stopped',
-              environment: Object.entries({ type, ...environment }).map(
-                ([key, value]) => `${key}=${value}`,
-              ),
+              environment: Object.entries({
+                type,
+                maxRamPercentage: 90.0,
+                LOG_CONFIG_FILE: '/opt/gluesync/data/logback.xml',
+                ...environment,
+              }).map(([key, value]) => `${key}=${value}`),
               ports,
-              volumes,
+              volumes: [
+                './gs-license.dat:/opt/gluesync/data/gs-license.dat:ro',
+                './logback.xml:/opt/gluesync/data/logback.xml:ro',
+                './security-config.json:/opt/gluesync/data/security-config.json:ro',
+                './gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro',
+                './bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro',
+                `./${containerName}:/opt/gluesync/data`,
+                ...volumes,
+              ],
             },
           },
         };
