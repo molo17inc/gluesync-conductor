@@ -1,9 +1,17 @@
 {
   "name": "container-mate",
+  "private": true,
   "packageManager": "yarn@4.6.0",
   "workspaces": [
     "packages/*"
   ],
+  "scripts": {
+    "build": "yarn workspaces run build",
+    "start": "node packages/docker-mate/dist/index.js",
+    "dev": "yarn workspace docker-mate dev",
+    "format": "prettier --write './**/*.{js,jsx,ts,tsx,json}'",
+    "lint": "eslint . --ext .ts,.tsx"
+  },
   "devDependencies": {
     "@types/node": "^22.13.0",
     "eslint": "^9.19.0",
