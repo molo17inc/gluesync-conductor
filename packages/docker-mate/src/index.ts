@@ -32,6 +32,12 @@ server.register(dockerPlugin);
 // Register Swagger UI plugin
 server.register(swaggerPlugin);
 
+// Add hook to log when server is ready
+server.addHook('onReady', () => {
+  console.log('Gluesync Conductor API is running');
+  console.log(`Swagger UI is available at http://localhost:${port}/docs`);
+});
+
 server.get('/health', async (req, reply) => {
   try {
     req.log.info('Health check OK!');
@@ -59,7 +65,7 @@ const start = async () => {
   try {
     await server.listen({ host: '0.0.0.0', port });
 
-    console.log(`Server started on port ${port}`);
+    console.log(`Gluesync Conductor server started on port ${port}`);
   } catch (error) {
     server.log.error(`Start error: ${error}`);
     process.exit(1);

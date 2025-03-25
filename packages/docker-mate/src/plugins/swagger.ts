@@ -5,7 +5,7 @@ import path from 'path';
 import yaml from 'yaml';
 
 /**
- * This plugin integrates Swagger documentation with Fastify
+ * This plugin integrates Swagger documentation with Fastify for the Gluesync Conductor API
  */
 async function swaggerPlugin(fastify: FastifyInstance) {
   // Get the path to the swagger.yaml file
