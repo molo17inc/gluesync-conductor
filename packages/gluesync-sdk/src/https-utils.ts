@@ -38,13 +38,13 @@ export interface SSLConfig {
  * Create HTTP to HTTPS redirect middleware
  * @param app The Fastify instance
  */
-export function setupHttpsRedirect(app: FastifyInstance) {
+export function setupHttpsRedirect(app: any) {
   // Only add the redirect if SSL is enabled
   if (!settings.useSSL) {
     return;
   }
 
-  app.addHook('onRequest', (request, reply, done) => {
+  app.addHook('onRequest', (request: any, reply: any, done: any) => {
     // Check if request is from a browser (not API client)
     const userAgent = request.headers['user-agent']?.toLowerCase() || '';
     const isBrowser = userAgent.includes('mozilla') || 
@@ -63,7 +63,8 @@ export function setupHttpsRedirect(app: FastifyInstance) {
         const httpsUrl = `https://${hostname}:${settings.port.toString()}${request.url}`;
         
         console.log(`Redirecting browser from HTTP to HTTPS: ${httpsUrl}`);
-        reply.redirect(307, httpsUrl);
+        // Set status code first, then redirect (to avoid type issues)
+        reply.status(307).redirect(httpsUrl);
         return;
       } catch (error) {
         console.error('Error in redirect middleware:', error);

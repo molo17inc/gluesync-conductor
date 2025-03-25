@@ -18,4 +18,9 @@
 // Export all components for the SDK integration
 export * from './gluesync-sdk-client';
 export { default as settings, updateCoreHubUrl, ensureDirectories } from './config';
-export * from './https-utils';
+export { 
+  setupHttpsRedirect, 
+  getSSLConfig, 
+  cleanupSSLFiles,
+  type SSLConfig
+} from './https-utils';

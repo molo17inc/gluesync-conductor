@@ -4,19 +4,26 @@
   "description": "Gluesync SDK integration for Container Mate",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "gluesync-sdk": "dist/standalone.js"
+  },
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
     "prebuild": "npm run clean",
+    "start": "node dist/standalone.js",
+    "dev": "ts-node src/standalone.ts",
     "test": "jest",
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
-    "gluesync-nodejs-corehub-handshake-sdk": "file:../docker-mate/gluesync-nodejs-corehub-handshake-sdk"
+    "fastify": "^5.2.1",
+    "gluesync-nodejs-corehub-handshake-sdk": "file:/Users/danieleangeli/Documents/Repositories/gluesync-nodejs-corehub-handshake-sdk"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
     "rimraf": "^5.0.5",
+    "ts-node": "^10.9.2",
     "typescript": "^5.7.3"
   }
 }
