@@ -1,0 +1,101 @@
+/**
+ * This file is part of Gluesync Container Mate.
+ *
+ * Gluesync Container Mate is dual-licensed under the following licenses:
+ *
+ * 1. GNU General Public License (GPL) Version 3
+ *    You may use, modify, and distribute this software under the terms of the GPL v3.
+ *    This option is available at no cost, but any derivative works must also be licensed under GPL v3.
+ *
+ * 2. MOLO17 Commercial License
+ *    Alternatively, you may use this software under the MOLO17 Commercial License,
+ *    which includes a warranty and permits proprietary use. Contact MOLO17 at info@molo17.com
+ *    for licensing terms and conditions.
+ *
+ * Copyright (C) 2025 MOLO17. All rights reserved.
+ */
+
+import path from 'path';
+import fs from 'fs';
+
+/**
+ * Gluesync SDK configuration settings
+ */
+export interface GluesyncConfig {
+  // CoreHub connection settings
+  coreHubUrl?: string;
+  coreHubHost?: string;
+  coreHubPort?: number;
+  
+  // SSL/TLS settings
+  useSSL: boolean;
+  skipSSLVerify: boolean;
+  sslCertFile?: string;
+  sslKeyFile?: string;
+  
+  // License and security settings
+  licenseFile: string;
+  moduleTag: string;
+  securityConfig?: string;
+  
+  // Server settings
+  host: string;
+  port: number;
+  debug: boolean;
+  
+  // Other settings
+  allowedOrigins: string[];
+}
+
+/**
+ * Default settings with environment variable overrides
+ */
+const settings: GluesyncConfig = {
+  // CoreHub connection settings
+  coreHubUrl: process.env.CORE_HUB_URL,
+  
+  // SSL/TLS settings
+  useSSL: process.env.SSL_ENABLED === 'true',
+  skipSSLVerify: process.env.SSL_SKIP_VERIFY === 'true',
+  sslCertFile: process.env.SSL_CERT_FILE,
+  sslKeyFile: process.env.SSL_KEY_FILE,
+  
+  // License and security settings
+  licenseFile: process.env.GLUESYNC_LICENSE_FILE || '/opt/gluesync/data/gs-license.dat',
+  moduleTag: process.env.GLUESYNC_MODULE_TAG || 'container-mate',
+  securityConfig: process.env.GLUESYNC_SECURITY_CONFIG || '/opt/gluesync/data/security-config.json',
+  
+  // Server settings
+  host: process.env.HOST || '0.0.0.0',
+  port: parseInt(process.env.PORT || '50000', 10),
+  debug: process.env.DEBUG === 'true',
+  
+  // Other settings
+  allowedOrigins: (process.env.ALLOWED_ORIGINS || '*').split(','),
+};
+
+/**
+ * Update CoreHub URL in settings
+ * @param url The CoreHub URL to use
+ */
+export function updateCoreHubUrl(url: string): void {
+  settings.coreHubUrl = url;
+}
+
+/**
+ * Ensure required directories exist
+ */
+export function ensureDirectories(): void {
+  // Create data directory if it doesn't exist
+  const dataDir = path.dirname(settings.licenseFile);
+  if (!fs.existsSync(dataDir)) {
+    try {
+      fs.mkdirSync(dataDir, { recursive: true });
+      console.log(`Created data directory: ${dataDir}`);
+    } catch (error) {
+      console.error(`Failed to create data directory: ${error}`);
+    }
+  }
+}
+
+export default settings;
