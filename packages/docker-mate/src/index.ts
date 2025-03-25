@@ -2,6 +2,7 @@ import fastify from 'fastify';
 import Docker from 'dockerode';
 
 import dockerPlugin from './plugins/docker';
+import swaggerPlugin from './plugins/swagger';
 
 import composeToJSON from './functions/composeToJSON/composeToJSON';
 import info from './functions/info/info';
@@ -19,13 +20,17 @@ declare module 'fastify' {
 }
 
 const fastifyLogger: boolean = process.env.DEBUG === 'true';
-const port: number = 50000;
+const port: number = process.env.PORT ? parseInt(process.env.PORT) : 50000;
 
 const server = fastify({
   logger: fastifyLogger,
 });
 
+// Register Docker plugin
 server.register(dockerPlugin);
+
+// Register Swagger UI plugin
+server.register(swaggerPlugin);
 
 server.get('/health', async (req, reply) => {
   try {
