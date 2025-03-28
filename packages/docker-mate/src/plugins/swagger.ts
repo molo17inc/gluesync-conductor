@@ -10,7 +10,7 @@ import yaml from 'yaml';
 async function swaggerPlugin(fastify: FastifyInstance) {
   // Get the path to the swagger.yaml file
   const swaggerPath = path.join(__dirname, '../../../../swagger.yaml');
-  
+
   // Check if swagger.yaml exists
   if (!fs.existsSync(swaggerPath)) {
     fastify.log.warn('swagger.yaml not found at: ' + swaggerPath);
@@ -24,7 +24,7 @@ async function swaggerPlugin(fastify: FastifyInstance) {
   // Register Swagger
   await fastify.register(import('@fastify/swagger'), {
     swagger: swaggerDocument,
-    hideUntagged: false
+    hideUntagged: false,
   });
 
   // Register Swagger UI
@@ -32,12 +32,12 @@ async function swaggerPlugin(fastify: FastifyInstance) {
     routePrefix: '/docs',
     uiConfig: {
       docExpansion: 'list',
-      deepLinking: true
+      deepLinking: true,
     },
-    transformSpecification: (swaggerObject) => {
+    transformSpecification: (swaggerObject: any) => {
       return swaggerObject;
     },
-    staticCSP: true
+    staticCSP: true,
   });
 
   fastify.log.info('Swagger UI available at /docs');
