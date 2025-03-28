@@ -1130,10 +1130,10 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["docker-compose", [\
-      ["npm:1.1.1", {\
-        "packageLocation": "./.yarn/cache/docker-compose-npm-1.1.1-df7af29caa-23f87c925c.zip/node_modules/docker-compose/",\
+      ["npm:1.2.0", {\
+        "packageLocation": "./.yarn/cache/docker-compose-npm-1.2.0-f7d3c775ab-a7cda05d7d.zip/node_modules/docker-compose/",\
         "packageDependencies": [\
-          ["docker-compose", "npm:1.1.1"],\
+          ["docker-compose", "npm:1.2.0"],\
           ["yaml", "npm:2.7.0"]\
         ],\
         "linkType": "HARD"\
@@ -1146,7 +1146,7 @@ const RAW_RUNTIME_STATE =
           ["docker-mate", "workspace:packages/docker-mate"],\
           ["@types/dockerode", "npm:3.3.34"],\
           ["@types/node", "npm:22.13.0"],\
-          ["docker-compose", "npm:1.1.1"],\
+          ["docker-compose", "npm:1.2.0"],\
           ["dockerode", "npm:4.0.4"],\
           ["fastify", "npm:5.2.1"],\
           ["fastify-plugin", "npm:5.0.1"],\
