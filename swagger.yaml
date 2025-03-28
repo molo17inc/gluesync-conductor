@@ -1,0 +1,288 @@
+openapi: '3.0.0'
+info:
+  title: 'Gluesync Conductor API'
+  version: '1.0.0'
+  description: 'API documentation for Gluesync Conductor, a Docker container management tool'
+servers:
+  - url: 'http://localhost:{port}'
+    description: 'Local development server'
+    variables:
+      port:
+        default: '50000'
+        description: 'Port to access the API'
+
+tags:
+  - name: 'Health'
+    description: 'Health check endpoint'
+  - name: 'Docker'
+    description: 'Docker information and operations'
+  - name: 'Agents'
+    description: 'Agent management operations'
+  - name: 'Compose'
+    description: 'Docker Compose operations'
+
+paths:
+  /health:
+    get:
+      summary: 'Health check'
+      description: 'Check if the API is running properly'
+      tags:
+        - 'Health'
+      responses:
+        '200':
+          description: 'Health check OK'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                properties:
+                  success:
+                    type: 'boolean'
+                    example: true
+                  data:
+                    type: 'string'
+                    example: 'Health check OK!'
+
+  /info:
+    get:
+      summary: 'Docker Information'
+      description: 'Get information about the Docker environment'
+      tags:
+        - 'Docker'
+      responses:
+        '200':
+          description: 'Docker information retrieved successfully'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                properties:
+                  success:
+                    type: 'boolean'
+                    example: true
+                  data:
+                    type: 'object'
+                    description: 'Docker information object'
+
+  /version:
+    get:
+      summary: 'Docker Version'
+      description: 'Get Docker version information'
+      tags:
+        - 'Docker'
+      responses:
+        '200':
+          description: 'Docker version retrieved successfully'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                properties:
+                  success:
+                    type: 'boolean'
+                    example: true
+                  data:
+                    type: 'object'
+                    description: 'Docker version object'
+
+  /containers:
+    get:
+      summary: 'List Containers'
+      description: 'Get a list of all Docker containers'
+      tags:
+        - 'Docker'
+      responses:
+        '200':
+          description: 'Containers listed successfully'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                properties:
+                  success:
+                    type: 'boolean'
+                    example: true
+                  data:
+                    type: 'array'
+                    items:
+                      type: 'object'
+                      description: 'Container object'
+
+  /compose-to-json:
+    get:
+      summary: 'Compose to JSON'
+      description: 'Convert docker-compose.yml to JSON format'
+      tags:
+        - 'Compose'
+      responses:
+        '200':
+          description: 'Compose file converted successfully'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                properties:
+                  success:
+                    type: 'boolean'
+                    example: true
+                  data:
+                    type: 'object'
+                    description: 'Docker Compose JSON representation'
+
+  /agents/add:
+    post:
+      summary: 'Add Agent'
+      description: 'Add a new agent to the system'
+      tags:
+        - 'Agents'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: 'object'
+              properties:
+                name:
+                  type: 'string'
+                  description: 'Agent name'
+                  example: 'web-server'
+                image:
+                  type: 'string'
+                  description: 'Docker image name'
+                  example: 'nginx:latest'
+      responses:
+        '200':
+          description: 'Agent added successfully'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                properties:
+                  success:
+                    type: 'boolean'
+                    example: true
+                  data:
+                    type: 'object'
+                    description: 'Added agent information'
+
+  /agents/remove:
+    delete:
+      summary: 'Remove Agent'
+      description: 'Remove an agent from the system'
+      tags:
+        - 'Agents'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: 'object'
+              properties:
+                name:
+                  type: 'string'
+                  description: 'Agent name to remove'
+                  example: 'web-server'
+      responses:
+        '200':
+          description: 'Agent removed successfully'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                properties:
+                  success:
+                    type: 'boolean'
+                    example: true
+                  data:
+                    type: 'object'
+                    description: 'Removal operation result'
+
+  /agents/start:
+    post:
+      summary: 'Start Agents'
+      description: 'Start one or more agents'
+      tags:
+        - 'Agents'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: 'object'
+              properties:
+                agents:
+                  type: 'array'
+                  items:
+                    type: 'string'
+                  description: 'List of agent names to start'
+                  example: ['web-server', 'db-server']
+      responses:
+        '200':
+          description: 'Agents started successfully'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                properties:
+                  success:
+                    type: 'boolean'
+                    example: true
+                  data:
+                    type: 'object'
+                    description: 'Start operation result'
+
+  /agents/stop:
+    post:
+      summary: 'Stop Agents'
+      description: 'Stop one or more agents'
+      tags:
+        - 'Agents'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: 'object'
+              properties:
+                agents:
+                  type: 'array'
+                  items:
+                    type: 'string'
+                  description: 'List of agent names to stop'
+                  example: ['web-server', 'db-server']
+      responses:
+        '200':
+          description: 'Agents stopped successfully'
+          content:
+            application/json:
+              schema:
+                type: 'object'
+                properties:
+                  success:
+                    type: 'boolean'
+                    example: true
+                  data:
+                    type: 'object'
+                    description: 'Stop operation result'
+
+components:
+  schemas:
+    Success:
+      type: 'object'
+      properties:
+        success:
+          type: 'boolean'
+          example: true
+        data:
+          type: 'object'
+          description: 'Response data varies by endpoint'
+    Error:
+      type: 'object'
+      properties:
+        success:
+          type: 'boolean'
+          example: false
+        error:
+          type: 'string'
+          description: 'Error message'
+          example: 'An error occurred while processing your request'
