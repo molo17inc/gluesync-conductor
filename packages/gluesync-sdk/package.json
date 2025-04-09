@@ -4,9 +4,7 @@
   "description": "Gluesync SDK integration for Container Mate",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "bin": {
-    "gluesync-sdk": "dist/standalone.js"
-  },
+  "bin": "dist/standalone.js",
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",

@@ -1,3 +1,0 @@
-[submodule "packages/docker-mate/gluesync-nodejs-corehub-handshake-sdk"]
-	path = packages/docker-mate/gluesync-nodejs-corehub-handshake-sdk
-	url = https://gitlab.com/molo17-public/gluesync/gluesync-nodejs-corehub-handshake-sdk.git
