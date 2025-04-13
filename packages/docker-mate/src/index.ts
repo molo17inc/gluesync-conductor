@@ -8,6 +8,7 @@ import composeToJSON from './functions/composeToJSON/composeToJSON';
 import info from './functions/info/info';
 import version from './functions/version/version';
 import listContainers from './functions/container/listContainers/listContainers';
+import getContainerVersion from './functions/container/getContainerVersion/getContainerVersion';
 import addAgent from './functions/agent/addAgent/addAgent';
 
 import removeAgent from './functions/agent/removeAgent/removeAgent';
@@ -137,7 +138,7 @@ server.get('/containers', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { 
+          data: {
             type: 'array',
             items: {
               type: 'object',
@@ -164,10 +165,63 @@ server.get('/containers', {
             }
           }
         }
+      },
+      500: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          error: { type: 'string' },
+          details: { type: 'string' }
+        }
       }
     }
   },
   handler: listContainers
+});
+
+server.get('/containers/:id/version', {
+  schema: {
+    params: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Container ID' }
+      }
+    },
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: {
+            type: 'object',
+            properties: {
+              containerId: { type: 'string' },
+              containerName: { type: 'string' },
+              currentImage: { type: 'string' },
+              currentTag: { type: 'string' },
+              latestVersion: { type: 'object', additionalProperties: true }
+            }
+          }
+        }
+      },
+      404: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          error: { type: 'string' }
+        }
+      },
+      502: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          error: { type: 'string' }
+        }
+      }
+    }
+  },
+  handler: getContainerVersion
 });
 
 server.post('/containers', {
