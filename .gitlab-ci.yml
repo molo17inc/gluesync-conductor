@@ -1,103 +1,103 @@
 stages:
   - build
-  - merge_request
-  - quality
+  - test
   - deploy
-  - notify
-
-image: node:20.10.0
-
-default:
-  tags:
-    - docker
 
 variables:
-  GIT_STRATEGY: fetch
-  GIT_SUBMODULE_STRATEGY: recursive
-  GIT_DEPTH: 20
-  FF_USE_FASTZIP: 'true'
-  ARTIFACT_COMPRESSION_LEVEL: 'fastest'
-  CACHE_COMPRESSION_LEVEL: 'fastest'
-  TRANSFER_METER_FREQUENCY: '1s'
-  YARN_ENABLE_IMMUTABLE_INSTALLS: 'false'
-  DOCKER_TLS_CERTDIR: ''
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
   DOCKER_REGISTRY: registry.gitlab.com/molo17-public/gluesync/container-mate
   CONTAINER_MATE_IMAGE: ${DOCKER_REGISTRY}:${CI_COMMIT_REF_SLUG}
 
-build_mr:
-  stage: merge_request
-  script:
-    - export ENV="dev"
-    - echo "Building..."
-    - yarn install --frozen-lockfile
-    - yarn workspaces run build
-    - echo "Lint check..."
-    - yarn lint
-    - echo "Running tests..."
-    - yarn workspaces run test
-  only:
-    - merge_requests
-
 build:
   stage: build
+  image: docker:20.10.16
+  services:
+    - docker:20.10.16-dind
   script:
-    - if [[ $CI_COMMIT_BRANCH == "develop" ]] || [[ $CI_COMMIT_BRANCH == "" ]]; then export ENV="dev"; fi
-    - if [[ $CI_COMMIT_BRANCH == "staging" ]]; then export ENV="test"; fi
-    - if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
-    
-    - echo "Building..."
-    - yarn install --frozen-lockfile
-    - yarn workspaces run build
-    
-    - echo "Lint check..."
-    - yarn lint
-    
-    - echo "Running tests..."
-    - yarn workspaces run test
-  artifacts:
-    paths:
-      - packages/docker-mate/dist
-      - packages/gluesync-sdk/dist
-      - packages/gluesync-corehub-sdk/dist
-    expire_in: 3 days
-    when: on_success
+    # Login to GitLab registry
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    # Build the Docker image
+    - docker build -t $CONTAINER_MATE_IMAGE .
+    # Push the Docker image to GitLab registry
+    - docker push $CONTAINER_MATE_IMAGE
   only:
-    - develop
-    - staging
     - main
+    - develop
+    - tags
 
-quality:
-  stage: quality
-  needs:
-    - build
+test:
+  stage: test
+  image: node:18-alpine
+  before_script:
+    - yarn install --frozen-lockfile
   script:
-    - echo "Running quality checks..."
-    # Add your quality checks here
+    - yarn workspaces run build
+    - yarn workspaces run test
   only:
-    - develop
-    - staging
     - main
+    - develop
+    - merge_requests
+
+integration_test:
+  stage: test
+  image: docker:20.10.16
+  services:
+    - docker:20.10.16-dind
+  variables:
+    # Test environment variables
+    GLUESYNC_LICENSE_FILE: /opt/gluesync/data/gs-license.dat
+    GLUESYNC_MODULE_TAG: container-mate-test
+    GLUESYNC_SECURITY_CONFIG: /opt/gluesync/data/security-config.json
+  script:
+    # Create test directories
+    - mkdir -p /opt/gluesync/data
+    # Use dummy license and security config for testing
+    - echo "{}" > /opt/gluesync/data/security-config.json
+    - echo "dummy-license" > /opt/gluesync/data/gs-license.dat
+    # Pull the built image
+    - docker pull $CONTAINER_MATE_IMAGE
+    # Run the container with test configuration
+    - |
+      docker run -d --name container-mate-test \
+        -v /opt/gluesync/data:/opt/gluesync/data \
+        -e GLUESYNC_LICENSE_FILE=/opt/gluesync/data/gs-license.dat \
+        -e GLUESYNC_MODULE_TAG=container-mate-test \
+        -e GLUESYNC_SECURITY_CONFIG=/opt/gluesync/data/security-config.json \
+        -e SSL_ENABLED=false \
+        -p 50000:50000 \
+        $CONTAINER_MATE_IMAGE
+    # Wait for container to start
+    - sleep 10
+    # Check if container is running
+    - docker ps | grep container-mate-test
+    # Check logs for startup messages
+    - docker logs container-mate-test
+    # Clean up
+    - docker stop container-mate-test
+    - docker rm container-mate-test
+  only:
+    - main
+    - develop
+    - merge_requests
 
 deploy:
   stage: deploy
-  image: docker:20.10.0
+  image: docker:latest
   services:
     - name: docker:dind
-  needs:
-    - build
+      variables:
+        DOCKER_TLS_CERTDIR: ""
   script:
-    - echo "Deploying..."
-    - if [[ $CI_COMMIT_BRANCH == "develop" ]] || [[ $CI_COMMIT_BRANCH == "" ]]; then export ENV="dev"; fi
-    - if [[ $CI_COMMIT_BRANCH == "staging" ]]; then export ENV="test"; fi
-    - if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
+    - echo "Building & deploying started..."
 
     - apk add --no-cache bash
-    - echo "registry user" $CI_REGISTRY_USER
-    - echo "registry password" $CI_REGISTRY_PASSWORD
-    - echo "ci registry" $CI_REGISTRY
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    # Initialize and update the Git submodule
+    - git submodule init
+    - git submodule update
+
     - 
-      |
+      | 
       MODULE_NAME=${CI_COMMIT_TAG#tag-}  # Removes everything before "tag-"
       MODULE_NAME=${MODULE_NAME%-v*}  # Removes everything after the last "-"
 
@@ -105,43 +105,20 @@ deploy:
 
       DEFAULT_NAME=${DOCKER_REGISTRY}/${APP_NAME}
       ADDITIONAL_TAG="${DEFAULT_NAME}:${TAGPART}"
+
+    # Set up Docker Buildx for multi-platform builds
+    - docker login -u danieleangeli -p "$CI_REGISTRY_PASSWORD"
+    # Install QEMU for multi-architecture builds
+    - docker run --privileged --rm tonistiigi/binfmt --install all
+    # Create and use a new builder instance
+    - docker buildx create --name multiarch-builder --use
+    - docker buildx inspect --bootstrap
     
-    # For tags, also build multi-platform images
+    # Build and push multi-platform images in one command
     - |
-      if [[ -n "$CI_COMMIT_TAG" ]]; then
-        # Extract version from tag
-        TAGPART=`echo $CI_COMMIT_TAG | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)'`
-        
-        # Install QEMU for multi-architecture builds
-        docker run --privileged --rm tonistiigi/binfmt --install all
-        # Create and use a new builder instance
-        docker buildx create --name multiarch-builder --use
-        docker buildx inspect --bootstrap
-        
-        # Build and push multi-platform images
-        docker buildx build --platform linux/amd64,linux/arm64 \
-          --tag $DEFAULT_NAME:latest \
-          --tag "$ADDITIONAL_TAG" \
-          --push -f packages/docker-mate/Dockerfile .
-      fi
-  only:
-    - develop
-    - staging
-    - main
-    - tags
-
-notify:
-  stage: notify
-  needs:
-    - deploy
-  script:
-    - if [[ $CI_COMMIT_BRANCH == "develop" ]] || [[ $CI_COMMIT_BRANCH == "" ]]; then export ENV="dev"; fi
-    - if [[ $CI_COMMIT_BRANCH == "staging" ]]; then export ENV="test"; fi
-    - if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
-
-    - echo "Notification sent for ${ENV} environment"
-    # Add your notification logic here
-  only:
-    - develop
-    - staging
-    - main
+      docker buildx build --platform linux/amd64,linux/arm64 \
+        --tag $DEFAULT_NAME:latest \
+        --tag "$ADDITIONAL_TAG" \
+        --push .
+  rules:
+    - if: $CI_COMMIT_TAG
