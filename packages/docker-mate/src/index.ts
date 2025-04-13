@@ -9,6 +9,7 @@ import info from './functions/info/info';
 import version from './functions/version/version';
 import listContainers from './functions/container/listContainers/listContainers';
 import addAgent from './functions/agent/addAgent/addAgent';
+
 import removeAgent from './functions/agent/removeAgent/removeAgent';
 import startAgents from './functions/agent/startAgents/startAgents';
 import stopAgents from './functions/agent/stopAgents/stopAgents';
@@ -24,6 +25,12 @@ const port: number = process.env.PORT ? parseInt(process.env.PORT) : 50000;
 
 const server = fastify({
   logger: fastifyLogger,
+  ajv: {
+    customOptions: {
+      strict: false,
+      removeAdditional: false
+    }
+  }
 });
 
 // Register Docker plugin
@@ -38,38 +45,265 @@ server.addHook('onReady', () => {
   console.log(`Swagger UI is available at http://localhost:${port}/docs`);
 });
 
-server.get('/health', async (req, reply) => {
-  try {
-    req.log.info('Health check OK!');
-  } catch (error) {
-    req.log.error('Error:', error);
-    process.exit(1);
+server.get('/health', {
+  schema: {
+    tags: ['system'],
+    description: 'Health check endpoint',
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { type: 'string' }
+        }
+      },
+      500: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          error: { type: 'string' }
+        }
+      }
+    }
+  },
+  handler: async (req, reply) => {
+    try {
+      req.log.info('Health check OK!');
+      reply.send({ success: true, data: 'Health check OK!' });
+    } catch (error) {
+      req.log.error('Error:', error);
+      reply.status(500).send({ success: false, error: 'Health check failed' });
+    }
   }
-
-  reply.statusCode = 200;
-  reply.send({ success: true, data: 'Health check OK!' });
 });
 
-server.get('/compose-to-json', composeToJSON);
-server.get('/info', info);
-server.get('/version', version);
-server.get('/containers', listContainers);
+server.get('/compose-to-json', {
+  schema: {
+    tags: ['system'],
+    description: 'Convert compose file to JSON',
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { type: 'object' }
+        }
+      }
+    }
+  },
+  handler: composeToJSON
+});
 
-server.post('/agents/add', addAgent);
-server.delete('/agents/remove', removeAgent);
-server.post('/agents/start', startAgents);
-server.post('/agents/stop', stopAgents);
+server.get('/info', {
+  schema: {
+    tags: ['system'],
+    description: 'Get system information',
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { type: 'object' }
+        }
+      }
+    }
+  },
+  handler: info
+});
+
+server.get('/version', {
+  schema: {
+    tags: ['system'],
+    description: 'Get API version',
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { type: 'string' }
+        }
+      }
+    }
+  },
+  handler: version
+});
+
+server.get('/containers', {
+  schema: {
+    tags: ['containers'],
+    description: 'List all containers',
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { 
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                Id: { type: 'string' },
+                Names: { type: 'array', items: { type: 'string' } },
+                State: { type: 'string' },
+                Status: { type: 'string' }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  handler: listContainers
+});
+
+server.post('/containers', {
+  schema: {
+    tags: ['containers'],
+    description: 'Add new containers to the system',
+    body: {
+      type: 'object',
+      properties: {
+        agents: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['imageName', 'type'],
+            properties: {
+              imageName: { type: 'string', description: 'Name of the Docker image' },
+              type: { type: 'string', enum: ['target', 'source'], description: 'Type of the agent' },
+              nickname: { type: 'string', description: 'Optional nickname for the agent' },
+              tag: { type: 'string', description: 'Optional Docker image tag' },
+              environment: { type: 'object', additionalProperties: true, description: 'Optional environment variables' },
+              ports: { type: 'array', items: { type: 'string' }, description: 'Optional port mappings' },
+              volumes: { type: 'array', items: { type: 'string' }, description: 'Optional volume mappings' }
+            }
+          }
+        }
+      }
+    },
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { type: 'object' }
+        }
+      },
+      400: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          error: { type: 'string' }
+        }
+      }
+    }
+  },
+  handler: addAgent
+});
+
+server.delete('/containers/:id', {
+  schema: {
+    description: 'Remove a container from the compose file',
+    tags: ['containers'],
+    params: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Container ID to remove' },
+      },
+    },
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { type: 'object' },
+        },
+      },
+      404: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', default: false },
+          error: { type: 'string' },
+        },
+      },
+    },
+  },
+  handler: removeAgent,
+});
+
+server.post('/containers/:id/start', {
+  schema: {
+    description: 'Start a container',
+    tags: ['containers'],
+    params: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Container ID to start' },
+      },
+    },
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      404: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', default: false },
+          error: { type: 'string' },
+        },
+      },
+    },
+  },
+  handler: startAgents,
+});
+
+server.post('/containers/:id/stop', {
+  schema: {
+    description: 'Stop a container',
+    tags: ['containers'],
+    params: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Container ID to stop' },
+      },
+    },
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      404: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', default: false },
+          error: { type: 'string' },
+        },
+      },
+    },
+  },
+  handler: stopAgents,
+});
 
 // Run the server!
-const start = async () => {
-  try {
-    await server.listen({ host: '0.0.0.0', port });
+process.on('unhandledRejection', (err) => {
+  console.error(err);
+  process.exit(1);
+});
 
-    console.log(`Gluesync Conductor server started on port ${port}`);
-  } catch (error) {
-    server.log.error(`Start error: ${error}`);
+server.listen({ host: '0.0.0.0', port }, (err) => {
+  if (err) {
+    console.error('Error starting server:', err);
     process.exit(1);
   }
-};
-
-start();
+  console.log(`Gluesync Conductor server started on port ${port}`);
+});

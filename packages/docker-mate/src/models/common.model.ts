@@ -5,5 +5,5 @@ export type SuccessResponse<T> = Readonly<{
 
 export type ErrorResponse = Readonly<{
   success: false;
-  errorMessage: string;
+  error: string;
 }>;

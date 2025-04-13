@@ -43,9 +43,13 @@ ENV GLUESYNC_SECURITY_CONFIG=/opt/gluesync/data/security-config.json
 ENV GLUESYNC_MODULE_TAG=gluesync-conductor
 ENV HOST=0.0.0.0
 ENV PORT=1717
+ENV DOCKER_HOST=unix:///var/run/docker.sock
 
 # Expose the port
 EXPOSE 1717
+
+# Create a volume for the Docker socket
+VOLUME /var/run/docker.sock
 
 # Start the application
 CMD ["node", "packages/docker-mate/dist/index.js"]

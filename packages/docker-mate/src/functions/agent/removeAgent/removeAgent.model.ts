@@ -2,20 +2,20 @@ import { RouteHandlerMethod } from 'fastify';
 
 import { ErrorResponse, SuccessResponse } from '../../../models/common.model';
 
-export type RemoveAgentBody = Readonly<{
-  agents: ReadonlyArray<{
-    imageName: string;
-    type: 'target' | 'source';
-  }>;
+export type RemoveAgentResponse = Readonly<{
+  success: boolean;
+  data?: Record<string, any>;
+  error?: string;
 }>;
-export type RemoveAgentResponse = SuccessResponse<any> | ErrorResponse;
 
 export type RemoveAgentHandler = RouteHandlerMethod<
   any,
   any,
   any,
   {
-    Body: Partial<RemoveAgentBody>;
+    Params: {
+      id: string;
+    };
     Reply: RemoveAgentResponse;
   }
 >;

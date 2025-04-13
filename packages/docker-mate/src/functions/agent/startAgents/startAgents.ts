@@ -1,6 +1,8 @@
 import { upAll } from 'docker-compose';
 
 import { StartAgentsHandler } from './startAgents.model';
+import { ComposeFile } from '../../../models/composeFile.model';
+import readYmlFile from '../../../helpers/readYmlFile/readYmlFile';
 
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 
@@ -8,10 +10,20 @@ const filename = 'compose.agents.yml';
 
 const handler: StartAgentsHandler = async (req, reply) => {
   try {
+    const { id } = req.params;
+    const parsedJson = await readYmlFile<ComposeFile>(filename);
+
+    if (!parsedJson.services || !parsedJson.services[id]) {
+      reply.statusCode = 404;
+      reply.send({ success: false, error: `Agent ${id} not found` });
+      return;
+    }
+
     const result = await upAll({
       cwd: getRootPath(),
       config: filename,
       log: true,
+      commandOptions: ['--no-deps', id] // Start only the specified service
     });
 
     req.log.info(result);
@@ -24,11 +36,12 @@ const handler: StartAgentsHandler = async (req, reply) => {
         .reduce<ReadonlyArray<string>>((acc, line) => {
           const trimmed = line.trim();
           return trimmed ? [...acc, trimmed] : acc;
-        }, []),
+        }, [])
     });
   } catch (error) {
     req.log.error(error);
-    process.exit(1);
+    reply.statusCode = 500;
+    reply.send({ success: false, error: 'Internal server error' });
   }
 };
 

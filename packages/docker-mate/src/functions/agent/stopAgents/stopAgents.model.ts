@@ -9,6 +9,9 @@ export type StopAgentsHandler = RouteHandlerMethod<
   any,
   any,
   {
+    Params: {
+      id: string;
+    };
     Reply: StopAgentsResponse;
   }
 >;

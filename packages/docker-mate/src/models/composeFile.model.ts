@@ -7,7 +7,8 @@ export type ComposeService = Readonly<{
   volumes?: ReadonlyArray<string>;
 }>;
 
-export type ComposeFile = Readonly<{
+export type ComposeFile = {
   name?: string;
   services?: Record<string, ComposeService>;
-}>;
+  [key: string]: any;
+};

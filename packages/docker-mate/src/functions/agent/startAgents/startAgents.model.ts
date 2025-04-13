@@ -9,6 +9,9 @@ export type StartAgentsHandler = RouteHandlerMethod<
   any,
   any,
   {
+    Params: {
+      id: string;
+    };
     Reply: StartAgentsResponse;
   }
 >;

@@ -1,0 +1,217 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Gluesync Conductor API",
+    "description": "API for managing Docker containers and agents",
+    "version": "1.0.0"
+  },
+  "host": "localhost:50003",
+  "basePath": "/",
+  "schemes": ["http"],
+  "consumes": ["application/json"],
+  "produces": ["application/json"],
+  "tags": [
+    { "name": "agents", "description": "Agent management operations" },
+    { "name": "containers", "description": "Container management operations" },
+    { "name": "system", "description": "System operations" }
+  ],
+  "paths": {
+    "/containers": {
+      "get": {
+        "tags": ["containers"],
+        "summary": "List all containers",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "schema": { "$ref": "#/definitions/Success" }
+          }
+        }
+      },
+      "post": {
+        "tags": ["containers"],
+        "summary": "Add new containers",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "agents": {
+                  "type": "array",
+                  "items": { "$ref": "#/definitions/Agent" }
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "schema": { "$ref": "#/definitions/Success" }
+          },
+          "400": {
+            "description": "Bad request",
+            "schema": { "$ref": "#/definitions/Error" }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": ["system"],
+        "summary": "Health check endpoint",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "schema": { "$ref": "#/definitions/Success" }
+          },
+          "500": {
+            "description": "Error response",
+            "schema": { "$ref": "#/definitions/Error" }
+          }
+        }
+      }
+    },
+
+    "/containers/{id}": {
+      "delete": {
+        "tags": ["containers"],
+        "summary": "Remove a container",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "schema": { "$ref": "#/definitions/Success" }
+          },
+          "404": {
+            "description": "Container not found",
+            "schema": { "$ref": "#/definitions/Error" }
+          }
+        }
+      }
+    },
+    "/containers/{id}/start": {
+      "post": {
+        "tags": ["containers"],
+        "summary": "Start a container",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "schema": { "$ref": "#/definitions/Success" }
+          },
+          "404": {
+            "description": "Container not found",
+            "schema": { "$ref": "#/definitions/Error" }
+          }
+        }
+      }
+    },
+    "/containers/{id}/stop": {
+      "post": {
+        "tags": ["containers"],
+        "summary": "Stop a container",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "schema": { "$ref": "#/definitions/Success" }
+          },
+          "404": {
+            "description": "Container not found",
+            "schema": { "$ref": "#/definitions/Error" }
+          }
+        }
+      }
+    },
+
+    "/compose-to-json": {
+      "get": {
+        "tags": ["containers"],
+        "summary": "Convert compose file to JSON",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "schema": { "$ref": "#/definitions/Success" }
+          }
+        }
+      }
+    },
+    "/info": {
+      "get": {
+        "tags": ["system"],
+        "summary": "Get system information",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "schema": { "$ref": "#/definitions/Success" }
+          }
+        }
+      }
+    },
+    "/version": {
+      "get": {
+        "tags": ["system"],
+        "summary": "Get API version",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "schema": { "$ref": "#/definitions/Success" }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "Agent": {
+      "type": "object",
+      "required": ["imageName", "type"],
+      "properties": {
+        "imageName": { "type": "string", "description": "Name of the Docker image" },
+        "type": { "type": "string", "enum": ["target", "source"], "description": "Type of the agent" },
+        "nickname": { "type": "string", "description": "Optional nickname for the agent" },
+        "tag": { "type": "string", "description": "Optional Docker image tag" },
+        "environment": { "type": "object", "additionalProperties": true, "description": "Optional environment variables" },
+        "ports": { "type": "array", "items": { "type": "string" }, "description": "Optional port mappings" },
+        "volumes": { "type": "array", "items": { "type": "string" }, "description": "Optional volume mappings" }
+      }
+    },
+    "Error": {
+      "type": "object",
+      "properties": {
+        "success": { "type": "boolean", "default": false },
+        "error": { "type": "string" }
+      }
+    },
+    "Success": {
+      "type": "object",
+      "properties": {
+        "success": { "type": "boolean", "default": true },
+        "data": { "type": "object" }
+      }
+    }
+  }
+}

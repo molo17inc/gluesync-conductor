@@ -1,6 +1,8 @@
-import { downAll } from 'docker-compose';
+import { stop } from 'docker-compose';
 
 import { StopAgentsHandler } from './stopAgents.model';
+import { ComposeFile } from '../../../models/composeFile.model';
+import readYmlFile from '../../../helpers/readYmlFile/readYmlFile';
 
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 
@@ -8,10 +10,20 @@ const filename = 'compose.agents.yml';
 
 const handler: StopAgentsHandler = async (req, reply) => {
   try {
-    const result = await downAll({
+    const { id } = req.params;
+    const parsedJson = await readYmlFile<ComposeFile>(filename);
+
+    if (!parsedJson.services || !parsedJson.services[id]) {
+      reply.statusCode = 404;
+      reply.send({ success: false, error: `Agent ${id} not found` });
+      return;
+    }
+
+    const result = await stop({
       cwd: getRootPath(),
       config: filename,
       log: true,
+      commandOptions: [id] // Stop only the specified service
     });
 
     req.log.info(result);
@@ -28,7 +40,8 @@ const handler: StopAgentsHandler = async (req, reply) => {
     });
   } catch (error) {
     req.log.error(error);
-    process.exit(1);
+    reply.statusCode = 500;
+    reply.send({ success: false, error: 'Internal server error' });
   }
 };
 

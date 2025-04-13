@@ -45,7 +45,7 @@ const RAW_RUNTIME_STATE =
           ["@types/node", "npm:22.13.13"],\
           ["eslint", "virtual:a23e57f6bdef1be4f8b8d332d2c199574de3f451b0e80ad28bd4e938ecd44912668b8df898dedb1ba8ae2d183122c9ba1aa96ab19d14e70a293dfb682c47f508#npm:9.23.0"],\
           ["prettier", "npm:3.5.3"],\
-          ["typescript", "patch:typescript@npm%3A5.8.2#optional!builtin<compat/typescript>::version=5.8.2&hash=5786d5"]\
+          ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\
         ],\
         "linkType": "SOFT"\
       }]\
@@ -3083,7 +3083,7 @@ const RAW_RUNTIME_STATE =
           ["@types/node", "npm:22.13.13"],\
           ["eslint", "virtual:a23e57f6bdef1be4f8b8d332d2c199574de3f451b0e80ad28bd4e938ecd44912668b8df898dedb1ba8ae2d183122c9ba1aa96ab19d14e70a293dfb682c47f508#npm:9.23.0"],\
           ["prettier", "npm:3.5.3"],\
-          ["typescript", "patch:typescript@npm%3A5.8.2#optional!builtin<compat/typescript>::version=5.8.2&hash=5786d5"]\
+          ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\
         ],\
         "linkType": "SOFT"\
       }]\
@@ -7342,6 +7342,13 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./.yarn/cache/typescript-patch-26c53754b1-97920a082f.zip/node_modules/typescript/",\
         "packageDependencies": [\
           ["typescript", "patch:typescript@npm%3A5.8.2#optional!builtin<compat/typescript>::version=5.8.2&hash=5786d5"]\
+        ],\
+        "linkType": "HARD"\
+      }],\
+      ["patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5", {\
+        "packageLocation": "./.yarn/cache/typescript-patch-f64146f279-b9b1e73dab.zip/node_modules/typescript/",\
+        "packageDependencies": [\
+          ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\
         ],\
         "linkType": "HARD"\
       }]\

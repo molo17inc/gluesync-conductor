@@ -9,23 +9,19 @@ const filename = 'compose.agents.yml';
 
 const handler: RemoveAgentHandler = async (req, reply) => {
   try {
+    const { id } = req.params;
     const parsedJson = await readYmlFile<ComposeFile>(filename);
 
-    const composeFile = (req.body.agents || []).reduce<ComposeFile>(
-      (acc, { imageName, type }) => {
-        if (!type) {
-          return acc;
-        }
+    if (!parsedJson.services || !parsedJson.services[id]) {
+      reply.statusCode = 404;
+      reply.send({ success: false, error: `Agent ${id} not found` });
+      return;
+    }
 
-        const containerName = `${imageName}-${type}-agent`;
-
-        return {
-          ...acc,
-          services: removeKey(parsedJson.services, containerName),
-        };
-      },
-      {},
-    );
+    const composeFile: ComposeFile = {
+      ...parsedJson,
+      services: removeKey(parsedJson.services, id)
+    };
 
     await writeYmlFile(composeFile, filename);
 
@@ -33,7 +29,8 @@ const handler: RemoveAgentHandler = async (req, reply) => {
     reply.send({ success: true, data: composeFile });
   } catch (error) {
     req.log.error(`Error: ${JSON.stringify(error)}`);
-    process.exit(1);
+    reply.statusCode = 500;
+    reply.send({ success: false, error: 'Internal server error' });
   }
 };
 
