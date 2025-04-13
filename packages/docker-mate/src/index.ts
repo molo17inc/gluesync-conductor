@@ -145,6 +145,7 @@ server.get('/containers', {
                 Id: { type: 'string' },
                 Name: { type: 'string' },
                 Image: { type: 'string' },
+                Version: { type: 'string' },
                 Created: { type: 'string' },
                 Running: { type: 'boolean' },
                 Status: { type: 'string' },

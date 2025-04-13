@@ -1,4 +1,5 @@
 import { RouteHandlerMethod } from 'fastify';
+import parseImageTag from '../../../helpers/parseImageTag/parseImageTag';
 
 const handler: RouteHandlerMethod = async (req, reply) => {
   try {
@@ -16,10 +17,14 @@ const handler: RouteHandlerMethod = async (req, reply) => {
         const details = await container.inspect();
         
         // Extract the specific fields we need
+        const imageString = details.Config?.Image || '';
+        const { name, version } = parseImageTag(imageString);
+        
         const containerDetails = {
           Id: details.Id,
           Name: details.Name ? details.Name.replace(/^\//, '') : '',
-          Image: details.Config?.Image || '',
+          Image: imageString,
+          Version: version,
           Created: details.Created || '',
           // Extract State fields directly
           Running: details.State?.Running || false,
@@ -44,10 +49,14 @@ const handler: RouteHandlerMethod = async (req, reply) => {
       } catch (inspectError) {
         req.log.error(`Error inspecting container ${containerInfo.Id}: ${inspectError instanceof Error ? inspectError.message : String(inspectError)}`);
         // Return basic info if inspect fails
+        const fallbackImageString = containerInfo.Image || '';
+        const { name, version } = parseImageTag(fallbackImageString);
+        
         containers.push({
           Id: containerInfo.Id,
           Name: containerInfo.Names?.[0]?.replace(/^\//, '') || '',
-          Image: containerInfo.Image || '',
+          Image: fallbackImageString,
+          Version: version,
           Created: containerInfo.Created || '',
           Running: containerInfo.State === 'running',
           Status: containerInfo.State || '',
