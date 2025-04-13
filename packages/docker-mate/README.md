@@ -1,1 +1,273 @@
-# docker-mate
+# Gluesync Conductor - Container Management API
+
+![Gluesync Conductor Logo](../../docs/assets/gluesync-conductor.svg)
+
+## Overview
+
+Gluesync Conductor is a container management platform that provides a comprehensive RESTful API for managing Docker containers, with a focus on flexible configuration and consistent response formats.
+
+## Features
+
+- **Container Listing**: Get detailed information about all containers
+- **Container Details**: Retrieve configuration for specific containers
+- **Container Management**: Add, update, and manage containers
+- **Version Checking**: Check for available container updates
+- **Container Persistence**: Track which containers are persisted in configuration
+- **Docker Label Integration**: Use Docker labels for container identification
+
+## Installation
+
+### Prerequisites
+
+- Node.js 16 or higher
+- Docker and Docker Compose
+- Yarn package manager
+
+### Quick Start
+
+```bash
+# Install dependencies
+cd packages/docker-mate
+yarn install
+
+# Start the service
+PORT=50015 yarn dev
+```
+
+## API Endpoints
+
+The Gluesync Conductor API provides the following endpoints for container management:
+
+### Container Listing
+
+**GET /containers**
+
+Returns a list of all containers with detailed information including:
+
+- Container ID
+- Name
+- Image
+- Tag
+- Version Tag (from labels)
+- Persistence status
+- Running status
+- Creation time
+- Status
+- Ports
+- Environment variables
+
+**Response Format:**
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "1eab590c0dbfa0c1cd8e8e67a1f9cefc0b8f4909b4e2a0981eab6de0d5867529",
+      "name": "gluesync-agent",
+      "image": "molo17/gluesync-agent",
+      "tag": "latest",
+      "versionTag": "1.2.3",
+      "persisted": true,
+      "created": "2025-04-10T14:23:45.000Z",
+      "running": true,
+      "status": "running",
+      "ports": ["8080:8080"],
+      "environment": {
+        "GLUESYNC_MODULE_TAG": "gluesync-conductor"
+      }
+    }
+  ]
+}
+```
+
+### Get Container
+
+**GET /containers/{id}**
+
+Retrieves detailed configuration for a specific container by its ID.
+
+**Response Format:**
+```json
+{
+  "success": true,
+  "data": {
+    "imageName": "gluesync-agent",
+    "type": "target",
+    "nickname": "gluesync-agent",
+    "tag": "latest",
+    "versionTag": "1.2.3",
+    "persisted": true,
+    "environment": {
+      "GLUESYNC_MODULE_TAG": "gluesync-conductor",
+      "type": "target",
+      "maxRamPercentage": 90.0
+    },
+    "ports": ["8080:8080"],
+    "volumes": ["/data:/app/data"]
+  }
+}
+```
+
+### Get Container Version
+
+**GET /containers/{id}/version**
+
+Checks for the latest available version of a container from the MOLO17 backoffice API.
+
+**Response Format:**
+```json
+{
+  "success": true,
+  "data": {
+    "container": {
+      "id": "1eab590c0dbfa0c1cd8e8e67a1f9cefc0b8f4909b4e2a0981eab6de0d5867529",
+      "name": "gluesync-agent",
+      "image": "molo17/gluesync-agent",
+      "tag": "latest"
+    },
+    "version": {
+      "current": "1.2.3",
+      "latest": "1.3.0",
+      "updateAvailable": true
+    }
+  }
+}
+```
+
+### Add Container
+
+**POST /containers**
+
+Adds one or more containers to the system. Containers are added to the Docker Compose file and can be started separately.
+
+**Request Format:**
+
+```json
+{
+  "containers": [
+    {
+      "imageName": "gluesync-agent",
+      "type": "target",
+      "nickname": "my-agent",
+      "tag": "1.2.3",
+      "environment": {
+        "DEBUG": "true"
+      },
+      "ports": ["8080:8080"],
+      "volumes": ["/data:/app/data"]
+    }
+  ]
+}
+```
+
+**Response Format:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Containers added successfully"
+  }
+}
+```
+
+### Update Container
+
+**PUT /containers/{id}**
+
+Updates the configuration of an existing container.
+
+**Request Format:**
+
+```json
+{
+  "imageName": "gluesync-agent",
+  "type": "target",
+  "nickname": "updated-agent",
+  "tag": "1.3.0",
+  "environment": {
+    "DEBUG": "false"
+  },
+  "ports": ["9090:8080"],
+  "volumes": ["/new-data:/app/data"]
+}
+```
+
+**Response Format:**
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Container updated successfully"
+  }
+}
+```
+
+## Docker Labels
+
+Gluesync Conductor uses Docker labels to identify and track containers. The following labels are used:
+
+### 1. Unique ID Label
+
+**Label:** `com.molo17.conductor.unique_id`
+
+This label stores the container's nickname, which serves as a unique identifier. It helps Gluesync Conductor identify which containers are persisted in the Docker Compose configuration file.
+
+**Example:**
+```yaml
+labels:
+  - "com.molo17.conductor.unique_id=my-agent"
+```
+
+### 2. Version Tag Label
+
+**Label:** `com.molo17.conductor.versiontag`
+
+This label stores the version tag of the container as specified by the user during container creation or update. It helps track the current version of the container, which may differ from the tag in the image name.
+
+**Example:**
+```yaml
+labels:
+  - "com.molo17.conductor.versiontag=1.2.3"
+```
+
+## Persistence Management
+
+Gluesync Conductor tracks which containers are persisted in the Docker Compose configuration file. This information is exposed through the `persisted` field in container responses.
+
+- **persisted: true** - The container is defined in the Docker Compose file
+- **persisted: false** - The container exists in Docker but is not defined in the Docker Compose file
+
+This allows you to distinguish between containers that were created through the Gluesync Conductor API and those that were created by other means.
+
+## YAML File Handling
+
+Gluesync Conductor uses a fixed YAML file named `compose.agents.yml` located at the project root. This file stores the container configurations and is used to determine which containers are persisted.
+
+You can provide your own YAML file by:
+
+1. Placing a file named `compose.agents.yml` in the project root
+2. Setting the `PROJECT_CWD` environment variable to point to a directory containing your YAML file
+
+```bash
+PROJECT_CWD=/path/to/your/directory PORT=50015 yarn dev
+```
+
+## Development
+
+```bash
+# Run development server with auto-reload
+PORT=50015 yarn dev
+
+# Run tests
+yarn test
+
+# Build for production
+yarn build
+```
+
+## License
+
+This project is dual-licensed under the GNU General Public License (GPL) Version 3 and the MOLO17 Commercial License. See the main project README for details.
+
+Copyright (C) 2025 MOLO17. All rights reserved.
