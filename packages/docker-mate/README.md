@@ -14,6 +14,7 @@ Gluesync Conductor is a container management platform that provides a comprehens
 - **Version Checking**: Check for available container updates
 - **Container Persistence**: Track which containers are persisted in configuration
 - **Docker Label Integration**: Use Docker labels for container identification
+- **Gluesync SDK Integration**: Connect to CoreHub for advanced orchestration capabilities
 
 ## Installation
 
@@ -230,6 +231,27 @@ This label stores the version tag of the container as specified by the user duri
 labels:
   - "com.molo17.conductor.versiontag=1.2.3"
 ```
+
+## Gluesync SDK Integration
+
+Gluesync Conductor integrates with the Gluesync SDK to enable communication with CoreHub for advanced container orchestration capabilities.
+
+### Configuration
+
+The Gluesync SDK integration is configured using environment variables:
+
+- `GLUESYNC_MODULE_TAG`: Identifies the module in the CoreHub ecosystem (default: `gluesync-conductor`)
+- `GLUESYNC_LICENSE_FILE`: Path to the Gluesync license file (default: `/opt/gluesync/data/gs-license.dat`)
+- `GLUESYNC_SECURITY_CONFIG`: Path to the security configuration file (default: `/opt/gluesync/data/security-config.json`)
+
+### Connection Management
+
+The integration handles CoreHub connections with the following features:
+
+- Automatic initialization on server startup
+- Graceful shutdown on server termination
+- Proper error handling and logging
+- Module identification via the `GLUESYNC_MODULE_TAG` environment variable
 
 ## Persistence Management
 

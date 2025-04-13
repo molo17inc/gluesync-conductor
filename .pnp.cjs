@@ -42,7 +42,7 @@ const RAW_RUNTIME_STATE =
       [null, {\
         "packageLocation": "./",\
         "packageDependencies": [\
-          ["@types/node", "npm:22.13.13"],\
+          ["@types/node", "npm:22.14.1"],\
           ["eslint", "virtual:a23e57f6bdef1be4f8b8d332d2c199574de3f451b0e80ad28bd4e938ecd44912668b8df898dedb1ba8ae2d183122c9ba1aa96ab19d14e70a293dfb682c47f508#npm:9.23.0"],\
           ["prettier", "npm:3.5.3"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\
@@ -2082,6 +2082,14 @@ const RAW_RUNTIME_STATE =
           ["undici-types", "npm:6.21.0"]\
         ],\
         "linkType": "HARD"\
+      }],\
+      ["npm:22.14.1", {\
+        "packageLocation": "./.yarn/cache/@types-node-npm-22.14.1-ff7e0a29d7-561b1ad98e.zip/node_modules/@types/node/",\
+        "packageDependencies": [\
+          ["@types/node", "npm:22.14.1"],\
+          ["undici-types", "npm:6.21.0"]\
+        ],\
+        "linkType": "HARD"\
       }]\
     ]],\
     ["@types/node-forge", [\
@@ -3122,7 +3130,7 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./",\
         "packageDependencies": [\
           ["container-mate", "workspace:."],\
-          ["@types/node", "npm:22.13.13"],\
+          ["@types/node", "npm:22.14.1"],\
           ["eslint", "virtual:a23e57f6bdef1be4f8b8d332d2c199574de3f451b0e80ad28bd4e938ecd44912668b8df898dedb1ba8ae2d183122c9ba1aa96ab19d14e70a293dfb682c47f508#npm:9.23.0"],\
           ["prettier", "npm:3.5.3"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\
@@ -3375,7 +3383,7 @@ const RAW_RUNTIME_STATE =
           ["@fastify/swagger", "npm:9.4.2"],\
           ["@fastify/swagger-ui", "npm:5.2.2"],\
           ["@types/dockerode", "npm:3.3.37"],\
-          ["@types/node", "npm:22.13.13"],\
+          ["@types/node", "npm:22.14.1"],\
           ["axios", "npm:1.8.4"],\
           ["docker-compose", "npm:1.2.0"],\
           ["dockerode", "npm:4.0.5"],\
@@ -4457,7 +4465,7 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./packages/gluesync-sdk/",\
         "packageDependencies": [\
           ["gluesync-sdk", "workspace:packages/gluesync-sdk"],\
-          ["@types/node", "npm:22.13.13"],\
+          ["@types/node", "npm:22.14.1"],\
           ["fastify", "npm:5.2.1"],\
           ["gluesync-nodejs-corehub-handshake-sdk", "file:/Users/danieleangeli/Documents/Repositories/gluesync-nodejs-corehub-handshake-sdk#/Users/danieleangeli/Documents/Repositories/gluesync-nodejs-corehub-handshake-sdk::hash=85ca74&locator=gluesync-sdk%40workspace%3Apackages%2Fgluesync-sdk"],\
           ["rimraf", "npm:5.0.10"],\
@@ -7495,7 +7503,7 @@ const RAW_RUNTIME_STATE =
           ["@tsconfig/node12", "npm:1.0.11"],\
           ["@tsconfig/node14", "npm:1.0.3"],\
           ["@tsconfig/node16", "npm:1.0.4"],\
-          ["@types/node", "npm:22.13.13"],\
+          ["@types/node", "npm:22.14.1"],\
           ["@types/swc__core", null],\
           ["@types/swc__wasm", null],\
           ["@types/typescript", null],\

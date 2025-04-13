@@ -3,6 +3,7 @@ import Docker from 'dockerode';
 
 import dockerPlugin from './plugins/docker';
 import swaggerPlugin from './plugins/swagger';
+import gluesyncPlugin from './plugins/gluesync';
 
 import composeToJSON from './functions/composeToJSON/composeToJSON';
 import info from './functions/info/info';
@@ -21,6 +22,7 @@ import stopAgents from './functions/agent/stopAgents/stopAgents';
 declare module 'fastify' {
   interface FastifyInstance {
     docker: Docker;
+    gluesyncSdk: any; // Using any type for the simplified SDK client
   }
 }
 
@@ -43,6 +45,9 @@ server.register(dockerPlugin);
 
 // Register Swagger UI plugin
 server.register(swaggerPlugin);
+
+// Register Gluesync SDK plugin
+server.register(gluesyncPlugin);
 
 // Add hook to log when server is ready
 server.addHook('onReady', () => {

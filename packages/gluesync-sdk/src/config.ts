@@ -78,8 +78,20 @@ const settings: GluesyncConfig = {
  * Update CoreHub URL in settings
  * @param url The CoreHub URL to use
  */
-export function updateCoreHubUrl(url: string): void {
+export function updateCoreHubUrl(url: string | null): void {
+  if (!url) return;
+  
   settings.coreHubUrl = url;
+  
+  // Parse the URL to extract host and port
+  try {
+    const parsedUrl = new URL(url);
+    settings.coreHubHost = parsedUrl.hostname;
+    settings.coreHubPort = parseInt(parsedUrl.port, 10) || (parsedUrl.protocol === 'https:' ? 443 : 80);
+    settings.useSSL = parsedUrl.protocol === 'https:';
+  } catch (error) {
+    console.error(`Invalid CoreHub URL: ${url}`, error);
+  }
 }
 
 /**

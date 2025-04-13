@@ -1388,7 +1388,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:*, @types/node@npm:^22.13.0":
+"@types/node@npm:*":
   version: 22.13.13
   resolution: "@types/node@npm:22.13.13"
   dependencies:
@@ -1421,6 +1421,15 @@ __metadata:
   dependencies:
     undici-types: "npm:~6.19.2"
   checksum: 10/60e3ce01266eb1b5a8e6815829b5becec471c5c33f1b30fe4568102919b4704b53a31e86de463257ccab93b8c2eeb80beaef8075ef84dc3fbd51fe258cef66f7
+  languageName: node
+  linkType: hard
+
+"@types/node@npm:^22.14.1":
+  version: 22.14.1
+  resolution: "@types/node@npm:22.14.1"
+  dependencies:
+    undici-types: "npm:~6.21.0"
+  checksum: 10/561b1ad98ef5176d6da856ffbbe494f16655149f6a7d561de0423c8784910c81267d7d6459f59d68a97b3cbae9b5996b3b5dfe64f4de3de2239d295dcf4a4dcc
   languageName: node
   linkType: hard
 
@@ -2200,7 +2209,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "container-mate@workspace:."
   dependencies:
-    "@types/node": "npm:^22.13.0"
+    "@types/node": "npm:^22.14.1"
     eslint: "npm:^9.19.0"
     prettier: "npm:^3.4.2"
     typescript: "npm:^5.8.3"
@@ -2388,7 +2397,7 @@ __metadata:
     "@fastify/swagger": "npm:^9.4.2"
     "@fastify/swagger-ui": "npm:^5.2.2"
     "@types/dockerode": "npm:^3.3.34"
-    "@types/node": "npm:^22.13.0"
+    "@types/node": "npm:^22.14.1"
     axios: "npm:^1.8.4"
     docker-compose: "npm:^1.2.0"
     dockerode: "npm:^4.0.4"
@@ -3365,7 +3374,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "gluesync-sdk@workspace:packages/gluesync-sdk"
   dependencies:
-    "@types/node": "npm:^22.13.0"
+    "@types/node": "npm:^22.14.1"
     fastify: "npm:^5.2.1"
     gluesync-nodejs-corehub-handshake-sdk: "file:/Users/danieleangeli/Documents/Repositories/gluesync-nodejs-corehub-handshake-sdk"
     rimraf: "npm:^5.0.5"

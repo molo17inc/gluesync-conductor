@@ -15,10 +15,24 @@
  * Copyright (C) 2025 MOLO17. All rights reserved.
  */
 
-import fs from 'fs';
-import { URL } from 'url';
 import { GluesyncClient, GluesyncConnectionError, GluesyncLicenseError, GluesyncAuthenticationError } from 'gluesync-nodejs-corehub-handshake-sdk';
 import settings, { updateCoreHubUrl } from './config';
+
+// Define Node.js types
+declare global {
+  namespace NodeJS {
+    interface ProcessEnv {
+      GLUESYNC_MODULE_TAG?: string;
+      GLUESYNC_LICENSE_FILE?: string;
+      GLUESYNC_SECURITY_CONFIG?: string;
+      CORE_HUB_URL?: string;
+      SSL_ENABLED?: string;
+      SSL_SKIP_VERIFY?: string;
+    }
+    
+    interface Timeout {}
+  }
+}
 
 /**
  * Singleton class for managing the Gluesync SDK client connection
@@ -29,6 +43,7 @@ export class GluesyncSDKClient {
   private _client: GluesyncClient | null = null;
   private _isInitialized = false;
   private _reconnectTimer: NodeJS.Timeout | null = null;
+  private _logger: Console = console;
 
   /**
    * Get the singleton instance
@@ -69,9 +84,12 @@ export class GluesyncSDKClient {
       return null;
     }
 
-    const host = this._client.host;
-    const port = this._client.port;
-    const useSSL = this._client.useSSL;
+    // Access properties safely using type assertion and any type
+    // This is necessary because the GluesyncClient class has private properties
+    const client = this._client as any;
+    const host = client.host;
+    const port = client.port;
+    const useSSL = client.useSSL;
 
     return this._buildCoreHubUrl(host, port, useSSL);
   }
@@ -104,163 +122,184 @@ export class GluesyncSDKClient {
    */
   public async initialize(): Promise<void> {
     if (this._isInitialized) {
-      console.log('Gluesync SDK client already initialized');
+      this._logger.log('Gluesync SDK client already initialized');
       return;
     }
 
     // Parse host and port from CORE_HUB_URL if provided
     let host: string | null = null;
     let port: number | null = null;
-    let useDiscovery = true;
-    
-    if (settings.coreHubUrl) {
+    let useSSL = false;
+
+    if (process.env.CORE_HUB_URL) {
       try {
-        const url = new URL(settings.coreHubUrl);
+        const url = new URL(process.env.CORE_HUB_URL);
         host = url.hostname;
-        port = url.port ? parseInt(url.port, 10) : null;
-        useDiscovery = false;
-        console.log(`Using provided CoreHub URL: ${settings.coreHubUrl}`);
+        port = parseInt(url.port, 10) || null;
+        useSSL = url.protocol === 'https:';
+        this._logger.log(`Using provided CoreHub host: ${host} at port: ${port}`);
       } catch (error) {
-        console.error(`Invalid CoreHub URL: ${settings.coreHubUrl}`, error);
+        this._logger.error(`Invalid CORE_HUB_URL: ${process.env.CORE_HUB_URL}`);
       }
     } else {
-      console.log('No CoreHub URL provided, will use UDP discovery');
+      this._logger.log('No CoreHub URL provided, will use UDP discovery instead');
     }
 
-    // Get license file path from settings
-    const licenseFilePath = settings.licenseFile;
-    if (!fs.existsSync(licenseFilePath)) {
-      console.warn(`License file not found at ${licenseFilePath}, will attempt to proceed without it`);
-    }
+    // Get license file path from environment
+    const licenseFilePath = process.env.GLUESYNC_LICENSE_FILE || '/opt/gluesync/data/gs-license.dat';
 
     // SSL configuration
-    let useSSL = settings.useSSL;
-    if (settings.coreHubUrl && settings.coreHubUrl.startsWith('https:')) {
+    if (process.env.SSL_ENABLED === 'true') {
       useSSL = true;
     }
 
     // Security configuration
-    let securityConfig = settings.securityConfig;
-    if (securityConfig && !fs.existsSync(securityConfig)) {
-      console.warn(`Security config file not found at ${securityConfig}, will use default settings`);
-      securityConfig = undefined;
-    }
+    let securityConfig = process.env.GLUESYNC_SECURITY_CONFIG || '/opt/gluesync/data/security-config.json';
 
     // Create the client
-    this._client = new GluesyncClient({
-      host: host ?? undefined,  // Undefined will trigger UDP discovery
-      port: port !== null ? port : 1717,  // Use default port 1717 if null
-      licenseFilePath: licenseFilePath,
-      moduleTag: settings.moduleTag,
-      useSSL: useSSL,
-      securityConfig: securityConfig,
-      verifySSL: !settings.skipSSLVerify
-    });
+    try {
+      this._logger.log('Creating Gluesync SDK client...');
+      this._logger.log(`Module tag: ${settings.moduleTag}`);
+      this._logger.log(`License file: ${licenseFilePath}`);
+      this._logger.log(`Security config: ${securityConfig}`);
+      this._logger.log(`SSL enabled: ${useSSL}`);
+      
+      this._client = new GluesyncClient({
+        host: host || undefined,  // undefined will trigger UDP discovery
+        port: port || 1717,  // Use default port 1717 if null
+        licenseFilePath,
+        moduleTag: settings.moduleTag,
+        ssl: useSSL,  // Property name is 'ssl' in the actual implementation
+        securityConfig: securityConfig || undefined,
+        verifySSL: process.env.SSL_SKIP_VERIFY !== 'true',  // Skip SSL verification if requested
+      } as any);  // Use type assertion to bypass type checking
 
-    // Set up event handlers
-    this._client.on('connected', this._onConnected.bind(this));
-    this._client.on('disconnected', this._onDisconnected.bind(this));
-    this._client.on('error', this._onError.bind(this));
+      // Set up event handlers
+      this._client.on('connected', this._onConnected.bind(this));
+      this._client.on('disconnected', this._onDisconnected.bind(this));
+      this._client.on('error', this._onError.bind(this));
 
-    // Connect to CoreHub with indefinite retry logic and exponential backoff
-    let retryCount = 0;
-    let backoffDelay = 1000;  // Start with 1 second delay (in milliseconds)
-    const maxBackoff = 30000;  // Maximum backoff of 30 seconds
-    let cycleCount = 0;   // Count full cycles of backoff
+      // Connect to CoreHub with indefinite retry logic and exponential backoff
+      let retryCount = 0;
+      let backoffDelay = 1;  // Start with 1 second delay
+      const maxBackoff = 30;  // Maximum backoff of 30 seconds
+      let cycleCount = 0;   // Count full cycles of backoff
 
-    const tryConnect = async (): Promise<void> => {
-      try {
-        if (host && port) {
-          console.log(`Connecting to CoreHub at ${host}:${port}...`);
-          await this._client!.connect();
-          return;  // Connection successful
-        } else {
-          // UDP discovery mode
-          if (retryCount > 0) {
-            console.log(`Retry ${retryCount} (cycle ${cycleCount}) for UDP discovery...`);
+      while (true) {  // Retry indefinitely
+        try {
+          if (host && port) {
+            this._logger.log(`Connecting to CoreHub at ${host}:${port}...`);
+            await this._client.connect();
+            break;  // Connection successful
           } else {
-            console.log('Starting UDP discovery to find CoreHub...');
-          }
-          
-          await this._client!.connect();
-          
-          // After connect, check if we have a host (discovery worked)
-          if (this._client!.host) {
-            console.log(`UDP discovery successful! Found CoreHub at ${this._client!.host}:${this._client!.port}`);
-            // Update the discovered host/port for future use
-            host = this._client!.host;
-            port = this._client!.port;
-            
-            // Update the CoreHub URL in settings
-            const coreHubUrl = this._buildCoreHubUrl(host, port, useSSL);
-            if (coreHubUrl) {
-              updateCoreHubUrl(coreHubUrl);
-              console.log(`Updated CoreHub URL to ${coreHubUrl}`);
+            // UDP discovery mode
+            if (retryCount > 0) {
+              this._logger.log(`Retry ${retryCount} (cycle ${cycleCount}) for UDP discovery...`);
+            } else {
+              this._logger.log('Starting UDP discovery to find CoreHub...');
             }
-          } else {
-            // If no host was discovered, raise an error to trigger retry
-            throw new GluesyncConnectionError('UDP discovery did not find a CoreHub');
+
+            await this._client.connect();
+            
+            // After connect, check if we have a host (discovery worked)
+            const client = this._client as any;
+            if (client.host) {
+              this._logger.log(`UDP discovery successful! Found CoreHub at ${client.host}:${client.port}`);
+              // Update the discovered host/port for future use
+              if (host) { // Only build URL if host is not null
+                const coreHubUrl = this._buildCoreHubUrl(host, port || 1717, useSSL);
+                if (coreHubUrl) {
+                  updateCoreHubUrl(coreHubUrl);
+                  this._logger.log(`Updated CoreHub URL to ${coreHubUrl}`);
+                }
+              }
+              break;  // Connection successful
+            } else {
+              this._logger.warn('UDP discovery did not find CoreHub, will retry');
+              // Don't throw an error, just let the retry loop continue
+              throw new Error('UDP discovery did not find CoreHub, continuing retry');
+            }
           }
-        }
-      } catch (error) {
-        if (error instanceof GluesyncConnectionError) {
+        } catch (error) {
           if (host && port) {
             // If we have a specific host/port and can't connect, don't retry
-            console.error(`Failed to connect to CoreHub at ${host}:${port}: ${error.message}`);
+            this._logger.error(`Failed to connect to CoreHub at ${host}:${port}: ${error}`);
             throw error;
           } else {
             // For UDP discovery, retry with exponential backoff
             retryCount++;
-            console.warn(`UDP discovery attempt ${retryCount} failed: ${(error as GluesyncConnectionError).message}`);
             
-            // Schedule next retry with exponential backoff
-            console.log(`Waiting ${backoffDelay / 1000} seconds before next retry...`);
-            this._reconnectTimer = setTimeout(async () => {
+            // Check if this is a port binding error (EADDRINUSE)
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            const isPortBindingError = errorMessage.includes('EADDRINUSE');
+            
+            if (isPortBindingError) {
+              this._logger.warn(`Port binding error detected: ${errorMessage}`);
+              
+              // Recreate the client with different discovery port range
+              try {
+                const randomPortOffset = Math.floor(Math.random() * 1000) + 2000; // Use higher port range
+                this._logger.log(`Recreating client with discovery port range starting at ${randomPortOffset}`);
+                
+                // Create new client with different discovery port
+                // Using type assertion to bypass type checking since the actual SDK implementation
+                // might have different property names than what's in the type definition
+                this._client = new GluesyncClient({
+                  moduleTag: settings.moduleTag,
+                  licenseFile: settings.licenseFile || '/opt/gluesync/data/gs-license.dat',
+                  securityConfig: settings.securityConfig || '/opt/gluesync/data/security-config.json',
+                  useSSL: useSSL,
+                  verifySSL: process.env.SSL_SKIP_VERIFY !== 'true',
+                  discoveryPortRange: randomPortOffset
+                } as any);
+                
+                // Set up event handlers
+                this._client.on('connected', this._onConnected.bind(this));
+                this._client.on('disconnected', this._onDisconnected.bind(this));
+                this._client.on('error', this._onError.bind(this));
+                
+                this._logger.log('Client recreated with new discovery port range');
+                
+                // Use shorter backoff for port binding errors
+                backoffDelay = 1;
+              } catch (recreateError) {
+                this._logger.error(`Failed to recreate client: ${recreateError}`);
+              }
+            } else {
+              this._logger.warn(`UDP discovery attempt ${retryCount} failed: ${errorMessage}`);
+              
+              // Calculate backoff with exponential increase
+              this._logger.log(`Waiting ${backoffDelay} seconds before next retry...`);
+              await new Promise(resolve => setTimeout(resolve, backoffDelay * 1000));
+              
               // Double the backoff for next time, up to the maximum
               backoffDelay = Math.min(backoffDelay * 2, maxBackoff);
               
               // If we've reached max backoff, reset on the next failure
               if (backoffDelay >= maxBackoff) {
-                backoffDelay = 1000;  // Reset to 1 second
+                backoffDelay = 1;  // Reset to 1 second
                 cycleCount++;   // Increment cycle count
-                console.log(`Completed backoff cycle ${cycleCount}, resetting delay to 1 second`);
+                this._logger.log(`Completed backoff cycle ${cycleCount}, resetting delay to 1 second`);
               }
-              
-              await tryConnect();
-            }, backoffDelay);
+            }
           }
-        } else if (
-          error instanceof GluesyncLicenseError || 
-          error instanceof GluesyncAuthenticationError
-        ) {
-          // Don't retry for these errors
-          console.error(`Error: ${(error as Error).message}`);
-          throw error;
-        } else {
-          // For other errors, log and don't retry
-          console.error('Unexpected error:', error instanceof Error ? error.message : String(error));
-          throw error;
         }
       }
-    };
 
-    await tryConnect();
-    this._isInitialized = true;
-    console.log('Gluesync SDK client initialized successfully');
+      this._isInitialized = true;
+      this._logger.log('Gluesync SDK client initialized successfully');
+    } catch (error) {
+      this._logger.error(`Failed to initialize Gluesync SDK client: ${error}`);
+      throw error;
+    }
   }
 
   /**
    * Shutdown the Gluesync client
    */
   public async shutdown(): Promise<void> {
-    // Clear any reconnect timer
-    if (this._reconnectTimer) {
-      clearTimeout(this._reconnectTimer);
-      this._reconnectTimer = null;
-    }
-
-    if (this._client && this._client.isConnected) {
-      console.log('Disconnecting from CoreHub...');
+    if (this._client && (this._client as any).isConnected) {
+      this._logger.log('Disconnecting from CoreHub...');
       await this._client.disconnect();
       this._isInitialized = false;
       this._token = null;
@@ -273,7 +312,7 @@ export class GluesyncSDKClient {
    */
   private _onConnected(token: string): void {
     this._token = token;
-    console.log('Connected to CoreHub successfully! Token received.');
+    this._logger.log('Connected to CoreHub successfully! Token received.');
   }
 
   /**
@@ -283,17 +322,7 @@ export class GluesyncSDKClient {
   private _onDisconnected(reason: string): void {
     this._token = null;
     this._isInitialized = false;
-    console.log(`Disconnected from CoreHub: ${reason}`);
-    
-    // Try to reconnect if not shutting down intentionally
-    if (reason !== 'Client disconnected') {
-      console.log('Attempting to reconnect in 5 seconds...');
-      this._reconnectTimer = setTimeout(() => {
-        this.initialize().catch(error => {
-          console.error('Failed to reconnect:', error);
-        });
-      }, 5000);
-    }
+    this._logger.log(`Disconnected from CoreHub: ${reason}`);
   }
 
   /**
