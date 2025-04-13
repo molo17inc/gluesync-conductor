@@ -33,9 +33,25 @@ const handler: RouteHandlerMethod = async (req, reply) => {
         
         // Check if this container is persisted in the compose file
         let persisted = false;
-        const uniqueIdLabel = Object.entries(details.Config?.Labels || {}).find(
-          ([key, value]) => key === 'com.molo17.conductor.unique_id'
+        let versionTagFromLabel = null;
+        
+        // Get labels
+        const labels = details.Config?.Labels || {};
+        
+        // Check for unique ID label
+        const uniqueIdLabel = Object.entries(labels).find(
+          ([key]) => key === 'com.molo17.conductor.unique_id'
         );
+        
+        // Check for version tag label
+        const versionTagLabel = Object.entries(labels).find(
+          ([key]) => key === 'com.molo17.conductor.versiontag'
+        );
+        
+        if (versionTagLabel) {
+          const [_, versionTag] = versionTagLabel;
+          versionTagFromLabel = versionTag;
+        }
         
         if (uniqueIdLabel) {
           const [_, uniqueId] = uniqueIdLabel;
@@ -53,6 +69,7 @@ const handler: RouteHandlerMethod = async (req, reply) => {
           name: details.Name ? details.Name.replace(/^\//, '') : '',
           image: imageString,
           tag: tag,
+          versionTag: versionTagFromLabel || tag, // Use label if available, otherwise use parsed tag
           persisted,
           created: details.Created || '',
           // Extract State fields directly
@@ -87,6 +104,7 @@ const handler: RouteHandlerMethod = async (req, reply) => {
           name: containerInfo.Names?.[0]?.replace(/^\//, '') || '',
           image: fallbackImageString,
           tag: tag,
+          versionTag: tag, // Use parsed tag since we can't access labels
           persisted: false, // Can't check labels if inspect fails
           created: containerInfo.Created || '',
           running: containerInfo.State === 'running',

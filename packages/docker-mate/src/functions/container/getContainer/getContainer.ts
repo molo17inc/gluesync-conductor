@@ -97,12 +97,28 @@ const handler: GetContainerHandler = async (req, reply) => {
       
       // Check if this container is persisted in the compose file
       let persisted = false;
+      let versionTagFromLabel = null;
+      
       try {
         const composeFile = await readYmlFile<ComposeFile>('compose.agents.yml');
         
-        const uniqueIdLabel = Object.entries(details.Config?.Labels || {}).find(
+        // Get labels
+        const labels = details.Config?.Labels || {};
+        
+        // Check for unique ID label
+        const uniqueIdLabel = Object.entries(labels).find(
           ([key]) => key === 'com.molo17.conductor.unique_id'
         );
+        
+        // Check for version tag label
+        const versionTagLabel = Object.entries(labels).find(
+          ([key]) => key === 'com.molo17.conductor.versiontag'
+        );
+        
+        if (versionTagLabel) {
+          const [_, versionTag] = versionTagLabel;
+          versionTagFromLabel = versionTag;
+        }
         
         if (uniqueIdLabel) {
           const [_, uniqueId] = uniqueIdLabel;
@@ -125,6 +141,7 @@ const handler: GetContainerHandler = async (req, reply) => {
         type,
         nickname: details.Name ? details.Name.replace(/^\//, '') : '',
         tag: tag || 'latest',
+        versionTag: versionTagFromLabel || tag || 'latest', // Use label if available, otherwise use parsed tag
         environment,
         ports,
         volumes,

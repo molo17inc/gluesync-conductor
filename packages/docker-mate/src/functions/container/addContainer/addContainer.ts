@@ -58,7 +58,8 @@ const handler: AddContainerHandler = async (req, reply) => {
               container_name: containerNickname,
               restart: 'unless-stopped',
               labels: [
-                `com.molo17.conductor.unique_id=${containerNickname}`
+                `com.molo17.conductor.unique_id=${containerNickname}`,
+                `com.molo17.conductor.versiontag=${tag || 'latest'}`
               ],
               environment: Object.entries({
                 type,

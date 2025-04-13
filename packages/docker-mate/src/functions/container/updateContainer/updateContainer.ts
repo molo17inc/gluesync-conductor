@@ -76,6 +76,10 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       // Get the container nickname (either the new one or the existing one)
       const containerNickname = nickname || currentService.container_name;
       
+      // Get the container tag (either the new one or the existing one)
+      const currentTag = currentImage.split(':')[1] || 'latest';
+      const containerTag = tag || currentTag;
+      
       // Update the service
       composeFile.services = {
         ...composeFile.services,
@@ -83,13 +87,14 @@ const handler: UpdateContainerHandler = async (req, reply) => {
           ...currentService,
           // Only update the image if imageName or tag is provided
           ...(imageName || tag ? {
-            image: `molo17/${imageName || currentImageName.replace('molo17/', '')}:${tag || 'latest'}`
+            image: `molo17/${imageName || currentImageName.replace('molo17/', '')}:${containerTag}`
           } : {}),
           // Only update the container_name if nickname is provided
           ...(nickname ? { container_name: nickname } : {}),
-          // Always update the labels to ensure we have the unique_id
+          // Always update the labels to ensure we have the unique_id and versiontag
           labels: [
-            `com.molo17.conductor.unique_id=${containerNickname}`
+            `com.molo17.conductor.unique_id=${containerNickname}`,
+            `com.molo17.conductor.versiontag=${containerTag}`
           ],
           // Only update the environment if environment is provided
           ...(environment ? {

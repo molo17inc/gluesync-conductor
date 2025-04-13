@@ -27,6 +27,7 @@ export type ContainerData = Readonly<{
   type: 'target' | 'source';
   nickname?: string;
   tag?: string;
+  versionTag?: string;
   environment?: Record<string, any>;
   ports?: ReadonlyArray<string>;
   volumes?: ReadonlyArray<string>;
