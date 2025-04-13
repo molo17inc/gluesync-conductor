@@ -18,30 +18,30 @@ const handler: RouteHandlerMethod = async (req, reply) => {
         
         // Extract the specific fields we need
         const imageString = details.Config?.Image || '';
-        const { name, version } = parseImageTag(imageString);
+        const { name, tag } = parseImageTag(imageString);
         
         const containerDetails = {
-          Id: details.Id,
-          Name: details.Name ? details.Name.replace(/^\//, '') : '',
-          Image: imageString,
-          Version: version,
-          Created: details.Created || '',
+          id: details.Id,
+          name: details.Name ? details.Name.replace(/^\//, '') : '',
+          image: imageString,
+          tag: tag,
+          created: details.Created || '',
           // Extract State fields directly
-          Running: details.State?.Running || false,
-          Status: details.State?.Status || '',
-          ExitCode: details.State?.ExitCode || 0,
-          StartedAt: details.State?.StartedAt || '',
-          FinishedAt: details.State?.FinishedAt || '',
+          running: details.State?.Running || false,
+          status: details.State?.Status || '',
+          exitCode: details.State?.ExitCode || 0,
+          startedAt: details.State?.StartedAt || '',
+          finishedAt: details.State?.FinishedAt || '',
           // Extract Config fields directly
-          Cmd: details.Config?.Cmd || [],
-          Env: details.Config?.Env || [],
-          Labels: details.Config?.Labels || {},
+          cmd: details.Config?.Cmd || [],
+          env: details.Config?.Env || [],
+          labels: details.Config?.Labels || {},
           // Extract HostConfig fields directly
-          NetworkMode: details.HostConfig?.NetworkMode || '',
-          Privileged: details.HostConfig?.Privileged || false,
+          networkMode: details.HostConfig?.NetworkMode || '',
+          privileged: details.HostConfig?.Privileged || false,
           // Include other important fields
-          Ports: containerInfo.Ports || [],
-          Mounts: details.Mounts || []
+          ports: containerInfo.Ports || [],
+          mounts: details.Mounts || []
         };
         
         // Add the container details to our array
@@ -50,26 +50,26 @@ const handler: RouteHandlerMethod = async (req, reply) => {
         req.log.error(`Error inspecting container ${containerInfo.Id}: ${inspectError instanceof Error ? inspectError.message : String(inspectError)}`);
         // Return basic info if inspect fails
         const fallbackImageString = containerInfo.Image || '';
-        const { name, version } = parseImageTag(fallbackImageString);
+        const { name, tag } = parseImageTag(fallbackImageString);
         
         containers.push({
-          Id: containerInfo.Id,
-          Name: containerInfo.Names?.[0]?.replace(/^\//, '') || '',
-          Image: fallbackImageString,
-          Version: version,
-          Created: containerInfo.Created || '',
-          Running: containerInfo.State === 'running',
-          Status: containerInfo.State || '',
-          ExitCode: 0,
-          StartedAt: '',
-          FinishedAt: '',
-          Cmd: [],
-          Env: [],
-          Labels: containerInfo.Labels || {},
-          NetworkMode: 'default',
-          Privileged: false,
-          Ports: containerInfo.Ports || [],
-          Mounts: []
+          id: containerInfo.Id,
+          name: containerInfo.Names?.[0]?.replace(/^\//, '') || '',
+          image: fallbackImageString,
+          tag: tag,
+          created: containerInfo.Created || '',
+          running: containerInfo.State === 'running',
+          status: containerInfo.State || '',
+          exitCode: 0,
+          startedAt: '',
+          finishedAt: '',
+          cmd: [],
+          env: [],
+          labels: containerInfo.Labels || {},
+          networkMode: 'default',
+          privileged: false,
+          ports: containerInfo.Ports || [],
+          mounts: []
         });
       }
     }
