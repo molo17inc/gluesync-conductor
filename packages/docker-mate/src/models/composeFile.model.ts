@@ -5,6 +5,7 @@ export type ComposeService = Readonly<{
   environment?: ReadonlyArray<string>;
   ports?: ReadonlyArray<string>;
   volumes?: ReadonlyArray<string>;
+  labels?: ReadonlyArray<string>;
 }>;
 
 export type ComposeFile = {

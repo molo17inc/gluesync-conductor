@@ -9,6 +9,9 @@ import info from './functions/info/info';
 import version from './functions/version/version';
 import listContainers from './functions/container/listContainers/listContainers';
 import getContainerVersion from './functions/container/getContainerVersion/getContainerVersion';
+import getContainer from './functions/container/getContainer/getContainer';
+import updateContainer from './functions/container/updateContainer/updateContainer';
+import addContainer from './functions/container/addContainer/addContainer';
 import addAgent from './functions/agent/addAgent/addAgent';
 
 import removeAgent from './functions/agent/removeAgent/removeAgent';
@@ -26,6 +29,7 @@ const port: number = process.env.PORT ? parseInt(process.env.PORT) : 50000;
 
 const server = fastify({
   logger: fastifyLogger,
+  ignoreTrailingSlash: true, // Handle URLs with trailing slashes
   ajv: {
     customOptions: {
       strict: false,
@@ -147,6 +151,7 @@ server.get('/containers', {
                 name: { type: 'string' },
                 image: { type: 'string' },
                 tag: { type: 'string' },
+                persisted: { type: 'boolean' },
                 created: { type: 'string' },
                 running: { type: 'boolean' },
                 status: { type: 'string' },
@@ -177,6 +182,56 @@ server.get('/containers', {
     }
   },
   handler: listContainers
+});
+
+server.get('/containers/:id', {
+  schema: {
+    description: 'Get a container configuration',
+    tags: ['containers'],
+    params: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Container ID' }
+      }
+    },
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: {
+            type: 'object',
+            properties: {
+              imageName: { type: 'string' },
+              type: { type: 'string', enum: ['target', 'source'] },
+              nickname: { type: 'string' },
+              tag: { type: 'string' },
+              persisted: { type: 'boolean' },
+              environment: { type: 'object', additionalProperties: true },
+              ports: { type: 'array', items: { type: 'string' } },
+              volumes: { type: 'array', items: { type: 'string' } }
+            }
+          }
+        }
+      },
+      404: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          error: { type: 'string' }
+        }
+      },
+      500: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          error: { type: 'string' }
+        }
+      }
+    }
+  },
+  handler: getContainer
 });
 
 server.get('/containers/:id/version', {
@@ -231,7 +286,7 @@ server.post('/containers', {
     body: {
       type: 'object',
       properties: {
-        agents: {
+        containers: {
           type: 'array',
           items: {
             type: 'object',
@@ -239,7 +294,7 @@ server.post('/containers', {
             properties: {
               imageName: { type: 'string', description: 'Name of the Docker image' },
               type: { type: 'string', enum: ['target', 'source'], description: 'Type of the agent' },
-              nickname: { type: 'string', description: 'Optional nickname for the agent' },
+              nickname: { type: 'string', description: 'Optional nickname for the container' },
               tag: { type: 'string', description: 'Optional Docker image tag' },
               environment: { type: 'object', additionalProperties: true, description: 'Optional environment variables' },
               ports: { type: 'array', items: { type: 'string' }, description: 'Optional port mappings' },
@@ -263,10 +318,17 @@ server.post('/containers', {
           success: { type: 'boolean' },
           error: { type: 'string' }
         }
+      },
+      500: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          error: { type: 'string' }
+        }
       }
     }
   },
-  handler: addAgent
+  handler: addContainer
 });
 
 server.delete('/containers/:id', {
@@ -360,6 +422,56 @@ server.post('/containers/:id/stop', {
     },
   },
   handler: stopAgents,
+});
+
+server.put('/containers/:id', {
+  schema: {
+    description: 'Update a container configuration',
+    tags: ['containers'],
+    params: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Container ID to update' },
+      },
+    },
+    body: {
+      type: 'object',
+      properties: {
+        imageName: { type: 'string', description: 'Name of the Docker image' },
+        type: { type: 'string', enum: ['target', 'source'], description: 'Type of the agent' },
+        nickname: { type: 'string', description: 'Optional nickname for the agent' },
+        tag: { type: 'string', description: 'Optional Docker image tag' },
+        environment: { type: 'object', additionalProperties: true, description: 'Optional environment variables' },
+        ports: { type: 'array', items: { type: 'string' }, description: 'Optional port mappings' },
+        volumes: { type: 'array', items: { type: 'string' }, description: 'Optional volume mappings' }
+      }
+    },
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { type: 'object', additionalProperties: true }
+        }
+      },
+      404: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', default: false },
+          error: { type: 'string' }
+        }
+      },
+      500: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', default: false },
+          error: { type: 'string' }
+        }
+      }
+    }
+  },
+  handler: updateContainer,
 });
 
 // Run the server!

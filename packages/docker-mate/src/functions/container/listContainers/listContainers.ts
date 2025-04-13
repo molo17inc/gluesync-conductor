@@ -1,5 +1,7 @@
 import { RouteHandlerMethod } from 'fastify';
 import parseImageTag from '../../../helpers/parseImageTag/parseImageTag';
+import readYmlFile from '../../../helpers/readYmlFile/readYmlFile';
+import { ComposeFile } from '../../../models/composeFile.model';
 
 const handler: RouteHandlerMethod = async (req, reply) => {
   try {
@@ -7,6 +9,15 @@ const handler: RouteHandlerMethod = async (req, reply) => {
     const containerList = await req.server.docker.listContainers({ all: true });
     
     req.log.info(`Successfully listed ${containerList.length} containers`);
+    
+    // Read the compose file to check which containers are persisted
+    let composeFile: ComposeFile = { services: {} };
+    try {
+      composeFile = await readYmlFile<ComposeFile>('compose.agents.yml');
+    } catch (ymlError) {
+      req.log.warn(`Could not read compose file: ${ymlError instanceof Error ? ymlError.message : String(ymlError)}`);
+      // Continue without the compose file
+    }
 
     // Get detailed information for each container
     const containers = [];
@@ -20,11 +31,29 @@ const handler: RouteHandlerMethod = async (req, reply) => {
         const imageString = details.Config?.Image || '';
         const { name, tag } = parseImageTag(imageString);
         
+        // Check if this container is persisted in the compose file
+        let persisted = false;
+        const uniqueIdLabel = Object.entries(details.Config?.Labels || {}).find(
+          ([key, value]) => key === 'com.molo17.conductor.unique_id'
+        );
+        
+        if (uniqueIdLabel) {
+          const [_, uniqueId] = uniqueIdLabel;
+          // Check if any service in the compose file has this unique ID in its labels
+          persisted = Object.values(composeFile.services || {}).some(service => {
+            if (Array.isArray(service.labels)) {
+              return service.labels.some((label: string) => label === `com.molo17.conductor.unique_id=${uniqueId}`);
+            }
+            return false;
+          });
+        }
+        
         const containerDetails = {
           id: details.Id,
           name: details.Name ? details.Name.replace(/^\//, '') : '',
           image: imageString,
           tag: tag,
+          persisted,
           created: details.Created || '',
           // Extract State fields directly
           running: details.State?.Running || false,
@@ -52,11 +81,13 @@ const handler: RouteHandlerMethod = async (req, reply) => {
         const fallbackImageString = containerInfo.Image || '';
         const { name, tag } = parseImageTag(fallbackImageString);
         
+        // For containers where inspect fails, assume they're not persisted
         containers.push({
           id: containerInfo.Id,
           name: containerInfo.Names?.[0]?.replace(/^\//, '') || '',
           image: fallbackImageString,
           tag: tag,
+          persisted: false, // Can't check labels if inspect fails
           created: containerInfo.Created || '',
           running: containerInfo.State === 'running',
           status: containerInfo.State || '',
