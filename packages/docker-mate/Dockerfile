@@ -40,7 +40,7 @@ COPY --from=builder /app/packages/docker-mate/dist ./packages/docker-mate/dist
 ENV NODE_ENV=production
 ENV GLUESYNC_LICENSE_FILE=/opt/gluesync/data/gs-license.dat
 ENV GLUESYNC_SECURITY_CONFIG=/opt/gluesync/data/security-config.json
-ENV GLUESYNC_MODULE_TAG=container-mate
+ENV GLUESYNC_MODULE_TAG=gluesync-conductor
 ENV HOST=0.0.0.0
 ENV PORT=1717
 
