@@ -143,10 +143,23 @@ server.get('/containers', {
               type: 'object',
               properties: {
                 Id: { type: 'string' },
-                Names: { type: 'array', items: { type: 'string' } },
-                State: { type: 'string' },
-                Status: { type: 'string' }
-              }
+                Name: { type: 'string' },
+                Image: { type: 'string' },
+                Created: { type: 'string' },
+                Running: { type: 'boolean' },
+                Status: { type: 'string' },
+                ExitCode: { type: 'number' },
+                StartedAt: { type: 'string' },
+                FinishedAt: { type: 'string' },
+                Cmd: { type: 'array', items: { type: 'string' } },
+                Env: { type: 'array', items: { type: 'string' } },
+                Labels: { type: 'object', additionalProperties: true },
+                NetworkMode: { type: 'string' },
+                Privileged: { type: 'boolean' },
+                Ports: { type: 'array', items: { type: 'object', additionalProperties: true } },
+                Mounts: { type: 'array', items: { type: 'object', additionalProperties: true } }
+              },
+              additionalProperties: true
             }
           }
         }
