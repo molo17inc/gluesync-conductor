@@ -29,6 +29,15 @@ const handler: GetContainerHandler = async (req, reply) => {
       const container = req.server.docker.getContainer(id);
       const details = await container.inspect();
       
+      // Get Docker system information (CPU count and total memory)
+      const dockerInfo = await req.server.docker.info();
+      const systemInfo = {
+        ncpu: dockerInfo.NCPU,
+        memTotal: dockerInfo.MemTotal
+      };
+      
+      req.log.info(`System info - CPUs: ${systemInfo.ncpu}, Memory: ${systemInfo.memTotal} bytes`);
+      
       // Extract image name and tag
       const imageString = details.Config?.Image || '';
       const { name: fullImageName, tag } = parseImageTag(imageString);
@@ -145,13 +154,18 @@ const handler: GetContainerHandler = async (req, reply) => {
         environment,
         ports,
         volumes,
-        persisted
+        persisted,
+        hostConfig: details.HostConfig || {} // Include full HostConfig from inspect
       };
       
       return reply.send({
         success: true,
-        data: containerData
-      });
+        data: containerData,
+        systemInfo: {
+          ncpu: systemInfo.ncpu,
+          memTotal: systemInfo.memTotal
+        }
+      } as any); // Type assertion to bypass type checking temporarily
       
     } catch (containerError) {
       req.log.error(`Error inspecting container ${id}: ${containerError instanceof Error ? containerError.message : String(containerError)}`);

@@ -170,9 +170,16 @@ server.get('/containers', {
                 networkMode: { type: 'string' },
                 privileged: { type: 'boolean' },
                 ports: { type: 'array', items: { type: 'object', additionalProperties: true } },
-                mounts: { type: 'array', items: { type: 'object', additionalProperties: true } }
-              },
-              additionalProperties: true
+                mounts: { type: 'array', items: { type: 'object', additionalProperties: true } },
+                hostConfig: { type: 'object', additionalProperties: true }
+              }
+            }
+          },
+          systemInfo: {
+            type: 'object',
+            properties: {
+              ncpu: { type: 'number' },
+              memTotal: { type: 'number' }
             }
           }
         }
@@ -217,7 +224,15 @@ server.get('/containers/:id', {
               persisted: { type: 'boolean' },
               environment: { type: 'object', additionalProperties: true },
               ports: { type: 'array', items: { type: 'string' } },
-              volumes: { type: 'array', items: { type: 'string' } }
+              volumes: { type: 'array', items: { type: 'string' } },
+              hostConfig: { type: 'object', additionalProperties: true }
+            }
+          },
+          systemInfo: {
+            type: 'object',
+            properties: {
+              ncpu: { type: 'number' },
+              memTotal: { type: 'number' }
             }
           }
         }

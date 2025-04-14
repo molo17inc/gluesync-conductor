@@ -23,6 +23,7 @@
     "yaml": "^2.7.0"
   },
   "devDependencies": {
+    "@fastify/type-provider-typebox": "^5.1.0",
     "@types/dockerode": "^3.3.34",
     "@types/node": "^22.14.1",
     "nodemon": "^3.1.9",

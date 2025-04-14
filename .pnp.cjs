@@ -1169,6 +1169,28 @@ const RAW_RUNTIME_STATE =
         "linkType": "HARD"\
       }]\
     ]],\
+    ["@fastify/type-provider-typebox", [\
+      ["npm:5.1.0", {\
+        "packageLocation": "./.yarn/cache/@fastify-type-provider-typebox-npm-5.1.0-102bee9bd7-455ef16a1f.zip/node_modules/@fastify/type-provider-typebox/",\
+        "packageDependencies": [\
+          ["@fastify/type-provider-typebox", "npm:5.1.0"]\
+        ],\
+        "linkType": "SOFT"\
+      }],\
+      ["virtual:3d33b049617b3fe1cd7800fc182eddee4bbabf110fe1abf73403d7c95e72c7a9d02d8cfff6510d29db88e97310c39420e641c5ad69ddc427da5f5853edd06b57#npm:5.1.0", {\
+        "packageLocation": "./.yarn/__virtual__/@fastify-type-provider-typebox-virtual-2540c312cb/0/cache/@fastify-type-provider-typebox-npm-5.1.0-102bee9bd7-455ef16a1f.zip/node_modules/@fastify/type-provider-typebox/",\
+        "packageDependencies": [\
+          ["@fastify/type-provider-typebox", "virtual:3d33b049617b3fe1cd7800fc182eddee4bbabf110fe1abf73403d7c95e72c7a9d02d8cfff6510d29db88e97310c39420e641c5ad69ddc427da5f5853edd06b57#npm:5.1.0"],\
+          ["@sinclair/typebox", null],\
+          ["@types/sinclair__typebox", null]\
+        ],\
+        "packagePeers": [\
+          "@sinclair/typebox",\
+          "@types/sinclair__typebox"\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
     ["@grpc/grpc-js", [\
       ["npm:1.13.2", {\
         "packageLocation": "./.yarn/cache/@grpc-grpc-js-npm-1.13.2-2010829daa-80b7bebc1d.zip/node_modules/@grpc/grpc-js/",\
@@ -3382,6 +3404,7 @@ const RAW_RUNTIME_STATE =
           ["docker-mate", "workspace:packages/docker-mate"],\
           ["@fastify/swagger", "npm:9.4.2"],\
           ["@fastify/swagger-ui", "npm:5.2.2"],\
+          ["@fastify/type-provider-typebox", "virtual:3d33b049617b3fe1cd7800fc182eddee4bbabf110fe1abf73403d7c95e72c7a9d02d8cfff6510d29db88e97310c39420e641c5ad69ddc427da5f5853edd06b57#npm:5.1.0"],\
           ["@types/dockerode", "npm:3.3.37"],\
           ["@types/node", "npm:22.14.1"],\
           ["axios", "npm:1.8.4"],\

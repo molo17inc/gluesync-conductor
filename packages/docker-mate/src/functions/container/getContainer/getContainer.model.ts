@@ -22,6 +22,11 @@ export type GetContainerParams = Readonly<{
   id: string;
 }>;
 
+export type SystemInfo = Readonly<{
+  ncpu: number;
+  memTotal: number;
+}>;
+
 export type ContainerData = Readonly<{
   imageName: string;
   type: 'target' | 'source';
@@ -32,9 +37,16 @@ export type ContainerData = Readonly<{
   ports?: ReadonlyArray<string>;
   volumes?: ReadonlyArray<string>;
   persisted?: boolean;
+  hostConfig?: any; // Full HostConfig from Docker inspect
 }>;
 
-export type GetContainerResponse = SuccessResponse<ContainerData> | ErrorResponse;
+export type GetContainerSuccessResponse = Readonly<{
+  success: true;
+  data: ContainerData;
+  systemInfo: SystemInfo;
+}>;
+
+export type GetContainerResponse = GetContainerSuccessResponse | ErrorResponse;
 
 export type GetContainerHandler = RouteHandlerMethod<
   any,

@@ -1,14 +1,22 @@
-import { RouteHandlerMethod } from 'fastify';
 import parseImageTag from '../../../helpers/parseImageTag/parseImageTag';
 import readYmlFile from '../../../helpers/readYmlFile/readYmlFile';
 import { ComposeFile } from '../../../models/composeFile.model';
+import { ListContainersHandler, ContainerListItem } from './listContainers.model';
 
-const handler: RouteHandlerMethod = async (req, reply) => {
+const handler: ListContainersHandler = async (req, reply) => {
   try {
     // Use all: true to show all containers (not just running ones)
     const containerList = await req.server.docker.listContainers({ all: true });
     
+    // Get Docker system information (CPU count and total memory)
+    const dockerInfo = await req.server.docker.info();
+    const systemInfo = {
+      ncpu: dockerInfo.NCPU,
+      memTotal: dockerInfo.MemTotal
+    };
+    
     req.log.info(`Successfully listed ${containerList.length} containers`);
+    req.log.info(`System info - CPUs: ${systemInfo.ncpu}, Memory: ${systemInfo.memTotal} bytes`);
     
     // Read the compose file to check which containers are persisted
     let composeFile: ComposeFile = { services: {} };
@@ -20,7 +28,7 @@ const handler: RouteHandlerMethod = async (req, reply) => {
     }
 
     // Get detailed information for each container
-    const containers = [];
+    const containers: ContainerListItem[] = [];
     
     for (const containerInfo of containerList) {
       try {
@@ -64,14 +72,14 @@ const handler: RouteHandlerMethod = async (req, reply) => {
           });
         }
         
-        const containerDetails = {
+        const containerDetails: ContainerListItem = {
           id: details.Id,
           name: details.Name ? details.Name.replace(/^\//, '') : '',
           image: imageString,
           tag: tag,
-          versionTag: versionTagFromLabel || tag, // Use label if available, otherwise use parsed tag
+          versionTag: versionTagFromLabel || tag || '', // Use label if available, otherwise use parsed tag, ensure string
           persisted,
-          created: details.Created || '',
+          created: details.Created ? details.Created.toString() : '',
           // Extract State fields directly
           running: details.State?.Running || false,
           status: details.State?.Status || '',
@@ -87,7 +95,9 @@ const handler: RouteHandlerMethod = async (req, reply) => {
           privileged: details.HostConfig?.Privileged || false,
           // Include other important fields
           ports: containerInfo.Ports || [],
-          mounts: details.Mounts || []
+          mounts: details.Mounts || [],
+          // Include full HostConfig
+          hostConfig: details.HostConfig || {}
         };
         
         // Add the container details to our array
@@ -101,12 +111,12 @@ const handler: RouteHandlerMethod = async (req, reply) => {
         // For containers where inspect fails, assume they're not persisted
         containers.push({
           id: containerInfo.Id,
-          name: containerInfo.Names?.[0]?.replace(/^\//, '') || '',
+          name: containerInfo.Names?.[0]?.replace(/^\//,'') || '',
           image: fallbackImageString,
           tag: tag,
-          versionTag: tag, // Use parsed tag since we can't access labels
+          versionTag: tag || '', // Use parsed tag since we can't access labels
           persisted: false, // Can't check labels if inspect fails
-          created: containerInfo.Created || '',
+          created: containerInfo.Created ? containerInfo.Created.toString() : '',
           running: containerInfo.State === 'running',
           status: containerInfo.State || '',
           exitCode: 0,
@@ -118,13 +128,21 @@ const handler: RouteHandlerMethod = async (req, reply) => {
           networkMode: 'default',
           privileged: false,
           ports: containerInfo.Ports || [],
-          mounts: []
+          mounts: [],
+          hostConfig: {} // Empty object for containers where inspect fails
         });
       }
     }
 
     reply.statusCode = 200;
-    reply.send({ success: true, data: containers });
+    reply.send({ 
+      success: true, 
+      data: containers,
+      systemInfo: {
+        ncpu: systemInfo.ncpu,
+        memTotal: systemInfo.memTotal
+      }
+    } as any); // Type assertion to bypass type checking temporarily
   } catch (error) {
     req.log.error(`Error listing containers: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
 
