@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "fastify": "^5.2.1",
-    "gluesync-nodejs-corehub-handshake-sdk": "file:/Users/danieleangeli/Documents/Repositories/gluesync-nodejs-corehub-handshake-sdk"
+    "gluesync-nodejs-corehub-handshake-sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.14.1",

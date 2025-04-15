@@ -1183,11 +1183,10 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./.yarn/__virtual__/@fastify-type-provider-typebox-virtual-2540c312cb/0/cache/@fastify-type-provider-typebox-npm-5.1.0-102bee9bd7-455ef16a1f.zip/node_modules/@fastify/type-provider-typebox/",\
         "packageDependencies": [\
           ["@fastify/type-provider-typebox", "virtual:3d33b049617b3fe1cd7800fc182eddee4bbabf110fe1abf73403d7c95e72c7a9d02d8cfff6510d29db88e97310c39420e641c5ad69ddc427da5f5853edd06b57#npm:5.1.0"],\
-          ["@sinclair/typebox", null],\
+          ["@sinclair/typebox", "npm:0.34.33"],\
           ["@types/sinclair__typebox", null]\
         ],\
         "packagePeers": [\
-          "@sinclair/typebox",\
           "@types/sinclair__typebox"\
         ],\
         "linkType": "HARD"\
@@ -1838,6 +1837,13 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./.yarn/cache/@sinclair-typebox-npm-0.27.8-23e206d653-297f95ff77.zip/node_modules/@sinclair/typebox/",\
         "packageDependencies": [\
           ["@sinclair/typebox", "npm:0.27.8"]\
+        ],\
+        "linkType": "HARD"\
+      }],\
+      ["npm:0.34.33", {\
+        "packageLocation": "./.yarn/cache/@sinclair-typebox-npm-0.34.33-ff674ae550-7948758249.zip/node_modules/@sinclair/typebox/",\
+        "packageDependencies": [\
+          ["@sinclair/typebox", "npm:0.34.33"]\
         ],\
         "linkType": "HARD"\
       }]\
@@ -4458,18 +4464,6 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["gluesync-nodejs-corehub-handshake-sdk", [\
-      ["file:/Users/danieleangeli/Documents/Repositories/gluesync-nodejs-corehub-handshake-sdk#/Users/danieleangeli/Documents/Repositories/gluesync-nodejs-corehub-handshake-sdk::hash=85ca74&locator=gluesync-sdk%40workspace%3Apackages%2Fgluesync-sdk", {\
-        "packageLocation": "./.yarn/unplugged/gluesync-nodejs-corehub-handshake-sdk-file-94e0f0d793/node_modules/gluesync-nodejs-corehub-handshake-sdk/",\
-        "packageDependencies": [\
-          ["gluesync-nodejs-corehub-handshake-sdk", "file:/Users/danieleangeli/Documents/Repositories/gluesync-nodejs-corehub-handshake-sdk#/Users/danieleangeli/Documents/Repositories/gluesync-nodejs-corehub-handshake-sdk::hash=85ca74&locator=gluesync-sdk%40workspace%3Apackages%2Fgluesync-sdk"],\
-          ["debug", "virtual:9310e910a96f055c7aceb5045d2a053665adbd932f55922395f6e6a8677c17d080a22ba7d5b06705026a3e0930b878563b55a01608cafa10ecf484910b771955#npm:4.4.0"],\
-          ["fs-extra", "npm:11.3.0"],\
-          ["jszip", "npm:3.10.1"],\
-          ["node-forge", "npm:1.3.1"],\
-          ["ws", "virtual:94352bae25a35b49e518aa0d41eea69c0be328063b94857d409a837e53055e081aad70c6d4d1c946fba2857b71716cb3b8e65beaf81568c767b497706dcf354f#npm:8.18.1"]\
-        ],\
-        "linkType": "HARD"\
-      }],\
       ["workspace:packages/gluesync-corehub-sdk", {\
         "packageLocation": "./packages/gluesync-corehub-sdk/",\
         "packageDependencies": [\
@@ -4504,7 +4498,7 @@ const RAW_RUNTIME_STATE =
           ["gluesync-sdk", "workspace:packages/gluesync-sdk"],\
           ["@types/node", "npm:22.14.1"],\
           ["fastify", "npm:5.2.1"],\
-          ["gluesync-nodejs-corehub-handshake-sdk", "file:/Users/danieleangeli/Documents/Repositories/gluesync-nodejs-corehub-handshake-sdk#/Users/danieleangeli/Documents/Repositories/gluesync-nodejs-corehub-handshake-sdk::hash=85ca74&locator=gluesync-sdk%40workspace%3Apackages%2Fgluesync-sdk"],\
+          ["gluesync-nodejs-corehub-handshake-sdk", "workspace:packages/gluesync-corehub-sdk"],\
           ["rimraf", "npm:5.0.10"],\
           ["ts-node", "virtual:9c3b6e0d0209cfa3fcb52fdc1959eb31a7c433894a1a4a1f3855796caa02d7b6f425561a8151cba21b5c077241bc387e3c1516b60b40ebd760faea3e8d74df1f#npm:10.9.2"],\
           ["typescript", "patch:typescript@npm%3A5.8.2#optional!builtin<compat/typescript>::version=5.8.2&hash=5786d5"]\
