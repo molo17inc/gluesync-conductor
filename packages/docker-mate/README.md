@@ -204,6 +204,40 @@ Updates the configuration of an existing container.
 }
 ```
 
+### Pull Container Image
+
+**POST /containers/{id}/pull**
+
+Pulls the latest version of the image for a specific container from Docker Hub or the configured registry.
+
+**Response Format:**
+```json
+{
+  "success": true,
+  "data": [
+    "Pulling from molo17/gluesync-agent",
+    "Digest: sha256:1234567890abcdef...",
+    "Status: Downloaded newer image for molo17/gluesync-agent:latest"
+  ]
+}
+```
+
+### Restart Container
+
+**POST /containers/{id}/restart**
+
+Gracefully restarts a container with a 10-second timeout.
+
+**Response Format:**
+```json
+{
+  "success": true,
+  "data": [
+    "Container 1eab590c0dbf restarted successfully"
+  ]
+}
+```
+
 ## Docker Labels
 
 Gluesync Conductor uses Docker labels to identify and track containers. The following labels are used:
@@ -286,6 +320,15 @@ You can provide your own YAML file by:
 ```bash
 PROJECT_CWD=/path/to/your/directory PORT=50015 yarn dev
 ```
+
+## Integration Guide
+
+For detailed integration flows and code examples showing how to use the Gluesync Conductor API in your applications, see the [Integration Flows Guide](./docs/integration-flows.md). This guide includes:
+
+- Diagrams for container addition and update workflows
+- Code examples for common operations
+- Best practices for API integration
+- Complete integration examples with error handling
 
 ## Development
 
