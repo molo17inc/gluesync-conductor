@@ -1,5 +1,10 @@
-import { RouteHandlerMethod } from 'fastify';
+import type { RouteHandlerMethod } from 'fastify';
 import { ErrorResponse, SuccessResponse } from '../../../models/common.model';
+
+export type SystemInfo = {
+  ncpu: number;
+  memTotal: number;
+};
 
 export type Agent = {
   id: string;
@@ -7,12 +12,21 @@ export type Agent = {
   type: 'target' | 'source';
   nickname?: string;
   tag?: string;
-  environment?: any;
-  ports?: string[];
+  versionTag?: string;
+  persisted?: boolean;
+  environment?: string[];
+  ports?: any[];
   volumes?: string[];
+  hostConfig?: any;
 };
 
-export type GetAgentsResponse = SuccessResponse<Agent[]> | ErrorResponse;
+export type GetAgentsSuccessResponse = {
+  success: true;
+  data: Agent[];
+  systemInfo: SystemInfo;
+};
+
+export type GetAgentsResponse = GetAgentsSuccessResponse | ErrorResponse;
 
 export type GetAgentsHandler = RouteHandlerMethod<
   any,

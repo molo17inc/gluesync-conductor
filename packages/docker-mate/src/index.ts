@@ -14,7 +14,7 @@ import getContainer from './functions/container/getContainer/getContainer';
 import updateContainer from './functions/container/updateContainer/updateContainer';
 import addContainer from './functions/container/addContainer/addContainer';
 import addAgent from './functions/agent/addAgent/addAgent';
-
+import { getAgents } from './functions/agent/getAgents/getAgents';
 import removeAgent from './functions/agent/removeAgent/removeAgent';
 import startAgents from './functions/agent/startAgents/startAgents';
 import stopAgents from './functions/agent/stopAgents/stopAgents';
@@ -413,6 +413,55 @@ server.post('/containers/:id/start', {
     },
   },
   handler: startAgents,
+});
+
+server.get('/agents', {
+  schema: {
+    description: 'Get all agents (containers with type=source or type=target in environment)',
+    tags: ['agents'],
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { 
+            type: 'array', 
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                imageName: { type: 'string' },
+                type: { type: 'string', enum: ['target', 'source'] },
+                nickname: { type: 'string' },
+                tag: { type: 'string' },
+                versionTag: { type: 'string' },
+                persisted: { type: 'boolean' },
+                environment: { type: 'array', items: { type: 'string' } },
+                ports: { type: 'array', items: { type: 'object', additionalProperties: true } },
+                volumes: { type: 'array', items: { type: 'string' } },
+                hostConfig: { type: 'object', additionalProperties: true }
+              }
+            }
+          },
+          systemInfo: {
+            type: 'object',
+            properties: {
+              ncpu: { type: 'number' },
+              memTotal: { type: 'number' }
+            }
+          }
+        }
+      },
+      500: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', default: false },
+          error: { type: 'string' }
+        }
+      }
+    }
+  },
+  handler: getAgents
 });
 
 server.post('/containers/:id/stop', {
