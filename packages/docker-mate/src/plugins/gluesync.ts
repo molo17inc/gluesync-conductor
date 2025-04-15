@@ -15,7 +15,9 @@
  * Copyright (C) 2025 MOLO17. All rights reserved.
  */
 
-import { GluesyncSDKClient, settings } from '../../../gluesync-sdk/src';
+import { getGluesyncSdkClient } from '../gluesyncSdkClient';
+// If you need settings, import from the SDK package as before
+import { settings } from '../../../gluesync-sdk/src';
 
 // Define Node.js process variable
 declare const process: {
@@ -43,7 +45,7 @@ interface FastifyInstance {
  */
 async function gluesyncPlugin(fastify: FastifyInstance, options: any, done: (error?: Error) => void): Promise<void> {
   // Get the singleton instance of the SDK client
-  const sdkClient = GluesyncSDKClient.getInstance();
+  const sdkClient = getGluesyncSdkClient();
   
   // Set the module tag from environment variable or use default
   const moduleTag = process.env.GLUESYNC_MODULE_TAG || 'gluesync-conductor';
