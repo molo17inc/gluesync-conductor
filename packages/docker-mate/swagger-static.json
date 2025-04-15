@@ -16,6 +16,46 @@
     { "name": "system", "description": "System operations" }
   ],
   "paths": {
+    "/modules": {
+      "post": {
+        "tags": ["modules"],
+        "summary": "Add one or more modules (containers tagged as modules)",
+        "description": "Creates new containers with the type=module label via Compose.",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "description": "Modules to add",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "properties": {
+                "modules": {
+                  "type": "array",
+                  "items": { "$ref": "#/definitions/Module" }
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Modules added successfully",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": { "type": "boolean" },
+                "data": { "$ref": "#/definitions/ComposeFile" }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "schema": { "$ref": "#/definitions/Error" }
+          }
+        }
+      }
+    },
     "/agents": {
       "get": {
         "tags": ["agents"],
@@ -291,6 +331,19 @@
     }
   },
   "definitions": {
+    "Module": {
+      "type": "object",
+      "properties": {
+        "imageName": { "type": "string" },
+        "type": { "type": "string" },
+        "nickname": { "type": "string" },
+        "tag": { "type": "string" },
+        "environment": { "type": "object", "additionalProperties": { "type": "string" } },
+        "ports": { "type": "array", "items": { "type": "string" } },
+        "volumes": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["imageName", "type"]
+    },
     "Agent": {
       "type": "object",
       "required": ["imageName", "type"],

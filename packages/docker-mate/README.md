@@ -232,6 +232,18 @@ labels:
   - "com.molo17.conductor.versiontag=1.2.3"
 ```
 
+### 3. Agent Type Label
+
+**Label:** `com.molo17.conductor.type`
+
+This label identifies the container as an agent managed by Gluesync Conductor. It is automatically set to `agent` for all agent containers created through the API.
+
+**Example:**
+```yaml
+labels:
+  - "com.molo17.conductor.type=agent"
+```
+
 ## Gluesync SDK Integration
 
 Gluesync Conductor integrates with the Gluesync SDK to enable communication with CoreHub for advanced container orchestration capabilities.

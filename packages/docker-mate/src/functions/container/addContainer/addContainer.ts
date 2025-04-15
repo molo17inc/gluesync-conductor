@@ -21,6 +21,7 @@ import { ComposeFile } from '../../../models/composeFile.model';
 import writeYmlFile from '../../../helpers/writeYmlFile/writeYmlFile';
 import readYmlFile from '../../../helpers/readYmlFile/readYmlFile';
 import mergeComposeFiles from '../../../helpers/mergeComposeFiles/mergeComposeFiles';
+import { createComposeService } from '../../../utils/createComposeService';
 
 const filename = 'compose.agents.yml';
 
@@ -29,9 +30,11 @@ const handler: AddContainerHandler = async (req, reply) => {
     const parsedJson = await readYmlFile<ComposeFile>(filename);
 
     const composeFile = (req.body.containers || []).reduce<ComposeFile>(
-      (
-        acc,
-        {
+      (acc, container) => {
+        if (!container.type) {
+          return acc;
+        }
+        const {
           imageName,
           type,
           nickname,
@@ -39,45 +42,31 @@ const handler: AddContainerHandler = async (req, reply) => {
           environment,
           ports = [],
           volumes = [],
-        },
-      ) => {
-        if (!type) {
-          return acc;
-        }
-
+        } = container;
         const containerName = `${imageName}-${type}-agent`;
         const containerNickname = nickname || containerName;
-
+        const containerLabels = [
+          `com.molo17.conductor.unique_id=${containerNickname}`,
+          `com.molo17.conductor.versiontag=${tag || 'latest'}`
+        ];
+        const service = createComposeService({
+          imageName,
+          type,
+          nickname,
+          tag,
+          environment,
+          ports,
+          volumes,
+          labels: containerLabels,
+          extraEnv: { GLUESYNC_MODULE_TAG: 'gluesync-conductor' },
+        });
         return {
           ...acc,
           services: {
             ...acc.services,
             [containerName]: {
               ...acc?.services?.[containerName],
-              image: `molo17/${imageName}:${tag || 'latest'}`,
-              container_name: containerNickname,
-              restart: 'unless-stopped',
-              labels: [
-                `com.molo17.conductor.unique_id=${containerNickname}`,
-                `com.molo17.conductor.versiontag=${tag || 'latest'}`
-              ],
-              environment: Object.entries({
-                type,
-                maxRamPercentage: 90.0,
-                LOG_CONFIG_FILE: '/opt/gluesync/data/logback.xml',
-                GLUESYNC_MODULE_TAG: 'gluesync-conductor', // Default module tag
-                ...environment,
-              }).map(([key, value]) => `${key}=${value}`),
-              ports,
-              volumes: [
-                './gs-license.dat:/opt/gluesync/data/gs-license.dat:ro',
-                './logback.xml:/opt/gluesync/data/logback.xml:ro',
-                './security-config.json:/opt/gluesync/data/security-config.json:ro',
-                './gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro',
-                './bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro',
-                `./${containerName}:/opt/gluesync/data`,
-                ...volumes,
-              ],
+              ...service,
             },
           },
         };
