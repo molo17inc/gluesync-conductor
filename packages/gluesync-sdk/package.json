@@ -9,6 +9,7 @@
     "format": "prettier --ignore-path ../.prettierignore .",
     "format:check": "yarn format --check",
     "format:write": "yarn format --write",
+    "type-check": "yarn tsc --noEmit --incremental --tsBuildInfoFile .tsbuildinfo",
     "build": "tsc",
     "clean": "rimraf dist",
     "prebuild": "npm run clean",

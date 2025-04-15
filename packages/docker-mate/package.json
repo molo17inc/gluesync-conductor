@@ -4,6 +4,7 @@
     "format": "prettier --ignore-path ../.prettierignore .",
     "format:check": "yarn format --check",
     "format:write": "yarn format --write",
+    "type-check": "yarn tsc --noEmit --incremental --tsBuildInfoFile .tsbuildinfo",
     "dev": "nodemon src/index.ts",
     "dev:docker": "nodemon src/index.ts",
     "build": "tsc",

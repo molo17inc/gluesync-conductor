@@ -9,6 +9,7 @@
     "format": "prettier .",
     "format:check": "yarn format --check",
     "format:write": "yarn format --write",
+    "type-check": "yarn workspaces foreach -v -i --all --parallel --exclude clz-tower-control run type-check",
     "build": "yarn workspaces run build",
     "start": "node packages/docker-mate/dist/index.js",
     "dev": "yarn workspace docker-mate dev",
