@@ -10,7 +10,7 @@ const filename = 'compose.agents.yml';
 const handler: RemoveAgentHandler = async (req, reply) => {
   try {
     const { id } = req.params;
-    const parsedJson = await readYmlFile<ComposeFile>(filename);
+    const parsedJson = await readYmlFile<ComposeFile>(filename) || {};
 
     if (!parsedJson.services || !parsedJson.services[id]) {
       reply.statusCode = 404;

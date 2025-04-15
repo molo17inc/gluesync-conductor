@@ -10,7 +10,7 @@ const filename = 'compose.agents.yml';
 
 const handler: AddAgentHandler = async (req, reply) => {
   try {
-    const parsedJson = await readYmlFile<ComposeFile>(filename);
+    const parsedJson = await readYmlFile<ComposeFile>(filename)|| {};
 
     const composeFile = (req.body.agents || []).reduce<ComposeFile>(
       (acc, agent) => {

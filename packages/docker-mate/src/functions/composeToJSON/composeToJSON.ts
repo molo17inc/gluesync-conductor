@@ -5,7 +5,7 @@ import writeYmlFile from '../../helpers/writeYmlFile/writeYmlFile';
 
 const handler: RouteHandlerMethod = async (req, reply) => {
   try {
-    const parsedJson = await readYmlFile('debug-container/compose.yml');
+    const parsedJson = await readYmlFile('debug-container/compose.yml') || {};
 
     await writeYmlFile(parsedJson, 'debug-container/compose.generated.yml');
 
