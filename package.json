@@ -13,9 +13,13 @@
     "lint": "eslint . --ext .ts,.tsx"
   },
   "devDependencies": {
+    "@types/dockerode": "^3.3.38",
     "@types/node": "^22.14.1",
     "eslint": "^9.19.0",
     "prettier": "^3.4.2",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "fastify": "5.2.1"
   }
 }

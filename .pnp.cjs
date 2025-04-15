@@ -42,8 +42,10 @@ const RAW_RUNTIME_STATE =
       [null, {\
         "packageLocation": "./",\
         "packageDependencies": [\
+          ["@types/dockerode", "npm:3.3.38"],\
           ["@types/node", "npm:22.14.1"],\
           ["eslint", "virtual:a23e57f6bdef1be4f8b8d332d2c199574de3f451b0e80ad28bd4e938ecd44912668b8df898dedb1ba8ae2d183122c9ba1aa96ab19d14e70a293dfb682c47f508#npm:9.23.0"],\
+          ["fastify", "npm:5.2.1"],\
           ["prettier", "npm:3.5.3"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\
         ],\
@@ -1972,6 +1974,16 @@ const RAW_RUNTIME_STATE =
           ["@types/ssh2", "npm:1.15.5"]\
         ],\
         "linkType": "HARD"\
+      }],\
+      ["npm:3.3.38", {\
+        "packageLocation": "./.yarn/cache/@types-dockerode-npm-3.3.38-88662316a7-439a2b905c.zip/node_modules/@types/dockerode/",\
+        "packageDependencies": [\
+          ["@types/dockerode", "npm:3.3.38"],\
+          ["@types/docker-modem", "npm:3.0.6"],\
+          ["@types/node", "npm:22.13.13"],\
+          ["@types/ssh2", "npm:1.15.5"]\
+        ],\
+        "linkType": "HARD"\
       }]\
     ]],\
     ["@types/estree", [\
@@ -3152,8 +3164,10 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./",\
         "packageDependencies": [\
           ["container-mate", "workspace:."],\
+          ["@types/dockerode", "npm:3.3.38"],\
           ["@types/node", "npm:22.14.1"],\
           ["eslint", "virtual:a23e57f6bdef1be4f8b8d332d2c199574de3f451b0e80ad28bd4e938ecd44912668b8df898dedb1ba8ae2d183122c9ba1aa96ab19d14e70a293dfb682c47f508#npm:9.23.0"],\
+          ["fastify", "npm:5.2.1"],\
           ["prettier", "npm:3.5.3"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\
         ],\

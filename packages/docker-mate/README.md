@@ -278,6 +278,37 @@ labels:
   - "com.molo17.conductor.type=agent"
 ```
 
+## HTTPS Support
+
+Gluesync Conductor supports HTTPS for secure communication. The HTTPS implementation includes:
+
+- Automatic HTTP to HTTPS redirection for browsers
+- Support for TLS certificates
+- Configurable SSL verification
+
+### Configuration
+
+HTTPS support is configured using environment variables:
+
+- `SSL_ENABLED`: Set to `true` to enable HTTPS (default: `false`)
+- `SSL_CERT_FILE`: Path to the SSL certificate file
+- `SSL_KEY_FILE`: Path to the SSL private key file
+- `SSL_SKIP_VERIFY`: Set to `true` to skip certificate verification (default: `false`)
+
+### Example Usage
+
+```bash
+# Start with HTTPS enabled
+SSL_ENABLED=true SSL_CERT_FILE=/path/to/cert.pem SSL_KEY_FILE=/path/to/key.pem PORT=50002 yarn dev
+```
+
+### Certificate Notes
+
+- For development, you can generate self-signed certificates using OpenSSL
+- For production, use certificates from a trusted certificate authority
+- When using self-signed certificates in Chrome, you may need to type "thisisunsafe" when the certificate warning appears
+- For Firefox, you may need to add a security exception
+
 ## Gluesync SDK Integration
 
 Gluesync Conductor integrates with the Gluesync SDK to enable communication with CoreHub for advanced container orchestration capabilities.
@@ -289,6 +320,7 @@ The Gluesync SDK integration is configured using environment variables:
 - `GLUESYNC_MODULE_TAG`: Identifies the module in the CoreHub ecosystem (default: `gluesync-conductor`)
 - `GLUESYNC_LICENSE_FILE`: Path to the Gluesync license file (default: `/opt/gluesync/data/gs-license.dat`)
 - `GLUESYNC_SECURITY_CONFIG`: Path to the security configuration file (default: `/opt/gluesync/data/security-config.json`)
+- `COREHUB_UDP_PORT_RANGE`: Port range for CoreHub discovery (default: `1718-1727`, recommended: `1717-1727`)
 
 ### Connection Management
 
@@ -333,8 +365,14 @@ For detailed integration flows and code examples showing how to use the Gluesync
 ## Development
 
 ```bash
-# Run development server with auto-reload
+# Run development server with auto-reload (HTTP)
 PORT=50015 yarn dev
+
+# Run development server with HTTPS
+SSL_ENABLED=true SSL_CERT_FILE=./certs/cert.pem SSL_KEY_FILE=./certs/key.pem PORT=50015 yarn dev
+
+# Run with CoreHub discovery port range
+COREHUB_UDP_PORT_RANGE=1717-1727 PORT=50015 yarn dev
 
 # Run tests
 yarn test

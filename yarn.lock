@@ -1304,6 +1304,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/dockerode@npm:^3.3.38":
+  version: 3.3.38
+  resolution: "@types/dockerode@npm:3.3.38"
+  dependencies:
+    "@types/docker-modem": "npm:*"
+    "@types/node": "npm:*"
+    "@types/ssh2": "npm:*"
+  checksum: 10/439a2b905c44bac063ba707f01a35594eb1e44aba8d22d4a8029fd2c5e192d70eae1efe270f85633f4b178fe4223419e14d81b1227a5a6e1ed00fca48c8495dd
+  languageName: node
+  linkType: hard
+
 "@types/estree@npm:^1.0.6":
   version: 1.0.7
   resolution: "@types/estree@npm:1.0.7"
@@ -2218,8 +2229,10 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "container-mate@workspace:."
   dependencies:
+    "@types/dockerode": "npm:^3.3.38"
     "@types/node": "npm:^22.14.1"
     eslint: "npm:^9.19.0"
+    fastify: "npm:5.2.1"
     prettier: "npm:^3.4.2"
     typescript: "npm:^5.8.3"
   languageName: unknown
@@ -2944,7 +2957,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"fastify@npm:^5.2.1":
+"fastify@npm:5.2.1, fastify@npm:^5.2.1":
   version: 5.2.1
   resolution: "fastify@npm:5.2.1"
   dependencies:

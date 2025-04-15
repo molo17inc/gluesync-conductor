@@ -1,9 +1,12 @@
 import fastify from 'fastify';
 import Docker from 'dockerode';
+import fs from 'fs';
 
 import dockerPlugin from './plugins/docker';
 import swaggerPlugin from './plugins/swagger';
 import gluesyncPlugin from './plugins/gluesync';
+import httpsRedirectMiddleware from './middleware/httpsRedirect';
+import { createFastifyHttpsOptions, isSslEnabled, logSslInfo } from './utils/ssl';
 
 import composeToJSON from './functions/composeToJSON/composeToJSON';
 import info from './functions/info/info';
@@ -22,6 +25,10 @@ import stopAgents from './functions/agent/stopAgents/stopAgents';
 import pullContainer from './functions/container/pullContainer/pullContainer';
 import restartContainer from './functions/container/restartContainer/restartContainer';
 
+// These imports are already defined earlier in the file
+
+// Type imports will be handled directly in the route handlers
+
 declare module 'fastify' {
   interface FastifyInstance {
     docker: Docker;
@@ -29,19 +36,18 @@ declare module 'fastify' {
   }
 }
 
-const fastifyLogger: boolean = process.env.DEBUG === 'true';
 const port: number = process.env.PORT ? parseInt(process.env.PORT) : 50000;
+const host: string = process.env.HOST || '0.0.0.0';
 
-const server = fastify({
-  logger: fastifyLogger,
-  ignoreTrailingSlash: true, // Handle URLs with trailing slashes
-  ajv: {
-    customOptions: {
-      strict: false,
-      removeAdditional: false
-    }
-  }
-});
+// Create server with HTTPS support if SSL is enabled
+const serverOptions = createFastifyHttpsOptions();
+const server = fastify(serverOptions);
+
+// Log SSL information if enabled
+logSslInfo();
+
+// Register HTTPS redirect middleware
+httpsRedirectMiddleware(server);
 
 // Register Docker plugin
 server.register(dockerPlugin);
@@ -568,6 +574,9 @@ server.post('/containers/:id/stop', {
   handler: stopAgents,
 });
 
+// We already have the pullContainer import at the top of the file
+
+// Register the pull container route
 server.post('/containers/:id/pull', {
   schema: {
     description: 'Pull the latest image for a container',
@@ -606,6 +615,9 @@ server.post('/containers/:id/pull', {
   handler: pullContainer,
 });
 
+// We already have the restartContainer import at the top of the file
+
+// Register the restart container route
 server.post('/containers/:id/restart', {
   schema: {
     description: 'Restart a container',
@@ -694,16 +706,22 @@ server.put('/containers/:id', {
   handler: updateContainer,
 });
 
-// Run the server!
+// Handle unhandled rejections
 process.on('unhandledRejection', (err) => {
   console.error(err);
   process.exit(1);
 });
 
-server.listen({ host: '0.0.0.0', port }, (err) => {
+// Start the server
+server.listen({ host, port }, (err) => {
   if (err) {
     console.error('Error starting server:', err);
     process.exit(1);
   }
+  
+  // Log server startup information
+  const protocol = isSslEnabled() ? 'https' : 'http';
+  console.log(`Gluesync Conductor API is running`);
+  console.log(`Swagger UI is available at ${protocol}://${host === '0.0.0.0' ? 'localhost' : host}:${port}/docs`);
   console.log(`Gluesync Conductor server started on port ${port}`);
 });
