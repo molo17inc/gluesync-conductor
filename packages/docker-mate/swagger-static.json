@@ -268,6 +268,66 @@
         }
       }
     },
+    "/containers/{id}/pull": {
+      "post": {
+        "tags": ["containers"],
+        "summary": "Pull the latest image for a container",
+        "description": "Pulls the latest version of the image for the specified container",
+        "parameters": [
+          { "in": "path", "name": "id", "required": true, "type": "string", "description": "Container ID to pull image for" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Image pulled successfully",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": { "type": "boolean" },
+                "data": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "404": {
+            "description": "Container not found",
+            "schema": { "$ref": "#/definitions/Error" }
+          },
+          "500": {
+            "description": "Error response",
+            "schema": { "$ref": "#/definitions/Error" }
+          }
+        }
+      }
+    },
+    "/containers/{id}/restart": {
+      "post": {
+        "tags": ["containers"],
+        "summary": "Restart a container",
+        "description": "Gracefully restarts the specified container with a timeout",
+        "parameters": [
+          { "in": "path", "name": "id", "required": true, "type": "string", "description": "Container ID to restart" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Container restarted successfully",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": { "type": "boolean" },
+                "data": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "404": {
+            "description": "Container not found",
+            "schema": { "$ref": "#/definitions/Error" }
+          },
+          "500": {
+            "description": "Error response",
+            "schema": { "$ref": "#/definitions/Error" }
+          }
+        }
+      }
+    },
     "/containers/{id}/stop": {
       "post": {
         "tags": ["containers"],

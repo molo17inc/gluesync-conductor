@@ -19,6 +19,8 @@ import { getAgents } from './functions/agent/getAgents/getAgents';
 import removeAgent from './functions/agent/removeAgent/removeAgent';
 import startAgents from './functions/agent/startAgents/startAgents';
 import stopAgents from './functions/agent/stopAgents/stopAgents';
+import pullContainer from './functions/container/pullContainer/pullContainer';
+import restartContainer from './functions/container/restartContainer/restartContainer';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -564,6 +566,82 @@ server.post('/containers/:id/stop', {
     },
   },
   handler: stopAgents,
+});
+
+server.post('/containers/:id/pull', {
+  schema: {
+    description: 'Pull the latest image for a container',
+    tags: ['containers'],
+    params: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Container ID to pull image for' },
+      },
+    },
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      404: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', default: false },
+          error: { type: 'string' },
+        },
+      },
+      500: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', default: false },
+          error: { type: 'string' },
+        },
+      },
+    },
+  },
+  handler: pullContainer,
+});
+
+server.post('/containers/:id/restart', {
+  schema: {
+    description: 'Restart a container',
+    tags: ['containers'],
+    params: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Container ID to restart' },
+      },
+    },
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      404: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', default: false },
+          error: { type: 'string' },
+        },
+      },
+      500: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', default: false },
+          error: { type: 'string' },
+        },
+      },
+    },
+  },
+  handler: restartContainer,
 });
 
 server.put('/containers/:id', {
