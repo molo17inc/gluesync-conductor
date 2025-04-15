@@ -55,9 +55,14 @@ const handler: AddAgentHandler = async (req, reply) => {
                 `./${containerName}:/opt/gluesync/data`,
                 ...volumes,
               ],
+              labels: [
+                ...(acc?.services?.[containerName]?.labels || []),
+                "com.molo17.conductor.type=agent"
+              ],
             },
           },
         };
+
       },
       {},
     );

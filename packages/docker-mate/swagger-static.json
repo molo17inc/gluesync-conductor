@@ -16,6 +16,31 @@
     { "name": "system", "description": "System operations" }
   ],
   "paths": {
+    "/agents": {
+      "get": {
+        "tags": ["agents"],
+        "summary": "Get all agents (containers with type=source or type=target in environment)",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": { "type": "boolean" },
+                "data": {
+                  "type": "array",
+                  "items": { "$ref": "#/definitions/Agent" }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "schema": { "$ref": "#/definitions/Error" }
+          }
+        }
+      }
+    },
     "/containers": {
       "get": {
         "tags": ["containers"],
@@ -23,7 +48,27 @@
         "responses": {
           "200": {
             "description": "Successful response",
-            "schema": { "$ref": "#/definitions/Success" }
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": { "type": "boolean" },
+                "data": {
+                  "type": "array",
+                  "items": { "$ref": "#/definitions/Container" }
+                },
+                "systemInfo": {
+                  "type": "object",
+                  "properties": {
+                    "ncpu": { "type": "number" },
+                    "memTotal": { "type": "number" }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error response",
+            "schema": { "$ref": "#/definitions/Error" }
           }
         }
       },
@@ -76,6 +121,41 @@
     },
 
     "/containers/{id}": {
+      "get": {
+        "tags": ["containers"],
+        "summary": "Get container by ID",
+        "parameters": [
+          { "in": "path", "name": "id", "required": true, "type": "string" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "schema": { "$ref": "#/definitions/Container" }
+          },
+          "404": {
+            "description": "Container not found",
+            "schema": { "$ref": "#/definitions/Error" }
+          }
+        }
+      },
+      "put": {
+        "tags": ["containers"],
+        "summary": "Update a container",
+        "parameters": [
+          { "in": "path", "name": "id", "required": true, "type": "string" },
+          { "in": "body", "name": "body", "required": true, "schema": { "$ref": "#/definitions/Container" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "schema": { "$ref": "#/definitions/Container" }
+          },
+          "404": {
+            "description": "Container not found",
+            "schema": { "$ref": "#/definitions/Error" }
+          }
+        }
+      },
       "delete": {
         "tags": ["containers"],
         "summary": "Remove a container",
@@ -91,6 +171,31 @@
           "200": {
             "description": "Successful response",
             "schema": { "$ref": "#/definitions/Success" }
+          },
+          "404": {
+            "description": "Container not found",
+            "schema": { "$ref": "#/definitions/Error" }
+          }
+        }
+      }
+    },
+    "/containers/{id}/version": {
+      "get": {
+        "tags": ["containers"],
+        "summary": "Get container version by ID",
+        "parameters": [
+          { "in": "path", "name": "id", "required": true, "type": "string" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": { "type": "boolean" },
+                "data": { "type": "string" }
+              }
+            }
           },
           "404": {
             "description": "Container not found",
@@ -197,6 +302,31 @@
         "environment": { "type": "object", "additionalProperties": true, "description": "Optional environment variables" },
         "ports": { "type": "array", "items": { "type": "string" }, "description": "Optional port mappings" },
         "volumes": { "type": "array", "items": { "type": "string" }, "description": "Optional volume mappings" }
+      }
+    },
+    "Container": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "image": { "type": "string" },
+        "tag": { "type": "string" },
+        "versionTag": { "type": "string" },
+        "persisted": { "type": "boolean" },
+        "created": { "type": "string" },
+        "running": { "type": "boolean" },
+        "status": { "type": "string" },
+        "exitCode": { "type": "number" },
+        "startedAt": { "type": "string" },
+        "finishedAt": { "type": "string" },
+        "cmd": { "type": "array", "items": { "type": "string" } },
+        "env": { "type": "array", "items": { "type": "string" } },
+        "labels": { "type": "object", "additionalProperties": true },
+        "networkMode": { "type": "string" },
+        "privileged": { "type": "boolean" },
+        "ports": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+        "mounts": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+        "hostConfig": { "type": "object", "additionalProperties": true }
       }
     },
     "Error": {
