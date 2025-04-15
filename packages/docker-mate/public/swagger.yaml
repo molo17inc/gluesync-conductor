@@ -1,6 +1,6 @@
 openapi: 3.0.0
 info:
-  title: Container-Mate API
+  title: Gluesync Conductor API
   description: API for managing Docker containers and agents
   version: 1.0.0
 servers:

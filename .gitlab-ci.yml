@@ -21,7 +21,7 @@ variables:
   TRANSFER_METER_FREQUENCY: '1s'
   YARN_ENABLE_IMMUTABLE_INSTALLS: 'false'
   DOCKER_TLS_CERTDIR: ''
-  DOCKER_REGISTRY: registry.gitlab.com/molo17-public/gluesync/container-mate
+  DOCKER_REGISTRY: registry.gitlab.com/molo17-public/gluesync/gluesync-conductor
   CONTAINER_MATE_IMAGE: ${DOCKER_REGISTRY}:${CI_COMMIT_REF_SLUG}
 
 build_mr:

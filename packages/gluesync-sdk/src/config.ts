@@ -62,7 +62,7 @@ const settings: GluesyncConfig = {
   
   // License and security settings
   licenseFile: process.env.GLUESYNC_LICENSE_FILE || '/opt/gluesync/data/gs-license.dat',
-  moduleTag: process.env.GLUESYNC_MODULE_TAG || 'container-mate',
+  moduleTag: process.env.GLUESYNC_MODULE_TAG || 'gluesync-conductor',
   securityConfig: process.env.GLUESYNC_SECURITY_CONFIG || '/opt/gluesync/data/security-config.json',
   
   // Server settings

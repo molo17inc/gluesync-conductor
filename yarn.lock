@@ -2232,19 +2232,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"container-mate@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "container-mate@workspace:."
-  dependencies:
-    "@types/dockerode": "npm:^3.3.38"
-    "@types/node": "npm:^22.14.1"
-    eslint: "npm:^9.19.0"
-    fastify: "npm:5.2.1"
-    prettier: "npm:^3.4.2"
-    typescript: "npm:^5.8.3"
-  languageName: unknown
-  linkType: soft
-
 "content-disposition@npm:^0.5.4":
   version: 0.5.4
   resolution: "content-disposition@npm:0.5.4"
@@ -3384,6 +3371,19 @@ __metadata:
     ts-node: "npm:^10.9.2"
     typescript: "npm:^5.3.3"
     ws: "npm:^8.16.0"
+  languageName: unknown
+  linkType: soft
+
+"gluesync-nodejs-monorepo@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "gluesync-nodejs-monorepo@workspace:."
+  dependencies:
+    "@types/dockerode": "npm:^3.3.38"
+    "@types/node": "npm:^22.14.1"
+    eslint: "npm:^9.19.0"
+    fastify: "npm:5.2.1"
+    prettier: "npm:^3.4.2"
+    typescript: "npm:^5.8.3"
   languageName: unknown
   linkType: soft
 
