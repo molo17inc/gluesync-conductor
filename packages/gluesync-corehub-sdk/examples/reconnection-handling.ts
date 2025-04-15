@@ -1,12 +1,12 @@
 /**
  * Advanced example demonstrating reconnection handling with the Gluesync SDK.
- * 
+ *
  * This example shows:
  * 1. Setting up a GluesyncClient with event handlers
  * 2. Implementing automatic reconnection with exponential backoff
  * 3. Handling various connection events
  * 4. Graceful shutdown
- * 
+ *
  * Usage:
  * - Make sure you have a valid gs-license.dat file in the current directory
  * - Set the CORE_HUB_ADDRESS environment variable or use autodiscovery
@@ -27,10 +27,10 @@ const config = {
   moduleTag: 'nodejs-reconnect-example',
   ssl: false,
   // Reconnection settings
-  initialReconnectDelay: 1000,  // 1 second
-  maxReconnectDelay: 30000,     // 30 seconds
+  initialReconnectDelay: 1000, // 1 second
+  maxReconnectDelay: 30000, // 30 seconds
   reconnectBackoffMultiplier: 1.5,
-  maxReconnectAttempts: 10
+  maxReconnectAttempts: 10,
 };
 
 class GluesyncClientManager {
@@ -39,7 +39,7 @@ class GluesyncClientManager {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectDelay: number = config.initialReconnectDelay;
   private isShuttingDown: boolean = false;
-  
+
   constructor() {
     // Create the client
     this.client = new GluesyncClient({
@@ -47,46 +47,46 @@ class GluesyncClientManager {
       port: config.port,
       licenseFilePath: config.licenseFilePath,
       moduleTag: config.moduleTag,
-      ssl: config.ssl
+      ssl: config.ssl,
     });
-    
+
     // Set up event handlers
     this.setupEventHandlers();
-    
+
     // Set up process signal handlers for graceful shutdown
     this.setupSignalHandlers();
   }
-  
+
   /**
    * Set up event handlers for the client
    */
   private setupEventHandlers(): void {
     // Connected event
-    this.client.onConnected = (token) => {
+    this.client.onConnected = token => {
       console.log(`Connected to CoreHub successfully!`);
       console.log(`Received token: ${token.substring(0, 20)}...`);
-      
+
       // Reset reconnection state on successful connection
       this.reconnectAttempts = 0;
       this.reconnectDelay = config.initialReconnectDelay;
     };
-    
+
     // Disconnected event
-    this.client.onDisconnected = (reason) => {
+    this.client.onDisconnected = reason => {
       console.log(`Disconnected from CoreHub: ${reason}`);
-      
+
       // Attempt to reconnect if not shutting down
       if (!this.isShuttingDown) {
         this.scheduleReconnect();
       }
     };
-    
+
     // Error event
-    this.client.onError = (error) => {
+    this.client.onError = error => {
       console.error(`Error occurred: ${error.message}`);
     };
   }
-  
+
   /**
    * Set up process signal handlers for graceful shutdown
    */
@@ -97,23 +97,23 @@ class GluesyncClientManager {
       await this.shutdown();
       process.exit(0);
     });
-    
+
     // Handle SIGTERM
     process.on('SIGTERM', async () => {
       console.log('\nReceived SIGTERM signal. Shutting down gracefully...');
       await this.shutdown();
       process.exit(0);
     });
-    
+
     // Handle uncaught exceptions
-    process.on('uncaughtException', async (error) => {
+    process.on('uncaughtException', async error => {
       console.error(`Uncaught exception: ${error.message}`);
       console.error(error.stack);
       await this.shutdown();
       process.exit(1);
     });
   }
-  
+
   /**
    * Connect to CoreHub
    */
@@ -124,14 +124,14 @@ class GluesyncClientManager {
       console.log(`Connection status: ${this.client.connectionStatus}`);
     } catch (error) {
       console.error(`Failed to connect: ${error}`);
-      
+
       // Schedule reconnection
       if (!this.isShuttingDown) {
         this.scheduleReconnect();
       }
     }
   }
-  
+
   /**
    * Schedule a reconnection attempt with exponential backoff
    */
@@ -141,47 +141,54 @@ class GluesyncClientManager {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    
+
     // Check if we've exceeded the maximum number of attempts
     if (this.reconnectAttempts >= config.maxReconnectAttempts) {
-      console.error(`Maximum reconnection attempts (${config.maxReconnectAttempts}) reached. Giving up.`);
+      console.error(
+        `Maximum reconnection attempts (${config.maxReconnectAttempts}) reached. Giving up.`,
+      );
       return;
     }
-    
+
     // Increment the reconnect attempts counter
     this.reconnectAttempts++;
-    
+
     // Calculate the next reconnect delay with exponential backoff
     const delay = Math.min(
-      this.reconnectDelay * Math.pow(config.reconnectBackoffMultiplier, this.reconnectAttempts - 1),
-      config.maxReconnectDelay
+      this.reconnectDelay *
+        Math.pow(config.reconnectBackoffMultiplier, this.reconnectAttempts - 1),
+      config.maxReconnectDelay,
     );
-    
-    console.log(`Scheduling reconnection attempt ${this.reconnectAttempts} in ${delay / 1000} seconds...`);
-    
+
+    console.log(
+      `Scheduling reconnection attempt ${this.reconnectAttempts} in ${delay / 1000} seconds...`,
+    );
+
     // Schedule the reconnection
     this.reconnectTimer = setTimeout(async () => {
       try {
-        console.log(`Attempting to reconnect (attempt ${this.reconnectAttempts} of ${config.maxReconnectAttempts})...`);
+        console.log(
+          `Attempting to reconnect (attempt ${this.reconnectAttempts} of ${config.maxReconnectAttempts})...`,
+        );
         await this.connect();
       } catch (error) {
         console.error(`Reconnection attempt failed: ${error}`);
       }
     }, delay);
   }
-  
+
   /**
    * Gracefully shut down the client
    */
   public async shutdown(): Promise<void> {
     this.isShuttingDown = true;
-    
+
     // Clear any reconnect timer
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    
+
     // Disconnect if connected
     if (this.client.isConnected) {
       console.log('Disconnecting from CoreHub...');
@@ -200,13 +207,13 @@ class GluesyncClientManager {
  */
 async function main() {
   console.log('Starting Gluesync CoreHub reconnection example...');
-  
+
   // Create the client manager
   const clientManager = new GluesyncClientManager();
-  
+
   // Connect to CoreHub
   await clientManager.connect();
-  
+
   // Keep the process running
   console.log('Example is running. Press Ctrl+C to exit.');
 }

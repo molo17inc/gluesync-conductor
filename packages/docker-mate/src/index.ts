@@ -6,7 +6,11 @@ import dockerPlugin from './plugins/docker';
 import swaggerPlugin from './plugins/swagger';
 import gluesyncPlugin from './plugins/gluesync';
 import httpsRedirectMiddleware from './middleware/httpsRedirect';
-import { createFastifyHttpsOptions, isSslEnabled, logSslInfo } from './utils/ssl';
+import {
+  createFastifyHttpsOptions,
+  isSslEnabled,
+  logSslInfo,
+} from './utils/ssl';
 
 import composeToJSON from './functions/composeToJSON/composeToJSON';
 import info from './functions/info/info';
@@ -73,17 +77,17 @@ server.get('/health', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'string' }
-        }
+          data: { type: 'string' },
+        },
       },
       500: {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          error: { type: 'string' }
-        }
-      }
-    }
+          error: { type: 'string' },
+        },
+      },
+    },
   },
   handler: async (req, reply) => {
     try {
@@ -93,7 +97,7 @@ server.get('/health', {
       req.log.error('Error:', error);
       reply.status(500).send({ success: false, error: 'Health check failed' });
     }
-  }
+  },
 });
 
 server.get('/compose-to-json', {
@@ -105,12 +109,12 @@ server.get('/compose-to-json', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'object' }
-        }
-      }
-    }
+          data: { type: 'object' },
+        },
+      },
+    },
   },
-  handler: composeToJSON
+  handler: composeToJSON,
 });
 
 server.get('/info', {
@@ -122,12 +126,12 @@ server.get('/info', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'object' }
-        }
-      }
-    }
+          data: { type: 'object' },
+        },
+      },
+    },
   },
-  handler: info
+  handler: info,
 });
 
 server.get('/version', {
@@ -139,12 +143,12 @@ server.get('/version', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'string' }
-        }
-      }
-    }
+          data: { type: 'string' },
+        },
+      },
+    },
   },
-  handler: version
+  handler: version,
 });
 
 server.get('/containers', {
@@ -178,32 +182,38 @@ server.get('/containers', {
                 labels: { type: 'object', additionalProperties: true },
                 networkMode: { type: 'string' },
                 privileged: { type: 'boolean' },
-                ports: { type: 'array', items: { type: 'object', additionalProperties: true } },
-                mounts: { type: 'array', items: { type: 'object', additionalProperties: true } },
-                hostConfig: { type: 'object', additionalProperties: true }
-              }
-            }
+                ports: {
+                  type: 'array',
+                  items: { type: 'object', additionalProperties: true },
+                },
+                mounts: {
+                  type: 'array',
+                  items: { type: 'object', additionalProperties: true },
+                },
+                hostConfig: { type: 'object', additionalProperties: true },
+              },
+            },
           },
           systemInfo: {
             type: 'object',
             properties: {
               ncpu: { type: 'number' },
-              memTotal: { type: 'number' }
-            }
-          }
-        }
+              memTotal: { type: 'number' },
+            },
+          },
+        },
       },
       500: {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
           error: { type: 'string' },
-          details: { type: 'string' }
-        }
-      }
-    }
+          details: { type: 'string' },
+        },
+      },
+    },
   },
-  handler: listContainers
+  handler: listContainers,
 });
 
 server.get('/containers/:id', {
@@ -214,8 +224,8 @@ server.get('/containers/:id', {
       type: 'object',
       required: ['id'],
       properties: {
-        id: { type: 'string', description: 'Container ID' }
-      }
+        id: { type: 'string', description: 'Container ID' },
+      },
     },
     response: {
       200: {
@@ -234,35 +244,35 @@ server.get('/containers/:id', {
               environment: { type: 'object', additionalProperties: true },
               ports: { type: 'array', items: { type: 'string' } },
               volumes: { type: 'array', items: { type: 'string' } },
-              hostConfig: { type: 'object', additionalProperties: true }
-            }
+              hostConfig: { type: 'object', additionalProperties: true },
+            },
           },
           systemInfo: {
             type: 'object',
             properties: {
               ncpu: { type: 'number' },
-              memTotal: { type: 'number' }
-            }
-          }
-        }
+              memTotal: { type: 'number' },
+            },
+          },
+        },
       },
       404: {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          error: { type: 'string' }
-        }
+          error: { type: 'string' },
+        },
       },
       500: {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          error: { type: 'string' }
-        }
-      }
-    }
+          error: { type: 'string' },
+        },
+      },
+    },
   },
-  handler: getContainer
+  handler: getContainer,
 });
 
 server.get('/containers/:id/version', {
@@ -271,8 +281,8 @@ server.get('/containers/:id/version', {
       type: 'object',
       required: ['id'],
       properties: {
-        id: { type: 'string', description: 'Container ID' }
-      }
+        id: { type: 'string', description: 'Container ID' },
+      },
     },
     response: {
       200: {
@@ -286,28 +296,28 @@ server.get('/containers/:id/version', {
               containerName: { type: 'string' },
               currentImage: { type: 'string' },
               currentTag: { type: 'string' },
-              latestVersion: { type: 'object', additionalProperties: true }
-            }
-          }
-        }
+              latestVersion: { type: 'object', additionalProperties: true },
+            },
+          },
+        },
       },
       404: {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          error: { type: 'string' }
-        }
+          error: { type: 'string' },
+        },
       },
       502: {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          error: { type: 'string' }
-        }
-      }
-    }
+          error: { type: 'string' },
+        },
+      },
+    },
   },
-  handler: getContainerVersion
+  handler: getContainerVersion,
 });
 
 server.post('/containers', {
@@ -323,43 +333,65 @@ server.post('/containers', {
             type: 'object',
             required: ['imageName', 'type'],
             properties: {
-              imageName: { type: 'string', description: 'Name of the Docker image' },
-              type: { type: 'string', enum: ['target', 'source'], description: 'Type of the agent' },
-              nickname: { type: 'string', description: 'Optional nickname for the container' },
+              imageName: {
+                type: 'string',
+                description: 'Name of the Docker image',
+              },
+              type: {
+                type: 'string',
+                enum: ['target', 'source'],
+                description: 'Type of the agent',
+              },
+              nickname: {
+                type: 'string',
+                description: 'Optional nickname for the container',
+              },
               tag: { type: 'string', description: 'Optional Docker image tag' },
-              environment: { type: 'object', additionalProperties: true, description: 'Optional environment variables' },
-              ports: { type: 'array', items: { type: 'string' }, description: 'Optional port mappings' },
-              volumes: { type: 'array', items: { type: 'string' }, description: 'Optional volume mappings' }
-            }
-          }
-        }
-      }
+              environment: {
+                type: 'object',
+                additionalProperties: true,
+                description: 'Optional environment variables',
+              },
+              ports: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Optional port mappings',
+              },
+              volumes: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Optional volume mappings',
+              },
+            },
+          },
+        },
+      },
     },
     response: {
       200: {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'object' }
-        }
+          data: { type: 'object' },
+        },
       },
       400: {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          error: { type: 'string' }
-        }
+          error: { type: 'string' },
+        },
       },
       500: {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          error: { type: 'string' }
-        }
-      }
-    }
+          error: { type: 'string' },
+        },
+      },
+    },
   },
-  handler: addContainer
+  handler: addContainer,
 });
 
 server.delete('/containers/:id', {
@@ -430,7 +462,7 @@ server.addSchema({
   type: 'object',
   properties: {
     name: { type: 'string' },
-    services: { 
+    services: {
       type: 'object',
       additionalProperties: {
         type: 'object',
@@ -441,11 +473,11 @@ server.addSchema({
           environment: { type: 'array', items: { type: 'string' } },
           ports: { type: 'array', items: { type: 'string' } },
           volumes: { type: 'array', items: { type: 'string' } },
-          labels: { type: 'array', items: { type: 'string' } }
-        }
-      }
-    }
-  }
+          labels: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    },
+  },
 });
 
 server.post('/modules', {
@@ -464,47 +496,51 @@ server.post('/modules', {
               type: { type: 'string' },
               nickname: { type: 'string' },
               tag: { type: 'string' },
-              environment: { type: 'object', additionalProperties: { type: 'string' } },
+              environment: {
+                type: 'object',
+                additionalProperties: { type: 'string' },
+              },
               ports: { type: 'array', items: { type: 'string' } },
-              volumes: { type: 'array', items: { type: 'string' } }
+              volumes: { type: 'array', items: { type: 'string' } },
             },
-            required: ['imageName', 'type']
-          }
-        }
+            required: ['imageName', 'type'],
+          },
+        },
       },
-      required: ['modules']
+      required: ['modules'],
     },
     response: {
       200: {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { $ref: 'ComposeFile#' }
-        }
+          data: { $ref: 'ComposeFile#' },
+        },
       },
       500: {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          error: { type: 'string' }
-        }
-      }
-    }
+          error: { type: 'string' },
+        },
+      },
+    },
   },
-  handler: addModule
+  handler: addModule,
 });
 
 server.get('/agents', {
   schema: {
-    description: 'Get all agents (containers with type=source or type=target in environment)',
+    description:
+      'Get all agents (containers with type=source or type=target in environment)',
     tags: ['agents'],
     response: {
       200: {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { 
-            type: 'array', 
+          data: {
+            type: 'array',
             items: {
               type: 'object',
               properties: {
@@ -516,31 +552,34 @@ server.get('/agents', {
                 versionTag: { type: 'string' },
                 persisted: { type: 'boolean' },
                 environment: { type: 'array', items: { type: 'string' } },
-                ports: { type: 'array', items: { type: 'object', additionalProperties: true } },
+                ports: {
+                  type: 'array',
+                  items: { type: 'object', additionalProperties: true },
+                },
                 volumes: { type: 'array', items: { type: 'string' } },
-                hostConfig: { type: 'object', additionalProperties: true }
-              }
-            }
+                hostConfig: { type: 'object', additionalProperties: true },
+              },
+            },
           },
           systemInfo: {
             type: 'object',
             properties: {
               ncpu: { type: 'number' },
-              memTotal: { type: 'number' }
-            }
-          }
-        }
+              memTotal: { type: 'number' },
+            },
+          },
+        },
       },
       500: {
         type: 'object',
         properties: {
           success: { type: 'boolean', default: false },
-          error: { type: 'string' }
-        }
-      }
-    }
+          error: { type: 'string' },
+        },
+      },
+    },
   },
-  handler: getAgents
+  handler: getAgents,
 });
 
 server.post('/containers/:id/stop', {
@@ -671,57 +710,78 @@ server.put('/containers/:id', {
       type: 'object',
       properties: {
         imageName: { type: 'string', description: 'Name of the Docker image' },
-        type: { type: 'string', enum: ['target', 'source'], description: 'Type of the agent' },
-        nickname: { type: 'string', description: 'Optional nickname for the agent' },
+        type: {
+          type: 'string',
+          enum: ['target', 'source'],
+          description: 'Type of the agent',
+        },
+        nickname: {
+          type: 'string',
+          description: 'Optional nickname for the agent',
+        },
         tag: { type: 'string', description: 'Optional Docker image tag' },
-        environment: { type: 'object', additionalProperties: true, description: 'Optional environment variables' },
-        ports: { type: 'array', items: { type: 'string' }, description: 'Optional port mappings' },
-        volumes: { type: 'array', items: { type: 'string' }, description: 'Optional volume mappings' }
-      }
+        environment: {
+          type: 'object',
+          additionalProperties: true,
+          description: 'Optional environment variables',
+        },
+        ports: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional port mappings',
+        },
+        volumes: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional volume mappings',
+        },
+      },
     },
     response: {
       200: {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'object', additionalProperties: true }
-        }
+          data: { type: 'object', additionalProperties: true },
+        },
       },
       404: {
         type: 'object',
         properties: {
           success: { type: 'boolean', default: false },
-          error: { type: 'string' }
-        }
+          error: { type: 'string' },
+        },
       },
       500: {
         type: 'object',
         properties: {
           success: { type: 'boolean', default: false },
-          error: { type: 'string' }
-        }
-      }
-    }
+          error: { type: 'string' },
+        },
+      },
+    },
   },
   handler: updateContainer,
 });
 
 // Handle unhandled rejections
-process.on('unhandledRejection', (err) => {
+process.on('unhandledRejection', err => {
   console.error(err);
   process.exit(1);
 });
 
 // Start the server
-server.listen({ host, port }, (err) => {
+server.listen({ host, port }, err => {
   if (err) {
     console.error('Error starting server:', err);
     process.exit(1);
   }
-  
+
   // Log server startup information
   const protocol = isSslEnabled() ? 'https' : 'http';
   console.log(`Gluesync Conductor API is running`);
-  console.log(`Swagger UI is available at ${protocol}://${host === '0.0.0.0' ? 'localhost' : host}:${port}/docs`);
+  console.log(
+    `Swagger UI is available at ${protocol}://${host === '0.0.0.0' ? 'localhost' : host}:${port}/docs`,
+  );
   console.log(`Gluesync Conductor server started on port ${port}`);
 });

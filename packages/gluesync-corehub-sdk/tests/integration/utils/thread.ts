@@ -6,7 +6,7 @@
 export class Thread {
   private task: () => void;
   private thread: NodeJS.Timeout | null = null;
-  
+
   /**
    * Creates a new Thread instance.
    * @param task The function to run in the thread
@@ -14,7 +14,7 @@ export class Thread {
   constructor(task: () => void) {
     this.task = task;
   }
-  
+
   /**
    * Starts the thread.
    */
@@ -24,7 +24,7 @@ export class Thread {
       this.task();
     });
   }
-  
+
   /**
    * Joins the thread (not actually implemented, just a placeholder for API compatibility).
    * @param timeout Optional timeout in milliseconds

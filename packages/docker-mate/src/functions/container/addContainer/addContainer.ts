@@ -47,7 +47,7 @@ const handler: AddContainerHandler = async (req, reply) => {
         const containerNickname = nickname || containerName;
         const containerLabels = [
           `com.molo17.conductor.unique_id=${containerNickname}`,
-          `com.molo17.conductor.versiontag=${tag || 'latest'}`
+          `com.molo17.conductor.versiontag=${tag || 'latest'}`,
         ];
         const service = createComposeService({
           imageName,
@@ -81,11 +81,13 @@ const handler: AddContainerHandler = async (req, reply) => {
     reply.statusCode = 200;
     reply.send({ success: true, data: newComposeFile });
   } catch (error) {
-    req.log.error(`Error adding container: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
+    req.log.error(
+      `Error adding container: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
+    );
     reply.statusCode = 500;
-    reply.send({ 
-      success: false, 
-      error: `Failed to add container: ${error instanceof Error ? error.message : String(error)}` 
+    reply.send({
+      success: false,
+      error: `Failed to add container: ${error instanceof Error ? error.message : String(error)}`,
     });
   }
 };

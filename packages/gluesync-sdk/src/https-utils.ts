@@ -47,21 +47,23 @@ export function setupHttpsRedirect(app: any) {
   app.addHook('onRequest', (request: any, reply: any, done: any) => {
     // Check if request is from a browser (not API client)
     const userAgent = request.headers['user-agent']?.toLowerCase() || '';
-    const isBrowser = userAgent.includes('mozilla') || 
-                      userAgent.includes('chrome') || 
-                      userAgent.includes('safari') || 
-                      userAgent.includes('edge');
-    
+    const isBrowser =
+      userAgent.includes('mozilla') ||
+      userAgent.includes('chrome') ||
+      userAgent.includes('safari') ||
+      userAgent.includes('edge');
+
     // Only redirect browsers, not API clients
     if (request.protocol === 'http' && isBrowser) {
       try {
         // Get the host from request headers
-        const host = request.headers.host || `${settings.host}:${settings.port}`;
+        const host =
+          request.headers.host || `${settings.host}:${settings.port}`;
         const hostname = host.includes(':') ? host.split(':')[0] : host;
-        
+
         // Create HTTPS URL
         const httpsUrl = `https://${hostname}:${settings.port.toString()}${request.url}`;
-        
+
         console.log(`Redirecting browser from HTTP to HTTPS: ${httpsUrl}`);
         // Set status code first, then redirect (to avoid type issues)
         reply.status(307).redirect(httpsUrl);
@@ -70,7 +72,7 @@ export function setupHttpsRedirect(app: any) {
         console.error('Error in redirect middleware:', error);
       }
     }
-    
+
     done();
   });
 }
@@ -79,16 +81,21 @@ export function setupHttpsRedirect(app: any) {
  * Extract certificates from PKCS12 file
  * @returns An object with cert and key paths, or null if extraction fails
  */
-export function extractFromPkcs12(): { certPath: string | null, keyPath: string | null } {
+export function extractFromPkcs12(): {
+  certPath: string | null;
+  keyPath: string | null;
+} {
   // Check for PKCS12 file path from environment or security config
   let p12Path = process.env.SSL_P12_PATH;
   let certPassword = process.env.SSL_CERT_PASSWORD;
   let keyPassword = process.env.SSL_KEY_PASSWORD;
-  
+
   // Check security config if environment variables not set
   if (!p12Path && fs.existsSync(settings.securityConfig || '')) {
     try {
-      const securityConfig = JSON.parse(fs.readFileSync(settings.securityConfig!, 'utf8'));
+      const securityConfig = JSON.parse(
+        fs.readFileSync(settings.securityConfig!, 'utf8'),
+      );
       if (securityConfig.ssl) {
         p12Path = securityConfig.ssl.sslCertificatePath;
         certPassword = securityConfig.ssl.certificatePassword;
@@ -98,43 +105,47 @@ export function extractFromPkcs12(): { certPath: string | null, keyPath: string 
       console.error('Error reading security config:', error);
     }
   }
-  
+
   // If no PKCS12 file found or password missing, return null
   if (!p12Path || !certPassword || !fs.existsSync(p12Path)) {
     return { certPath: null, keyPath: null };
   }
-  
+
   // Use certificate password for key password if not specified
   if (!keyPassword) {
     keyPassword = certPassword;
   }
-  
-  console.log(`Using PKCS12 file: ${p12Path} with password: ${'*'.repeat(certPassword.length)} and key password: ${'*'.repeat(keyPassword.length)}`);
-  
+
+  console.log(
+    `Using PKCS12 file: ${p12Path} with password: ${'*'.repeat(certPassword.length)} and key password: ${'*'.repeat(keyPassword.length)}`,
+  );
+
   try {
     // Create temporary directory for extraction if it doesn't exist
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
-    
+
     // Generate unique names for temporary files
     const timestamp = Date.now();
     tempCertPath = path.join(tempDir, `cert-${timestamp}.pem`);
     tempKeyPath = path.join(tempDir, `key-${timestamp}.pem`);
-    
+
     // Extract certificate
     execSync(
       `openssl pkcs12 -in "${p12Path}" -passin pass:${certPassword} -nokeys -out "${tempCertPath}"`,
-      { stdio: 'pipe' }
+      { stdio: 'pipe' },
     );
-    
+
     // Extract key without encryption (nodes = no DES encryption)
     execSync(
       `openssl pkcs12 -in "${p12Path}" -passin pass:${certPassword} -nocerts -out "${tempKeyPath}" -nodes`,
-      { stdio: 'pipe' }
+      { stdio: 'pipe' },
     );
-    
-    console.log(`Successfully extracted certificate and key from PKCS12 file: ${p12Path}`);
+
+    console.log(
+      `Successfully extracted certificate and key from PKCS12 file: ${p12Path}`,
+    );
     return { certPath: tempCertPath, keyPath: tempKeyPath };
   } catch (error) {
     console.error('Failed to extract certificate from PKCS12:', error);
@@ -150,28 +161,32 @@ export function getSSLConfig(): SSLConfig | null {
   if (!settings.useSSL) {
     return null;
   }
-  
+
   // Check for SSL certificate paths from environment
   let certFile = settings.sslCertFile;
   let keyFile = settings.sslKeyFile;
-  
+
   // If not available, try extracting from PKCS12
-  if (!(certFile && keyFile && fs.existsSync(certFile) && fs.existsSync(keyFile))) {
+  if (
+    !(certFile && keyFile && fs.existsSync(certFile) && fs.existsSync(keyFile))
+  ) {
     const { certPath, keyPath } = extractFromPkcs12();
     if (certPath && keyPath) {
       certFile = certPath;
       keyFile = keyPath;
-      
+
       // Set environment variables for the extracted files
       process.env.SSL_CERT_FILE = certPath;
       process.env.SSL_KEY_FILE = keyPath;
     } else {
-      console.warn('SSL not available - could not find certificate and key files');
+      console.warn(
+        'SSL not available - could not find certificate and key files',
+      );
       settings.useSSL = false;
       return null;
     }
   }
-  
+
   try {
     const key = fs.readFileSync(keyFile);
     const cert = fs.readFileSync(certFile);
@@ -195,7 +210,7 @@ export function cleanupSSLFiles(): void {
       console.error(`Failed to remove temporary certificate file: ${error}`);
     }
   }
-  
+
   if (tempKeyPath && fs.existsSync(tempKeyPath)) {
     try {
       fs.unlinkSync(tempKeyPath);
@@ -204,7 +219,7 @@ export function cleanupSSLFiles(): void {
       console.error(`Failed to remove temporary key file: ${error}`);
     }
   }
-  
+
   if (fs.existsSync(tempDir)) {
     try {
       // Only remove directory if it's empty

@@ -6,10 +6,12 @@
     "packages/*"
   ],
   "scripts": {
+    "format": "prettier .",
+    "format:check": "yarn format --check",
+    "format:write": "yarn format --write",
     "build": "yarn workspaces run build",
     "start": "node packages/docker-mate/dist/index.js",
     "dev": "yarn workspace docker-mate dev",
-    "format": "prettier --write './**/*.{js,jsx,ts,tsx,json}'",
     "lint": "eslint . --ext .ts,.tsx"
   },
   "devDependencies": {

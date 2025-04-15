@@ -25,7 +25,7 @@ paths:
                     example: true
                   data:
                     type: string
-                    example: "Health check OK!"
+                    example: 'Health check OK!'
 
   /compose-to-json:
     get:
@@ -128,38 +128,38 @@ paths:
                       imageName:
                         type: string
                         description: Name of the Docker image
-                        example: "gluesync"
+                        example: 'gluesync'
                       type:
                         type: string
                         enum: [target, source]
                         description: Type of agent
-                        example: "target"
+                        example: 'target'
                       nickname:
                         type: string
                         description: Nickname for the container
-                        example: "my-target-agent"
+                        example: 'my-target-agent'
                       tag:
                         type: string
                         description: Docker image tag
-                        example: "latest"
+                        example: 'latest'
                       environment:
                         type: object
                         description: Environment variables to set
                         example:
-                          KEY1: "value1"
-                          KEY2: "value2"
+                          KEY1: 'value1'
+                          KEY2: 'value2'
                       ports:
                         type: array
                         items:
                           type: string
                         description: Port mappings
-                        example: ["8080:8080"]
+                        example: ['8080:8080']
                       volumes:
                         type: array
                         items:
                           type: string
                         description: Volume mappings
-                        example: ["./data:/data"]
+                        example: ['./data:/data']
       responses:
         200:
           description: Successfully added agents
@@ -197,12 +197,12 @@ paths:
                       imageName:
                         type: string
                         description: Name of the Docker image
-                        example: "gluesync"
+                        example: 'gluesync'
                       type:
                         type: string
                         enum: [target, source]
                         description: Type of agent
-                        example: "target"
+                        example: 'target'
       responses:
         200:
           description: Successfully removed agents

@@ -9,10 +9,7 @@ const filename = 'compose.modules.yml';
 
 import { FastifyRequest, FastifyReply } from 'fastify';
 
-const addModule = async (
-  req: FastifyRequest,
-  reply: FastifyReply
-) => {
+const addModule = async (req: FastifyRequest, reply: FastifyReply) => {
   try {
     const parsedJson = await readYmlFile<ComposeFile>(filename);
     const body = req.body as AddModuleBody;
@@ -67,7 +64,10 @@ const addModule = async (
   } catch (error) {
     req.log.error(`Error: ${JSON.stringify(error)}`);
     reply.statusCode = 500;
-    reply.send({ success: false, error: error instanceof Error ? error.message : String(error) });
+    reply.send({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 };
 

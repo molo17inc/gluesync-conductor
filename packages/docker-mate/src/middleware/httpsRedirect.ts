@@ -20,7 +20,7 @@ import { isSslEnabled } from '../utils/ssl';
 
 /**
  * Middleware to redirect HTTP requests to HTTPS
- * 
+ *
  * This only redirects browser requests, not API clients or local connections,
  * to ensure compatibility with internal services and API clients.
  */
@@ -29,42 +29,53 @@ export default function httpsRedirectMiddleware(server: FastifyInstance): void {
   if (!isSslEnabled()) {
     return;
   }
-  
-  server.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
-    // Get protocol from headers or request
-    const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
-    
-    // Only redirect if using HTTP
-    if (protocol === 'http') {
-      // Check if request is from a browser (not Postman or other API client)
-      const userAgent = request.headers['user-agent']?.toLowerCase() || '';
-      const isBrowser = userAgent.includes('mozilla') || 
-                        userAgent.includes('chrome') || 
-                        userAgent.includes('safari') || 
-                        userAgent.includes('edge');
-      
-      // Get client IP from request
-      const clientIp = request.ip || '0.0.0.0';
-      const isLocal = ['127.0.0.1', 'localhost', '::1', '0.0.0.0'].includes(clientIp);
-      
-      // Only redirect browsers, not API clients or local connections
-      if (isBrowser && !isLocal) {
-        try {
-          // Get host from request headers
-          const host = request.headers.host || `${process.env.HOST || '0.0.0.0'}:${process.env.PORT || '50000'}`;
-          const hostname = host.includes(':') ? host.split(':')[0] : host;
-          
-          // Create HTTPS URL (same port - we're not using dual mode)
-          const port = process.env.PORT || '50000';
-          const httpsUrl = `https://${hostname}:${port}${request.url}`;
-          
-          server.log.info(`Redirecting browser from HTTP to HTTPS: ${httpsUrl}`);
-          // Convert numeric status code to string as required by Fastify's redirect method
-          return reply.redirect(httpsUrl, 307);
-        } catch (error) {
-          server.log.error(`Error in redirect middleware: ${error}`);
+
+  server.addHook(
+    'onRequest',
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      // Get protocol from headers or request
+      const protocol =
+        request.headers['x-forwarded-proto'] || request.protocol || 'http';
+
+      // Only redirect if using HTTP
+      if (protocol === 'http') {
+        // Check if request is from a browser (not Postman or other API client)
+        const userAgent = request.headers['user-agent']?.toLowerCase() || '';
+        const isBrowser =
+          userAgent.includes('mozilla') ||
+          userAgent.includes('chrome') ||
+          userAgent.includes('safari') ||
+          userAgent.includes('edge');
+
+        // Get client IP from request
+        const clientIp = request.ip || '0.0.0.0';
+        const isLocal = ['127.0.0.1', 'localhost', '::1', '0.0.0.0'].includes(
+          clientIp,
+        );
+
+        // Only redirect browsers, not API clients or local connections
+        if (isBrowser && !isLocal) {
+          try {
+            // Get host from request headers
+            const host =
+              request.headers.host ||
+              `${process.env.HOST || '0.0.0.0'}:${process.env.PORT || '50000'}`;
+            const hostname = host.includes(':') ? host.split(':')[0] : host;
+
+            // Create HTTPS URL (same port - we're not using dual mode)
+            const port = process.env.PORT || '50000';
+            const httpsUrl = `https://${hostname}:${port}${request.url}`;
+
+            server.log.info(
+              `Redirecting browser from HTTP to HTTPS: ${httpsUrl}`,
+            );
+            // Convert numeric status code to string as required by Fastify's redirect method
+            return reply.redirect(httpsUrl, 307);
+          } catch (error) {
+            server.log.error(`Error in redirect middleware: ${error}`);
+          }
         }
       }
-    }
-  });
+    },
+  );
 }

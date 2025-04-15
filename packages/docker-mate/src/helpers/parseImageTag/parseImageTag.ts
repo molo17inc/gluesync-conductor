@@ -17,23 +17,26 @@
 
 /**
  * Parses a Docker image string and extracts the image name and tag.
- * 
+ *
  * @param imageString The Docker image string (e.g., "postgres:16-alpine", "n8nio/n8n:latest")
  * @returns An object containing the image name and tag (if present)
  */
-export function parseImageTag(imageString: string): { name: string; tag: string } {
+export function parseImageTag(imageString: string): {
+  name: string;
+  tag: string;
+} {
   if (!imageString) {
     return { name: '', tag: '' };
   }
-  
+
   // Split the image string by ":"
   const parts = imageString.split(':');
-  
+
   // If there's only one part or the second part is empty, there's no tag
   if (parts.length === 1 || !parts[1]) {
     return { name: imageString, tag: '' };
   }
-  
+
   // Handle the case where the first part might contain a port (e.g., localhost:5000/myimage:tag)
   // We need to check if there are multiple ":" and the first one is part of a registry URL
   if (parts.length > 2) {
@@ -49,18 +52,18 @@ export function parseImageTag(imageString: string): { name: string; tag: string 
         return { name: `${registry}/${remainder}`, tag: '' };
       } else {
         // There is a tag after the registry:port/image
-        return { 
-          name: `${registry}/${imageParts[0]}`, 
-          tag: imageParts.slice(1).join(':') 
+        return {
+          name: `${registry}/${imageParts[0]}`,
+          tag: imageParts.slice(1).join(':'),
         };
       }
     }
   }
-  
+
   // Standard case: image:tag
-  return { 
-    name: parts[0], 
-    tag: parts.slice(1).join(':') // Join remaining parts in case tag contains ":"
+  return {
+    name: parts[0],
+    tag: parts.slice(1).join(':'), // Join remaining parts in case tag contains ":"
   };
 }
 

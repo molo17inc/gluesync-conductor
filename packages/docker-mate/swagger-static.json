@@ -183,7 +183,12 @@
         "summary": "Update a container",
         "parameters": [
           { "in": "path", "name": "id", "required": true, "type": "string" },
-          { "in": "body", "name": "body", "required": true, "schema": { "$ref": "#/definitions/Container" } }
+          {
+            "in": "body",
+            "name": "body",
+            "required": true,
+            "schema": { "$ref": "#/definitions/Container" }
+          }
         ],
         "responses": {
           "200": {
@@ -274,7 +279,13 @@
         "summary": "Pull the latest image for a container",
         "description": "Pulls the latest version of the image for the specified container",
         "parameters": [
-          { "in": "path", "name": "id", "required": true, "type": "string", "description": "Container ID to pull image for" }
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string",
+            "description": "Container ID to pull image for"
+          }
         ],
         "responses": {
           "200": {
@@ -304,7 +315,13 @@
         "summary": "Restart a container",
         "description": "Gracefully restarts the specified container with a timeout",
         "parameters": [
-          { "in": "path", "name": "id", "required": true, "type": "string", "description": "Container ID to restart" }
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "type": "string",
+            "description": "Container ID to restart"
+          }
         ],
         "responses": {
           "200": {
@@ -398,7 +415,10 @@
         "type": { "type": "string" },
         "nickname": { "type": "string" },
         "tag": { "type": "string" },
-        "environment": { "type": "object", "additionalProperties": { "type": "string" } },
+        "environment": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
         "ports": { "type": "array", "items": { "type": "string" } },
         "volumes": { "type": "array", "items": { "type": "string" } }
       },
@@ -408,13 +428,35 @@
       "type": "object",
       "required": ["imageName", "type"],
       "properties": {
-        "imageName": { "type": "string", "description": "Name of the Docker image" },
-        "type": { "type": "string", "enum": ["target", "source"], "description": "Type of the agent" },
-        "nickname": { "type": "string", "description": "Optional nickname for the agent" },
+        "imageName": {
+          "type": "string",
+          "description": "Name of the Docker image"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["target", "source"],
+          "description": "Type of the agent"
+        },
+        "nickname": {
+          "type": "string",
+          "description": "Optional nickname for the agent"
+        },
         "tag": { "type": "string", "description": "Optional Docker image tag" },
-        "environment": { "type": "object", "additionalProperties": true, "description": "Optional environment variables" },
-        "ports": { "type": "array", "items": { "type": "string" }, "description": "Optional port mappings" },
-        "volumes": { "type": "array", "items": { "type": "string" }, "description": "Optional volume mappings" }
+        "environment": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Optional environment variables"
+        },
+        "ports": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional port mappings"
+        },
+        "volumes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional volume mappings"
+        }
       }
     },
     "Container": {
@@ -437,8 +479,14 @@
         "labels": { "type": "object", "additionalProperties": true },
         "networkMode": { "type": "string" },
         "privileged": { "type": "boolean" },
-        "ports": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
-        "mounts": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+        "ports": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        },
+        "mounts": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        },
         "hostConfig": { "type": "object", "additionalProperties": true }
       }
     },

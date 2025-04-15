@@ -1,7 +1,7 @@
 {
   "name": "docker-mate",
   "scripts": {
-    "format": "prettier .",
+    "format": "prettier --ignore-path ../.prettierignore .",
     "format:check": "yarn format --check",
     "format:write": "yarn format --write",
     "dev": "nodemon src/index.ts",

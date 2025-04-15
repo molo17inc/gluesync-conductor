@@ -37,21 +37,24 @@ export function shouldSkipSslVerify(): boolean {
 /**
  * Get SSL certificate and key file paths from environment variables
  */
-export function getSslFilePaths(): { certFile: string | null; keyFile: string | null } {
+export function getSslFilePaths(): {
+  certFile: string | null;
+  keyFile: string | null;
+} {
   const certFile = process.env.SSL_CERT_FILE || null;
   const keyFile = process.env.SSL_KEY_FILE || null;
-  
+
   // Verify files exist
   if (certFile && !fs.existsSync(certFile)) {
     console.warn(`SSL certificate file not found: ${certFile}`);
     return { certFile: null, keyFile: null };
   }
-  
+
   if (keyFile && !fs.existsSync(keyFile)) {
     console.warn(`SSL key file not found: ${keyFile}`);
     return { certFile: null, keyFile: null };
   }
-  
+
   return { certFile, keyFile };
 }
 
@@ -65,22 +68,24 @@ export function createFastifyHttpsOptions(): FastifyServerOptions {
     ajv: {
       customOptions: {
         strict: false,
-        removeAdditional: false
-      }
-    }
+        removeAdditional: false,
+      },
+    },
   };
-  
+
   if (!isSslEnabled()) {
     return baseOptions;
   }
-  
+
   const { certFile, keyFile } = getSslFilePaths();
-  
+
   if (!certFile || !keyFile) {
-    console.warn('SSL is enabled but certificate or key file is missing. Falling back to HTTP.');
+    console.warn(
+      'SSL is enabled but certificate or key file is missing. Falling back to HTTP.',
+    );
     return baseOptions;
   }
-  
+
   try {
     // Create HTTPS options with proper type casting
     // Use a more generic type to avoid TypeScript errors with the HTTPS options
@@ -90,13 +95,13 @@ export function createFastifyHttpsOptions(): FastifyServerOptions {
       // Allow older TLS versions for compatibility
       minVersion: 'TLSv1',
       // Skip certificate verification if configured
-      rejectUnauthorized: !shouldSkipSslVerify()
+      rejectUnauthorized: !shouldSkipSslVerify(),
     };
-    
+
     // Return server options with HTTPS
     return {
       ...baseOptions,
-      https: httpsOptions
+      https: httpsOptions,
     } as any; // Use type assertion to bypass TypeScript checking
   } catch (error) {
     console.error('Error creating HTTPS options:', error);
@@ -112,21 +117,23 @@ export function logSslInfo(): void {
   if (!isSslEnabled()) {
     return;
   }
-  
+
   const { certFile, keyFile } = getSslFilePaths();
-  
+
   if (!certFile || !keyFile) {
     console.warn('SSL is enabled but certificate or key file is missing.');
     return;
   }
-  
+
   console.info('SSL is enabled with the following configuration:');
   console.info(`- Certificate file: ${certFile}`);
   console.info(`- Key file: ${keyFile}`);
-  
+
   if (shouldSkipSslVerify()) {
     console.warn('SSL certificate verification is DISABLED');
-    console.warn('For Chrome, type "thisisunsafe" when certificate warning appears');
+    console.warn(
+      'For Chrome, type "thisisunsafe" when certificate warning appears',
+    );
     console.warn('For Firefox, you may need to add a security exception');
   }
 }

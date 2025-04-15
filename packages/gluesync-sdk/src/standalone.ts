@@ -16,7 +16,13 @@
  */
 
 import fastify from 'fastify';
-import { gluesyncSdkClient, settings, setupHttpsRedirect, getSSLConfig, cleanupSSLFiles } from './index';
+import {
+  gluesyncSdkClient,
+  settings,
+  setupHttpsRedirect,
+  getSSLConfig,
+  cleanupSSLFiles,
+} from './index';
 
 /**
  * Initialize and run the Gluesync SDK standalone server
@@ -25,17 +31,19 @@ import { gluesyncSdkClient, settings, setupHttpsRedirect, getSSLConfig, cleanupS
 async function main() {
   try {
     console.log('Initializing Gluesync SDK...');
-    
+
     // Create the server with appropriate options
     const serverOptions: any = {
-      logger: settings.debug ? {
-        level: 'debug',
-        transport: {
-          target: 'pino-pretty'
-        }
-      } : true
+      logger: settings.debug
+        ? {
+            level: 'debug',
+            transport: {
+              target: 'pino-pretty',
+            },
+          }
+        : true,
     };
-    
+
     // Add HTTPS config if SSL is enabled
     if (settings.useSSL) {
       const sslConfig = getSSLConfig();
@@ -43,7 +51,7 @@ async function main() {
         serverOptions.https = sslConfig;
       }
     }
-    
+
     const app = fastify(serverOptions);
 
     // Add HTTP to HTTPS redirect if SSL is enabled
@@ -56,7 +64,7 @@ async function main() {
       return {
         status: 'ok',
         sdkInitialized: gluesyncSdkClient.isInitialized,
-        coreHubUrl: gluesyncSdkClient.coreHubUrl
+        coreHubUrl: gluesyncSdkClient.coreHubUrl,
       };
     });
 
@@ -64,12 +72,14 @@ async function main() {
     await gluesyncSdkClient.initialize();
 
     // Start the server
-    await app.listen({ 
-      host: settings.host, 
-      port: settings.port 
+    await app.listen({
+      host: settings.host,
+      port: settings.port,
     });
-    
-    console.log(`Server is running on ${settings.useSSL ? 'https' : 'http'}://${settings.host}:${settings.port}`);
+
+    console.log(
+      `Server is running on ${settings.useSSL ? 'https' : 'http'}://${settings.host}:${settings.port}`,
+    );
 
     // Handle process termination
     const shutdown = async () => {
@@ -82,7 +92,6 @@ async function main() {
 
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
-    
   } catch (error) {
     console.error('Failed to start the server:', error);
     process.exit(1);

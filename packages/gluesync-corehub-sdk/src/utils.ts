@@ -43,7 +43,7 @@ export async function createSslContextFromJks(
   keystorePath: string,
   keystorePassword: string,
   alias?: string,
-  keyPassword?: string
+  keyPassword?: string,
 ): Promise<tls.ConnectionOptions> {
   logger.info(`Creating SSL context from keystore: ${keystorePath}`);
 
@@ -73,13 +73,15 @@ export async function createSslContextFromJks(
       throw new Error('No valid certificates found in the keystore');
     }
 
-    const selectedCerts = alias ? certs.filter(cert => cert.includes(alias)) : certs;
+    const selectedCerts = alias
+      ? certs.filter(cert => cert.includes(alias))
+      : certs;
 
     return {
       ca: selectedCerts,
       checkServerIdentity: () => undefined,
       rejectUnauthorized: true,
-      passphrase: keyPassword || keystorePassword
+      passphrase: keyPassword || keystorePassword,
     };
   } catch (error) {
     logger.error(`Failed to create SSL context: ${error}`);
@@ -109,14 +111,16 @@ export function parseCloseReason(reason: string): [string, string] {
  */
 export function getErrorFromCloseReason(reason: string): string {
   const [errorCode, errorMessage] = parseCloseReason(reason);
-  
+
   const errorMessages: Record<string, string> = {
-    'NOT_CONSISTENT': 'Authentication failed: Invalid headers or license information',
-    'VIOLATED_POLICY': 'License not valid or expired',
-    'INTERNAL_ERROR': 'Server error: Please check CoreHub logs for more information',
-    'CLOSED_ABNORMALLY': 'Connection closed unexpectedly'
+    NOT_CONSISTENT:
+      'Authentication failed: Invalid headers or license information',
+    VIOLATED_POLICY: 'License not valid or expired',
+    INTERNAL_ERROR:
+      'Server error: Please check CoreHub logs for more information',
+    CLOSED_ABNORMALLY: 'Connection closed unexpectedly',
   };
-  
+
   return errorMessages[errorCode] || errorMessage;
 }
 
@@ -135,7 +139,7 @@ export function createTimeout(ms: number, message: string): Promise<never> {
 
 /**
  * Generate a random ID for tracking purposes.
- * 
+ *
  * @returns A random string ID
  */
 export function generateId(): string {

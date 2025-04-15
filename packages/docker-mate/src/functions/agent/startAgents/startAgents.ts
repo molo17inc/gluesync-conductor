@@ -23,7 +23,7 @@ const handler: StartAgentsHandler = async (req, reply) => {
       cwd: getRootPath(),
       config: filename,
       log: true,
-      commandOptions: ['--no-deps', id] // Start only the specified service
+      commandOptions: ['--no-deps', id], // Start only the specified service
     });
 
     req.log.info(result);
@@ -36,7 +36,7 @@ const handler: StartAgentsHandler = async (req, reply) => {
         .reduce<ReadonlyArray<string>>((acc, line) => {
           const trimmed = line.trim();
           return trimmed ? [...acc, trimmed] : acc;
-        }, [])
+        }, []),
     });
   } catch (error) {
     req.log.error(error);

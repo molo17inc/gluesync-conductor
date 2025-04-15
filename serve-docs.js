@@ -8,7 +8,7 @@ const SWAGGER_FILE = path.join(__dirname, 'swagger.yaml');
 
 const server = http.createServer((req, res) => {
   console.log(`Request for ${req.url}`);
-  
+
   // Serve the Swagger YAML file
   if (req.url === '/swagger.yaml') {
     fs.readFile(SWAGGER_FILE, (err, content) => {
@@ -17,21 +17,22 @@ const server = http.createServer((req, res) => {
         res.end('File not found');
         return;
       }
-      
+
       res.writeHead(200, { 'Content-Type': 'application/yaml' });
       res.end(content);
     });
     return;
   }
-  
+
   // Serve the docs/index.html or redirect to it
-  let filePath = req.url === '/' || req.url === '/docs' ? 
-    path.join(DOCS_DIR, 'index.html') : 
-    path.join(__dirname, req.url);
-  
+  let filePath =
+    req.url === '/' || req.url === '/docs'
+      ? path.join(DOCS_DIR, 'index.html')
+      : path.join(__dirname, req.url);
+
   const extname = path.extname(filePath);
   let contentType = 'text/html';
-  
+
   switch (extname) {
     case '.js':
       contentType = 'text/javascript';
@@ -49,7 +50,7 @@ const server = http.createServer((req, res) => {
       contentType = 'image/jpg';
       break;
   }
-  
+
   fs.readFile(filePath, (err, content) => {
     if (err) {
       if (err.code === 'ENOENT') {
@@ -63,13 +64,15 @@ const server = http.createServer((req, res) => {
       }
       return;
     }
-    
+
     res.writeHead(200, { 'Content-Type': contentType });
     res.end(content, 'utf-8');
   });
 });
 
 server.listen(PORT, () => {
-  console.log(`Gluesync Conductor API Documentation server running at http://localhost:${PORT}/docs`);
+  console.log(
+    `Gluesync Conductor API Documentation server running at http://localhost:${PORT}/docs`,
+  );
   console.log(`You can also access it at http://localhost:${PORT}/`);
 });

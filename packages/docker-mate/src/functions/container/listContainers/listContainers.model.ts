@@ -48,7 +48,9 @@ export type ListContainersSuccessResponse = Readonly<{
   systemInfo: SystemInfo;
 }>;
 
-export type ListContainersResponse = ListContainersSuccessResponse | ErrorResponse;
+export type ListContainersResponse =
+  | ListContainersSuccessResponse
+  | ErrorResponse;
 
 export type ListContainersHandler = RouteHandlerMethod<
   any,

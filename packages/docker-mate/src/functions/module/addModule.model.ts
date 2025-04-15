@@ -15,9 +15,4 @@ export type AddModuleBody = Readonly<{
 
 export type AddModuleResponse = SuccessResponse<any> | ErrorResponse;
 
-export type AddModuleHandler = RouteHandlerMethod<
-  any,
-  any,
-  any,
-  AddModuleBody
->;
+export type AddModuleHandler = RouteHandlerMethod<any, any, any, AddModuleBody>;

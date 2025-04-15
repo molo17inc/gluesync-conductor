@@ -20,8 +20,10 @@ export function getGluesyncSdkClient(): GluesyncSDKClient {
 }
 
 // Optional: Add error logging wrapper if you want parity with Python
-export function withCoreHubDiscoveryErrorLogging<T>(promise: Promise<T>): Promise<T> {
-  return promise.catch((error) => {
+export function withCoreHubDiscoveryErrorLogging<T>(
+  promise: Promise<T>,
+): Promise<T> {
+  return promise.catch(error => {
     // Replace with your preferred logger if needed
     // eslint-disable-next-line no-console
     console.error('Error in CoreHub discovery:', error);

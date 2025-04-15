@@ -15,8 +15,8 @@ async function swaggerPlugin(fastify: FastifyInstance) {
   await fastify.register(import('@fastify/swagger'), {
     mode: 'static',
     specification: {
-      document: swaggerContent
-    }
+      document: swaggerContent,
+    },
   });
 
   // Register Swagger UI
@@ -24,9 +24,9 @@ async function swaggerPlugin(fastify: FastifyInstance) {
     routePrefix: '/docs',
     uiConfig: {
       docExpansion: 'list',
-      deepLinking: true
+      deepLinking: true,
     },
-    staticCSP: true
+    staticCSP: true,
   });
 
   fastify.log.info('Swagger UI available at /docs');

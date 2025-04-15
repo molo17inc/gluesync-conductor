@@ -26,23 +26,23 @@ export interface GluesyncConfig {
   coreHubUrl?: string;
   coreHubHost?: string;
   coreHubPort?: number;
-  
+
   // SSL/TLS settings
   useSSL: boolean;
   skipSSLVerify: boolean;
   sslCertFile?: string;
   sslKeyFile?: string;
-  
+
   // License and security settings
   licenseFile: string;
   moduleTag: string;
   securityConfig?: string;
-  
+
   // Server settings
   host: string;
   port: number;
   debug: boolean;
-  
+
   // Other settings
   allowedOrigins: string[];
 }
@@ -53,23 +53,26 @@ export interface GluesyncConfig {
 const settings: GluesyncConfig = {
   // CoreHub connection settings
   coreHubUrl: process.env.CORE_HUB_URL,
-  
+
   // SSL/TLS settings
   useSSL: process.env.SSL_ENABLED === 'true',
   skipSSLVerify: process.env.SSL_SKIP_VERIFY === 'true',
   sslCertFile: process.env.SSL_CERT_FILE,
   sslKeyFile: process.env.SSL_KEY_FILE,
-  
+
   // License and security settings
-  licenseFile: process.env.GLUESYNC_LICENSE_FILE || '/opt/gluesync/data/gs-license.dat',
+  licenseFile:
+    process.env.GLUESYNC_LICENSE_FILE || '/opt/gluesync/data/gs-license.dat',
   moduleTag: process.env.GLUESYNC_MODULE_TAG || 'gluesync-conductor',
-  securityConfig: process.env.GLUESYNC_SECURITY_CONFIG || '/opt/gluesync/data/security-config.json',
-  
+  securityConfig:
+    process.env.GLUESYNC_SECURITY_CONFIG ||
+    '/opt/gluesync/data/security-config.json',
+
   // Server settings
   host: process.env.HOST || '0.0.0.0',
   port: parseInt(process.env.PORT || '50000', 10),
   debug: process.env.DEBUG === 'true',
-  
+
   // Other settings
   allowedOrigins: (process.env.ALLOWED_ORIGINS || '*').split(','),
 };
@@ -80,14 +83,16 @@ const settings: GluesyncConfig = {
  */
 export function updateCoreHubUrl(url: string | null): void {
   if (!url) return;
-  
+
   settings.coreHubUrl = url;
-  
+
   // Parse the URL to extract host and port
   try {
     const parsedUrl = new URL(url);
     settings.coreHubHost = parsedUrl.hostname;
-    settings.coreHubPort = parseInt(parsedUrl.port, 10) || (parsedUrl.protocol === 'https:' ? 443 : 80);
+    settings.coreHubPort =
+      parseInt(parsedUrl.port, 10) ||
+      (parsedUrl.protocol === 'https:' ? 443 : 80);
     settings.useSSL = parsedUrl.protocol === 'https:';
   } catch (error) {
     console.error(`Invalid CoreHub URL: ${url}`, error);

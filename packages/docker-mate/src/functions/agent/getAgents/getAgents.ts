@@ -8,39 +8,43 @@ import parseImageTag from '../../../helpers/parseImageTag/parseImageTag';
  */
 export const getAgents: GetAgentsHandler = async (
   request: FastifyRequest,
-  reply: FastifyReply
+  reply: FastifyReply,
 ) => {
   try {
     // Get all containers (running and stopped)
-    const containerList = await request.server.docker.listContainers({ all: true });
-    
+    const containerList = await request.server.docker.listContainers({
+      all: true,
+    });
+
     // Get Docker system information (CPU count and total memory)
     const dockerInfo = await request.server.docker.info();
     const systemInfo = {
       ncpu: dockerInfo.NCPU,
-      memTotal: dockerInfo.MemTotal
+      memTotal: dockerInfo.MemTotal,
     };
-    
-    request.log.info(`Filtering agents from ${containerList.length} containers`);
-    
+
+    request.log.info(
+      `Filtering agents from ${containerList.length} containers`,
+    );
+
     // Filter and process containers to find agents
     const agents = [];
-    
+
     for (const containerInfo of containerList) {
       try {
         const container = request.server.docker.getContainer(containerInfo.Id);
         const details = await container.inspect();
-        
+
         // Check environment variables for type=source or type=target
         const envVars = details.Config?.Env || [];
         const isAgent = envVars.some((env: string) => {
           return env === 'type=source' || env === 'type=target';
         });
-        
+
         if (!isAgent) {
           continue; // Skip this container if it's not an agent
         }
-        
+
         // Extract the type from environment variables
         let type: 'source' | 'target' = 'source'; // Default
         for (const env of envVars) {
@@ -52,54 +56,57 @@ export const getAgents: GetAgentsHandler = async (
             }
           }
         }
-        
+
         // Extract the image name and tag
         const imageString = details.Config?.Image || '';
         const { name, tag } = parseImageTag(imageString);
-        
+
         // Get labels
         const labels = details.Config?.Labels || {};
-        
+
         // Check for version tag label
         let versionTag = tag || '';
         const versionTagLabel = Object.entries(labels).find(
-          ([key]) => key === 'com.molo17.conductor.versiontag'
+          ([key]) => key === 'com.molo17.conductor.versiontag',
         );
-        
+
         if (versionTagLabel) {
           const [_, labelVersionTag] = versionTagLabel;
-          versionTag = typeof labelVersionTag === 'string' ? labelVersionTag : '';
+          versionTag =
+            typeof labelVersionTag === 'string' ? labelVersionTag : '';
         }
-        
+
         agents.push({
           id: containerInfo.Id,
           imageName: name,
           type,
-          nickname: details.Name ? details.Name.replace(/^\//,'') : '',
+          nickname: details.Name ? details.Name.replace(/^\//, '') : '',
           tag: tag,
           versionTag: versionTag,
           persisted: false, // Not using compose file here
           environment: envVars,
           ports: containerInfo.Ports || [],
           volumes: details.Mounts?.map((mount: any) => mount.Source) || [],
-          hostConfig: details.HostConfig || {}
+          hostConfig: details.HostConfig || {},
         });
       } catch (containerError) {
-        request.log.warn(`Error processing container ${containerInfo.Id}: ${containerError instanceof Error ? containerError.message : String(containerError)}`);
+        request.log.warn(
+          `Error processing container ${containerInfo.Id}: ${containerError instanceof Error ? containerError.message : String(containerError)}`,
+        );
         // Continue with next container
       }
     }
-    
-    reply.send({ 
-      success: true, 
+
+    reply.send({
+      success: true,
       data: agents,
-      systemInfo
+      systemInfo,
     });
   } catch (error) {
     request.log.error('Error getting agents:', error);
-    reply.status(500).send({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    reply.status(500).send({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 };

@@ -1,13 +1,13 @@
 /**
  * Basic example of connecting to CoreHub using the Gluesync SDK.
- * 
+ *
  * This example demonstrates:
  * 1. Creating a GluesyncClient
  * 2. Setting up event handlers
  * 3. Connecting to CoreHub
  * 4. Handling the connection token
  * 5. Disconnecting after a timeout
- * 
+ *
  * Usage:
  * - Make sure you have a valid gs-license.dat file in the current directory
  * - Set the CORE_HUB_ADDRESS environment variable or use autodiscovery
@@ -22,7 +22,7 @@ process.env.DEBUG = DEBUG;
 
 async function main() {
   console.log('Starting Gluesync CoreHub connection example...');
-  
+
   try {
     // Create the client with either a specific host or autodiscovery
     const client = new GluesyncClient({
@@ -36,40 +36,44 @@ async function main() {
       // Uncomment if using SSL
       // keystorePath: './keystore.jks',
       // keystorePassword: 'password',
-      timeout: 10000
+      timeout: 10000,
     });
-    
+
     // Set up event handlers
-    client.onConnected = (token) => {
+    client.onConnected = token => {
       console.log(`Connected to CoreHub successfully!`);
       console.log(`Received token: ${token.substring(0, 20)}...`);
     };
-    
-    client.onDisconnected = (reason) => {
+
+    client.onDisconnected = reason => {
       console.log(`Disconnected from CoreHub: ${reason}`);
     };
-    
-    client.onError = (error) => {
+
+    client.onError = error => {
       console.error(`Error occurred: ${error.message}`);
     };
-    
+
     // Connect to CoreHub
     console.log('Connecting to CoreHub...');
     const token = await client.connect();
-    
-    console.log(`Connection established with token: ${token.substring(0, 20)}...`);
+
+    console.log(
+      `Connection established with token: ${token.substring(0, 20)}...`,
+    );
     console.log(`Connected: ${client.isConnected}`);
-    
+
     // Keep the connection alive for a while
     const connectionDuration = 10000; // 10 seconds
-    console.log(`Keeping connection alive for ${connectionDuration / 1000} seconds...`);
-    
+    console.log(
+      `Keeping connection alive for ${connectionDuration / 1000} seconds...`,
+    );
+
     await new Promise(resolve => setTimeout(resolve, connectionDuration));
-    
+
     // Disconnect
     console.log('Disconnecting from CoreHub...');
     await client.disconnect();
-    
+
     console.log('Example completed successfully!');
   } catch (error) {
     console.error('Error in example:', error);

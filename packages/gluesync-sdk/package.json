@@ -6,6 +6,9 @@
   "types": "dist/index.d.ts",
   "bin": "dist/standalone.js",
   "scripts": {
+    "format": "prettier --ignore-path ../.prettierignore .",
+    "format:check": "yarn format --check",
+    "format:write": "yarn format --write",
     "build": "tsc",
     "clean": "rimraf dist",
     "prebuild": "npm run clean",

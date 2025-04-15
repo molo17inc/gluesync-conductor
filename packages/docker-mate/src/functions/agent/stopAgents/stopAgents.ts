@@ -23,7 +23,7 @@ const handler: StopAgentsHandler = async (req, reply) => {
       cwd: getRootPath(),
       config: filename,
       log: true,
-      commandOptions: [id] // Stop only the specified service
+      commandOptions: [id], // Stop only the specified service
     });
 
     req.log.info(result);
