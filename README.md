@@ -355,7 +355,7 @@ PROJECT_CWD=/path/to/your/directory PORT=50015 yarn dev
 
 ## Integration Guide
 
-For detailed integration flows and code examples showing how to use the Gluesync Conductor API in your applications, see the [Integration Flows Guide](./docs/integration-flows.md). This guide includes:
+For detailed integration flows and code examples showing how to use the Gluesync Conductor API in your applications, see the [Integration Flows Guide](./packages/docker-mate/docs/integration-flows.md). This guide includes:
 
 - Diagrams for container addition and update workflows
 - Code examples for common operations

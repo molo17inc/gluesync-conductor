@@ -30,7 +30,7 @@ const handler: AddAgentHandler = async (req, reply) => {
         const containerName = `${imageName}-${type}-agent`;
         const agentLabels = [
           `com.molo17.conductor.unique_id=${name || containerName}`,
-          `com.molo17.conductor.versiontag=${tag || 'latest'}`,
+          `com.molo17.conductor.versiontag=${tag}`,
           'com.molo17.conductor.type=agent',
         ];
         const service = createComposeService({
