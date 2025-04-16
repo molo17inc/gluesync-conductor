@@ -1,0 +1,23 @@
+{
+  "name": "@gluesync/scripts",
+  "version": "0.0.0",
+  "description": "Scripts package",
+  "author": "MOLO17 <web@molo17.com>",
+  "type": "module",
+  "bin": {
+    "buildService": "lib/buildService.js"
+  },
+  "scripts": {
+    "format": "prettier --ignore-path ../../.prettierignore .",
+    "format:check": "yarn format --check",
+    "format:write": "yarn format --write",
+    "build": "yarn tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "dotenv": "^16.5.0",
+    "esbuild": "0.25.2",
+    "prettier": "^3.4.2",
+    "typescript": "5.8.3"
+  }
+}

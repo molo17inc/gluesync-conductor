@@ -20,7 +20,7 @@ import {
   GluesyncConnectionError,
   GluesyncLicenseError,
   GluesyncAuthenticationError,
-} from 'gluesync-nodejs-corehub-handshake-sdk';
+} from 'gluesync-corehub-sdk';
 import settings, { updateCoreHubUrl } from './config';
 
 // Define Node.js types

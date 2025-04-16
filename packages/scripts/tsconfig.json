@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["../../typings.d.ts", "**/src/**/*"],
+  "compilerOptions": {
+    "outDir": "lib/generated",
+    "module": "ES2022",
+    "noEmit": false,
+    "sourceMap": false,
+    "declaration": false,
+    "declarationMap": false
+  }
+}

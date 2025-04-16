@@ -9,18 +9,16 @@
     "format": "prettier .",
     "format:check": "yarn format --check",
     "format:write": "yarn format --write",
-    "type-check": "yarn workspaces foreach -v -i --all --parallel --exclude clz-tower-control run type-check",
-    "build": "yarn workspaces run build",
-    "start": "node packages/docker-mate/dist/index.js",
-    "dev": "yarn workspace docker-mate dev",
-    "lint": "eslint . --ext .ts,.tsx"
+    "type-check": "yarn workspaces foreach -v -i --all --parallel --exclude gluesync-nodejs-monorepo run type-check",
+    "build": "yarn workspaces foreach -v -i --all --topological-dev --parallel --exclude gluesync-nodejs-monorepo run build",
+    "do": "echo 'Installing dependencies...' && yarn && echo 'Building...' && yarn build && echo 'Type check...' && yarn type-check"
   },
   "devDependencies": {
     "@types/dockerode": "^3.3.38",
     "@types/node": "^22.14.1",
     "eslint": "^9.19.0",
     "prettier": "^3.4.2",
-    "typescript": "^5.8.3"
+    "typescript": "5.8.3"
   },
   "dependencies": {
     "fastify": "5.2.1"

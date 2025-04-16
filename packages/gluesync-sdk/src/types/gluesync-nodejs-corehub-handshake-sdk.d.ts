@@ -1,8 +1,8 @@
 /**
- * Type declarations for gluesync-nodejs-corehub-handshake-sdk
+ * Type declarations for gluesync-corehub-sdk
  */
 
-declare module 'gluesync-nodejs-corehub-handshake-sdk' {
+declare module 'gluesync-corehub-sdk' {
   export interface GluesyncClientOptions {
     host?: string;
     port?: number;
