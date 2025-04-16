@@ -169,7 +169,7 @@ const handler: GetContainerHandler = async (req, reply) => {
       const containerData: ContainerData = {
         imageName,
         type,
-        nickname: details.Name ? details.Name.replace(/^\//, '') : '',
+        name: details.Name ? details.Name.replace(/^\//, '') : '',
         tag: tag || 'latest',
         versionTag: versionTagFromLabel || tag || 'latest', // Use label if available, otherwise use parsed tag
         environment,

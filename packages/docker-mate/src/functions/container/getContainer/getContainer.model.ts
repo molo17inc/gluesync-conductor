@@ -30,7 +30,7 @@ export type SystemInfo = Readonly<{
 export type ContainerData = Readonly<{
   imageName: string;
   type: 'target' | 'source';
-  nickname?: string;
+  name?: string;
   tag?: string;
   versionTag?: string;
   environment?: Record<string, any>;

@@ -26,7 +26,7 @@ const filename = 'compose.agents.yml';
 const handler: UpdateContainerHandler = async (req, reply) => {
   try {
     const { id } = req.params;
-    const { imageName, type, nickname, tag, environment, ports, volumes } =
+    const { imageName, type, name, tag, environment, ports, volumes } =
       req.body;
 
     // Read the current compose file
@@ -66,8 +66,8 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       const currentImageParts = currentImage.split(':');
       const currentImageName = currentImageParts[0];
 
-      // Get the container nickname (either the new one or the existing one)
-      const containerNickname = nickname || currentService.container_name;
+      // Get the container name (either the new one or the existing one)
+      const containerName = name || currentService.container_name;
 
       // Get the container tag (either the new one or the existing one)
       const currentTag = currentImage.split(':')[1] || 'latest';
@@ -84,11 +84,11 @@ const handler: UpdateContainerHandler = async (req, reply) => {
                 image: `molo17/${imageName || currentImageName.replace('molo17/', '')}:${containerTag}`,
               }
             : {}),
-          // Only update the container_name if nickname is provided
-          ...(nickname ? { container_name: nickname } : {}),
+          // Only update the container_name if name is provided
+          ...(name ? { container_name: name } : {}),
           // Always update the labels to ensure we have the unique_id and versiontag
           labels: [
-            `com.molo17.conductor.unique_id=${containerNickname}`,
+            `com.molo17.conductor.unique_id=${containerName}`,
             `com.molo17.conductor.versiontag=${containerTag}`,
           ],
           // Only update the environment if environment is provided
