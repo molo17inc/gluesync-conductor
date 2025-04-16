@@ -1,0 +1,12 @@
+services:
+  gluesync-conductor:
+    build: .
+    container_name: gluesync-conductor
+    image: gluesync-conductor
+    restart: always
+    environment:
+      - MQTT_BROKER_URL=mqtt://mosquitto
+      - MAC_ADDRESS=78:9A:18:D0:9C:8F
+      - BASE_URL=https://test.labs.cerneli.it
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

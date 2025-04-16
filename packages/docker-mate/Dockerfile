@@ -1,40 +1,10 @@
-FROM node:18-alpine AS builder
+FROM node:22-alpine
 
-# Setup app directory
-WORKDIR /app
-
-# Install development dependencies
-COPY package.json yarn.lock ./
-COPY packages/docker-mate/package.json ./packages/docker-mate/
-COPY packages/gluesync-sdk/package.json ./packages/gluesync-sdk/
-COPY packages/gluesync-corehub-sdk/package.json ./packages/gluesync-corehub-sdk/
-COPY .yarn ./.yarn
-COPY .yarnrc.yml ./
-RUN yarn install --frozen-lockfile
-
-# Copy source files
-COPY tsconfig.json ./
-COPY packages/docker-mate ./packages/docker-mate/
-COPY packages/gluesync-sdk ./packages/gluesync-sdk/
-COPY packages/gluesync-corehub-sdk ./packages/gluesync-corehub-sdk/
-
-# Build the application
-RUN yarn workspaces run build
-
-# Production image
-FROM node:18-alpine
-
-# Install docker CLI for docker-mate functionality
-RUN apk add --no-cache docker
-
-# Setup app directory
-WORKDIR /app
+# Install Docker CLI
+RUN apk add --no-cache docker-cli docker-cli-compose
 
 # Create Gluesync data directory structure
 RUN mkdir -p /opt/gluesync/data
-
-# Copy only the built application
-COPY --from=builder /app/packages/docker-mate/dist ./packages/docker-mate/dist
 
 # Set environment variables
 ENV NODE_ENV=production
@@ -46,11 +16,15 @@ ENV HOST=0.0.0.0
 ENV PORT=1717
 ENV DOCKER_HOST=unix:///var/run/docker.sock
 
-# Expose the port
+# Setup app directory
+WORKDIR /opt/docker-mate
+
+COPY build/index.js index.js
+COPY build/index.js.map index.js.map
+
+COPY swagger-static.json swagger-static.json
+COPY docs/gluesync-conductor.svg static/logo.svg
+
 EXPOSE 1717
 
-# Create a volume for the Docker socket
-VOLUME /var/run/docker.sock
-
-# Start the application
-CMD ["node", "packages/docker-mate/dist/index.js"]
+CMD ["index.js"]
