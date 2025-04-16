@@ -26,7 +26,8 @@ const handler: ListContainersHandler = async (req, reply) => {
     // Read the compose file to check which containers are persisted
     let composeFile: ComposeFile = { services: {} };
     try {
-      composeFile = await readYmlFile<ComposeFile>('compose.agents.yml');
+      composeFile =
+        (await readYmlFile<ComposeFile>('compose.agents.yml')) || {};
     } catch (ymlError) {
       req.log.warn(
         `Could not read compose file: ${ymlError instanceof Error ? ymlError.message : String(ymlError)}`,

@@ -123,7 +123,7 @@ const handler: GetContainerHandler = async (req, reply) => {
 
       try {
         const composeFile =
-          await readYmlFile<ComposeFile>('compose.agents.yml');
+          (await readYmlFile<ComposeFile>('compose.agents.yml')) || {};
 
         // Get labels
         const labels = details.Config?.Labels || {};

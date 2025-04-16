@@ -30,7 +30,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       req.body;
 
     // Read the current compose file
-    const composeFile = await readYmlFile<ComposeFile>(filename);
+    const composeFile = (await readYmlFile<ComposeFile>(filename)) || {};
 
     // Find the service with the matching container ID
     let serviceKey: string | null = null;
@@ -67,7 +67,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       const currentImageName = currentImageParts[0];
 
       // Get the container name (either the new one or the existing one)
-      const containerName = name || currentService.container_name;
+      const containerName2 = name || currentService.container_name;
 
       // Get the container tag (either the new one or the existing one)
       const currentTag = currentImage.split(':')[1] || 'latest';
@@ -88,7 +88,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
           ...(name ? { container_name: name } : {}),
           // Always update the labels to ensure we have the unique_id and versiontag
           labels: [
-            `com.molo17.conductor.unique_id=${containerName}`,
+            `com.molo17.conductor.unique_id=${containerName2}`,
             `com.molo17.conductor.versiontag=${containerTag}`,
           ],
           // Only update the environment if environment is provided
