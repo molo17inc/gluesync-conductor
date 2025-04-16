@@ -22,7 +22,7 @@ export type AddContainerBody = Readonly<{
   containers: ReadonlyArray<{
     imageName: string;
     type: 'target' | 'source';
-    nickname?: string;
+    name?: string;
     tag?: string;
     environment?: Record<string, any>;
     ports?: ReadonlyArray<string>;

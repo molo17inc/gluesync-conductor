@@ -6,7 +6,7 @@ export type AddAgentBody = Readonly<{
   agents: ReadonlyArray<{
     imageName: string;
     type: 'target' | 'source';
-    nickname?: string;
+    name?: string;
     tag?: string;
     environment?: Record<string, any>;
     ports?: ReadonlyArray<string>;

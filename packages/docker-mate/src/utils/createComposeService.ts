@@ -3,7 +3,7 @@ import { ComposeService } from '../models/composeFile.model';
 interface CreateComposeServiceOptions {
   imageName: string;
   type: string;
-  nickname?: string;
+  name?: string;
   tag?: string;
   environment?: Record<string, string>;
   ports?: readonly string[];
@@ -15,7 +15,7 @@ interface CreateComposeServiceOptions {
 export function createComposeService({
   imageName,
   type,
-  nickname,
+  name,
   tag,
   environment = {},
   ports = [],
@@ -24,10 +24,10 @@ export function createComposeService({
   extraEnv = {},
 }: CreateComposeServiceOptions): ComposeService {
   const containerName = `${imageName}-${type}-agent`;
-  const containerNickname = nickname || containerName;
+  const containerDisplayName = name || containerName;
   return {
     image: `molo17/${imageName}:${tag || 'latest'}`,
-    container_name: containerNickname,
+    container_name: containerDisplayName,
     restart: 'unless-stopped',
     labels,
     environment: Object.entries({

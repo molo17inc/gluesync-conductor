@@ -37,22 +37,22 @@ const handler: AddContainerHandler = async (req, reply) => {
         const {
           imageName,
           type,
-          nickname,
+          name,
           tag,
           environment,
           ports = [],
           volumes = [],
         } = container;
         const containerName = `${imageName}-${type}-agent`;
-        const containerNickname = nickname || containerName;
+        const containerDisplayName = name || containerName;
         const containerLabels = [
-          `com.molo17.conductor.unique_id=${containerNickname}`,
+          `com.molo17.conductor.unique_id=${containerDisplayName}`,
           `com.molo17.conductor.versiontag=${tag || 'latest'}`,
         ];
         const service = createComposeService({
           imageName,
           type,
-          nickname,
+          name,
           tag,
           environment,
           ports,

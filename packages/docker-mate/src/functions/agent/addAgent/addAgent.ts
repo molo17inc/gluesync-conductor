@@ -20,7 +20,7 @@ const handler: AddAgentHandler = async (req, reply) => {
         const {
           imageName,
           type,
-          nickname,
+          name,
           tag,
           environment,
           ports = [],
@@ -29,14 +29,14 @@ const handler: AddAgentHandler = async (req, reply) => {
 
         const containerName = `${imageName}-${type}-agent`;
         const agentLabels = [
-          `com.molo17.conductor.unique_id=${nickname || containerName}`,
+          `com.molo17.conductor.unique_id=${name || containerName}`,
           `com.molo17.conductor.versiontag=${tag || 'latest'}`,
           'com.molo17.conductor.type=agent',
         ];
         const service = createComposeService({
           imageName,
           type,
-          nickname,
+          name,
           tag,
           environment,
           ports,
