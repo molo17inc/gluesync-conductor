@@ -9,7 +9,7 @@ image: node:20.10.0
 
 default:
   tags:
-    - docker
+    - gs-runners-hq
 
 variables:
   GIT_STRATEGY: fetch
@@ -29,12 +29,10 @@ build_mr:
   script:
     - export ENV="dev"
     - echo "Building..."
-    - yarn install --frozen-lockfile
-    - yarn workspaces run build
-    - echo "Lint check..."
-    - yarn lint
-    - echo "Running tests..."
-    - yarn workspaces run test
+    - corepack enable
+    - yarn --version 
+    - yarn install
+    - yarn do
   only:
     - merge_requests
 
@@ -46,17 +44,15 @@ build:
     - if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
     
     - echo "Building..."
-    - yarn install --frozen-lockfile
-    - yarn workspaces run build
+    - corepack enable
+    - yarn --version 
+    - yarn install
+    - yarn do
     
     - echo "Lint check..."
-    - yarn lint
-    
-    - echo "Running tests..."
-    - yarn workspaces run test
   artifacts:
     paths:
-      - packages/docker-mate/dist
+      - packages/docker-mate/build
       - packages/gluesync-sdk/dist
       - packages/gluesync-corehub-sdk/dist
     expire_in: 3 days
@@ -65,6 +61,7 @@ build:
     - develop
     - staging
     - main
+    - merge_requests
 
 quality:
   stage: quality
@@ -77,6 +74,7 @@ quality:
     - develop
     - staging
     - main
+    - merge_requests
 
 deploy:
   stage: deploy
@@ -92,43 +90,23 @@ deploy:
     - if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
 
     - apk add --no-cache bash
-    - echo "registry user" $CI_REGISTRY_USER
-    - echo "registry password" $CI_REGISTRY_PASSWORD
-    - echo "ci registry" $CI_REGISTRY
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - 
-      |
-      MODULE_NAME=${CI_COMMIT_TAG#tag-}  # Removes everything before "tag-"
-      MODULE_NAME=${MODULE_NAME%-v*}  # Removes everything after the last "-"
+    - docker login -u $CI_REGISTRY_USER -p "$CI_REGISTRY_PASSWORD"
+    - export DEFAULT_NAME="$DOCKER_REGISTRY/gluesync-conductor"
+    - cd packages/docker-mate
+    - docker build -t $DEFAULT_NAME .
+    - docker push $DEFAULT_NAME
 
-      TAGPART=`echo $CI_COMMIT_TAG | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)'`
 
-      DEFAULT_NAME=${DOCKER_REGISTRY}/${APP_NAME}
-      ADDITIONAL_TAG="${DEFAULT_NAME}:${TAGPART}"
-    
-    # For tags, also build multi-platform images
-    - |
-      if [[ -n "$CI_COMMIT_TAG" ]]; then
-        # Extract version from tag
-        TAGPART=`echo $CI_COMMIT_TAG | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)'`
-        
-        # Install QEMU for multi-architecture builds
-        docker run --privileged --rm tonistiigi/binfmt --install all
-        # Create and use a new builder instance
-        docker buildx create --name multiarch-builder --use
-        docker buildx inspect --bootstrap
-        
-        # Build and push multi-platform images
-        docker buildx build --platform linux/amd64,linux/arm64 \
-          --tag $DEFAULT_NAME:latest \
-          --tag "$ADDITIONAL_TAG" \
-          --push -f packages/docker-mate/Dockerfile .
-      fi
+    # - /bin/sh packages/scripts/docker-build.sh packages/docker-mate docker-mate-dev
+
+
   only:
     - develop
     - staging
     - main
     - tags
+    - merge_requests
+
 
 notify:
   stage: notify
