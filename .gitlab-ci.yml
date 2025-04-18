@@ -9,7 +9,7 @@ image: node:20.10.0
 
 default:
   tags:
-    - docker
+    - gs-runners-hq
 
 variables:
   GIT_STRATEGY: fetch
@@ -29,12 +29,10 @@ build_mr:
   script:
     - export ENV="dev"
     - echo "Building..."
-    - yarn install --frozen-lockfile
-    - yarn workspaces run build
-    - echo "Lint check..."
-    - yarn lint
-    - echo "Running tests..."
-    - yarn workspaces run test
+    - corepack enable
+    - yarn --version 
+    - yarn install
+    - yarn do
   only:
     - merge_requests
 
@@ -46,17 +44,15 @@ build:
     - if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
     
     - echo "Building..."
-    - yarn install --frozen-lockfile
-    - yarn workspaces run build
+    - corepack enable
+    - yarn --version 
+    - yarn install
+    - yarn do
     
     - echo "Lint check..."
-    - yarn lint
-    
-    - echo "Running tests..."
-    - yarn workspaces run test
   artifacts:
     paths:
-      - packages/docker-mate/dist
+      - packages/docker-mate/build
       - packages/gluesync-sdk/dist
       - packages/gluesync-corehub-sdk/dist
     expire_in: 3 days
@@ -65,6 +61,7 @@ build:
     - develop
     - staging
     - main
+    
 
 quality:
   stage: quality
@@ -86,49 +83,36 @@ deploy:
   needs:
     - build
   script:
-    - echo "Deploying..."
-    - if [[ $CI_COMMIT_BRANCH == "develop" ]] || [[ $CI_COMMIT_BRANCH == "" ]]; then export ENV="dev"; fi
-    - if [[ $CI_COMMIT_BRANCH == "staging" ]]; then export ENV="test"; fi
-    - if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
+   - |
+      if [[ $CI_COMMIT_BRANCH == "develop" ]] || [[ $CI_COMMIT_BRANCH == "" ]]; then export ENV="dev"; fi
+      if [[ $CI_COMMIT_BRANCH == "staging" ]]; then export ENV="test"; fi
+      if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
 
-    - apk add --no-cache bash
-    - echo "registry user" $CI_REGISTRY_USER
-    - echo "registry password" $CI_REGISTRY_PASSWORD
-    - echo "ci registry" $CI_REGISTRY
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-    - 
-      |
-      MODULE_NAME=${CI_COMMIT_TAG#tag-}  # Removes everything before "tag-"
-      MODULE_NAME=${MODULE_NAME%-v*}  # Removes everything after the last "-"
+      apk add --no-cache bash
+      echo "APP_NAME=$APP_NAME"
+      docker login -u $CI_REGISTRY_USER -p "$CI_REGISTRY_PASSWORD"
 
-      TAGPART=`echo $CI_COMMIT_TAG | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)'`
+      DEFAULT_NAME="$DOCKER_REGISTRY/$APP_NAME"
+      echo "DEFAULT_NAME=$DEFAULT_NAME"
 
-      DEFAULT_NAME=${DOCKER_REGISTRY}/${APP_NAME}
-      ADDITIONAL_TAG="${DEFAULT_NAME}:${TAGPART}"
-    
-    # For tags, also build multi-platform images
-    - |
-      if [[ -n "$CI_COMMIT_TAG" ]]; then
-        # Extract version from tag
-        TAGPART=`echo $CI_COMMIT_TAG | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)'`
-        
-        # Install QEMU for multi-architecture builds
-        docker run --privileged --rm tonistiigi/binfmt --install all
-        # Create and use a new builder instance
-        docker buildx create --name multiarch-builder --use
-        docker buildx inspect --bootstrap
-        
-        # Build and push multi-platform images
-        docker buildx build --platform linux/amd64,linux/arm64 \
-          --tag $DEFAULT_NAME:latest \
-          --tag "$ADDITIONAL_TAG" \
-          --push -f packages/docker-mate/Dockerfile .
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        TAGPART=$(echo "$CI_COMMIT_TAG" | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)')
+        VERSION_TAG="${DOCKER_REGISTRY}/${APP_NAME}:${TAGPART}"
+      else
+        VERSION_TAG="${DOCKER_REGISTRY}/${APP_NAME}:${ENV}"
       fi
+
+      echo "VERSION_TAG=$VERSION_TAG"
+
+      cd packages/docker-mate
+      docker build -t "$VERSION_TAG" .
+      docker push "$VERSION_TAG"
   only:
     - develop
     - staging
     - main
     - tags
+
 
 notify:
   stage: notify
