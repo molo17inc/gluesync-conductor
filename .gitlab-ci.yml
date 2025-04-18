@@ -61,7 +61,7 @@ build:
     - develop
     - staging
     - main
-    - merge_requests
+    - tags
 
 quality:
   stage: quality
@@ -74,7 +74,6 @@ quality:
     - develop
     - staging
     - main
-    - merge_requests
 
 deploy:
   stage: deploy
@@ -84,28 +83,36 @@ deploy:
   needs:
     - build
   script:
-    - echo "Deploying..."
-    - if [[ $CI_COMMIT_BRANCH == "develop" ]] || [[ $CI_COMMIT_BRANCH == "" ]]; then export ENV="dev"; fi
-    - if [[ $CI_COMMIT_BRANCH == "staging" ]]; then export ENV="test"; fi
-    - if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
+   - |
+     if [[ $CI_COMMIT_BRANCH == "develop" ]] || [[ $CI_COMMIT_BRANCH == "" ]]; then export ENV="dev"; fi
+     if [[ $CI_COMMIT_BRANCH == "staging" ]]; then export ENV="test"; fi
+     if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
 
-    - apk add --no-cache bash
-    - docker login -u $CI_REGISTRY_USER -p "$CI_REGISTRY_PASSWORD"
-    - export DEFAULT_NAME="$DOCKER_REGISTRY/gluesync-conductor"
-    - cd packages/docker-mate
-    - docker build -t $DEFAULT_NAME .
-    - docker push $DEFAULT_NAME
+     apk add --no-cache bash
+     echo "APP_NAME=$APP_NAME"
+     docker login -u $CI_REGISTRY_USER -p "$CI_REGISTRY_PASSWORD"
 
+     DEFAULT_NAME="$DOCKER_REGISTRY/$APP_NAME"
+     echo "DEFAULT_NAME=$DEFAULT_NAME"
 
-    # - /bin/sh packages/scripts/docker-build.sh packages/docker-mate docker-mate-dev
+     if [ -n "$CI_COMMIT_TAG" ]; then
+      TAGPART=$(echo "$CI_COMMIT_TAG" | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)')
+      VERSION_TAG="${DOCKER_REGISTRY}/${APP_NAME}:${TAGPART}"
+     else
+      VERSION_TAG="${DOCKER_REGISTRY}/${APP_NAME}:${ENV}"
+     fi
 
+     echo "VERSION_TAG=$VERSION_TAG"
 
+     cd packages/docker-mate
+     docker build -t "$VERSION_TAG" .
+     docker push "$VERSION_TAG"
   only:
     - develop
     - staging
     - main
     - tags
-    - merge_requests
+
 
 
 notify:
