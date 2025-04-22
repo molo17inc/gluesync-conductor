@@ -18,7 +18,7 @@
     "dockerode": "^4.0.4",
     "fastify": "^5.2.1",
     "fastify-plugin": "^5.0.1",
-    "gluesync-corehub-sdk": "workspace:*",
+    "gluesync-corehub-sdk": "git+https://gitlab.com/molo17-public/gluesync/gluesync-nodejs-corehub-handshake-sdk.git",
     "gluesync-sdk": "workspace:*",
     "yaml": "^2.7.0"
   },

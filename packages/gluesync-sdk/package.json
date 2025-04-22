@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "fastify": "^5.2.1",
-    "gluesync-corehub-sdk": "workspace:*"
+    "gluesync-corehub-sdk": "git+https://gitlab.com/molo17-public/gluesync/gluesync-nodejs-corehub-handshake-sdk.git"
   },
   "devDependencies": {
     "@gluesync/scripts": "workspace:*",
