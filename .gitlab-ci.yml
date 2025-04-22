@@ -61,7 +61,7 @@ build:
     - develop
     - staging
     - main
-    
+    - tags
 
 quality:
   stage: quality
@@ -112,7 +112,6 @@ deploy:
     - staging
     - main
     - tags
-
 
 notify:
   stage: notify

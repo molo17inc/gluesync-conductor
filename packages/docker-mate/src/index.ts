@@ -425,6 +425,61 @@ server.delete('/containers/:id', {
   handler: removeAgent,
 });
 
+server.post('/agents/add', {
+  schema: {
+    description: 'add a agents ',
+    tags: ['agents'],
+    body: {
+      type: 'object',
+      properties: {
+        agents: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              imageName: { type: 'string' },
+              type: { type: 'string', enum: ['target', 'source'] },
+              name: { type: 'string' },
+              tag: { type: 'string' },
+              environment: {
+                type: 'object',
+                additionalProperties: true,
+              },
+              ports: {
+                type: 'array',
+                items: { type: 'string' },
+              },
+              volumes: {
+                type: 'array',
+                items: { type: 'string' },
+              },
+            },
+            required: ['imageName', 'type'],
+          },
+        },
+      },
+      required: ['agents'],
+    },
+    response: {
+      200: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { type: 'object' },
+        },
+      },
+      404: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', default: false },
+          error: { type: 'string' },
+        },
+      },
+    },
+  },
+  handler: addAgent,
+});
+
 server.post('/containers/:id/start', {
   schema: {
     description: 'Start a container',
