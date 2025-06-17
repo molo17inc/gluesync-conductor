@@ -50,7 +50,6 @@ const RAW_RUNTIME_STATE =
           ["@types/dockerode", "npm:3.3.38"],\
           ["@types/node", "npm:22.14.1"],\
           ["eslint", "virtual:beb8dda6f7964700067e23ce77cb39672e53232747d9207129ce290669aa7b52a4867d6f76308bd24f79bcd9d13683b90dcd0eadd6b5cdd6c82249bcb0d213d1#npm:9.24.0"],\
-          ["fastify", "npm:5.2.1"],\
           ["prettier", "npm:3.5.3"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\
         ],\
@@ -4267,28 +4266,6 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["fastify", [\
-      ["npm:5.2.1", {\
-        "packageLocation": "./.yarn/cache/fastify-npm-5.2.1-e68bf97acc-ac78582218.zip/node_modules/fastify/",\
-        "packageDependencies": [\
-          ["fastify", "npm:5.2.1"],\
-          ["@fastify/ajv-compiler", "npm:4.0.2"],\
-          ["@fastify/error", "npm:4.1.0"],\
-          ["@fastify/fast-json-stringify-compiler", "npm:5.0.3"],\
-          ["@fastify/proxy-addr", "npm:5.0.0"],\
-          ["abstract-logging", "npm:2.0.1"],\
-          ["avvio", "npm:9.1.0"],\
-          ["fast-json-stringify", "npm:6.0.1"],\
-          ["find-my-way", "npm:9.3.0"],\
-          ["light-my-request", "npm:6.6.0"],\
-          ["pino", "npm:9.6.0"],\
-          ["process-warning", "npm:4.0.1"],\
-          ["rfdc", "npm:1.4.1"],\
-          ["secure-json-parse", "npm:3.0.2"],\
-          ["semver", "npm:7.7.1"],\
-          ["toad-cache", "npm:3.7.0"]\
-        ],\
-        "linkType": "HARD"\
-      }],\
       ["npm:5.3.0", {\
         "packageLocation": "./.yarn/cache/fastify-npm-5.3.0-5cf8e4d4aa-efbb0f29d7.zip/node_modules/fastify/",\
         "packageDependencies": [\
@@ -4781,7 +4758,6 @@ const RAW_RUNTIME_STATE =
           ["@types/dockerode", "npm:3.3.38"],\
           ["@types/node", "npm:22.14.1"],\
           ["eslint", "virtual:beb8dda6f7964700067e23ce77cb39672e53232747d9207129ce290669aa7b52a4867d6f76308bd24f79bcd9d13683b90dcd0eadd6b5cdd6c82249bcb0d213d1#npm:9.24.0"],\
-          ["fastify", "npm:5.2.1"],\
           ["prettier", "npm:3.5.3"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\
         ],\
@@ -7180,13 +7156,6 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["secure-json-parse", [\
-      ["npm:3.0.2", {\
-        "packageLocation": "./.yarn/cache/secure-json-parse-npm-3.0.2-57c3bac78a-a83e2067ee.zip/node_modules/secure-json-parse/",\
-        "packageDependencies": [\
-          ["secure-json-parse", "npm:3.0.2"]\
-        ],\
-        "linkType": "HARD"\
-      }],\
       ["npm:4.0.0", {\
         "packageLocation": "./.yarn/cache/secure-json-parse-npm-4.0.0-5f46627578-c36c9dec9a.zip/node_modules/secure-json-parse/",\
         "packageDependencies": [\
