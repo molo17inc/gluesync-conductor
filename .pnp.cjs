@@ -23,8 +23,8 @@ const RAW_RUNTIME_STATE =
       "reference": "workspace:packages/gluesync-corehub-sdk"\
     },\
     {\
-      "name": "gluesync-sdk",\
-      "reference": "workspace:packages/gluesync-sdk"\
+      "name": "gluesync-sdk-client",\
+      "reference": "workspace:packages/gluesync-sdk-client"\
     },\
     {\
       "name": "@gluesync/scripts",\
@@ -38,7 +38,7 @@ const RAW_RUNTIME_STATE =
     ["docker-mate", ["workspace:packages/docker-mate"]],\
     ["gluesync-corehub-sdk", ["workspace:packages/gluesync-corehub-sdk"]],\
     ["gluesync-nodejs-monorepo", ["workspace:."]],\
-    ["gluesync-sdk", ["workspace:packages/gluesync-sdk"]]\
+    ["gluesync-sdk-client", ["workspace:packages/gluesync-sdk-client"]]\
   ],\
   "fallbackPool": [\
   ],\
@@ -3635,10 +3635,9 @@ const RAW_RUNTIME_STATE =
           ["dockerode", "npm:4.0.5"],\
           ["fastify", "npm:5.3.0"],\
           ["fastify-plugin", "npm:5.0.1"],\
-          ["gluesync-corehub-sdk", "https://gitlab.com/molo17-public/gluesync/gluesync-nodejs-corehub-handshake-sdk.git#commit=2638d87e9fd18f1aa0d23d7e8af348d7defdd399"],\
-          ["gluesync-sdk", "workspace:packages/gluesync-sdk"],\
+          ["gluesync-sdk-client", "workspace:packages/gluesync-sdk-client"],\
           ["nodemon", "npm:3.1.9"],\
-          ["ts-node", "virtual:9c3b6e0d0209cfa3fcb52fdc1959eb31a7c433894a1a4a1f3855796caa02d7b6f425561a8151cba21b5c077241bc387e3c1516b60b40ebd760faea3e8d74df1f#npm:10.9.2"],\
+          ["ts-node", "virtual:034f9ed205a5f66264fee41c6df436c9dcef3f8116beb72d220f3710a40569698233dbcf841b133703c95cf748137a93ca21390dc36b185b836a4c7aff3d5dc7#npm:10.9.2"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"],\
           ["yaml", "npm:2.7.1"]\
         ],\
@@ -4743,7 +4742,7 @@ const RAW_RUNTIME_STATE =
           ["node-forge", "npm:1.3.1"],\
           ["rimraf", "npm:5.0.10"],\
           ["ts-jest", "virtual:3408bd0e33ef73815eed74b2767c86ef50275904a17dbede7233051008ed491bfbb231c38c40aef0e2f68dd5a1612742662f99b1539a36dc8ec7a830b307f180#npm:29.3.2"],\
-          ["ts-node", "virtual:9c3b6e0d0209cfa3fcb52fdc1959eb31a7c433894a1a4a1f3855796caa02d7b6f425561a8151cba21b5c077241bc387e3c1516b60b40ebd760faea3e8d74df1f#npm:10.9.2"],\
+          ["ts-node", "virtual:034f9ed205a5f66264fee41c6df436c9dcef3f8116beb72d220f3710a40569698233dbcf841b133703c95cf748137a93ca21390dc36b185b836a4c7aff3d5dc7#npm:10.9.2"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"],\
           ["ws", "virtual:2c8b178ae90e48145e36834a75769a72b355d2f885812244b0dd104d39434141eb5842650a55bb1c3e580fdade9abe3716d9165fdbc36ca2cee8f705173b72f3#npm:8.18.1"]\
         ],\
@@ -4764,17 +4763,17 @@ const RAW_RUNTIME_STATE =
         "linkType": "SOFT"\
       }]\
     ]],\
-    ["gluesync-sdk", [\
-      ["workspace:packages/gluesync-sdk", {\
-        "packageLocation": "./packages/gluesync-sdk/",\
+    ["gluesync-sdk-client", [\
+      ["workspace:packages/gluesync-sdk-client", {\
+        "packageLocation": "./packages/gluesync-sdk-client/",\
         "packageDependencies": [\
-          ["gluesync-sdk", "workspace:packages/gluesync-sdk"],\
+          ["gluesync-sdk-client", "workspace:packages/gluesync-sdk-client"],\
           ["@gluesync/scripts", "workspace:packages/scripts"],\
           ["@types/node", "npm:22.14.1"],\
           ["fastify", "npm:5.3.0"],\
           ["gluesync-corehub-sdk", "https://gitlab.com/molo17-public/gluesync/gluesync-nodejs-corehub-handshake-sdk.git#commit=2638d87e9fd18f1aa0d23d7e8af348d7defdd399"],\
           ["rimraf", "npm:5.0.10"],\
-          ["ts-node", "virtual:9c3b6e0d0209cfa3fcb52fdc1959eb31a7c433894a1a4a1f3855796caa02d7b6f425561a8151cba21b5c077241bc387e3c1516b60b40ebd760faea3e8d74df1f#npm:10.9.2"],\
+          ["ts-node", "virtual:034f9ed205a5f66264fee41c6df436c9dcef3f8116beb72d220f3710a40569698233dbcf841b133703c95cf748137a93ca21390dc36b185b836a4c7aff3d5dc7#npm:10.9.2"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\
         ],\
         "linkType": "SOFT"\
@@ -7768,10 +7767,10 @@ const RAW_RUNTIME_STATE =
         ],\
         "linkType": "SOFT"\
       }],\
-      ["virtual:9c3b6e0d0209cfa3fcb52fdc1959eb31a7c433894a1a4a1f3855796caa02d7b6f425561a8151cba21b5c077241bc387e3c1516b60b40ebd760faea3e8d74df1f#npm:10.9.2", {\
-        "packageLocation": "./.yarn/__virtual__/ts-node-virtual-60d7257ebb/0/cache/ts-node-npm-10.9.2-3f3890b9ac-a91a15b3c9.zip/node_modules/ts-node/",\
+      ["virtual:034f9ed205a5f66264fee41c6df436c9dcef3f8116beb72d220f3710a40569698233dbcf841b133703c95cf748137a93ca21390dc36b185b836a4c7aff3d5dc7#npm:10.9.2", {\
+        "packageLocation": "./.yarn/__virtual__/ts-node-virtual-fcc6f79cd1/0/cache/ts-node-npm-10.9.2-3f3890b9ac-a91a15b3c9.zip/node_modules/ts-node/",\
         "packageDependencies": [\
-          ["ts-node", "virtual:9c3b6e0d0209cfa3fcb52fdc1959eb31a7c433894a1a4a1f3855796caa02d7b6f425561a8151cba21b5c077241bc387e3c1516b60b40ebd760faea3e8d74df1f#npm:10.9.2"],\
+          ["ts-node", "virtual:034f9ed205a5f66264fee41c6df436c9dcef3f8116beb72d220f3710a40569698233dbcf841b133703c95cf748137a93ca21390dc36b185b836a4c7aff3d5dc7#npm:10.9.2"],\
           ["@cspotcode/source-map-support", "npm:0.8.1"],\
           ["@swc/core", null],\
           ["@swc/wasm", null],\

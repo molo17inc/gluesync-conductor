@@ -2581,8 +2581,7 @@ __metadata:
     dockerode: "npm:^4.0.4"
     fastify: "npm:^5.2.1"
     fastify-plugin: "npm:^5.0.1"
-    gluesync-corehub-sdk: "git+https://gitlab.com/molo17-public/gluesync/gluesync-nodejs-corehub-handshake-sdk.git"
-    gluesync-sdk: "workspace:*"
+    gluesync-sdk-client: "workspace:*"
     nodemon: "npm:^3.1.9"
     ts-node: "npm:^10.9.2"
     typescript: "npm:5.8.3"
@@ -3654,9 +3653,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"gluesync-sdk@workspace:*, gluesync-sdk@workspace:packages/gluesync-sdk":
+"gluesync-sdk-client@workspace:*, gluesync-sdk-client@workspace:packages/gluesync-sdk-client":
   version: 0.0.0-use.local
-  resolution: "gluesync-sdk@workspace:packages/gluesync-sdk"
+  resolution: "gluesync-sdk-client@workspace:packages/gluesync-sdk-client"
   dependencies:
     "@gluesync/scripts": "workspace:*"
     "@types/node": "npm:^22.14.1"
@@ -3666,7 +3665,7 @@ __metadata:
     ts-node: "npm:^10.9.2"
     typescript: "npm:5.8.3"
   bin:
-    gluesync-sdk: dist/standalone.js
+    gluesync-sdk-client: dist/standalone.js
   languageName: unknown
   linkType: soft
 

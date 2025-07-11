@@ -17,7 +17,7 @@
 
 import { getGluesyncSdkClient } from '../gluesyncSdkClient';
 // If you need settings, import from the SDK package as before
-import { settings } from '../../../gluesync-sdk/src';
+import { settings } from 'gluesync-sdk-client';
 
 // Define Node.js process variable
 declare const process: {

@@ -1,5 +1,5 @@
 {
-  "name": "gluesync-sdk",
+  "name": "gluesync-sdk-client",
   "version": "1.0.0",
   "description": "Gluesync SDK integration for Container Mate",
   "main": "dist/index.js",

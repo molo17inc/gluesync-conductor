@@ -53,7 +53,7 @@ build:
   artifacts:
     paths:
       - packages/docker-mate/build
-      - packages/gluesync-sdk/dist
+      - packages/gluesync-sdk-client/dist
       - packages/gluesync-corehub-sdk/dist
     expire_in: 3 days
     when: on_success

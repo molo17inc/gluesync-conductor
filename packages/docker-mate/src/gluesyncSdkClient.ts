@@ -1,4 +1,4 @@
-import { GluesyncSDKClient } from '../../../packages/gluesync-sdk/src/gluesync-sdk-client';
+import { GluesyncSDKClient } from 'gluesync-sdk-client';
 
 // Singleton instance for Gluesync SDK client
 declare global {
