@@ -68,7 +68,6 @@ export function createFastifyHttpsOptions(): FastifyServerOptions {
     ajv: {
       customOptions: {
         strict: false,
-        removeAdditional: false,
       },
     },
   };
