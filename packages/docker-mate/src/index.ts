@@ -109,7 +109,10 @@ server.get('/compose-to-json', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'object' },
+          data: {
+            additionalProperties: true, // Allow any properties in the response
+            type: 'object',
+          },
         },
       },
     },
@@ -126,7 +129,10 @@ server.get('/info', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'object' },
+          data: {
+            additionalProperties: true, // Allow any properties in the response
+            type: 'object',
+          },
         },
       },
     },
@@ -143,7 +149,10 @@ server.get('/version', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'string' },
+          data: {
+            additionalProperties: true, // Allow any properties in the response
+            type: 'object',
+          },
         },
       },
     },
@@ -161,6 +170,7 @@ server.get('/containers', {
         properties: {
           success: { type: 'boolean' },
           data: {
+            additionalProperties: true, // Allow any properties in the response
             type: 'array',
             items: {
               type: 'object',
@@ -233,6 +243,7 @@ server.get('/containers/:id', {
         properties: {
           success: { type: 'boolean' },
           data: {
+            additionalProperties: true, // Allow any properties in the response
             type: 'object',
             properties: {
               imageName: { type: 'string' },
@@ -290,6 +301,7 @@ server.get('/containers/:id/version', {
         properties: {
           success: { type: 'boolean' },
           data: {
+            additionalProperties: true, // Allow any properties in the response
             type: 'object',
             properties: {
               containerId: { type: 'string' },
@@ -372,7 +384,10 @@ server.post('/containers', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'object' },
+          data: {
+            additionalProperties: true, // Allow any properties in the response
+            type: 'object',
+          },
         },
       },
       400: {
@@ -410,7 +425,10 @@ server.delete('/containers/:id', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'object' },
+          data: {
+            additionalProperties: true, // Allow any properties in the response
+            type: 'object',
+          },
         },
       },
       404: {
@@ -465,7 +483,10 @@ server.post('/agents/add', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'object' },
+          data: {
+            additionalProperties: true, // Allow any properties in the response
+            type: 'object',
+          },
         },
       },
       404: {
@@ -496,7 +517,11 @@ server.post('/containers/:id/start', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'array', items: { type: 'string' } },
+          data: {
+            additionalProperties: true, // Allow any properties in the response
+            type: 'array',
+            items: { type: 'string' },
+          },
         },
       },
       404: {
@@ -514,6 +539,7 @@ server.post('/containers/:id/start', {
 // Register ComposeFile schema for Fastify to use in route responses
 server.addSchema({
   $id: 'ComposeFile',
+  additionalProperties: true, // Allow any properties in the response
   type: 'object',
   properties: {
     name: { type: 'string' },
@@ -595,6 +621,7 @@ server.get('/agents', {
         properties: {
           success: { type: 'boolean' },
           data: {
+            additionalProperties: true, // Allow any properties in the response
             type: 'array',
             items: {
               type: 'object',
@@ -653,7 +680,11 @@ server.post('/containers/:id/stop', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'array', items: { type: 'string' } },
+          data: {
+            additionalProperties: true, // Allow any properties in the response
+            type: 'array',
+            items: { type: 'string' },
+          },
         },
       },
       404: {
@@ -687,7 +718,11 @@ server.post('/containers/:id/pull', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'array', items: { type: 'string' } },
+          data: {
+            additionalProperties: true, // Allow any properties in the response
+            type: 'array',
+            items: { type: 'string' },
+          },
         },
       },
       404: {
@@ -728,7 +763,11 @@ server.post('/containers/:id/restart', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'array', items: { type: 'string' } },
+          data: {
+            additionalProperties: true, // Allow any properties in the response
+            type: 'array',
+            items: { type: 'string' },
+          },
         },
       },
       404: {
@@ -797,7 +836,10 @@ server.put('/containers/:id', {
         type: 'object',
         properties: {
           success: { type: 'boolean' },
-          data: { type: 'object', additionalProperties: true },
+          data: {
+            additionalProperties: true, // Allow any properties in the response
+            type: 'object',
+          },
         },
       },
       404: {
