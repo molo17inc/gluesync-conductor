@@ -62,12 +62,6 @@ server.register(swaggerPlugin);
 // Register Gluesync SDK plugin
 server.register(gluesyncPlugin);
 
-// Add hook to log when server is ready
-server.addHook('onReady', () => {
-  console.log('Gluesync Conductor API is running');
-  console.log(`Swagger UI is available at http://localhost:${port}/docs`);
-});
-
 server.get('/health', {
   schema: {
     tags: ['system'],
@@ -876,9 +870,8 @@ server.listen({ host, port }, err => {
 
   // Log server startup information
   const protocol = isSslEnabled() ? 'https' : 'http';
-  console.log(`Gluesync Conductor API is running`);
-  console.log(
+  console.info(
     `Swagger UI is available at ${protocol}://${host === '0.0.0.0' ? 'localhost' : host}:${port}/docs`,
   );
-  console.log(`Gluesync Conductor server started on port ${port}`);
+  console.info(`Gluesync Conductor server started on port ${port}`);
 });
