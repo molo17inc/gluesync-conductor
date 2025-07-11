@@ -54,7 +54,7 @@ build:
     paths:
       - packages/docker-mate/build
       - packages/gluesync-sdk-client/dist
-      - packages/gluesync-corehub-sdk/dist
+      - packages/gluesync-sdk/dist
     expire_in: 3 days
     when: on_success
   only:

@@ -1,8 +1,8 @@
 /**
- * Type declarations for gluesync-corehub-sdk
+ * Type declarations for gluesync-sdk
  */
 
-declare module 'gluesync-corehub-sdk' {
+declare module 'gluesync-sdk' {
   export interface GluesyncClientOptions {
     host?: string;
     port?: number;
