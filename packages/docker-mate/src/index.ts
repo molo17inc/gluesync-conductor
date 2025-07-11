@@ -91,7 +91,7 @@ server.get('/health', {
   },
   handler: async (req, reply) => {
     try {
-      req.log.info('Health check OK!');
+      req.log.debug('Health check OK!');
       reply.send({ success: true, data: 'Health check OK!' });
     } catch (error) {
       req.log.error('Error:', error);

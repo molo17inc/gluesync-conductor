@@ -29,12 +29,12 @@ const handler: RestartContainerHandler = async (req, reply) => {
       return;
     }
 
-    req.log.info(`Restarting container ${id}`);
+    req.log.debug(`Restarting container ${id}`);
 
     // Restart the container with a 10 second timeout
     await container.restart({ t: 10 });
 
-    req.log.info(`Successfully restarted container ${id}`);
+    req.log.debug(`Successfully restarted container ${id}`);
 
     reply.statusCode = 200;
     reply.send({

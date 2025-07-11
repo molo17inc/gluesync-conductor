@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - DEBUG=true
+      - LOGGER_LEVEL=debug
       - GLUESYNC_LICENSE_FILE=/opt/gluesync/data/gs-license.dat
       - GLUESYNC_SECURITY_CONFIG=/opt/gluesync/data/security-config.json
       - GLUESYNC_MODULE_TAG=gluesync-conductor

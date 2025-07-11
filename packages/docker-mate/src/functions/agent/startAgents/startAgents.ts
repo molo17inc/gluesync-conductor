@@ -26,7 +26,7 @@ const handler: StartAgentsHandler = async (req, reply) => {
       commandOptions: ['--no-deps', id], // Start only the specified service
     });
 
-    req.log.info(result);
+    req.log.debug(result);
 
     reply.statusCode = 200;
     reply.send({

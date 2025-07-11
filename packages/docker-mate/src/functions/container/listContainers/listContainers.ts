@@ -18,8 +18,8 @@ const handler: ListContainersHandler = async (req, reply) => {
       memTotal: dockerInfo.MemTotal,
     };
 
-    req.log.info(`Successfully listed ${containerList.length} containers`);
-    req.log.info(
+    req.log.debug(`Successfully listed ${containerList.length} containers`);
+    req.log.debug(
       `System info - CPUs: ${systemInfo.ncpu}, Memory: ${systemInfo.memTotal} bytes`,
     );
 
@@ -167,7 +167,7 @@ const handler: ListContainersHandler = async (req, reply) => {
 
     try {
       await req.server.docker.ping();
-      req.log.info('Docker daemon is responding to ping');
+      req.log.debug('Docker daemon is responding to ping');
     } catch (pingError) {
       req.log.error(
         `Docker daemon ping failed: ${pingError instanceof Error ? pingError.message : String(pingError)}`,

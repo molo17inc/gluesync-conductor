@@ -21,7 +21,7 @@ const handler: PullContainerHandler = async (req, reply) => {
     const containerInfo = await container.inspect();
     const imageName = containerInfo.Config.Image;
 
-    req.log.info(`Pulling latest image for container ${id} (${imageName})`);
+    req.log.debug(`Pulling latest image for container ${id} (${imageName})`);
 
     // Pull the image
     const stream = await req.server.docker.pull(imageName);
@@ -36,7 +36,7 @@ const handler: PullContainerHandler = async (req, reply) => {
             req.log.error(`Error pulling image: ${err.message}`);
             reject(err);
           } else {
-            req.log.info(`Successfully pulled image ${imageName}`);
+            req.log.debug(`Successfully pulled image ${imageName}`);
             resolve();
           }
         },

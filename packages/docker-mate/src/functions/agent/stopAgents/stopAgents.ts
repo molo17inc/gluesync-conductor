@@ -26,7 +26,7 @@ const handler: StopAgentsHandler = async (req, reply) => {
       commandOptions: [id], // Stop only the specified service
     });
 
-    req.log.info(result);
+    req.log.debug(result);
 
     reply.statusCode = 200;
     reply.send({

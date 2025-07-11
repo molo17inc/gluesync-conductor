@@ -36,7 +36,7 @@ const handler: GetContainerHandler = async (req, reply) => {
         memTotal: dockerInfo.MemTotal,
       };
 
-      req.log.info(
+      req.log.debug(
         `System info - CPUs: ${systemInfo.ncpu}, Memory: ${systemInfo.memTotal} bytes`,
       );
 
