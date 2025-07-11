@@ -1,10 +1,7 @@
-version: '3'
-
 services:
   gluesync-conductor:
     build:
-      context: .
-      dockerfile: ./packages/docker-mate/Dockerfile
+      context: ./packages/docker-mate
     image: molo17/gluesync-conductor:latest
     container_name: gluesync-conductor
     restart: unless-stopped
@@ -17,10 +14,25 @@ services:
       - PORT=1717
       - DOCKER_HOST=unix:///var/run/docker.sock
     ports:
-      - '1717:1717'
+      - 5017:1717
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/opt/gluesync/data
+      - ./gs-conf/gs-license.dat:/opt/gluesync/data/gs-license.dat
+    networks:
+      - gluesync-network
+
+  gluesync-core-hub:
+    image: molo17/gluesync-core-hub:2.1.0.0.1f094fc18
+    ports:
+      - 1717:1717
+    environment:
+      - LOG_CONFIG_FILE=/opt/gluesync/data/logback.xml
+    volumes:
+      - ./gs-conf/gs-license.dat:/opt/gluesync/data/gs-license.dat
+      - ./gs-conf/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json
+      - ./gs-conf/security-config.json:/opt/gluesync/data/security-config.json
+      - ./gs-conf/gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks
     networks:
       - gluesync-network
 

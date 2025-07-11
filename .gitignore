@@ -1,6 +1,7 @@
 # Start custom conf
 
 gs-license.dat
+*.jks
 
 packages/**/build
 packages/**/lib
