@@ -1,11 +1,9 @@
 import { RemoveAgentHandler } from './removeAgent.model';
 import { ComposeFile } from '../../../models/composeFile.model';
 
-import writeYmlFile from '../../../helpers/writeYmlFile/writeYmlFile';
+import writeComposeFile from '../../../helpers/writeComposeFile/writeComposeFile';
 import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
 import removeKey from '../../../helpers/removeKey/removeKey';
-
-const filename = 'compose.agents.yml';
 
 const handler: RemoveAgentHandler = async (req, reply) => {
   try {
@@ -23,7 +21,7 @@ const handler: RemoveAgentHandler = async (req, reply) => {
       services: removeKey(parsedJson.services, id),
     };
 
-    await writeYmlFile(composeFile, filename);
+    await writeComposeFile(composeFile);
 
     reply.statusCode = 200;
     reply.send({ success: true, data: composeFile });

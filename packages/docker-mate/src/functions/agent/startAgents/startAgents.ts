@@ -1,7 +1,6 @@
 import { upAll } from 'docker-compose';
 
 import { StartAgentsHandler } from './startAgents.model';
-import { ComposeFile } from '../../../models/composeFile.model';
 import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
 
 import getRootPath from '../../../helpers/getRootPath/getRootPath';

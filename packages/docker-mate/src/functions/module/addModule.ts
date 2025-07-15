@@ -1,7 +1,7 @@
 import { ComposeFile } from '../../models/composeFile.model';
 import { AddModuleBody } from './addModule.model';
-import writeYmlFile from '../../helpers/writeYmlFile/writeYmlFile';
-import readYmlFile from '../../helpers/readYmlFile/readYmlFile';
+import readComposeFile from '../../helpers/readComposeFile/readComposeFile';
+import writeComposeFile from '../../helpers/writeComposeFile/writeComposeFile';
 import mergeComposeFiles from '../../helpers/mergeComposeFiles/mergeComposeFiles';
 import { createComposeService } from '../../utils/createComposeService';
 
@@ -11,7 +11,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 
 const addModule = async (req: FastifyRequest, reply: FastifyReply) => {
   try {
-    const parsedJson = (await readComposeFile()) || {};
+    const parsedJson = (await readComposeFile(filename)) || {};
     const body = req.body as AddModuleBody;
     const composeFile = (body.modules || []).reduce<ComposeFile>(
       (acc, module) => {
@@ -58,7 +58,7 @@ const addModule = async (req: FastifyRequest, reply: FastifyReply) => {
       {},
     );
     const newComposeFile = mergeComposeFiles([parsedJson, composeFile]);
-    await writeYmlFile(newComposeFile, filename);
+    await writeComposeFile(newComposeFile, filename);
     reply.statusCode = 200;
     reply.send({ success: true, data: newComposeFile });
   } catch (error) {

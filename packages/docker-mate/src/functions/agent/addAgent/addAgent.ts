@@ -1,20 +1,14 @@
 import { AddAgentHandler } from './addAgent.model';
 import { ComposeFile } from '../../../models/composeFile.model';
 
-import writeYmlFile from '../../../helpers/writeYmlFile/writeYmlFile';
+import writeComposeFile from '../../../helpers/writeComposeFile/writeComposeFile';
 import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
 import mergeComposeFiles from '../../../helpers/mergeComposeFiles/mergeComposeFiles';
 import { createComposeService } from '../../../utils/createComposeService';
 
-const filename = 'compose.agents.yml';
-
 const handler: AddAgentHandler = async (req, reply) => {
   try {
     const parsedJson = (await readComposeFile()) || {};
-
-    req.log.debug(
-      `Parsed JSON from ${filename}: ${JSON.stringify(parsedJson)}`,
-    );
 
     const composeFile = (req.body.agents || []).reduce<ComposeFile>(
       (acc, agent) => {
@@ -68,7 +62,7 @@ const handler: AddAgentHandler = async (req, reply) => {
 
     req.log.debug(`Merged compose file: ${JSON.stringify(newComposeFile)}`);
 
-    await writeYmlFile(newComposeFile, 'compose.agents.yml');
+    await writeComposeFile(newComposeFile);
 
     reply.statusCode = 200;
     reply.send({ success: true, data: newComposeFile });

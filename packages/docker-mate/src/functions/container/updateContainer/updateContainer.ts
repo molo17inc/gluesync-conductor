@@ -16,12 +16,9 @@
  */
 
 import { UpdateContainerHandler } from './updateContainer.model';
-import { ComposeFile } from '../../../models/composeFile.model';
 
-import writeYmlFile from '../../../helpers/writeYmlFile/writeYmlFile';
+import writeComposeFile from '../../../helpers/writeComposeFile/writeComposeFile';
 import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
-
-const filename = 'compose.agents.yml';
 
 const handler: UpdateContainerHandler = async (req, reply) => {
   try {
@@ -128,7 +125,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       };
 
       // Write the updated compose file
-      await writeYmlFile(composeFile, filename);
+      await writeComposeFile(composeFile);
 
       reply.statusCode = 200;
       reply.send({
