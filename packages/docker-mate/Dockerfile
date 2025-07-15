@@ -8,6 +8,7 @@ RUN mkdir -p /opt/gluesync/data
 
 # Set environment variables
 ENV NODE_ENV=production
+ENV DKR_COMPOSE_FILE=compose.agents.yml
 ENV GLUESYNC_LICENSE_FILE=/opt/gluesync/data/gs-license.dat
 ENV GLUESYNC_SECURITY_CONFIG=/opt/gluesync/data/security-config.json
 ENV GLUESYNC_MODULE_TAG=gluesync-conductor
