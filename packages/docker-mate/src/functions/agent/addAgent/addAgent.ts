@@ -12,6 +12,10 @@ const handler: AddAgentHandler = async (req, reply) => {
   try {
     const parsedJson = (await readYmlFile<ComposeFile>(filename)) || {};
 
+    req.log.debug(
+      `Parsed JSON from ${filename}: ${JSON.stringify(parsedJson)}`,
+    );
+
     const composeFile = (req.body.agents || []).reduce<ComposeFile>(
       (acc, agent) => {
         if (!agent.type) {
@@ -58,7 +62,11 @@ const handler: AddAgentHandler = async (req, reply) => {
       {},
     );
 
+    req.log.debug(`Compose file to be merged: ${JSON.stringify(composeFile)}`);
+
     const newComposeFile = mergeComposeFiles([parsedJson, composeFile]);
+
+    req.log.debug(`Merged compose file: ${JSON.stringify(newComposeFile)}`);
 
     await writeYmlFile(newComposeFile, 'compose.agents.yml');
 
