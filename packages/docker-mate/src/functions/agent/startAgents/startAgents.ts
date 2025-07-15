@@ -2,7 +2,7 @@ import { upAll } from 'docker-compose';
 
 import { StartAgentsHandler } from './startAgents.model';
 import { ComposeFile } from '../../../models/composeFile.model';
-import readYmlFile from '../../../helpers/readYmlFile/readYmlFile';
+import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
 
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 
@@ -11,7 +11,7 @@ const filename = 'compose.agents.yml';
 const handler: StartAgentsHandler = async (req, reply) => {
   try {
     const { id } = req.params;
-    const parsedJson = (await readYmlFile<ComposeFile>(filename)) || {};
+    const parsedJson = (await readComposeFile()) || {};
 
     if (!parsedJson.services || !parsedJson.services[id]) {
       reply.statusCode = 404;

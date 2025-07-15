@@ -1,5 +1,5 @@
 import parseImageTag from '../../../helpers/parseImageTag/parseImageTag';
-import readYmlFile from '../../../helpers/readYmlFile/readYmlFile';
+import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
 import { ComposeFile } from '../../../models/composeFile.model';
 import {
   ListContainersHandler,
@@ -26,8 +26,7 @@ const handler: ListContainersHandler = async (req, reply) => {
     // Read the compose file to check which containers are persisted
     let composeFile: ComposeFile = { services: {} };
     try {
-      composeFile =
-        (await readYmlFile<ComposeFile>('compose.agents.yml')) || {};
+      composeFile = (await readComposeFile()) || {};
     } catch (ymlError) {
       req.log.warn(
         `Could not read compose file: ${ymlError instanceof Error ? ymlError.message : String(ymlError)}`,

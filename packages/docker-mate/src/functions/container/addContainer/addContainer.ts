@@ -19,7 +19,7 @@ import { AddContainerHandler } from './addContainer.model';
 import { ComposeFile } from '../../../models/composeFile.model';
 
 import writeYmlFile from '../../../helpers/writeYmlFile/writeYmlFile';
-import readYmlFile from '../../../helpers/readYmlFile/readYmlFile';
+import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
 import mergeComposeFiles from '../../../helpers/mergeComposeFiles/mergeComposeFiles';
 import { createComposeService } from '../../../utils/createComposeService';
 
@@ -27,7 +27,7 @@ const filename = 'compose.agents.yml';
 
 const handler: AddContainerHandler = async (req, reply) => {
   try {
-    const parsedJson = (await readYmlFile<ComposeFile>(filename)) || {};
+    const parsedJson = (await readComposeFile()) || {};
 
     const composeFile = (req.body.containers || []).reduce<ComposeFile>(
       (acc, container) => {

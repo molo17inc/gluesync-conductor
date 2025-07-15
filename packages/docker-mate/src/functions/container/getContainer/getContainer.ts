@@ -17,8 +17,7 @@
 
 import { GetContainerHandler, ContainerData } from './getContainer.model';
 import parseImageTag from '../../../helpers/parseImageTag/parseImageTag';
-import readYmlFile from '../../../helpers/readYmlFile/readYmlFile';
-import { ComposeFile } from '../../../models/composeFile.model';
+import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
 
 const handler: GetContainerHandler = async (req, reply) => {
   try {
@@ -122,8 +121,7 @@ const handler: GetContainerHandler = async (req, reply) => {
       let versionTagFromLabel = null;
 
       try {
-        const composeFile =
-          (await readYmlFile<ComposeFile>('compose.agents.yml')) || {};
+        const composeFile = (await readComposeFile()) || {};
 
         // Get labels
         const labels = details.Config?.Labels || {};

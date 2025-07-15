@@ -2,7 +2,7 @@ import { AddAgentHandler } from './addAgent.model';
 import { ComposeFile } from '../../../models/composeFile.model';
 
 import writeYmlFile from '../../../helpers/writeYmlFile/writeYmlFile';
-import readYmlFile from '../../../helpers/readYmlFile/readYmlFile';
+import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
 import mergeComposeFiles from '../../../helpers/mergeComposeFiles/mergeComposeFiles';
 import { createComposeService } from '../../../utils/createComposeService';
 
@@ -10,7 +10,7 @@ const filename = 'compose.agents.yml';
 
 const handler: AddAgentHandler = async (req, reply) => {
   try {
-    const parsedJson = (await readYmlFile<ComposeFile>(filename)) || {};
+    const parsedJson = (await readComposeFile()) || {};
 
     req.log.debug(
       `Parsed JSON from ${filename}: ${JSON.stringify(parsedJson)}`,

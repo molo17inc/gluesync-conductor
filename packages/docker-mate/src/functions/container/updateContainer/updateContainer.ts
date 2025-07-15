@@ -19,7 +19,7 @@ import { UpdateContainerHandler } from './updateContainer.model';
 import { ComposeFile } from '../../../models/composeFile.model';
 
 import writeYmlFile from '../../../helpers/writeYmlFile/writeYmlFile';
-import readYmlFile from '../../../helpers/readYmlFile/readYmlFile';
+import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
 
 const filename = 'compose.agents.yml';
 
@@ -30,7 +30,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       req.body;
 
     // Read the current compose file
-    const composeFile = (await readYmlFile<ComposeFile>(filename)) || {};
+    const composeFile = (await readComposeFile()) || {};
 
     // Find the service with the matching container ID
     let serviceKey: string | null = null;

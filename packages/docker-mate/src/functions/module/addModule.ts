@@ -11,7 +11,7 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 
 const addModule = async (req: FastifyRequest, reply: FastifyReply) => {
   try {
-    const parsedJson = (await readYmlFile<ComposeFile>(filename)) || {};
+    const parsedJson = (await readComposeFile()) || {};
     const body = req.body as AddModuleBody;
     const composeFile = (body.modules || []).reduce<ComposeFile>(
       (acc, module) => {
