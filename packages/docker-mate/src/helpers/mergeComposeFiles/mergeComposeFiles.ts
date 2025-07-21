@@ -1,38 +1,59 @@
 import { ComposeFile, ComposeService } from '../../models/composeFile.model';
 
-import extractKeyValue from '../extractKeyValue/extractKeyValue';
+import mergeComposeKeyValueField from '../composeFile/mergeKeyValueStrings/mergeKeyValueStrings';
+import { MergeTwoServices } from './mergeComposeFiles.model';
 
-const mergeArrays = (
-  ...arrays: ReadonlyArray<string>[]
-): ReadonlyArray<string> | undefined => {
-  const newArray = [...new Set(arrays.flat())];
-  return newArray.length > 0 ? newArray : undefined;
-};
+// const mergeTwoServices = (
+//   service1?: ComposeService,
+//   service2?: ComposeService,
+// ): ComposeService => ({
+//   ...service1,
+//   ...service2,
+//   ...(
+//     Object.keys(
+//       composeServiceFieldConfig,
+//     ) as ReadonlyArray<ComposeServiceFieldName>
+//   ).reduce(
+//     (acc, field) => ({
+//       ...acc,
+//       [field]: mergeComposeKeyValueField(
+//         field,
+//         service1?.[field],
+//         service2?.[field],
+//       ),
+//     }),
+//     {} as Partial<
+//       Record<ComposeServiceFieldName, ReadonlyArray<string> | undefined>
+//     >,
+//   ),
+// });
 
-const mergeTwoEnvironments = (
-  environment1?: ComposeService['environment'],
-  environment2?: ComposeService['environment'],
-): Required<ComposeService['environment']> =>
-  Object.entries({
-    ...extractKeyValue(environment1),
-    ...extractKeyValue(environment2),
-  }).map(([key, value]) => `${key}=${value}`);
-
-const mergeTwoServices = (
-  service1?: ComposeService,
-  service2?: ComposeService,
-): ComposeService => ({
+const mergeTwoServices: MergeTwoServices = (service1, service2) => ({
   ...service1,
   ...service2,
-  environment: mergeTwoEnvironments(
+  environment: mergeComposeKeyValueField(
+    'environment',
     service1?.environment,
     service2?.environment,
   ),
-  ports: mergeArrays(service1?.ports || [], service2?.ports || []),
-  volumes: mergeArrays(service1?.volumes || [], service2?.volumes || []),
+  labels: mergeComposeKeyValueField(
+    'labels',
+    service1?.labels,
+    service2?.labels,
+  ),
+  ports: mergeComposeKeyValueField(
+    'ports',
+    service1?.ports || [],
+    service2?.ports || [],
+  ),
+  volumes: mergeComposeKeyValueField(
+    'volumes',
+    service1?.volumes || [],
+    service2?.volumes || [],
+  ),
 });
 
-const mergeServices = (servicesList: Record<string, any>[]) =>
+export const mergeServices = (servicesList: Record<string, ComposeService>[]) =>
   servicesList.reduce(
     (merged, services) =>
       Object.keys({ ...merged, ...services }).reduce(
