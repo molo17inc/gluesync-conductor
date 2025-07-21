@@ -1,5 +1,6 @@
 import { RouteHandlerMethod } from 'fastify';
-import { ErrorResponse, SuccessResponse } from '../../../models/common.model';
+
+import { ErrorResponse, SuccessResponse } from '../../models/common.model';
 
 export type AddModuleBody = Readonly<{
   modules: ReadonlyArray<{
@@ -8,6 +9,7 @@ export type AddModuleBody = Readonly<{
     nickname?: string;
     tag?: string;
     environment?: Record<string, any>;
+    labels?: Record<string, any>;
     ports?: ReadonlyArray<string>;
     volumes?: ReadonlyArray<string>;
   }>;
@@ -15,4 +17,12 @@ export type AddModuleBody = Readonly<{
 
 export type AddModuleResponse = SuccessResponse<any> | ErrorResponse;
 
-export type AddModuleHandler = RouteHandlerMethod<any, any, any, AddModuleBody>;
+export type AddModuleHandler = RouteHandlerMethod<
+  any,
+  any,
+  any,
+  {
+    Body: Partial<AddModuleBody>;
+    Reply: AddModuleResponse;
+  }
+>;

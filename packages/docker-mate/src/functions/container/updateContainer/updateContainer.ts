@@ -23,7 +23,7 @@ import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
 const handler: UpdateContainerHandler = async (req, reply) => {
   try {
     const { id } = req.params;
-    const { imageName, type, name, tag, environment, ports, volumes } =
+    const { imageName, type, nickname, tag, environment, ports, volumes } =
       req.body;
 
     // Read the current compose file
@@ -64,7 +64,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       const currentImageName = currentImageParts[0];
 
       // Get the container name (either the new one or the existing one)
-      const containerName2 = name || currentService.container_name;
+      const containerName2 = nickname || currentService.container_name;
 
       // Get the container tag (either the new one or the existing one)
       const currentTag = currentImage.split(':')[1] || 'latest';
@@ -82,7 +82,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
               }
             : {}),
           // Only update the container_name if name is provided
-          ...(name ? { container_name: name } : {}),
+          ...(nickname ? { container_name: nickname } : {}),
           // Always update the labels to ensure we have the unique_id and versiontag
           labels: [
             `com.molo17.conductor.unique_id=${containerName2}`,

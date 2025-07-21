@@ -20,8 +20,10 @@ import { ComposeFile } from '../../../models/composeFile.model';
 
 import writeComposeFile from '../../../helpers/writeComposeFile/writeComposeFile';
 import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
-import mergeComposeFiles from '../../../helpers/mergeComposeFiles/mergeComposeFiles';
-import { createComposeService } from '../../../utils/createComposeService';
+import mergeComposeFiles, {
+  mergeServices,
+} from '../../../helpers/mergeComposeFiles/mergeComposeFiles';
+import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
 
 const handler: AddContainerHandler = async (req, reply) => {
   try {
@@ -32,41 +34,35 @@ const handler: AddContainerHandler = async (req, reply) => {
         if (!container.type) {
           return acc;
         }
+
         const {
           imageName,
           type,
-          name,
+          nickname,
           tag,
           environment,
+          labels,
           ports = [],
           volumes = [],
         } = container;
-        const containerName = `${imageName}-${type}-agent`;
-        const containerDisplayName = name || containerName;
-        const containerLabels = [
-          `com.molo17.conductor.unique_id=${containerDisplayName}`,
-          `com.molo17.conductor.versiontag=${tag || 'latest'}`,
-        ];
-        const service = createComposeService({
+
+        const service = createComposeService('container', {
           imageName,
           type,
-          name,
+          nickname,
           tag,
           environment,
           ports,
           volumes,
-          labels: containerLabels,
-          extraEnv: { GLUESYNC_MODULE_TAG: 'gluesync-conductor' },
+          labels,
         });
+
         return {
           ...acc,
-          services: {
-            ...acc.services,
-            [containerName]: {
-              ...acc?.services?.[containerName],
-              ...service,
-            },
-          },
+          services: mergeServices([
+            acc.services || {},
+            { [service.container_name]: service },
+          ]),
         };
       },
       {},

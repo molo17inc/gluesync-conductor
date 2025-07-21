@@ -25,7 +25,7 @@ export type UpdateContainerParams = Readonly<{
 export type UpdateContainerBody = Readonly<{
   imageName?: string;
   type?: 'target' | 'source';
-  name?: string;
+  nickname?: string;
   tag?: string;
   environment?: Record<string, any>;
   ports?: ReadonlyArray<string>;

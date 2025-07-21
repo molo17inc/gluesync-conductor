@@ -3,8 +3,10 @@ import { ComposeFile } from '../../../models/composeFile.model';
 
 import writeComposeFile from '../../../helpers/writeComposeFile/writeComposeFile';
 import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
-import mergeComposeFiles from '../../../helpers/mergeComposeFiles/mergeComposeFiles';
-import { createComposeService } from '../../../utils/createComposeService';
+import mergeComposeFiles, {
+  mergeServices,
+} from '../../../helpers/mergeComposeFiles/mergeComposeFiles';
+import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
 
 const handler: AddAgentHandler = async (req, reply) => {
   try {
@@ -15,42 +17,44 @@ const handler: AddAgentHandler = async (req, reply) => {
         if (!agent.type) {
           return acc;
         }
+
         const {
           imageName,
           type,
-          name,
+          nickname,
           tag,
           environment,
+          labels,
           ports = [],
           volumes = [],
         } = agent;
 
-        const containerName = `${imageName}-${type}-agent`;
-        const agentLabels = [
-          `com.molo17.conductor.unique_id=${name || containerName}`,
-          `com.molo17.conductor.versiontag=${tag}`,
-          'com.molo17.conductor.type=agent',
-        ];
-        const service = createComposeService({
+        const service = createComposeService('agent', {
           imageName,
           type,
-          name,
+          nickname,
           tag,
           environment,
           ports,
           volumes,
-          labels: agentLabels,
-          extraEnv: { GLUESYNC_MODULE_TAG: 'gluesync-conductor' },
+          labels,
         });
+
+        req.log.debug(`Creating service for agent: ${JSON.stringify(service)}`);
+
+        const services = mergeServices([
+          acc.services || {},
+          { [service.container_name]: service },
+        ]);
+
+        req.log.debug(`New services: ${JSON.stringify(services)}`);
+
         return {
           ...acc,
-          services: {
-            ...acc.services,
-            [containerName]: {
-              ...acc?.services?.[containerName],
-              ...service,
-            },
-          },
+          services: mergeServices([
+            acc.services || {},
+            { [service.container_name]: service },
+          ]),
         };
       },
       {},

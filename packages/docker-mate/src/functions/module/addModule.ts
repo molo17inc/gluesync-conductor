@@ -1,15 +1,15 @@
 import { ComposeFile } from '../../models/composeFile.model';
-import { AddModuleBody } from './addModule.model';
+import { AddModuleBody, AddModuleHandler } from './addModule.model';
 import readComposeFile from '../../helpers/readComposeFile/readComposeFile';
 import writeComposeFile from '../../helpers/writeComposeFile/writeComposeFile';
-import mergeComposeFiles from '../../helpers/mergeComposeFiles/mergeComposeFiles';
-import { createComposeService } from '../../utils/createComposeService';
+import mergeComposeFiles, {
+  mergeServices,
+} from '../../helpers/mergeComposeFiles/mergeComposeFiles';
+import createComposeService from '../../helpers/composeFile/createComposeService/createComposeService';
 
 const filename = 'compose.modules.yml';
 
-import { FastifyRequest, FastifyReply } from 'fastify';
-
-const addModule = async (req: FastifyRequest, reply: FastifyReply) => {
+const addModule: AddModuleHandler = async (req, reply) => {
   try {
     const parsedJson = (await readComposeFile(filename)) || {};
     const body = req.body as AddModuleBody;
@@ -18,41 +18,35 @@ const addModule = async (req: FastifyRequest, reply: FastifyReply) => {
         if (!module.type) {
           return acc;
         }
+
         const {
           imageName,
           type,
           nickname,
           tag,
           environment,
+          labels,
           ports = [],
           volumes = [],
         } = module;
-        const containerName = `${imageName}-${type}-module`;
-        const moduleLabels = [
-          `com.molo17.conductor.unique_id=${nickname || containerName}`,
-          `com.molo17.conductor.versiontag=${tag || 'latest'}`,
-          'com.molo17.conductor.type=module',
-        ];
-        const service = createComposeService({
+
+        const service = createComposeService('module', {
           imageName,
           type,
-          name: nickname,
+          nickname,
           tag,
           environment,
           ports,
           volumes,
-          labels: moduleLabels,
-          extraEnv: { GLUESYNC_MODULE_TAG: 'gluesync-conductor' },
+          labels,
         });
+
         return {
           ...acc,
-          services: {
-            ...acc.services,
-            [containerName]: {
-              ...acc?.services?.[containerName],
-              ...service,
-            },
-          },
+          services: mergeServices([
+            acc.services || {},
+            { [service.container_name]: service },
+          ]),
         };
       },
       {},
