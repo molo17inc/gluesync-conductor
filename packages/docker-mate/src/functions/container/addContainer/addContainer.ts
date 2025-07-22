@@ -27,7 +27,7 @@ import createComposeService from '../../../helpers/composeFile/createComposeServ
 
 const handler: AddContainerHandler = async (req, reply) => {
   try {
-    const parsedJson = (await readComposeFile()) || {};
+    const composeJson = (await readComposeFile()) || {};
 
     const composeFile = (req.body.containers || []).reduce<ComposeFile>(
       (acc, container) => {
@@ -68,7 +68,7 @@ const handler: AddContainerHandler = async (req, reply) => {
       {},
     );
 
-    const newComposeFile = mergeComposeFiles([parsedJson, composeFile]);
+    const newComposeFile = mergeComposeFiles([composeJson, composeFile]);
 
     await writeComposeFile(newComposeFile);
 

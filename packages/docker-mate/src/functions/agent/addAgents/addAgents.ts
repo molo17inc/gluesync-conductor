@@ -10,7 +10,7 @@ import createComposeService from '../../../helpers/composeFile/createComposeServ
 
 const handler: AddAgentsHandler = async (req, reply) => {
   try {
-    const parsedJson = (await readComposeFile()) || {};
+    const composeJson = (await readComposeFile()) || {};
 
     const composeFile = (req.body.agents || []).reduce<ComposeFile>(
       (acc, agent) => {
@@ -62,7 +62,7 @@ const handler: AddAgentsHandler = async (req, reply) => {
 
     req.log.debug(`Compose file to be merged: ${JSON.stringify(composeFile)}`);
 
-    const newComposeFile = mergeComposeFiles([parsedJson, composeFile]);
+    const newComposeFile = mergeComposeFiles([composeJson, composeFile]);
 
     req.log.debug(`Merged compose file: ${JSON.stringify(newComposeFile)}`);
 

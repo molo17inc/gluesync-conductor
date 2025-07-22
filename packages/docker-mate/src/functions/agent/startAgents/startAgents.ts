@@ -10,9 +10,9 @@ const filename = 'compose.agents.yml';
 const handler: StartAgentsHandler = async (req, reply) => {
   try {
     const { id } = req.params;
-    const parsedJson = (await readComposeFile()) || {};
+    const composeJson = (await readComposeFile()) || {};
 
-    if (!parsedJson.services || !parsedJson.services[id]) {
+    if (!composeJson.services || !composeJson.services[id]) {
       reply.statusCode = 404;
       reply.send({ success: false, error: `Agent ${id} not found` });
       return;

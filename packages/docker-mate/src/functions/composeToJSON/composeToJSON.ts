@@ -5,12 +5,12 @@ import writeComposeFile from '../../helpers/writeComposeFile/writeComposeFile';
 
 const handler: RouteHandlerMethod = async (req, reply) => {
   try {
-    const parsedJson = (await readComposeFile()) || {};
+    const composeJson = (await readComposeFile()) || {};
 
-    await writeComposeFile(parsedJson, 'compose.generated.yml');
+    await writeComposeFile(composeJson, 'compose.generated.yml');
 
     reply.statusCode = 200;
-    reply.send({ success: true, data: parsedJson });
+    reply.send({ success: true, data: composeJson });
   } catch (error) {
     req.log.error(error);
     process.exit(1);

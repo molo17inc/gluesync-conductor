@@ -8,17 +8,17 @@ import removeKey from '../../../helpers/removeKey/removeKey';
 const handler: RemoveAgentHandler = async (req, reply) => {
   try {
     const { id } = req.params;
-    const parsedJson = (await readComposeFile()) || {};
+    const composeJson = (await readComposeFile()) || {};
 
-    if (!parsedJson.services || !parsedJson.services[id]) {
+    if (!composeJson.services || !composeJson.services[id]) {
       reply.statusCode = 404;
       reply.send({ success: false, error: `Agent ${id} not found` });
       return;
     }
 
     const composeFile: ComposeFile = {
-      ...parsedJson,
-      services: removeKey(parsedJson.services, id),
+      ...composeJson,
+      services: removeKey(composeJson.services, id),
     };
 
     await writeComposeFile(composeFile);
