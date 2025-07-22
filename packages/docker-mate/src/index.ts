@@ -21,7 +21,6 @@ import getContainer from './functions/container/getContainer/getContainer';
 import updateContainer from './functions/container/updateContainer/updateContainer';
 import addContainer from './functions/container/addContainer/addContainer';
 import addAgent from './functions/agent/addAgent/addAgent';
-import addModule from './functions/module/addModule';
 import { getAgents } from './functions/agent/getAgents/getAgents';
 import removeAgent from './functions/agent/removeAgent/removeAgent';
 import startAgents from './functions/agent/startAgents/startAgents';
@@ -553,55 +552,6 @@ server.addSchema({
       },
     },
   },
-});
-
-server.post('/modules', {
-  schema: {
-    description: 'Add one or more modules (containers tagged as modules)',
-    tags: ['modules'],
-    body: {
-      type: 'object',
-      properties: {
-        modules: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              imageName: { type: 'string' },
-              type: { type: 'string' },
-              nickname: { type: 'string' },
-              tag: { type: 'string' },
-              environment: {
-                type: 'object',
-                additionalProperties: { type: 'string' },
-              },
-              ports: { type: 'array', items: { type: 'string' } },
-              volumes: { type: 'array', items: { type: 'string' } },
-            },
-            required: ['imageName', 'type'],
-          },
-        },
-      },
-      required: ['modules'],
-    },
-    response: {
-      200: {
-        type: 'object',
-        properties: {
-          success: { type: 'boolean' },
-          data: { $ref: 'ComposeFile#' },
-        },
-      },
-      500: {
-        type: 'object',
-        properties: {
-          success: { type: 'boolean' },
-          error: { type: 'string' },
-        },
-      },
-    },
-  },
-  handler: addModule,
 });
 
 server.get('/agents', {
