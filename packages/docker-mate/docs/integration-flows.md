@@ -29,7 +29,7 @@ flowchart TD
 
 ```javascript
 // Example using fetch API
-async function addAgentContainer() {
+async function addAgentsContainer() {
   const response = await fetch('http://localhost:50002/agents', {
     method: 'POST',
     headers: {

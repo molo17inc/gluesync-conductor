@@ -1,4 +1,4 @@
-import { AddAgentHandler } from './addAgent.model';
+import { AddAgentsHandler } from './addAgents.model';
 import { ComposeFile } from '../../../models/composeFile.model';
 
 import writeComposeFile from '../../../helpers/writeComposeFile/writeComposeFile';
@@ -8,7 +8,7 @@ import mergeComposeFiles, {
 } from '../../../helpers/mergeComposeFiles/mergeComposeFiles';
 import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
 
-const handler: AddAgentHandler = async (req, reply) => {
+const handler: AddAgentsHandler = async (req, reply) => {
   try {
     const parsedJson = (await readComposeFile()) || {};
 

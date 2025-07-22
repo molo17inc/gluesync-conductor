@@ -20,7 +20,7 @@ import getContainerVersion from './functions/container/getContainerVersion/getCo
 import getContainer from './functions/container/getContainer/getContainer';
 import updateContainer from './functions/container/updateContainer/updateContainer';
 import addContainer from './functions/container/addContainer/addContainer';
-import addAgent from './functions/agent/addAgent/addAgent';
+import addAgents from './functions/agent/addAgents/addAgents';
 import { getAgents } from './functions/agent/getAgents/getAgents';
 import removeAgent from './functions/agent/removeAgent/removeAgent';
 import startAgents from './functions/agent/startAgents/startAgents';
@@ -436,7 +436,7 @@ server.delete('/containers/:id', {
   handler: removeAgent,
 });
 
-server.post('/agents/add', {
+server.post('/agents', {
   schema: {
     description: 'add a agents ',
     tags: ['agents'],
@@ -491,7 +491,7 @@ server.post('/agents/add', {
       },
     },
   },
-  handler: addAgent,
+  handler: addAgents,
 });
 
 server.post('/containers/:id/start', {
