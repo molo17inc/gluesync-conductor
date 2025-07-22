@@ -24,20 +24,22 @@ const handler: ListContainersHandler = async (req, reply) => {
     );
 
     // Read the compose file to check which containers are persisted
-    let composeFile: ComposeFile = { services: {} };
-    try {
-      composeFile = (await readComposeFile()) || {};
-    } catch (ymlError) {
-      req.log.warn(
-        `Could not read compose file: ${ymlError instanceof Error ? ymlError.message : String(ymlError)}`,
-      );
-      // Continue without the compose file
-    }
+    const composeFile: ComposeFile = await (async () => {
+      try {
+        return (await readComposeFile()) || { services: {} };
+      } catch (ymlError) {
+        req.log.warn(
+          `Could not read compose file: ${ymlError instanceof Error ? ymlError.message : String(ymlError)}`,
+        );
+        // Continue without the compose file
+        return { services: {} };
+      }
+    })();
 
     // Get detailed information for each container
-    const containers: ContainerListItem[] = [];
-
-    for (const containerInfo of containerList) {
+    const getContainerDetails = async (
+      containerInfo: any,
+    ): Promise<ContainerListItem> => {
       try {
         const container = req.server.docker.getContainer(containerInfo.Id);
         const details = await container.inspect();
@@ -47,42 +49,19 @@ const handler: ListContainersHandler = async (req, reply) => {
         const { name, tag } = parseImageTag(imageString);
 
         // Check if this container is persisted in the compose file
-        let persisted = false;
-        let versionTagFromLabel = null;
-
-        // Get labels
         const labels = details.Config?.Labels || {};
+        const uniqueId = labels['com.molo17.conductor.unique_id'];
+        const versionTagFromLabel = labels['com.molo17.conductor.versiontag'];
 
-        // Check for unique ID label
-        const uniqueIdLabel = Object.entries(labels).find(
-          ([key]) => key === 'com.molo17.conductor.unique_id',
-        );
-
-        // Check for version tag label
-        const versionTagLabel = Object.entries(labels).find(
-          ([key]) => key === 'com.molo17.conductor.versiontag',
-        );
-
-        if (versionTagLabel) {
-          const [_, versionTag] = versionTagLabel;
-          versionTagFromLabel = versionTag;
-        }
-
-        if (uniqueIdLabel) {
-          const [_, uniqueId] = uniqueIdLabel;
-          // Check if any service in the compose file has this unique ID in its labels
-          persisted = Object.values(composeFile.services || {}).some(
-            service => {
-              if (Array.isArray(service.labels)) {
-                return service.labels.some(
-                  (label: string) =>
-                    label === `com.molo17.conductor.unique_id=${uniqueId}`,
-                );
-              }
-              return false;
-            },
-          );
-        }
+        const persisted = uniqueId
+          ? Object.values(composeFile.services || {}).some(
+              service =>
+                Array.isArray(service.labels) &&
+                service.labels.includes(
+                  `com.molo17.conductor.unique_id=${uniqueId}`,
+                ),
+            )
+          : false;
 
         const containerDetails: ContainerListItem = {
           id: details.Id,
@@ -112,8 +91,7 @@ const handler: ListContainersHandler = async (req, reply) => {
           hostConfig: details.HostConfig || {},
         };
 
-        // Add the container details to our array
-        containers.push(containerDetails);
+        return containerDetails;
       } catch (inspectError) {
         req.log.error(
           `Error inspecting container ${containerInfo.Id}: ${inspectError instanceof Error ? inspectError.message : String(inspectError)}`,
@@ -123,7 +101,7 @@ const handler: ListContainersHandler = async (req, reply) => {
         const { name, tag } = parseImageTag(fallbackImageString);
 
         // For containers where inspect fails, assume they're not persisted
-        containers.push({
+        return {
           id: containerInfo.Id,
           name: containerInfo.Names?.[0]?.replace(/^\//, '') || '',
           image: fallbackImageString,
@@ -146,9 +124,13 @@ const handler: ListContainersHandler = async (req, reply) => {
           ports: containerInfo.Ports || [],
           mounts: [],
           hostConfig: {}, // Empty object for containers where inspect fails
-        });
+        };
       }
-    }
+    };
+
+    const containers: ContainerListItem[] = await Promise.all(
+      containerList.map(getContainerDetails),
+    );
 
     reply.statusCode = 200;
     reply.send({
