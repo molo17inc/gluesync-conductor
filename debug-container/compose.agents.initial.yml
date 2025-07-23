@@ -1,0 +1,55 @@
+services:
+  gluesync-mssql-cdc-target-agent: # Labels "com.docker.compose.service"
+    image: molo17/gluesync-mssql-cdc:latest # Image
+    container_name: gluesync-mssql-cdc-target-agent # "Names": ["/gluesync-mssql-cdc-source-agent"]
+    restart: unless-stopped
+    environment:
+      - type=target
+      - maxRamPercentage=90
+      - LOG_CONFIG_FILE=/opt/gluesync/data/logback.xml
+      - NODE_ENV=production forse
+      - DB_HOST=db
+      - DB_USER=root
+      - DB_PASS=password
+      - privileged=true
+      - start_from=0
+    volumes:
+      - ./gs-license.dat:/opt/gluesync/data/gs-license.dat:ro
+      - ./logback.xml:/opt/gluesync/data/logback.xml:ro
+      - ./security-config.json:/opt/gluesync/data/security-config.json:ro
+      - ./gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro
+      - ./bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro
+      - ./gluesync-mssql-cdc-target-agent:/opt/gluesync/data
+  gluesync-mssql-cdc-source-agent:
+    image: molo17/gluesync-mssql-cdc:latest
+    container_name: gluesync-mssql-cdc-source-agent
+    restart: unless-stopped
+    environment:
+      - type=source
+      - maxRamPercentage=90
+      - LOG_CONFIG_FILE=/opt/gluesync/data/logback.xml
+      - DB_PASS=new_password
+    volumes:
+      - ./gs-license.dat:/opt/gluesync/data/gs-license.dat:ro
+      - ./logback.xml:/opt/gluesync/data/logback.xml:ro
+      - ./security-config.json:/opt/gluesync/data/security-config.json:ro
+      - ./gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro
+      - ./bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro
+      - ./gluesync-mssql-cdc-source-agent:/opt/gluesync/data
+  gluesync-aerospike-target-agent:
+    image: molo17/gluesync-aerospike:latest
+    container_name: gluesync-aerospike-target-agent
+    restart: unless-stopped
+    environment:
+      - type=target
+      - maxRamPercentage=90
+      - LOG_CONFIG_FILE=/opt/gluesync/data/logback.xml
+    ports:
+      - 9090:9090
+    volumes:
+      - ./gs-license.dat:/opt/gluesync/data/gs-license.dat:ro
+      - ./logback.xml:/opt/gluesync/data/logback.xml:ro
+      - ./security-config.json:/opt/gluesync/data/security-config.json:ro
+      - ./gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro
+      - ./bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro
+      - ./gluesync-aerospike-target-agent:/opt/gluesync/data

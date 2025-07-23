@@ -1,0 +1,698 @@
+{
+  "containerList": [
+    {
+      "Id": "728ed43273bcf4dc64ca436f9d322e4e2e43b91df06e3d02bc99f8807222fe40",
+      "Names": ["/gluesync-conductor"],
+      "Image": "molo17/gluesync-conductor:latest",
+      "ImageID": "sha256:8f0241036346ac30434cea3afc24bbb2b222707caa754f599398bbe84e7a10c4",
+      "Command": "docker-entrypoint.sh index.js",
+      "Created": 1753279589,
+      "Ports": [
+        {
+          "IP": "0.0.0.0",
+          "PrivatePort": 1717,
+          "PublicPort": 5017,
+          "Type": "tcp"
+        },
+        {
+          "IP": "::",
+          "PrivatePort": 1717,
+          "PublicPort": 5017,
+          "Type": "tcp"
+        }
+      ],
+      "Labels": {
+        "com.docker.compose.config-hash": "fdc20a8b310168d6f320e7fa98d80fafffb3b52dbd40f3086f0ae9f850df2570",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:8f0241036346ac30434cea3afc24bbb2b222707caa754f599398bbe84e7a10c4",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "debug-container",
+        "com.docker.compose.project.config_files": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/compose.yml",
+        "com.docker.compose.project.working_dir": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container",
+        "com.docker.compose.service": "gluesync-conductor",
+        "com.docker.compose.version": "2.38.2",
+        "desktop.docker.io/binds/0/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/data",
+        "desktop.docker.io/binds/0/SourceKind": "hostFile",
+        "desktop.docker.io/binds/0/Target": "/opt/gluesync/data",
+        "desktop.docker.io/binds/1/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-conf/gs-license.dat",
+        "desktop.docker.io/binds/1/SourceKind": "hostFile",
+        "desktop.docker.io/binds/1/Target": "/opt/gluesync/data/gs-license.dat",
+        "desktop.docker.io/binds/2/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/compose.agents.yml",
+        "desktop.docker.io/binds/2/SourceKind": "hostFile",
+        "desktop.docker.io/binds/2/Target": "/opt/docker-mate/compose.agents.yml",
+        "desktop.docker.io/binds/3/Source": "/var/run/docker.sock",
+        "desktop.docker.io/binds/3/SourceKind": "dockerSocketProxied",
+        "desktop.docker.io/binds/3/Target": "/var/run/docker.sock",
+        "desktop.docker.io/ports.scheme": "v2",
+        "desktop.docker.io/ports/1717/tcp": ":5017"
+      },
+      "State": "running",
+      "Status": "Up 20 seconds",
+      "HostConfig": {
+        "NetworkMode": "debug-container_gluesync-network"
+      },
+      "NetworkSettings": {
+        "Networks": {
+          "debug-container_gluesync-network": {
+            "IPAMConfig": null,
+            "Links": null,
+            "Aliases": null,
+            "MacAddress": "16:78:50:18:d3:84",
+            "DriverOpts": null,
+            "GwPriority": 0,
+            "NetworkID": "27b48111fedda11993d95e660b446051b59b7093fc2fe06a16ff12cd8cdd6a7a",
+            "EndpointID": "376db2cc3ff361b43bf71a62d47f8a1711de1b586181c3ffdd260f50bc563abe",
+            "Gateway": "172.19.0.1",
+            "IPAddress": "172.19.0.3",
+            "IPPrefixLen": 16,
+            "IPv6Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "DNSNames": null
+          }
+        }
+      },
+      "Mounts": [
+        {
+          "Type": "bind",
+          "Source": "/run/host-services/docker.proxy.sock",
+          "Destination": "/var/run/docker.sock",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/compose.agents.yml",
+          "Destination": "/opt/docker-mate/compose.agents.yml",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/data",
+          "Destination": "/opt/gluesync/data",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-conf/gs-license.dat",
+          "Destination": "/opt/gluesync/data/gs-license.dat",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        }
+      ]
+    },
+    {
+      "Id": "48108c04346affe65238be3dd84cb5ca7f7a9d3caacd9817ed17179518574cdf",
+      "Names": ["/debug-container-gluesync-core-hub-1"],
+      "Image": "molo17/gluesync-core-hub:2.1.0.0.1f094fc18",
+      "ImageID": "sha256:11cf34efcb4ef52bc87945e1e9dc35050c9a560c3d4ebab68e0142d263a0f378",
+      "Command": "./startup-entrypoint.sh ./entrypoint.sh",
+      "Created": 1753279589,
+      "Ports": [
+        {
+          "IP": "0.0.0.0",
+          "PrivatePort": 1717,
+          "PublicPort": 1717,
+          "Type": "tcp"
+        },
+        {
+          "IP": "::",
+          "PrivatePort": 1717,
+          "PublicPort": 1717,
+          "Type": "tcp"
+        }
+      ],
+      "Labels": {
+        "com.docker.compose.config-hash": "7e80257b7c7d06bd205b18d332fa914721efc70feac6bb75a2bfc7ccf565f783",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:11cf34efcb4ef52bc87945e1e9dc35050c9a560c3d4ebab68e0142d263a0f378",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "debug-container",
+        "com.docker.compose.project.config_files": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/compose.yml",
+        "com.docker.compose.project.working_dir": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container",
+        "com.docker.compose.service": "gluesync-core-hub",
+        "com.docker.compose.version": "2.38.2",
+        "desktop.docker.io/binds/0/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-conf/gs-license.dat",
+        "desktop.docker.io/binds/0/SourceKind": "hostFile",
+        "desktop.docker.io/binds/0/Target": "/opt/gluesync/data/gs-license.dat",
+        "desktop.docker.io/binds/1/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-conf/bootstrap-core-hub.json",
+        "desktop.docker.io/binds/1/SourceKind": "hostFile",
+        "desktop.docker.io/binds/1/Target": "/opt/gluesync/data/bootstrap-core-hub.json",
+        "desktop.docker.io/binds/2/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-conf/security-config.json",
+        "desktop.docker.io/binds/2/SourceKind": "hostFile",
+        "desktop.docker.io/binds/2/Target": "/opt/gluesync/data/security-config.json",
+        "desktop.docker.io/binds/3/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-conf/gluesync.com.jks",
+        "desktop.docker.io/binds/3/SourceKind": "hostFile",
+        "desktop.docker.io/binds/3/Target": "/opt/gluesync/data/gluesync.com.jks",
+        "desktop.docker.io/ports.scheme": "v2",
+        "desktop.docker.io/ports/1717/tcp": ":1717"
+      },
+      "State": "running",
+      "Status": "Up 20 seconds",
+      "HostConfig": {
+        "NetworkMode": "debug-container_gluesync-network"
+      },
+      "NetworkSettings": {
+        "Networks": {
+          "debug-container_gluesync-network": {
+            "IPAMConfig": null,
+            "Links": null,
+            "Aliases": null,
+            "MacAddress": "3a:9a:82:65:f3:02",
+            "DriverOpts": null,
+            "GwPriority": 0,
+            "NetworkID": "27b48111fedda11993d95e660b446051b59b7093fc2fe06a16ff12cd8cdd6a7a",
+            "EndpointID": "eb3f992d1317f02970371aa9c5eccbb9c422dd5b4721c6ede0961647a44e9b2a",
+            "Gateway": "172.19.0.1",
+            "IPAddress": "172.19.0.2",
+            "IPPrefixLen": 16,
+            "IPv6Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "DNSNames": null
+          }
+        }
+      },
+      "Mounts": [
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-conf/gluesync.com.jks",
+          "Destination": "/opt/gluesync/data/gluesync.com.jks",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-conf/gs-license.dat",
+          "Destination": "/opt/gluesync/data/gs-license.dat",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-conf/security-config.json",
+          "Destination": "/opt/gluesync/data/security-config.json",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "volume",
+          "Name": "52866b205d11c97161bc56a3c9521650c29a3fac5e72eeec11a831471c9d4b2c",
+          "Source": "",
+          "Destination": "/opt/gluesync/data",
+          "Driver": "local",
+          "Mode": "",
+          "RW": true,
+          "Propagation": ""
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-conf/bootstrap-core-hub.json",
+          "Destination": "/opt/gluesync/data/bootstrap-core-hub.json",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        }
+      ]
+    },
+    {
+      "Id": "3b2a7eed269e335cdbf8fae989269c1e63d1c3612cdd1f23d634a242ed507e75",
+      "Names": ["/debug-container-custom-aerospike-agt-1"],
+      "Image": "molo17/gluesync-aerospike:latest",
+      "ImageID": "sha256:b8f6b75c70311c29b13c3403c386c29e3be469cf40514b54dd8ace828cd05481",
+      "Command": "./startup-entrypoint.sh ./entrypoint.sh",
+      "Created": 1753279579,
+      "Ports": [],
+      "Labels": {
+        "com.docker.compose.config-hash": "8149de32bc8a8329be428de416375c4f7e24f76ac599deafc7e08010dccde0d6",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:b8f6b75c70311c29b13c3403c386c29e3be469cf40514b54dd8ace828cd05481",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "debug-container",
+        "com.docker.compose.project.config_files": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/compose.agents.yml",
+        "com.docker.compose.project.working_dir": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container",
+        "com.docker.compose.service": "custom-aerospike-agt",
+        "com.docker.compose.version": "2.38.2",
+        "com.molo17.conductor.type": "agent",
+        "com.molo17.conductor.unique_id": "custom-aerospike-agt",
+        "com.molo17.conductor.versiontag": "latest",
+        "desktop.docker.io/binds/0/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/bootstrap-core-hub.json",
+        "desktop.docker.io/binds/0/SourceKind": "hostFile",
+        "desktop.docker.io/binds/0/Target": "/opt/gluesync/data/bootstrap-core-hub.json",
+        "desktop.docker.io/binds/1/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gluesync-aerospike-target-agent",
+        "desktop.docker.io/binds/1/SourceKind": "hostFile",
+        "desktop.docker.io/binds/1/Target": "/opt/gluesync/data",
+        "desktop.docker.io/binds/2/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-license.dat",
+        "desktop.docker.io/binds/2/SourceKind": "hostFile",
+        "desktop.docker.io/binds/2/Target": "/opt/gluesync/data/gs-license.dat",
+        "desktop.docker.io/binds/3/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/logback.xml",
+        "desktop.docker.io/binds/3/SourceKind": "hostFile",
+        "desktop.docker.io/binds/3/Target": "/opt/gluesync/data/logback.xml",
+        "desktop.docker.io/binds/4/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/security-config.json",
+        "desktop.docker.io/binds/4/SourceKind": "hostFile",
+        "desktop.docker.io/binds/4/Target": "/opt/gluesync/data/security-config.json",
+        "desktop.docker.io/binds/5/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gluesync.com.jks",
+        "desktop.docker.io/binds/5/SourceKind": "hostFile",
+        "desktop.docker.io/binds/5/Target": "/opt/gluesync/data/gluesync.com.jks",
+        "desktop.docker.io/ports.scheme": "v2",
+        "desktop.docker.io/ports/80/tcp": ":8080",
+        "desktop.docker.io/ports/9091/tcp": ":9090"
+      },
+      "State": "restarting",
+      "Status": "Restarting (1) 12 seconds ago",
+      "HostConfig": {
+        "NetworkMode": "debug-container_default"
+      },
+      "NetworkSettings": {
+        "Networks": {
+          "debug-container_default": {
+            "IPAMConfig": null,
+            "Links": null,
+            "Aliases": null,
+            "MacAddress": "",
+            "DriverOpts": null,
+            "GwPriority": 0,
+            "NetworkID": "b5fe8782ac5e19ba98ef7608e76b5675283ca2e3f746350e783b2756ebfb4f63",
+            "EndpointID": "",
+            "Gateway": "",
+            "IPAddress": "",
+            "IPPrefixLen": 0,
+            "IPv6Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "DNSNames": null
+          }
+        }
+      },
+      "Mounts": [
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/logback.xml",
+          "Destination": "/opt/gluesync/data/logback.xml",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/security-config.json",
+          "Destination": "/opt/gluesync/data/security-config.json",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gluesync-aerospike-target-agent",
+          "Destination": "/opt/gluesync/data",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/bootstrap-core-hub.json",
+          "Destination": "/opt/gluesync/data/bootstrap-core-hub.json",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gluesync.com.jks",
+          "Destination": "/opt/gluesync/data/gluesync.com.jks",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-license.dat",
+          "Destination": "/opt/gluesync/data/gs-license.dat",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        }
+      ]
+    },
+    {
+      "Id": "4779df940a268bbe5d977a3766a64a00ebf2745ee68c8790600994aba1129eec",
+      "Names": ["/gluesync-mssql-cdc-source-agent"],
+      "Image": "molo17/gluesync-mssql-cdc:latest",
+      "ImageID": "sha256:aaed93513732b2166f05dc15fd6ab8d9c85dbf8c73e77171a14227c5286b842f",
+      "Command": "./startup-entrypoint.sh ./entrypoint.sh",
+      "Created": 1753279579,
+      "Ports": [],
+      "Labels": {
+        "com.docker.compose.config-hash": "a2e12719b3d8a4e299d32be3ca2108e71ecb55ba085440a7555a4e15b6066b2c",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:aaed93513732b2166f05dc15fd6ab8d9c85dbf8c73e77171a14227c5286b842f",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "debug-container",
+        "com.docker.compose.project.config_files": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/compose.agents.yml",
+        "com.docker.compose.project.working_dir": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container",
+        "com.docker.compose.service": "gluesync-mssql-cdc-source-agent-service-name",
+        "com.docker.compose.version": "2.38.2",
+        "com.molo17.conductor.type": "agent",
+        "com.molo17.conductor.unique_id": "gluesync-mssql-cdc-source-agent",
+        "com.molo17.conductor.versiontag": "latest",
+        "desktop.docker.io/binds/0/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/logback.xml",
+        "desktop.docker.io/binds/0/SourceKind": "hostFile",
+        "desktop.docker.io/binds/0/Target": "/opt/gluesync/data/logback.xml",
+        "desktop.docker.io/binds/1/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/security-config.json",
+        "desktop.docker.io/binds/1/SourceKind": "hostFile",
+        "desktop.docker.io/binds/1/Target": "/opt/gluesync/data/security-config.json",
+        "desktop.docker.io/binds/2/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gluesync.com.jks",
+        "desktop.docker.io/binds/2/SourceKind": "hostFile",
+        "desktop.docker.io/binds/2/Target": "/opt/gluesync/data/gluesync.com.jks",
+        "desktop.docker.io/binds/3/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/bootstrap-core-hub.json",
+        "desktop.docker.io/binds/3/SourceKind": "hostFile",
+        "desktop.docker.io/binds/3/Target": "/opt/gluesync/data/bootstrap-core-hub.json",
+        "desktop.docker.io/binds/4/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gluesync-mssql-cdc-source-agent",
+        "desktop.docker.io/binds/4/SourceKind": "hostFile",
+        "desktop.docker.io/binds/4/Target": "/opt/gluesync/data",
+        "desktop.docker.io/binds/5/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-license.dat",
+        "desktop.docker.io/binds/5/SourceKind": "hostFile",
+        "desktop.docker.io/binds/5/Target": "/opt/gluesync/data/gs-license.dat",
+        "desktop.docker.io/ports.scheme": "v2"
+      },
+      "State": "restarting",
+      "Status": "Restarting (1) 12 seconds ago",
+      "HostConfig": {
+        "NetworkMode": "debug-container_default"
+      },
+      "NetworkSettings": {
+        "Networks": {
+          "debug-container_default": {
+            "IPAMConfig": null,
+            "Links": null,
+            "Aliases": null,
+            "MacAddress": "",
+            "DriverOpts": null,
+            "GwPriority": 0,
+            "NetworkID": "b5fe8782ac5e19ba98ef7608e76b5675283ca2e3f746350e783b2756ebfb4f63",
+            "EndpointID": "",
+            "Gateway": "",
+            "IPAddress": "",
+            "IPPrefixLen": 0,
+            "IPv6Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "DNSNames": null
+          }
+        }
+      },
+      "Mounts": [
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/bootstrap-core-hub.json",
+          "Destination": "/opt/gluesync/data/bootstrap-core-hub.json",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gluesync.com.jks",
+          "Destination": "/opt/gluesync/data/gluesync.com.jks",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-license.dat",
+          "Destination": "/opt/gluesync/data/gs-license.dat",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/logback.xml",
+          "Destination": "/opt/gluesync/data/logback.xml",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/security-config.json",
+          "Destination": "/opt/gluesync/data/security-config.json",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gluesync-mssql-cdc-source-agent",
+          "Destination": "/opt/gluesync/data",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        }
+      ]
+    },
+    {
+      "Id": "440b697e08ffd1a2aa9ae388710827e86bfdc9dc8faaf58b1e92efdb2f0344df",
+      "Names": ["/gluesync-mssql-cdc-target-agent-container_name"],
+      "Image": "molo17/gluesync-mssql-cdc:latest",
+      "ImageID": "sha256:aaed93513732b2166f05dc15fd6ab8d9c85dbf8c73e77171a14227c5286b842f",
+      "Command": "./startup-entrypoint.sh ./entrypoint.sh",
+      "Created": 1753279579,
+      "Ports": [],
+      "Labels": {
+        "com.docker.compose.config-hash": "ec1baf43b43f0d8b851b2c393212eb23b5bfc7bb3cfd32d11c4de1ff0d207c7d",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:aaed93513732b2166f05dc15fd6ab8d9c85dbf8c73e77171a14227c5286b842f",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "debug-container",
+        "com.docker.compose.project.config_files": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/compose.agents.yml",
+        "com.docker.compose.project.working_dir": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container",
+        "com.docker.compose.service": "gluesync-mssql-cdc-target-agent",
+        "com.docker.compose.version": "2.38.2",
+        "com.molo17.conductor.type": "agent",
+        "com.molo17.conductor.unique_id": "gluesync-mssql-cdc-target-agent",
+        "com.molo17.conductor.versiontag": "latest",
+        "desktop.docker.io/binds/0/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gluesync.com.jks",
+        "desktop.docker.io/binds/0/SourceKind": "hostFile",
+        "desktop.docker.io/binds/0/Target": "/opt/gluesync/data/gluesync.com.jks",
+        "desktop.docker.io/binds/1/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/bootstrap-core-hub.json",
+        "desktop.docker.io/binds/1/SourceKind": "hostFile",
+        "desktop.docker.io/binds/1/Target": "/opt/gluesync/data/bootstrap-core-hub.json",
+        "desktop.docker.io/binds/2/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gluesync-mssql-cdc-target-agent",
+        "desktop.docker.io/binds/2/SourceKind": "hostFile",
+        "desktop.docker.io/binds/2/Target": "/opt/gluesync/data",
+        "desktop.docker.io/binds/3/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-license.dat",
+        "desktop.docker.io/binds/3/SourceKind": "hostFile",
+        "desktop.docker.io/binds/3/Target": "/opt/gluesync/data/gs-license.dat",
+        "desktop.docker.io/binds/4/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/logback.xml",
+        "desktop.docker.io/binds/4/SourceKind": "hostFile",
+        "desktop.docker.io/binds/4/Target": "/opt/gluesync/data/logback.xml",
+        "desktop.docker.io/binds/5/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/security-config.json",
+        "desktop.docker.io/binds/5/SourceKind": "hostFile",
+        "desktop.docker.io/binds/5/Target": "/opt/gluesync/data/security-config.json",
+        "desktop.docker.io/ports.scheme": "v2",
+        "test": "new label"
+      },
+      "State": "restarting",
+      "Status": "Restarting (1) 12 seconds ago",
+      "HostConfig": {
+        "NetworkMode": "debug-container_default"
+      },
+      "NetworkSettings": {
+        "Networks": {
+          "debug-container_default": {
+            "IPAMConfig": null,
+            "Links": null,
+            "Aliases": null,
+            "MacAddress": "",
+            "DriverOpts": null,
+            "GwPriority": 0,
+            "NetworkID": "b5fe8782ac5e19ba98ef7608e76b5675283ca2e3f746350e783b2756ebfb4f63",
+            "EndpointID": "",
+            "Gateway": "",
+            "IPAddress": "",
+            "IPPrefixLen": 0,
+            "IPv6Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "DNSNames": null
+          }
+        }
+      },
+      "Mounts": [
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gs-license.dat",
+          "Destination": "/opt/gluesync/data/gs-license.dat",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/logback.xml",
+          "Destination": "/opt/gluesync/data/logback.xml",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/security-config.json",
+          "Destination": "/opt/gluesync/data/security-config.json",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gluesync-mssql-cdc-target-agent",
+          "Destination": "/opt/gluesync/data",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/bootstrap-core-hub.json",
+          "Destination": "/opt/gluesync/data/bootstrap-core-hub.json",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        },
+        {
+          "Type": "bind",
+          "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/gluesync.com.jks",
+          "Destination": "/opt/gluesync/data/gluesync.com.jks",
+          "Mode": "ro",
+          "RW": false,
+          "Propagation": "rprivate"
+        }
+      ]
+    },
+    {
+      "Id": "00cb59886a8c7dcd03cf3adda09155b94582b5fddc1575693a4de9ee405f6a50",
+      "Names": ["/portainer"],
+      "Image": "portainer/portainer-ce:latest",
+      "ImageID": "sha256:4d18f10787271e9c430e3a83c288e706b0c32ec0f4dc034f8ff8188f72a09469",
+      "Command": "/portainer --admin-password $2y$05$wxahdaIgY6yjxyPjvSqyr.NeLhCOY/pWLXSJykVsfUGaRXnjq3etK",
+      "Created": 1752504720,
+      "Ports": [
+        {
+          "IP": "0.0.0.0",
+          "PrivatePort": 8000,
+          "PublicPort": 8000,
+          "Type": "tcp"
+        },
+        {
+          "IP": "::",
+          "PrivatePort": 8000,
+          "PublicPort": 8000,
+          "Type": "tcp"
+        },
+        {
+          "IP": "0.0.0.0",
+          "PrivatePort": 9443,
+          "PublicPort": 9443,
+          "Type": "tcp"
+        },
+        {
+          "IP": "::",
+          "PrivatePort": 9443,
+          "PublicPort": 9443,
+          "Type": "tcp"
+        }
+      ],
+      "Labels": {
+        "com.docker.compose.config-hash": "aaf8a6db80747aca875ca303c879d7c1b00fd6e405503b63097fbd1a1a62832a",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:4d18f10787271e9c430e3a83c288e706b0c32ec0f4dc034f8ff8188f72a09469",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "debug-container",
+        "com.docker.compose.project.config_files": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/compose.yml",
+        "com.docker.compose.project.working_dir": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container",
+        "com.docker.compose.service": "portainer",
+        "com.docker.compose.version": "2.38.2",
+        "com.docker.desktop.extension.api.version": ">= 0.2.2",
+        "com.docker.desktop.extension.icon": "https://portainer-io-assets.sfo2.cdn.digitaloceanspaces.com/logos/portainer.png",
+        "com.docker.extension.additional-urls": "[{\\\"title\\\":\\\"Website\\\",\\\"url\\\":\\\"https://www.portainer.io?utm_campaign=DockerCon&utm_source=DockerDesktop\\\"},{\\\"title\\\":\\\"Documentation\\\",\\\"url\\\":\\\"https://docs.portainer.io\\\"},{\\\"title\\\":\\\"Support\\\",\\\"url\\\":\\\"https://join.slack.com/t/portainer/shared_invite/zt-txh3ljab-52QHTyjCqbe5RibC2lcjKA\\\"}]",
+        "com.docker.extension.detailed-description": "<p data-renderer-start-pos=\"226\">Portainer&rsquo;s Docker Desktop extension gives you access to all of Portainer&rsquo;s rich management functionality within your docker desktop experience.</p><h2 data-renderer-start-pos=\"374\">With Portainer you can:</h2><ul><li>See all your running containers</li><li>Easily view all of your container logs</li><li>Console into containers</li><li>Easily deploy your code into containers using a simple form</li><li>Turn your YAML into custom templates for easy reuse</li></ul><h2 data-renderer-start-pos=\"660\">About Portainer&nbsp;</h2><p data-renderer-start-pos=\"680\">Portainer is the worlds&rsquo; most popular universal container management platform with more than 650,000 active monthly users. Portainer can be used to manage Docker Standalone, Kubernetes and Docker Swarm environments through a single common interface. It includes a simple GitOps automation engine and a Kube API.&nbsp;</p><p data-renderer-start-pos=\"1006\">Portainer Business Edition is our fully supported commercial grade product for business-wide use. It includes all the functionality that businesses need to manage containers at scale. Visit <a class=\"sc-jKJlTe dPfAtb\" href=\"http://portainer.io/\" title=\"http://Portainer.io\" data-renderer-mark=\"true\">Portainer.io</a> to learn more about Portainer Business and <a class=\"sc-jKJlTe dPfAtb\" href=\"http://portainer.io/take-3?utm_campaign=DockerCon&amp;utm_source=Docker%20Desktop\" title=\"http://portainer.io/take-3?utm_campaign=DockerCon&amp;utm_source=Docker%20Desktop\" data-renderer-mark=\"true\">get 3 free nodes.</a></p>",
+        "com.docker.extension.publisher-url": "https://www.portainer.io",
+        "com.docker.extension.screenshots": "[{\\\"alt\\\": \\\"screenshot one\\\", \\\"url\\\": \\\"https://portainer-io-assets.sfo2.digitaloceanspaces.com/screenshots/docker-extension-1.png\\\"},{\\\"alt\\\": \\\"screenshot two\\\", \\\"url\\\": \\\"https://portainer-io-assets.sfo2.digitaloceanspaces.com/screenshots/docker-extension-2.png\\\"},{\\\"alt\\\": \\\"screenshot three\\\", \\\"url\\\": \\\"https://portainer-io-assets.sfo2.digitaloceanspaces.com/screenshots/docker-extension-3.png\\\"},{\\\"alt\\\": \\\"screenshot four\\\", \\\"url\\\": \\\"https://portainer-io-assets.sfo2.digitaloceanspaces.com/screenshots/docker-extension-4.png\\\"},{\\\"alt\\\": \\\"screenshot five\\\", \\\"url\\\": \\\"https://portainer-io-assets.sfo2.digitaloceanspaces.com/screenshots/docker-extension-5.png\\\"},{\\\"alt\\\": \\\"screenshot six\\\", \\\"url\\\": \\\"https://portainer-io-assets.sfo2.digitaloceanspaces.com/screenshots/docker-extension-6.png\\\"},{\\\"alt\\\": \\\"screenshot seven\\\", \\\"url\\\": \\\"https://portainer-io-assets.sfo2.digitaloceanspaces.com/screenshots/docker-extension-7.png\\\"},{\\\"alt\\\": \\\"screenshot eight\\\", \\\"url\\\": \\\"https://portainer-io-assets.sfo2.digitaloceanspaces.com/screenshots/docker-extension-8.png\\\"},{\\\"alt\\\": \\\"screenshot nine\\\", \\\"url\\\": \\\"https://portainer-io-assets.sfo2.digitaloceanspaces.com/screenshots/docker-extension-9.png\\\"}]",
+        "desktop.docker.io/binds/0/Source": "/var/run/docker.sock",
+        "desktop.docker.io/binds/0/SourceKind": "dockerSocketProxied",
+        "desktop.docker.io/binds/0/Target": "/var/run/docker.sock",
+        "desktop.docker.io/ports.scheme": "v2",
+        "desktop.docker.io/ports/8000/tcp": ":8000",
+        "desktop.docker.io/ports/9443/tcp": ":9443",
+        "io.portainer.server": "true",
+        "org.opencontainers.image.description": "Docker container management made simple, with the world’s most popular GUI-based container management platform.",
+        "org.opencontainers.image.title": "Portainer",
+        "org.opencontainers.image.vendor": "Portainer.io"
+      },
+      "State": "running",
+      "Status": "Up About an hour",
+      "HostConfig": {
+        "NetworkMode": "debug-container_default"
+      },
+      "NetworkSettings": {
+        "Networks": {
+          "debug-container_default": {
+            "IPAMConfig": null,
+            "Links": null,
+            "Aliases": null,
+            "MacAddress": "a6:67:a2:9c:44:ea",
+            "DriverOpts": null,
+            "GwPriority": 0,
+            "NetworkID": "b5fe8782ac5e19ba98ef7608e76b5675283ca2e3f746350e783b2756ebfb4f63",
+            "EndpointID": "a4c9659336a7cff3e9fb7006095eeade3401f8a40591e86f2cf47ccd7f2a51f7",
+            "Gateway": "172.18.0.1",
+            "IPAddress": "172.18.0.2",
+            "IPPrefixLen": 16,
+            "IPv6Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "DNSNames": null
+          }
+        }
+      },
+      "Mounts": [
+        {
+          "Type": "volume",
+          "Name": "226bcae76db3f38a8eddc598f3c6fe7e90f718bc3a6e4df813a798c301d92d0a",
+          "Source": "",
+          "Destination": "/data",
+          "Driver": "local",
+          "Mode": "",
+          "RW": true,
+          "Propagation": ""
+        },
+        {
+          "Type": "bind",
+          "Source": "/run/host-services/docker.proxy.sock",
+          "Destination": "/var/run/docker.sock",
+          "Mode": "rw",
+          "RW": true,
+          "Propagation": "rprivate"
+        }
+      ]
+    }
+  ]
+}
