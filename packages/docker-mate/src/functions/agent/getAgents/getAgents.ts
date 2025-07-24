@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { GetAgentsHandler } from './getAgents.model';
-import parseImageTag from '../../../helpers/parseImageTag/parseImageTag';
+import parseImage from '../../../helpers/parseImage/parseImage';
 
 /**
  * Get all agents from running Docker containers
@@ -59,7 +59,7 @@ export const getAgents: GetAgentsHandler = async (
 
         // Extract the image name and tag
         const imageString = details.Config?.Image || '';
-        const { name, tag } = parseImageTag(imageString);
+        const { tag } = parseImage(imageString);
 
         // Get labels
         const labels = details.Config?.Labels || {};

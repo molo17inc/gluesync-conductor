@@ -16,7 +16,7 @@
  */
 
 import { GetContainerHandler, ContainerData } from './getContainer.model';
-import parseImageTag from '../../../helpers/parseImageTag/parseImageTag';
+import parseImage from '../../../helpers/parseImage/parseImage';
 import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
 
 const handler: GetContainerHandler = async (req, reply) => {
@@ -41,7 +41,7 @@ const handler: GetContainerHandler = async (req, reply) => {
 
       // Extract image name and tag
       const imageString = details.Config?.Image || '';
-      const { name: fullImageName, tag } = parseImageTag(imageString);
+      const { registry: fullImageName, tag } = parseImage(imageString);
 
       // Extract the image name without registry prefix
       let imageName = fullImageName;

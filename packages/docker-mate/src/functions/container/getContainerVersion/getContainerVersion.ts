@@ -17,7 +17,7 @@
 
 import { RouteHandlerMethod } from 'fastify';
 import axios from 'axios';
-import parseImageTag from '../../../helpers/parseImageTag/parseImageTag';
+import parseImage from '../../../helpers/parseImage/parseImage';
 import Docker from 'dockerode';
 
 const handler: RouteHandlerMethod = async (req, reply) => {
@@ -38,9 +38,9 @@ const handler: RouteHandlerMethod = async (req, reply) => {
 
     // Extract the image name from the container
     const imageString = details.Config?.Image || '';
-    const { name } = parseImageTag(imageString);
+    const { imageName, tag } = parseImage(imageString);
 
-    if (!name) {
+    if (!imageName) {
       return reply.code(404).send({
         success: false,
         error: 'Image name not found for this container',
@@ -50,7 +50,7 @@ const handler: RouteHandlerMethod = async (req, reply) => {
     try {
       // Make a request to the backoffice API to get the latest version
       const response = await axios.get(
-        `https://api.backoffice.molo17.com/agent/${name}`,
+        `https://api.backoffice.molo17.com/agent/${imageName}`,
       );
 
       // Return the response data
@@ -60,13 +60,13 @@ const handler: RouteHandlerMethod = async (req, reply) => {
           containerId: id,
           containerName: details.Name ? details.Name.replace(/^\//, '') : '',
           currentImage: imageString,
-          currentTag: parseImageTag(imageString).tag,
+          currentTag: tag,
           latestVersion: response.data,
         },
       });
     } catch (apiError) {
       req.log.error(
-        `Error fetching latest version for ${name}: ${apiError instanceof Error ? apiError.message : String(apiError)}`,
+        `Error fetching latest version for ${imageName}: ${apiError instanceof Error ? apiError.message : String(apiError)}`,
       );
       return reply.code(502).send({
         success: false,

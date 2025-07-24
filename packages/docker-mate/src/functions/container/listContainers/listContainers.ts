@@ -1,4 +1,4 @@
-import parseImageTag from '../../../helpers/parseImageTag/parseImageTag';
+import parseImage from '../../../helpers/parseImage/parseImage';
 import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
 import { ComposeFile } from '../../../models/composeFile.model';
 import {
@@ -46,7 +46,7 @@ const handler: ListContainersHandler = async (req, reply) => {
 
         // Extract the specific fields we need
         const imageString = details.Config?.Image || '';
-        const { name, tag } = parseImageTag(imageString);
+        const { tag } = parseImage(imageString);
 
         // Check if this container is persisted in the compose file
         const labels = details.Config?.Labels || {};
@@ -98,7 +98,7 @@ const handler: ListContainersHandler = async (req, reply) => {
         );
         // Return basic info if inspect fails
         const fallbackImageString = containerInfo.Image || '';
-        const { name, tag } = parseImageTag(fallbackImageString);
+        const { tag } = parseImage(fallbackImageString);
 
         // For containers where inspect fails, assume they're not persisted
         return {
