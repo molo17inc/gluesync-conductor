@@ -1,3 +1,8 @@
+export enum LabelPrefix {
+  CONDUCTOR = 'com.molo17.conductor',
+  COMPOSE = 'com.docker.compose',
+}
+
 export type ComposeServiceFieldConfig = {
   separator: string;
 };
