@@ -3,6 +3,14 @@ services:
     image: molo17/gluesync-mssql-cdc:latest # Image
     container_name: gluesync-mssql-cdc-target-agent # "Names": ["/gluesync-mssql-cdc-source-agent"]
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          cpus: 1.0
+          memory: 2.0G
+        limits:
+          cpus: 2.0
+          memory: 6.0G
     environment:
       - type=target
       - maxRamPercentage=90
