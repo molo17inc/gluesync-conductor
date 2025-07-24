@@ -1,0 +1,71 @@
+export type Port = Readonly<{
+  ip: string;
+  privatePort: number;
+  publicPort: number;
+  type: string;
+}>;
+
+export type HostConfig = Readonly<{
+  networkMode: string;
+}>;
+
+export type NetworkInfo = Readonly<{
+  iPAMConfig?: any;
+  links?: any;
+  aliases?: any;
+  networkID: string;
+  endpointID: string;
+  gateway: string;
+  iPAddress: string;
+  iPPrefixLen: number;
+  iPv6Gateway: string;
+  globalIPv6Address: string;
+  globalIPv6PrefixLen: number;
+  macAddress: string;
+}>;
+
+export type NetworkSettings = Readonly<{
+  networks: Record<string, NetworkInfo>;
+}>;
+
+export type VolumeMount = Readonly<{
+  name?: string | undefined;
+  type: string;
+  source: string;
+  destination: string;
+  driver?: string | undefined;
+  mode: string;
+  rw: boolean;
+  propagation: string;
+}>;
+
+export const containerStateValues = [
+  'created',
+  'restarting',
+  'running',
+  'removing',
+  'paused',
+  'exited',
+  'dead',
+] as const;
+
+export type ContainerState = (typeof containerStateValues)[number];
+
+export type ContainerInfo = Readonly<{
+  id: string;
+  name: string;
+  image: string;
+  imageID: string;
+  tag: string;
+  versionTag: string;
+  persisted: boolean;
+  command: string;
+  created: number;
+  ports: ReadonlyArray<Port>;
+  labels: Record<string, string>;
+  state: ContainerState | 'unknown';
+  status: string;
+  hostConfig: HostConfig;
+  networkSettings: NetworkSettings;
+  mounts: ReadonlyArray<VolumeMount>;
+}>;
