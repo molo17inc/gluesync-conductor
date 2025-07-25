@@ -1,7 +1,7 @@
 import { stop } from 'docker-compose';
 
 import { StopAgentsHandler } from './stopAgents.model';
-import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
+import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 

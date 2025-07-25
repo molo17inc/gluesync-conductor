@@ -1,4 +1,4 @@
-import writeYmlFile from '../writeYmlFile/writeYmlFile';
+import writeYmlFile from '../../file/writeYmlFile/writeYmlFile';
 
 import { WriteComposeFile } from './writeComposeFile.model';
 

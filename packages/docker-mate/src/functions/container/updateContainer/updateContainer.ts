@@ -17,8 +17,8 @@
 
 import { UpdateContainerHandler } from './updateContainer.model';
 
-import writeComposeFile from '../../../helpers/writeComposeFile/writeComposeFile';
-import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
+import writeComposeFile from '../../../helpers/composeFile/writeComposeFile/writeComposeFile';
+import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 
 const handler: UpdateContainerHandler = async (req, reply) => {
   try {

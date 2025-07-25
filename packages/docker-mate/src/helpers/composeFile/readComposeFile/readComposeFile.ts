@@ -1,4 +1,4 @@
-import readYmlFile from '../readYmlFile/readYmlFile';
+import readYmlFile from '../../file/readYmlFile/readYmlFile';
 
 import { ReadComposeFile } from './readComposeFile.model';
 

@@ -1,8 +1,8 @@
 import { RemoveAgentHandler } from './removeAgent.model';
 import { ComposeFile } from '../../../models/composeFile.model';
 
-import writeComposeFile from '../../../helpers/writeComposeFile/writeComposeFile';
-import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
+import writeComposeFile from '../../../helpers/composeFile/writeComposeFile/writeComposeFile';
+import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import removeKey from '../../../helpers/removeKey/removeKey';
 
 const handler: RemoveAgentHandler = async (req, reply) => {

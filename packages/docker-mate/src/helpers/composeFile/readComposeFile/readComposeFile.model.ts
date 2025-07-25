@@ -1,4 +1,4 @@
-import { ComposeFile } from '../../models/composeFile.model';
+import { ComposeFile } from '../../../models/composeFile.model';
 
 export type ReadComposeFile = (
   filename?: string,

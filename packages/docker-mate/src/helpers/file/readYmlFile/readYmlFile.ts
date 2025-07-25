@@ -3,7 +3,7 @@ import { parse } from 'yaml';
 
 import { ReadYmlFile } from './readYmlFile.model';
 
-import getRootPath from '../getRootPath/getRootPath';
+import getRootPath from '../../getRootPath/getRootPath';
 
 const readYmlFile: ReadYmlFile = async filename => {
   const path = getRootPath(filename);

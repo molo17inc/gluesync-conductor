@@ -1,11 +1,11 @@
 import { AddAgentsHandler } from './addAgents.model';
 import { ComposeFile } from '../../../models/composeFile.model';
 
-import writeComposeFile from '../../../helpers/writeComposeFile/writeComposeFile';
-import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
+import writeComposeFile from '../../../helpers/composeFile/writeComposeFile/writeComposeFile';
+import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import mergeComposeFiles, {
   mergeServices,
-} from '../../../helpers/mergeComposeFiles/mergeComposeFiles';
+} from '../../../helpers/composeFile/mergeComposeFiles/mergeComposeFiles';
 import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
 
 const handler: AddAgentsHandler = async (req, reply) => {

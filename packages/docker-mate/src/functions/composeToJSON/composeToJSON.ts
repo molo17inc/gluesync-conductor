@@ -1,7 +1,7 @@
 import { RouteHandlerMethod } from 'fastify';
 
-import readComposeFile from '../../helpers/readComposeFile/readComposeFile';
-import writeComposeFile from '../../helpers/writeComposeFile/writeComposeFile';
+import readComposeFile from '../../helpers/composeFile/readComposeFile/readComposeFile';
+import writeComposeFile from '../../helpers/composeFile/writeComposeFile/writeComposeFile';
 
 const handler: RouteHandlerMethod = async (req, reply) => {
   try {

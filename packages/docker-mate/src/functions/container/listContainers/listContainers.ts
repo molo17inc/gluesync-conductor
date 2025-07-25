@@ -1,5 +1,5 @@
 import containerInfoMapper from '../../../helpers/dockerode/containerInfoMapper/containerInfoMapper';
-import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
+import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 
 import { ListContainersHandler } from './listContainers.model';
 

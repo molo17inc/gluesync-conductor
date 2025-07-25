@@ -1,11 +1,11 @@
-import mergeComposeKeyValueField from '../composeFile/mergeKeyValueStrings/mergeKeyValueStrings';
+import mergeComposeKeyValueField from '../mergeKeyValueStrings/mergeKeyValueStrings';
 
 import {
   ComposeFile,
   ComposeService,
   composeServiceFieldConfig,
   ComposeServiceFieldName,
-} from '../../models/composeFile.model';
+} from '../../../models/composeFile.model';
 import { MergeTwoServices } from './mergeComposeFiles.model';
 
 const mergeTwoServices: MergeTwoServices = (service1, service2) => ({

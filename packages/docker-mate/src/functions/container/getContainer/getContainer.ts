@@ -17,7 +17,7 @@
 
 import { GetContainerHandler, ContainerData } from './getContainer.model';
 import parseImage from '../../../helpers/parseImage/parseImage';
-import readComposeFile from '../../../helpers/readComposeFile/readComposeFile';
+import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 
 const handler: GetContainerHandler = async (req, reply) => {
   try {
