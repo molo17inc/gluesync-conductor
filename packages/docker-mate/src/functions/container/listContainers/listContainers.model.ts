@@ -5,7 +5,7 @@ import { ContainerInfo, SystemInfo } from '../../../models/dockerode.model';
 import { ComposeService } from '../../../models/composeFile.model';
 
 export type ListContainerItem = Readonly<{
-  name: string;
+  id: string;
   service?: ComposeService;
   info?: ContainerInfo;
 }>;

@@ -49,12 +49,12 @@ const handler: ListContainersHandler = async (req, reply) => {
       ]),
     ];
 
-    const containers = allServicesNames.map(name => {
-      const info = containerInfoMapper(containerListMap[name]);
-      const service = composeJson.services?.[name];
+    const containers = allServicesNames.map(id => {
+      const info = containerInfoMapper(containerListMap[id]);
+      const service = composeJson.services?.[id];
 
       return {
-        name,
+        id,
         service,
         info,
       };
