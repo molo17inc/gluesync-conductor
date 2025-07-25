@@ -17,14 +17,10 @@
 
 import { RouteHandlerMethod } from 'fastify';
 import { ErrorResponse, SuccessResponse } from '../../../models/common.model';
+import { SystemInfo } from '../../../models/dockerode.model';
 
 export type GetContainerParams = Readonly<{
   id: string;
-}>;
-
-export type SystemInfo = Readonly<{
-  ncpu: number;
-  memTotal: number;
 }>;
 
 export type ContainerData = Readonly<{

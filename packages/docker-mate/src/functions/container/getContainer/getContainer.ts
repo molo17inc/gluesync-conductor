@@ -18,6 +18,7 @@
 import { GetContainerHandler, ContainerData } from './getContainer.model';
 import parseImage from '../../../helpers/parseImage/parseImage';
 import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
+import getSystemInfo from '../../../helpers/dockerode/getSystemInfo/getSystemInfo';
 
 const handler: GetContainerHandler = async (req, reply) => {
   try {
@@ -29,15 +30,7 @@ const handler: GetContainerHandler = async (req, reply) => {
       const details = await container.inspect();
 
       // Get Docker system information (CPU count and total memory)
-      const dockerInfo = await req.server.docker.info();
-      const systemInfo = {
-        ncpu: dockerInfo.NCPU,
-        memTotal: dockerInfo.MemTotal,
-      };
-
-      req.log.debug(
-        `System info - CPUs: ${systemInfo.ncpu}, Memory: ${systemInfo.memTotal} bytes`,
-      );
+      const systemInfo = await getSystemInfo(req.server.docker, req.log);
 
       // Extract image name and tag
       const imageString = details.Config?.Image || '';
@@ -180,10 +173,7 @@ const handler: GetContainerHandler = async (req, reply) => {
       return reply.send({
         success: true,
         data: containerData,
-        systemInfo: {
-          ncpu: systemInfo.ncpu,
-          memTotal: systemInfo.memTotal,
-        },
+        systemInfo,
       } as any); // Type assertion to bypass type checking temporarily
     } catch (containerError) {
       req.log.error(

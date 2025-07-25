@@ -1,10 +1,6 @@
 import type { RouteHandlerMethod } from 'fastify';
 import { ErrorResponse, SuccessResponse } from '../../../models/common.model';
-
-export type SystemInfo = {
-  ncpu: number;
-  memTotal: number;
-};
+import { SystemInfo } from '../../../models/dockerode.model';
 
 export type Agent = {
   id: string;

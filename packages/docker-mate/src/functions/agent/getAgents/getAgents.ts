@@ -1,38 +1,33 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { GetAgentsHandler } from './getAgents.model';
 import parseImage from '../../../helpers/parseImage/parseImage';
+import getSystemInfo from '../../../helpers/dockerode/getSystemInfo/getSystemInfo';
 
 /**
  * Get all agents from running Docker containers
  * Filters containers with type=source or type=target in their environment variables
  */
 export const getAgents: GetAgentsHandler = async (
-  request: FastifyRequest,
+  req: FastifyRequest,
   reply: FastifyReply,
 ) => {
   try {
     // Get all containers (running and stopped)
-    const containerList = await request.server.docker.listContainers({
+    const containerList = await req.server.docker.listContainers({
       all: true,
     });
 
     // Get Docker system information (CPU count and total memory)
-    const dockerInfo = await request.server.docker.info();
-    const systemInfo = {
-      ncpu: dockerInfo.NCPU,
-      memTotal: dockerInfo.MemTotal,
-    };
+    const systemInfo = await getSystemInfo(req.server.docker, req.log);
 
-    request.log.info(
-      `Filtering agents from ${containerList.length} containers`,
-    );
+    req.log.info(`Filtering agents from ${containerList.length} containers`);
 
     // Filter and process containers to find agents
     const agents = [];
 
     for (const containerInfo of containerList) {
       try {
-        const container = request.server.docker.getContainer(containerInfo.Id);
+        const container = req.server.docker.getContainer(containerInfo.Id);
         const details = await container.inspect();
 
         // Check environment variables for type=source or type=target
@@ -90,7 +85,7 @@ export const getAgents: GetAgentsHandler = async (
           hostConfig: details.HostConfig || {},
         });
       } catch (containerError) {
-        request.log.warn(
+        req.log.warn(
           `Error processing container ${containerInfo.Id}: ${containerError instanceof Error ? containerError.message : String(containerError)}`,
         );
         // Continue with next container
@@ -103,7 +98,7 @@ export const getAgents: GetAgentsHandler = async (
       systemInfo,
     });
   } catch (error) {
-    request.log.error('Error getting agents:', error);
+    req.log.error('Error getting agents:', error);
     reply.status(500).send({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
