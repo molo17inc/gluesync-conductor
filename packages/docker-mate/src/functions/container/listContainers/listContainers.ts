@@ -2,6 +2,7 @@ import containerInfoMapper from '../../../helpers/dockerode/containerInfoMapper/
 import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 
 import { ListContainersHandler } from './listContainers.model';
+import getSystemInfo from '../../../helpers/dockerode/getSystemInfo/getSystemInfo';
 
 const handler: ListContainersHandler = async (req, reply) => {
   try {
@@ -20,16 +21,9 @@ const handler: ListContainersHandler = async (req, reply) => {
     req.log.debug(`containerList: ${JSON.stringify(containerList)}`);
 
     // Get Docker system information (CPU count and total memory)
-    const dockerInfo = await req.server.docker.info();
-    const systemInfo = {
-      ncpu: dockerInfo.NCPU,
-      memTotal: dockerInfo.MemTotal,
-    };
+    const systemInfo = await getSystemInfo(req.server.docker, req.log);
 
     req.log.debug(`Successfully listed ${containerList.length} containers`);
-    req.log.debug(
-      `System info - CPUs: ${systemInfo.ncpu}, Memory: ${systemInfo.memTotal} bytes`,
-    );
 
     // // Get detailed information for each container
     // const getContainerDetails = async (
@@ -130,10 +124,7 @@ const handler: ListContainersHandler = async (req, reply) => {
         containers: containerList.map(item => ({
           info: containerInfoMapper(item),
         })),
-        systemInfo: {
-          ncpu: systemInfo.ncpu,
-          memTotal: systemInfo.memTotal,
-        },
+        systemInfo,
       },
     });
   } catch (error) {

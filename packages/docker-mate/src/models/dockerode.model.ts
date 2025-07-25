@@ -1,3 +1,8 @@
+export type SystemInfo = Readonly<{
+  ncpu?: number;
+  memTotal?: number;
+}>;
+
 export type Port = Readonly<{
   ip: string;
   privatePort: number;
