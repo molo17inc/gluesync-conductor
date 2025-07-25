@@ -164,44 +164,50 @@ server.get('/containers', {
           success: { type: 'boolean' },
           data: {
             additionalProperties: true, // Allow any properties in the response
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                name: { type: 'string' },
-                image: { type: 'string' },
-                tag: { type: 'string' },
-                versionTag: { type: 'string' },
-                persisted: { type: 'boolean' },
-                created: { type: 'string' },
-                running: { type: 'boolean' },
-                status: { type: 'string' },
-                exitCode: { type: 'number' },
-                startedAt: { type: 'string' },
-                finishedAt: { type: 'string' },
-                cmd: { type: 'array', items: { type: 'string' } },
-                env: { type: 'array', items: { type: 'string' } },
-                labels: { type: 'object', additionalProperties: true },
-                networkMode: { type: 'string' },
-                privileged: { type: 'boolean' },
-                ports: {
-                  type: 'array',
-                  items: { type: 'object', additionalProperties: true },
-                },
-                mounts: {
-                  type: 'array',
-                  items: { type: 'object', additionalProperties: true },
-                },
-                hostConfig: { type: 'object', additionalProperties: true },
-              },
-            },
-          },
-          systemInfo: {
             type: 'object',
             properties: {
-              ncpu: { type: 'number' },
-              memTotal: { type: 'number' },
+              systemInfo: {
+                type: 'object',
+                properties: {
+                  ncpu: { type: 'number' },
+                  memTotal: { type: 'number' },
+                },
+              },
+              containers: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: true, // Allow any properties in the response
+                  properties: {
+                    id: { type: 'string' },
+                    name: { type: 'string' },
+                    image: { type: 'string' },
+                    tag: { type: 'string' },
+                    versionTag: { type: 'string' },
+                    persisted: { type: 'boolean' },
+                    created: { type: 'string' },
+                    running: { type: 'boolean' },
+                    status: { type: 'string' },
+                    exitCode: { type: 'number' },
+                    startedAt: { type: 'string' },
+                    finishedAt: { type: 'string' },
+                    cmd: { type: 'array', items: { type: 'string' } },
+                    env: { type: 'array', items: { type: 'string' } },
+                    labels: { type: 'object', additionalProperties: true },
+                    networkMode: { type: 'string' },
+                    privileged: { type: 'boolean' },
+                    ports: {
+                      type: 'array',
+                      items: { type: 'object', additionalProperties: true },
+                    },
+                    mounts: {
+                      type: 'array',
+                      items: { type: 'object', additionalProperties: true },
+                    },
+                    hostConfig: { type: 'object', additionalProperties: true },
+                  },
+                },
+              },
             },
           },
         },
