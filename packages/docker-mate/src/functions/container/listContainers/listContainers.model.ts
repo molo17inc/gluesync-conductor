@@ -2,9 +2,12 @@ import { RouteHandlerMethod } from 'fastify';
 
 import { ErrorResponse, SuccessResponse } from '../../../models/common.model';
 import { ContainerInfo, SystemInfo } from '../../../models/dockerode.model';
+import { ComposeService } from '../../../models/composeFile.model';
 
 export type ListContainerItem = Readonly<{
-  info: ContainerInfo;
+  name: string;
+  service?: ComposeService;
+  info?: ContainerInfo;
 }>;
 
 export type ListContainersSuccessResponse = Readonly<{

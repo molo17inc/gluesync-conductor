@@ -1,4 +1,4 @@
-export type ParseImage = (imageString: string) => Readonly<{
+export type ParseImage = (imageString?: string) => Readonly<{
   registry: string;
   repository: string;
   tag: string;
