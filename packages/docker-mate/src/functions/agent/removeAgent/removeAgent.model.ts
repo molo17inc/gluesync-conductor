@@ -2,11 +2,7 @@ import { RouteHandlerMethod } from 'fastify';
 
 import { ErrorResponse, SuccessResponse } from '../../../models/common.model';
 
-export type RemoveAgentResponse = Readonly<{
-  success: boolean;
-  data?: Record<string, any>;
-  error?: string;
-}>;
+export type RemoveAgentResponse = SuccessResponse<any> | ErrorResponse;
 
 export type RemoveAgentHandler = RouteHandlerMethod<
   any,
