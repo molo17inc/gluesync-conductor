@@ -69,3 +69,26 @@ export type ContainerInfo = Readonly<{
   networkSettings: NetworkSettings;
   mounts: ReadonlyArray<VolumeMount>;
 }>;
+
+// export type ContainerListItem = Readonly<{
+//   id: string;
+//   name: string;
+//   image: string;
+//   tag: string;
+//   versionTag: string;
+//   persisted: boolean;
+//   created: string;
+//   running: boolean;
+//   status: string;
+//   exitCode: number;
+//   startedAt: string;
+//   finishedAt: string;
+//   cmd: string[];
+//   env: string[];
+//   labels: Record<string, string>;
+//   networkMode: string;
+//   privileged: boolean;
+//   ports: any[];
+//   mounts: any[];
+//   hostConfig: any; // Full HostConfig from Docker inspect
+// }>;
