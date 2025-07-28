@@ -16,7 +16,7 @@
  */
 
 import { AddContainerHandler } from './addContainer.model';
-import { ComposeFile } from '../../../models/composeFile.model';
+import { RawComposeFile } from '../../../models/composeFile.model';
 
 import writeComposeFile from '../../../helpers/composeFile/writeComposeFile/writeComposeFile';
 import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
@@ -29,7 +29,7 @@ const handler: AddContainerHandler = async (req, reply) => {
   try {
     const composeJson = (await readComposeFile()) || {};
 
-    const composeFile = (req.body.containers || []).reduce<ComposeFile>(
+    const composeFile = (req.body.containers || []).reduce<RawComposeFile>(
       (acc, container) => {
         if (!container.type) {
           return acc;

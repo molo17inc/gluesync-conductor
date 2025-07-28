@@ -1,5 +1,5 @@
 import { AddAgentsHandler } from './addAgents.model';
-import { ComposeFile } from '../../../models/composeFile.model';
+import { RawComposeFile } from '../../../models/composeFile.model';
 
 import writeComposeFile from '../../../helpers/composeFile/writeComposeFile/writeComposeFile';
 import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
@@ -12,7 +12,7 @@ const handler: AddAgentsHandler = async (req, reply) => {
   try {
     const composeJson = (await readComposeFile()) || {};
 
-    const composeFile = (req.body.agents || []).reduce<ComposeFile>(
+    const composeFile = (req.body.agents || []).reduce<RawComposeFile>(
       (acc, agent) => {
         if (!agent.type) {
           return acc;

@@ -1,5 +1,5 @@
 import { RemoveAgentHandler } from './removeAgent.model';
-import { ComposeFile } from '../../../models/composeFile.model';
+import { RawComposeFile } from '../../../models/composeFile.model';
 
 import writeComposeFile from '../../../helpers/composeFile/writeComposeFile/writeComposeFile';
 import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
@@ -16,7 +16,7 @@ const handler: RemoveAgentHandler = async (req, reply) => {
       return;
     }
 
-    const composeFile: ComposeFile = {
+    const composeFile: RawComposeFile = {
       ...composeJson,
       services: removeKey(composeJson.services, id),
     };

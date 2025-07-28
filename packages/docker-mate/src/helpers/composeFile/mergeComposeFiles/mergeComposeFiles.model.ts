@@ -1,6 +1,6 @@
-import { ComposeService } from '../../../models/composeFile.model';
+import { RawComposeService } from '../../../models/composeFile.model';
 
 export type MergeTwoServices = (
-  service1?: Partial<ComposeService>,
-  service2?: Partial<ComposeService>,
-) => Partial<ComposeService>;
+  service1?: Partial<RawComposeService>,
+  service2?: Partial<RawComposeService>,
+) => Partial<RawComposeService>;

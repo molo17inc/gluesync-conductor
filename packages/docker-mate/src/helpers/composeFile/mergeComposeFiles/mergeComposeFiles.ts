@@ -1,8 +1,8 @@
 import mergeComposeKeyValueField from '../mergeKeyValueStrings/mergeKeyValueStrings';
 
 import {
-  ComposeFile,
-  ComposeService,
+  RawComposeFile,
+  RawComposeService,
   composeServiceFieldConfig,
   ComposeServiceFieldName,
 } from '../../../models/composeFile.model';
@@ -30,7 +30,9 @@ const mergeTwoServices: MergeTwoServices = (service1, service2) => ({
   ),
 });
 
-export const mergeServices = (servicesList: Record<string, ComposeService>[]) =>
+export const mergeServices = (
+  servicesList: Record<string, RawComposeService>[],
+) =>
   servicesList.reduce(
     (merged, services) =>
       Object.keys({ ...merged, ...services }).reduce(
@@ -47,8 +49,8 @@ export const mergeServices = (servicesList: Record<string, ComposeService>[]) =>
   );
 
 const mergeComposeFiles = (
-  composeFiles: ReadonlyArray<ComposeFile>,
-): ComposeFile =>
+  composeFiles: ReadonlyArray<RawComposeFile>,
+): RawComposeFile =>
   composeFiles.reduce(
     (merged, current) => ({
       ...merged,

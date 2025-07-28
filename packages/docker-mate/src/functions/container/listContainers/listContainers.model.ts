@@ -2,11 +2,11 @@ import { RouteHandlerMethod } from 'fastify';
 
 import { ErrorResponse, SuccessResponse } from '../../../models/common.model';
 import { ContainerInfo, SystemInfo } from '../../../models/dockerode.model';
-import { ComposeService } from '../../../models/composeFile.model';
+import { RawComposeService } from '../../../models/composeFile.model';
 
 export type ListContainerItem = Readonly<{
   id: string;
-  service?: ComposeService;
+  service?: RawComposeService;
   info?: ContainerInfo;
 }>;
 

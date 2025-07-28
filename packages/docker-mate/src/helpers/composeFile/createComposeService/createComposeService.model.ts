@@ -1,4 +1,4 @@
-import { ComposeService } from '../../../models/composeFile.model';
+import { RawComposeService } from '../../../models/composeFile.model';
 
 export type CreateComposeServiceOptions = {
   imageName: string;
@@ -14,4 +14,4 @@ export type CreateComposeServiceOptions = {
 export type CreateComposeService = (
   type: 'agent' | 'module' | 'container',
   options: CreateComposeServiceOptions,
-) => ComposeService;
+) => RawComposeService;

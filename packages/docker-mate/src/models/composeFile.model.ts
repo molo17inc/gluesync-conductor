@@ -17,15 +17,15 @@ export const composeServiceFieldConfig = {
 
 export type ComposeServiceFieldName = keyof typeof composeServiceFieldConfig;
 
-export type ComposeService = Readonly<{
+export type RawComposeService = Readonly<{
   image: string;
   container_name: string;
   restart?: string;
 }> &
   Partial<Record<ComposeServiceFieldName, ReadonlyArray<string>>>;
 
-export type ComposeFile = {
+export type RawComposeFile = {
   name?: string;
-  services?: Record<string, ComposeService>;
+  services?: Record<string, RawComposeService>;
   [key: string]: any;
 };
