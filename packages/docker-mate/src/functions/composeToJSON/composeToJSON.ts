@@ -12,10 +12,11 @@ const handler: ComposeToJSONHandler = async (req, reply) => {
     const { raw } = castObject<ComposeToJSONParams>(req.query);
 
     const composeJson = await readComposeFile({ raw });
+    const composeJsonRaw = await readComposeFile({ raw: true });
 
     req.log.debug(`Current query: ${raw}, ${typeof raw}`);
 
-    await writeComposeFile(composeJson, 'compose.generated.yml');
+    await writeComposeFile(composeJsonRaw, 'compose.generated.yml');
 
     reply.statusCode = 200;
     reply.send({ success: true, data: composeJson });
