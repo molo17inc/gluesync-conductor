@@ -1,7 +1,7 @@
 import { stop } from 'docker-compose';
 
 import { StopAgentsHandler } from './stopAgents.model';
-import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
+import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 
@@ -10,7 +10,7 @@ const filename = 'compose.agents.yml';
 const handler: StopAgentsHandler = async (req, reply) => {
   try {
     const { id } = req.params;
-    const composeJson = (await readComposeFile()) || {};
+    const composeJson = await readComposeFile({ raw: true });
 
     if (!composeJson.services || !composeJson.services[id]) {
       reply.statusCode = 404;

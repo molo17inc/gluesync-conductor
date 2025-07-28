@@ -2,7 +2,7 @@ import { AddAgentsHandler } from './addAgents.model';
 import { RawComposeFile } from '../../../models/composeFile.model';
 
 import writeComposeFile from '../../../helpers/composeFile/writeComposeFile/writeComposeFile';
-import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
+import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import mergeComposeFiles, {
   mergeServices,
 } from '../../../helpers/composeFile/mergeComposeFiles/mergeComposeFiles';
@@ -10,7 +10,7 @@ import createComposeService from '../../../helpers/composeFile/createComposeServ
 
 const handler: AddAgentsHandler = async (req, reply) => {
   try {
-    const composeJson = (await readComposeFile()) || {};
+    const composeJson = await readComposeFile({ raw: true });
 
     const composeFile = (req.body.agents || []).reduce<RawComposeFile>(
       (acc, agent) => {

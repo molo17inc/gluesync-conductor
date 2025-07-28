@@ -3,7 +3,7 @@ import {
   ComposeToJSONParams,
 } from './composeToJSON.model';
 
-import readComposeFile from '../../helpers/composeFile/readComposeFile/readComposeFile';
+import { readComposeFile } from '../../helpers/composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../../helpers/composeFile/writeComposeFile/writeComposeFile';
 import { castObject } from '../../helpers/composeFile/extractKeyValue/extractKeyValue';
 
@@ -11,7 +11,7 @@ const handler: ComposeToJSONHandler = async (req, reply) => {
   try {
     const { raw } = castObject<ComposeToJSONParams>(req.query);
 
-    const composeJson = (await readComposeFile(undefined, { raw })) || {};
+    const composeJson = await readComposeFile({ raw });
 
     req.log.debug(`Current query: ${raw}, ${typeof raw}`);
 

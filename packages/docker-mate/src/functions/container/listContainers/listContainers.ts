@@ -1,7 +1,7 @@
 import { ListContainersHandler } from './listContainers.model';
 
 import containerInfoMapper from '../../../helpers/dockerode/containerInfoMapper/containerInfoMapper';
-import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
+import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import getSystemInfo from '../../../helpers/dockerode/getSystemInfo/getSystemInfo';
 import { LabelPrefix } from '../../../models/composeFile.model';
 import { ContainerInfo } from 'dockerode';
@@ -13,7 +13,7 @@ const handler: ListContainersHandler = async (req, reply) => {
     // Use all: true to show all containers (not just running ones)
     const [systemInfo, composeJson = {}, containerList] = await Promise.all([
       getSystemInfo(req.server.docker, req.log),
-      readComposeFile(),
+      readComposeFile({ raw: true }),
       req.server.docker.listContainers({ all: true }),
     ]);
 

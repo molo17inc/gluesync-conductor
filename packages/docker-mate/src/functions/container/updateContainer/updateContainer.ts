@@ -18,7 +18,7 @@
 import { UpdateContainerHandler } from './updateContainer.model';
 
 import writeComposeFile from '../../../helpers/composeFile/writeComposeFile/writeComposeFile';
-import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
+import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 
 const handler: UpdateContainerHandler = async (req, reply) => {
   try {
@@ -27,7 +27,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       req.body;
 
     // Read the current compose file
-    const composeFile = (await readComposeFile()) || {};
+    const composeFile = await readComposeFile({ raw: true });
 
     // Find the service with the matching container ID
     let serviceKey: string | null = null;

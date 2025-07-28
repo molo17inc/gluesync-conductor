@@ -2,13 +2,13 @@ import { RemoveAgentHandler } from './removeAgent.model';
 import { RawComposeFile } from '../../../models/composeFile.model';
 
 import writeComposeFile from '../../../helpers/composeFile/writeComposeFile/writeComposeFile';
-import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
+import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import removeKey from '../../../helpers/removeKey/removeKey';
 
 const handler: RemoveAgentHandler = async (req, reply) => {
   try {
     const { id } = req.params;
-    const composeJson = (await readComposeFile()) || {};
+    const composeJson = await readComposeFile({ raw: true });
 
     if (!composeJson.services || !composeJson.services[id]) {
       reply.statusCode = 404;

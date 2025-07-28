@@ -17,7 +17,7 @@
 
 import { GetContainerHandler, ContainerData } from './getContainer.model';
 import parseImage from '../../../helpers/parseImage/parseImage';
-import readComposeFile from '../../../helpers/composeFile/readComposeFile/readComposeFile';
+import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import getSystemInfo from '../../../helpers/dockerode/getSystemInfo/getSystemInfo';
 
 const handler: GetContainerHandler = async (req, reply) => {
@@ -114,7 +114,7 @@ const handler: GetContainerHandler = async (req, reply) => {
       let versionTagFromLabel = null;
 
       try {
-        const composeFile = (await readComposeFile()) || {};
+        const composeFile = await readComposeFile({ raw: true });
 
         // Get labels
         const labels = details.Config?.Labels || {};
