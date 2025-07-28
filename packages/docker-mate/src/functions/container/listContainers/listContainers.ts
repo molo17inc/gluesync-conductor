@@ -13,7 +13,7 @@ const handler: ListContainersHandler = async (req, reply) => {
     // Use all: true to show all containers (not just running ones)
     const [systemInfo, composeJson = {}, containerList] = await Promise.all([
       getSystemInfo(req.server.docker, req.log),
-      readComposeFile({ raw: true }),
+      readComposeFile(),
       req.server.docker.listContainers({ all: true }),
     ]);
 
