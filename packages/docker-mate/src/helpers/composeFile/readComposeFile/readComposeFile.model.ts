@@ -1,5 +1,6 @@
-import { RawComposeFile } from '../../../models/composeFile.model';
+import { ComposeFile, RawComposeFile } from '../../../models/composeFile.model';
 
 export type ReadComposeFile = (
   filename?: string,
-) => Promise<Partial<RawComposeFile> | undefined>;
+  options?: { raw?: boolean },
+) => Promise<Partial<RawComposeFile | ComposeFile>>;

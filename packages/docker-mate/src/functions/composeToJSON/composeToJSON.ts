@@ -1,15 +1,19 @@
-import { ComposeToJSONHandler } from './composeToJSON.model';
+import {
+  ComposeToJSONHandler,
+  ComposeToJSONParams,
+} from './composeToJSON.model';
 
 import readComposeFile from '../../helpers/composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../../helpers/composeFile/writeComposeFile/writeComposeFile';
+import { castObject } from '../../helpers/composeFile/extractKeyValue/extractKeyValue';
 
 const handler: ComposeToJSONHandler = async (req, reply) => {
   try {
-    const { raw } = req.query;
+    const { raw } = castObject<ComposeToJSONParams>(req.query);
 
-    const composeJson = (await readComposeFile()) || {};
+    const composeJson = (await readComposeFile(undefined, { raw })) || {};
 
-    req.log.debug(`Current query: ${raw}`);
+    req.log.debug(`Current query: ${raw}, ${typeof raw}`);
 
     await writeComposeFile(composeJson, 'compose.generated.yml');
 

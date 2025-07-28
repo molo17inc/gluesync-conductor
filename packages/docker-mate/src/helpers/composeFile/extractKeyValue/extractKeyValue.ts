@@ -1,6 +1,6 @@
-import { ExtractKeyValue } from './extractKeyValue.model';
+import { CastObject, ExtractKeyValue } from './extractKeyValue.model';
 
-const castValue = (
+export const castValue = (
   value: any,
 ): string | boolean | number | null | undefined => {
   const lowerValue = String(value).toLowerCase();
@@ -25,6 +25,17 @@ const castValue = (
 
   return !isNaN(num) && lowerValue.trim() !== '' ? num : value;
 };
+
+export const castObject: CastObject = <T = Record<string, any>>(
+  object: Record<string, any>,
+) =>
+  Object.entries(object).reduce(
+    (acc, [key, value]) => ({
+      ...acc,
+      [key]: castValue(value),
+    }),
+    {},
+  ) as T;
 
 const extractKeyValue: ExtractKeyValue = (separator, array = []) =>
   array.reduce((acc, entry) => {
