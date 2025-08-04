@@ -11,7 +11,7 @@ export const composeServiceFieldConfig = {
   environment: { separator: '=' },
   labels: { separator: '=' },
   ports: { separator: ':' },
-  expose: { separator: ':' },
+  // expose: { separator: ':' },
   volumes: { separator: ':' },
 } satisfies Record<string, ComposeServiceFieldConfig>;
 
