@@ -1,0 +1,247 @@
+{
+  "info": {
+    "_postman_id": "2dfbc395-d0cd-464f-8879-ccb75f7907e5",
+    "name": "gluesync-conductor",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "33557734"
+  },
+  "item": [
+    {
+      "name": "Containers",
+      "item": [
+        {
+          "name": "List containers",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{URL}}/containers",
+              "host": ["{{URL}}"],
+              "path": ["containers"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Agents",
+      "item": [
+        {
+          "name": "Add agents",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agents\": [\n    {\n      \"imageName\": \"gluesync-mssql-cdc\",\n      \"type\": \"target\",\n      \"environment\": {\n        \"NODE_ENV\": \"production forse\",\n        \"DB_HOST\": \"db\",\n        \"DB_USER\": \"root\",\n        \"DB_PASS\": \"password\",\n        \"privileged\": true,\n        \"start_from\": 0\n      },\n      \"labels\": {\n        \"test\": \"new label\"\n      }\n    },\n    {\n      \"imageName\": \"gluesync-mssql-cdc\",\n      \"type\": \"source\",\n      \"environment\": {\n        \"NODE_ENV\": \"development\",\n        \"DB_HOST\": \"dbaaa\",\n        \"DB_USER\": \"rooooooot\",\n        \"DB_PASS\": \"password\"\n      },\n      \"reservations\": {\n        \"cpus\": 1.0,\n        \"memory\": \"2.0G\"\n      },\n      \"limits\": {\n        \"cpus\": 2.0,\n        \"memory\": \"6.4G\"\n      }\n    },\n    {\n      \"imageName\": \"gluesync-aerospike\",\n      \"type\": \"target\",\n      \"nickname\": \"custom-aerospike-agt\",\n      \"ports\": [\"9090:9090\", \"9090:9091\", \"8080:80\"]\n    },\n    {\n      \"imageName\": \"gluesync-mssql-cdc\",\n      \"type\": \"source\",\n      \"environment\": {\n        \"DB_PASS\": \"new_password\"\n      },\n      \"reservations\": {\n        \"cpus\": 1.0,\n        \"memory\": \"2.3G\"\n      },\n      \"limits\": {\n        \"cpus\": 2.0,\n        \"memory\": \"6.8G\"\n      }\n    }\n  ]\n}\n",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/agents",
+              "host": ["{{URL}}"],
+              "path": ["agents"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get agents",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{URL}}/agents",
+              "host": ["{{URL}}"],
+              "path": ["agents"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Start agents",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/agents/start",
+              "host": ["{{URL}}"],
+              "path": ["agents", "start"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Stop agents",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/agents/stop",
+              "host": ["{{URL}}"],
+              "path": ["agents", "stop"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remove agent",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "DELETE",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"agents\": [\n        {\n            \"imageName\": \"gluesync-mssql-cdc\",\n            \"type\": \"target\"\n        }\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/agents/remove",
+              "host": ["{{URL}}"],
+              "path": ["agents", "remove"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Info",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{URL}}/info",
+          "host": ["{{URL}}"],
+          "path": ["info"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Health",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{URL}}/health",
+          "host": ["{{URL}}"],
+          "path": ["health"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Version",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{URL}}/version",
+          "host": ["{{URL}}"],
+          "path": ["version"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Compose to JSON",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{URL}}/compose-to-json?raw=false",
+          "host": ["{{URL}}"],
+          "path": ["compose-to-json"],
+          "query": [
+            {
+              "key": "raw",
+              "value": "false"
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "exec": [""]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "exec": [""]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "URL",
+      "value": "http://localhost:5017",
+      "type": "string"
+    }
+  ]
+}
