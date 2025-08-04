@@ -8,27 +8,54 @@ import {
 } from '../../../models/composeFile.model';
 import { MergeTwoServices } from './mergeComposeFiles.model';
 
-const mergeTwoServices: MergeTwoServices = (service1, service2) => ({
-  ...service1,
-  ...service2,
-  ...(
-    Object.keys(
-      composeServiceFieldConfig,
-    ) as ReadonlyArray<ComposeServiceFieldName>
-  ).reduce<
-    Partial<Record<ComposeServiceFieldName, ReadonlyArray<string> | undefined>>
-  >(
-    (acc, field) => ({
-      ...acc,
-      [field]: mergeComposeKeyValueField(
-        field,
-        service1?.[field],
-        service2?.[field],
-      ),
-    }),
-    {},
-  ),
-});
+const mergeTwoServices: MergeTwoServices = (service1, service2) => {
+  console.log(
+    `Deploy here!: ${JSON.stringify(service1?.deploy)} ${JSON.stringify(service2?.deploy)}`,
+  );
+  return {
+    ...service1,
+    ...service2,
+    deploy: {
+      resources: {
+        reservations: {
+          cpus:
+            service2?.deploy?.resources?.reservations?.cpus ||
+            service1?.deploy?.resources?.reservations?.cpus,
+          memory:
+            service2?.deploy?.resources?.reservations?.memory ||
+            service1?.deploy?.resources?.reservations?.memory,
+        },
+        limits: {
+          cpus:
+            service2?.deploy?.resources?.limits?.cpus ||
+            service1?.deploy?.resources?.limits?.cpus,
+          memory:
+            service2?.deploy?.resources?.limits?.memory ||
+            service1?.deploy?.resources?.limits?.memory,
+        },
+      },
+    },
+    ...(
+      Object.keys(
+        composeServiceFieldConfig,
+      ) as ReadonlyArray<ComposeServiceFieldName>
+    ).reduce<
+      Partial<
+        Record<ComposeServiceFieldName, ReadonlyArray<string> | undefined>
+      >
+    >(
+      (acc, field) => ({
+        ...acc,
+        [field]: mergeComposeKeyValueField(
+          field,
+          service1?.[field],
+          service2?.[field],
+        ),
+      }),
+      {},
+    ),
+  };
+};
 
 export const mergeServices = (
   servicesList: Record<string, RawComposeService>[],

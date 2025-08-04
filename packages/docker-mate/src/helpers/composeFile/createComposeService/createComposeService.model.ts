@@ -1,6 +1,9 @@
-import { RawComposeService } from '../../../models/composeFile.model';
+import {
+  ComposeServiceDeploy,
+  RawComposeService,
+} from '../../../models/composeFile.model';
 
-export type CreateComposeServiceOptions = {
+export type CreateComposeServiceOptions = ComposeServiceDeploy & {
   imageName: string;
   type: string;
   nickname?: string;
