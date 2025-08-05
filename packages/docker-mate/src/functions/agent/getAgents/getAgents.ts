@@ -32,9 +32,9 @@ export const getAgents: GetAgentsHandler = async (
 
         // Check environment variables for type=source or type=target
         const envVars = details.Config?.Env || [];
-        const isAgent = envVars.some((env: string) => {
-          return env === 'type=source' || env === 'type=target';
-        });
+        const isAgent = envVars.some(
+          (env: string) => env === 'type=source' || env === 'type=target',
+        );
 
         if (!isAgent) {
           continue; // Skip this container if it's not an agent
