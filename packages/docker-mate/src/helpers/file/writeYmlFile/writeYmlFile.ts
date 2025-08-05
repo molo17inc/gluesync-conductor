@@ -12,8 +12,6 @@ const writeYmlFile: WriteYmlFile = async (json, filename) => {
   const path = getRootPath(filename);
 
   await writeFile(path, parsedJson, 'utf8');
-
-  return;
 };
 
 export default writeYmlFile;

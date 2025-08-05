@@ -78,8 +78,6 @@ module.exports = {
     radix: 0,
     'functional/no-mixed-types': 0,
     'func-names': 0,
-
-    'no-useless-return': 0,
   },
 
   overrides: [

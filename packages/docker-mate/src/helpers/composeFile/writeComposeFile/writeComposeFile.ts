@@ -9,8 +9,6 @@ const writeComposeFile: WriteComposeFile = async (
   filename = dkrComposeFile,
 ) => {
   await writeYmlFile(json, filename);
-
-  return;
 };
 
 export default writeComposeFile;
