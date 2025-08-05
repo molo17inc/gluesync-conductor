@@ -32,6 +32,7 @@ export default function httpsRedirectMiddleware(server: FastifyInstance): void {
 
   server.addHook(
     'onRequest',
+    // eslint-disable-next-line consistent-return
     async (request: FastifyRequest, reply: FastifyReply) => {
       // Get protocol from headers or request
       const protocol =

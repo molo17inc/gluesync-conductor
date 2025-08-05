@@ -70,11 +70,8 @@ module.exports = {
     'functional/no-loop-statements': 0,
     'no-restricted-syntax': 0,
     'no-await-in-loop': 0,
-    'no-continue': 0,
     'functional/no-let': 0,
-    'consistent-return': 0,
     'functional/no-mixed-types': 0,
-    'func-names': 0,
   },
 
   overrides: [

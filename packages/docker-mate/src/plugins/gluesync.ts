@@ -103,6 +103,7 @@ async function gluesyncPlugin(
   done();
 }
 
+// eslint-disable-next-line func-names
 export default function (
   fastify: FastifyInstance,
   options: any,

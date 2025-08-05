@@ -21,6 +21,7 @@ import writeComposeFile from '../../../helpers/composeFile/writeComposeFile/writ
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import { RawComposeService } from '../../../models/composeFile.model';
 
+// eslint-disable-next-line consistent-return
 const handler: UpdateContainerHandler = async (req, reply) => {
   try {
     const { id } = req.params;
@@ -30,6 +31,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
     // Read the current compose file
     const composeFile = await readComposeFile({ raw: true });
 
+    // eslint-disable-next-line consistent-return
     // Find the service with the matching container ID
     let serviceKey: string | null = null;
 

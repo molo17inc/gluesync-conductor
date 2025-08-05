@@ -37,6 +37,7 @@ export const getAgents: GetAgentsHandler = async (
         );
 
         if (!isAgent) {
+          // eslint-disable-next-line no-continue
           continue; // Skip this container if it's not an agent
         }
 
