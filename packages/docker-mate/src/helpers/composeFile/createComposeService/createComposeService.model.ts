@@ -1,4 +1,5 @@
 import {
+  ComposePort,
   ComposeServiceDeploy,
   RawComposeService,
 } from '../../../models/composeFile.model';
@@ -9,8 +10,8 @@ export type CreateComposeServiceOptions = ComposeServiceDeploy & {
   nickname?: string;
   tag?: string;
   environment?: Record<string, string>;
-  ports?: readonly string[];
-  volumes?: readonly string[];
+  ports?: ReadonlyArray<string> | ReadonlyArray<ComposePort>;
+  volumes?: ReadonlyArray<string>;
   labels?: Record<string, string>;
 };
 

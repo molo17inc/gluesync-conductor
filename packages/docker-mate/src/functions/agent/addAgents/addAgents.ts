@@ -41,6 +41,7 @@ const handler: AddAgentsHandler = async (req, reply) => {
             ({ host, container, protocol }) =>
               `${host}:${container}${protocol ? '/' + protocol : ''}`,
           ),
+          ports,
           volumes: volumes.map(
             ({ host, container, mode }) =>
               `${host}:${container}${mode ? '/' + mode : ''}`,

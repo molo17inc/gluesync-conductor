@@ -57,8 +57,8 @@ export type ComposeVolume = Readonly<{
 }>;
 
 export type ComposePort = Readonly<{
-  host: string;
-  container: string;
+  host: string | number;
+  container: string | number;
   protocol?: 'tcp' | 'udp';
 }>;
 
