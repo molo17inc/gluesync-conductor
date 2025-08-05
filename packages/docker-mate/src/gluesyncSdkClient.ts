@@ -3,7 +3,7 @@ import { GluesyncSDKClient } from 'gluesync-sdk-client';
 // Singleton instance for Gluesync SDK client
 declare global {
   // Allow global singleton across reloads in dev
-  // eslint-disable-next-line no-var
+  // eslint-disable-next-line no-var, vars-on-top
   var gluesyncSdkClient: GluesyncSDKClient | undefined;
 }
 
