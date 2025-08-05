@@ -15,8 +15,7 @@
     "prebuild": "npm run clean",
     "start": "node dist/standalone.js",
     "dev": "ts-node src/standalone.ts",
-    "test": "jest",
-    "lint": "eslint src --ext .ts"
+    "test": "jest"
   },
   "dependencies": {
     "fastify": "^5.2.1",

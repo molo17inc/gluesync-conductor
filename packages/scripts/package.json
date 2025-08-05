@@ -11,12 +11,25 @@
     "format": "prettier --ignore-path ../../.prettierignore .",
     "format:check": "yarn format --check",
     "format:write": "yarn format --write",
+    "lint:ts": "eslint --no-eslintrc --config ./.eslintrc-ts.cjs .",
+    "lint:js": "eslint --no-eslintrc --config ./.eslintrc-js.cjs .",
+    "lint:ts:fix": "yarn lint:ts --fix",
+    "lint:js:fix": "yarn lint:js --fix",
+    "lint": "yarn lint:ts && yarn lint:js",
+    "lint:fix": "yarn lint:ts:fix && yarn lint:js:fix",
     "build": "yarn tsc"
   },
   "devDependencies": {
     "@types/node": "^22.14.1",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
     "dotenv": "^16.5.0",
     "esbuild": "0.25.2",
+    "eslint": "^8.56.0",
+    "eslint-plugin-deprecation": "^2.0.0",
+    "eslint-plugin-functional": "^6.0.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-prettier": "^5.1.0",
     "prettier": "^3.4.2",
     "typescript": "5.8.3"
   }
