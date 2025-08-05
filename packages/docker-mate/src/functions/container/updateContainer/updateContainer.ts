@@ -19,6 +19,7 @@ import { UpdateContainerHandler } from './updateContainer.model';
 
 import writeComposeFile from '../../../helpers/composeFile/writeComposeFile/writeComposeFile';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
+import { RawComposeService } from '../../../models/composeFile.model';
 
 const handler: UpdateContainerHandler = async (req, reply) => {
   try {
@@ -55,8 +56,10 @@ const handler: UpdateContainerHandler = async (req, reply) => {
         });
       }
 
+      // TODO: remove this cast
       // Update the service with the new values
-      const currentService = composeFile.services?.[serviceKey] || {};
+      const currentService =
+        composeFile.services?.[serviceKey] || ({} as RawComposeService);
 
       // Parse the current image to get the base name if imageName is not provided
       const currentImage = currentService.image || '';
