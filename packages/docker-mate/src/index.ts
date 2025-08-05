@@ -38,7 +38,7 @@ declare module 'fastify' {
   }
 }
 
-const port: number = process.env.PORT ? parseInt(process.env.PORT) : 50000;
+const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
 const host: string = process.env.HOST || '0.0.0.0';
 
 // Create server with HTTPS support if SSL is enabled
