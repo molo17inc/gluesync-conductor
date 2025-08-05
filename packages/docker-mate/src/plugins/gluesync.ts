@@ -15,9 +15,10 @@
  * Copyright (C) 2025 MOLO17. All rights reserved.
  */
 
-import { getGluesyncSdkClient } from '../gluesyncSdkClient';
 // If you need settings, import from the SDK package as before
 import { settings } from 'gluesync-sdk-client';
+
+import { getGluesyncSdkClient } from '../gluesyncSdkClient';
 
 // Define Node.js process variable
 declare const process: {

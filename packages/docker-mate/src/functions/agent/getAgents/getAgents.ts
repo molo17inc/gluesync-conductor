@@ -54,7 +54,7 @@ export const getAgents: GetAgentsHandler = async (
 
         // Extract the image name and tag
         const imageString = details.Config?.Image || '';
-        const { tag } = parseImage(imageString);
+        const { imageName, tag } = parseImage(imageString);
 
         // Get labels
         const labels = details.Config?.Labels || {};
@@ -73,11 +73,11 @@ export const getAgents: GetAgentsHandler = async (
 
         agents.push({
           id: containerInfo.Id,
-          imageName: name,
+          imageName,
           type,
           nickname: details.Name ? details.Name.replace(/^\//, '') : '',
-          tag: tag,
-          versionTag: versionTag,
+          tag,
+          versionTag,
           persisted: false, // Not using compose file here
           environment: envVars,
           ports: containerInfo.Ports || [],

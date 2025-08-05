@@ -79,10 +79,8 @@ module.exports = {
     'functional/no-mixed-types': 0,
     'func-names': 0,
 
-    'import/order': 0,
     '@typescript-eslint/no-unused-vars': 0,
     'vars-on-top': 0,
-    'object-shorthand': 0,
     'no-useless-return': 0,
   },
 

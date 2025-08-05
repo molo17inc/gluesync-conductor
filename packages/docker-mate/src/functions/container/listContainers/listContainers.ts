@@ -1,10 +1,11 @@
+import { ContainerInfo } from 'dockerode';
+
+import { LabelPrefix } from '../../../models/composeFile.model';
 import { ListContainersHandler } from './listContainers.model';
 
 import containerInfoMapper from '../../../helpers/dockerode/containerInfoMapper/containerInfoMapper';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import getSystemInfo from '../../../helpers/dockerode/getSystemInfo/getSystemInfo';
-import { LabelPrefix } from '../../../models/composeFile.model';
-import { ContainerInfo } from 'dockerode';
 
 const handler: ListContainersHandler = async (req, reply) => {
   try {
