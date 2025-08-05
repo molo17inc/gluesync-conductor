@@ -6,6 +6,7 @@ import * as fs from 'fs';
 
 const dockerPlugin = async (fastify: FastifyInstance) => {
   try {
+    // eslint-disable-next-line functional/no-let
     let docker: Docker;
 
     // Check if DOCKER_HOST environment variable is set

@@ -37,12 +37,14 @@ const handler: GetContainerHandler = async (req, reply) => {
       const { registry: fullImageName, tag } = parseImage(imageString);
 
       // Extract the image name without registry prefix
+      // eslint-disable-next-line functional/no-let
       let imageName = fullImageName;
       if (fullImageName.includes('/')) {
         imageName = fullImageName.split('/').pop() || '';
       }
 
       // Determine container type based on environment variables or labels
+      // eslint-disable-next-line functional/no-let
       let type: 'target' | 'source' = 'target';
       const envVars = details.Config?.Env || [];
       // eslint-disable-next-line no-restricted-syntax, functional/no-loop-statements
@@ -114,7 +116,9 @@ const handler: GetContainerHandler = async (req, reply) => {
       }
 
       // Check if this container is persisted in the compose file
+      // eslint-disable-next-line functional/no-let
       let persisted = false;
+      // eslint-disable-next-line functional/no-let
       let versionTagFromLabel = null;
 
       try {

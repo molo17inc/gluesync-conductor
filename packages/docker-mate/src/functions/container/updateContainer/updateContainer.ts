@@ -33,6 +33,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
 
     // eslint-disable-next-line consistent-return
     // Find the service with the matching container ID
+    // eslint-disable-next-line functional/no-let
     let serviceKey: string | null = null;
 
     // First, get the container details to match with the compose file

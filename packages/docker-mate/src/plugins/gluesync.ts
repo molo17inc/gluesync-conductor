@@ -28,6 +28,7 @@ declare const process: {
 };
 
 // Define types for Fastify
+// eslint-disable-next-line functional/no-mixed-types
 interface FastifyInstance {
   log: {
     info: (message: string) => void;

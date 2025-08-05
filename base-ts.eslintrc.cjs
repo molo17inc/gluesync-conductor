@@ -67,8 +67,6 @@ module.exports = {
     'functional/prefer-immutable-types': 0,
     'functional/immutable-data': 0,
     'no-param-reassign': 0,
-    'functional/no-let': 0,
-    'functional/no-mixed-types': 0,
   },
 
   overrides: [

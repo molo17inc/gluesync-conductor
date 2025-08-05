@@ -44,6 +44,7 @@ export const getAgents: GetAgentsHandler = async (
         }
 
         // Extract the type from environment variables
+        // eslint-disable-next-line functional/no-let
         let type: 'source' | 'target' = 'source'; // Default
         // eslint-disable-next-line no-restricted-syntax, functional/no-loop-statements
         for (const env of envVars) {
@@ -64,6 +65,7 @@ export const getAgents: GetAgentsHandler = async (
         const labels = details.Config?.Labels || {};
 
         // Check for version tag label
+        // eslint-disable-next-line functional/no-let
         let versionTag = tag || '';
         const versionTagLabel = Object.entries(labels).find(
           ([key]) => key === 'com.molo17.conductor.versiontag',
