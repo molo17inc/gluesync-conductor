@@ -72,7 +72,7 @@ module.exports = {
     'no-await-in-loop': 0,
     'no-continue': 0,
     'functional/no-let': 0,
-    'no-restricted-globals': 0,
+    // 'no-restricted-globals': 0,
     'consistent-return': 0,
     radix: 0,
     'functional/no-mixed-types': 0,
