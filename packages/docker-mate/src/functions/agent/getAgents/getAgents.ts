@@ -25,9 +25,11 @@ export const getAgents: GetAgentsHandler = async (
     // Filter and process containers to find agents
     const agents = [];
 
+    // eslint-disable-next-line no-restricted-syntax
     for (const containerInfo of containerList) {
       try {
         const container = req.server.docker.getContainer(containerInfo.Id);
+        // eslint-disable-next-line no-await-in-loop
         const details = await container.inspect();
 
         // Check environment variables for type=source or type=target
@@ -43,6 +45,7 @@ export const getAgents: GetAgentsHandler = async (
 
         // Extract the type from environment variables
         let type: 'source' | 'target' = 'source'; // Default
+        // eslint-disable-next-line no-restricted-syntax
         for (const env of envVars) {
           if (typeof env === 'string' && env.startsWith('type=')) {
             const typePart = env.split('=')[1];

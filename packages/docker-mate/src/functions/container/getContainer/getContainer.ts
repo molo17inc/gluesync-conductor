@@ -45,6 +45,7 @@ const handler: GetContainerHandler = async (req, reply) => {
       // Determine container type based on environment variables or labels
       let type: 'target' | 'source' = 'target';
       const envVars = details.Config?.Env || [];
+      // eslint-disable-next-line no-restricted-syntax
       for (const env of envVars) {
         if (env.startsWith('type=')) {
           const envType = env.split('=')[1];
@@ -64,6 +65,7 @@ const handler: GetContainerHandler = async (req, reply) => {
         'GLUESYNC_MODULE_TAG',
       ];
 
+      // eslint-disable-next-line no-restricted-syntax
       for (const env of envVars) {
         const [key, ...valueParts] = env.split('=');
         const value = valueParts.join('='); // Handle values that might contain '='
@@ -76,6 +78,7 @@ const handler: GetContainerHandler = async (req, reply) => {
       // Extract ports
       const ports: string[] = [];
       if (details.HostConfig?.PortBindings) {
+        // eslint-disable-next-line no-restricted-syntax
         for (const [containerPort, hostBindings] of Object.entries(
           details.HostConfig.PortBindings,
         )) {
@@ -102,6 +105,7 @@ const handler: GetContainerHandler = async (req, reply) => {
           './bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro',
         ];
 
+        // eslint-disable-next-line no-restricted-syntax
         for (const bind of details.HostConfig.Binds) {
           if (!systemVolumes.some(sv => bind.includes(sv))) {
             volumes.push(bind);
