@@ -44,7 +44,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       const containerName = details.Name ? details.Name.replace(/^\//, '') : '';
 
       // Find the service with the matching container name
-      // eslint-disable-next-line no-restricted-syntax
+      // eslint-disable-next-line no-restricted-syntax, functional/no-loop-statements
       for (const [key, service] of Object.entries(composeFile.services || {})) {
         if (service.container_name === containerName) {
           serviceKey = key;
