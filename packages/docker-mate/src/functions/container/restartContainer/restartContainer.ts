@@ -1,4 +1,3 @@
-import { FastifyReply, FastifyRequest } from 'fastify';
 import { RestartContainerHandler } from './restartContainer.model';
 
 /**

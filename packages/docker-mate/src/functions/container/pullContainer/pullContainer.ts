@@ -1,4 +1,3 @@
-import { FastifyReply, FastifyRequest } from 'fastify';
 import { PullContainerHandler } from './pullContainer.model';
 
 /**
@@ -31,7 +30,7 @@ const handler: PullContainerHandler = async (req, reply) => {
     await new Promise<void>((resolve, reject) => {
       req.server.docker.modem.followProgress(
         stream,
-        (err, output) => {
+        err => {
           if (err) {
             req.log.error(`Error pulling image: ${err.message}`);
             reject(err);

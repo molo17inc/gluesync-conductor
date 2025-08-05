@@ -130,12 +130,12 @@ const handler: GetContainerHandler = async (req, reply) => {
         );
 
         if (versionTagLabel) {
-          const [_, versionTag] = versionTagLabel;
+          const [, versionTag] = versionTagLabel;
           versionTagFromLabel = versionTag;
         }
 
         if (uniqueIdLabel) {
-          const [_, uniqueId] = uniqueIdLabel;
+          const [, uniqueId] = uniqueIdLabel;
           // Check if any service in the compose file has this unique ID in its labels
           persisted = Object.values(composeFile.services || {}).some(
             service => {

@@ -66,7 +66,7 @@ export const getAgents: GetAgentsHandler = async (
         );
 
         if (versionTagLabel) {
-          const [_, labelVersionTag] = versionTagLabel;
+          const [, labelVersionTag] = versionTagLabel;
           versionTag =
             typeof labelVersionTag === 'string' ? labelVersionTag : '';
         }

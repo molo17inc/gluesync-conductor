@@ -1,6 +1,5 @@
 import fastify from 'fastify';
 import Docker from 'dockerode';
-import fs from 'fs';
 
 import dockerPlugin from './plugins/docker';
 import swaggerPlugin from './plugins/swagger';
