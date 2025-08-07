@@ -61,7 +61,7 @@ const handler: ListContainersHandler = async (req, reply) => {
       };
     });
 
-    reply.statusCode = 200;
+    reply.code(200);
     reply.send({
       success: true,
       data: {
@@ -83,7 +83,7 @@ const handler: ListContainersHandler = async (req, reply) => {
       );
     }
 
-    reply.statusCode = 500;
+    reply.code(500);
     reply.send({
       success: false,
       error: 'Failed to list containers',

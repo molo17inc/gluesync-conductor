@@ -41,17 +41,20 @@ const handler: PullContainerHandler = async (req, reply) => {
         },
         event => {
           if (event.progress) {
+            // eslint-disable-next-line functional/immutable-data
             logs.push(`${event.id}: ${event.status} ${event.progress}`);
           } else if (event.id) {
+            // eslint-disable-next-line functional/immutable-data
             logs.push(`${event.id}: ${event.status}`);
           } else {
+            // eslint-disable-next-line functional/immutable-data
             logs.push(event.status);
           }
         },
       );
     });
 
-    reply.statusCode = 200;
+    reply.code(200);
     reply.send({
       success: true,
       data: logs,
@@ -62,13 +65,13 @@ const handler: PullContainerHandler = async (req, reply) => {
     );
 
     if (error instanceof Error && error.message.includes('No such container')) {
-      reply.statusCode = 404;
+      reply.code(404);
       reply.send({
         success: false,
         error: `Container with ID ${req.params.id} not found`,
       });
     } else {
-      reply.statusCode = 500;
+      reply.code(500);
       reply.send({
         success: false,
         error: error instanceof Error ? error.message : String(error),

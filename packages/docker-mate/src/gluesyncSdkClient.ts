@@ -14,6 +14,7 @@ function createGluesyncSdkClient(): GluesyncSDKClient {
 
 export function getGluesyncSdkClient(): GluesyncSDKClient {
   if (!global.gluesyncSdkClient) {
+    // eslint-disable-next-line functional/immutable-data
     global.gluesyncSdkClient = createGluesyncSdkClient();
   }
   return global.gluesyncSdkClient;

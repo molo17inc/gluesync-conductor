@@ -78,7 +78,8 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       const containerTag = tag || currentTag;
 
       // Update the service
-      // @ts-ignore
+      // @ts-expect-error this must be refactored
+      // eslint-disable-next-line functional/immutable-data
       composeFile.services = {
         ...composeFile.services,
         [serviceKey]: {
@@ -135,7 +136,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       // Write the updated compose file
       await writeComposeFile(composeFile);
 
-      reply.statusCode = 200;
+      reply.code(200);
       reply.send({
         success: true,
         data: composeFile,

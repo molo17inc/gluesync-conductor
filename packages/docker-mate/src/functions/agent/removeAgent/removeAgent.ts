@@ -11,7 +11,7 @@ const handler: RemoveAgentHandler = async (req, reply) => {
     const composeJson = await readComposeFile({ raw: true });
 
     if (!composeJson.services || !composeJson.services[id]) {
-      reply.statusCode = 404;
+      reply.code(404);
       reply.send({ success: false, error: `Agent ${id} not found` });
       return;
     }
@@ -23,11 +23,11 @@ const handler: RemoveAgentHandler = async (req, reply) => {
 
     await writeComposeFile(composeFile);
 
-    reply.statusCode = 200;
+    reply.code(200);
     reply.send({ success: true, data: composeFile });
   } catch (error) {
     req.log.error(`Error: ${JSON.stringify(error)}`);
-    reply.statusCode = 500;
+    reply.code(500);
     reply.send({ success: false, error: 'Internal server error' });
   }
 };

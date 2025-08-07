@@ -40,6 +40,7 @@ const handler: GetContainerHandler = async (req, reply) => {
       // eslint-disable-next-line functional/no-let
       let imageName = fullImageName;
       if (fullImageName.includes('/')) {
+        // eslint-disable-next-line functional/immutable-data
         imageName = fullImageName.split('/').pop() || '';
       }
 
@@ -73,6 +74,7 @@ const handler: GetContainerHandler = async (req, reply) => {
         const value = valueParts.join('='); // Handle values that might contain '='
 
         if (key && !systemEnvVars.includes(key)) {
+          // eslint-disable-next-line functional/immutable-data
           environment[key] = value;
         }
       }
@@ -90,6 +92,7 @@ const handler: GetContainerHandler = async (req, reply) => {
             hostBindings[0]?.HostPort
           ) {
             const hostPort = hostBindings[0].HostPort;
+            // eslint-disable-next-line functional/immutable-data
             ports.push(`${hostPort}:${containerPort}`);
           }
         }
@@ -110,6 +113,7 @@ const handler: GetContainerHandler = async (req, reply) => {
         // eslint-disable-next-line no-restricted-syntax, functional/no-loop-statements
         for (const bind of details.HostConfig.Binds) {
           if (!systemVolumes.some(sv => bind.includes(sv))) {
+            // eslint-disable-next-line functional/immutable-data
             volumes.push(bind);
           }
         }

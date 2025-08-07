@@ -73,6 +73,7 @@ export const getAgents: GetAgentsHandler = async (req, reply) => {
             typeof labelVersionTag === 'string' ? labelVersionTag : '';
         }
 
+        // eslint-disable-next-line functional/immutable-data
         agents.push({
           id: containerInfo.Id,
           imageName,
