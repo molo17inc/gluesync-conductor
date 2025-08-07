@@ -20,7 +20,7 @@ import getContainer from './functions/container/getContainer/getContainer';
 import updateContainer from './functions/container/updateContainer/updateContainer';
 import addContainer from './functions/container/addContainer/addContainer';
 import addAgents from './functions/agent/addAgents/addAgents';
-import { getAgents } from './functions/agent/getAgents/getAgents';
+import getAgents from './functions/agent/getAgents/getAgents';
 import removeAgent from './functions/agent/removeAgent/removeAgent';
 import startAgents from './functions/agent/startAgents/startAgents';
 import stopAgents from './functions/agent/stopAgents/stopAgents';

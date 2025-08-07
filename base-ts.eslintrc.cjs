@@ -38,12 +38,12 @@ module.exports = {
       { allowTernary: true, allowShortCircuit: true },
     ],
     'no-shadow': 0,
-    'no-underscore-dangle': 0,
+    // 'no-underscore-dangle': 0,
 
     'functional/no-return-void': 0,
     'functional/no-throw-statements': 0,
 
-    'import/named': 0,
+    // 'import/named': 0,
     // 'import/order': 0,
     // 'import/no-cycle': 0,
     'import/extensions': 0,
@@ -53,10 +53,10 @@ module.exports = {
     // 'import/no-named-as-default': 0,
     // 'import/no-relative-packages': 0,
     // 'import/no-useless-path-segments': 0,
-    'import/no-extraneous-dependencies': 0,
+    // 'import/no-extraneous-dependencies': 0,
     // 'import/no-named-as-default-member': 0,
     // 'default-case': 0,
-    'import/prefer-default-export': 0,
+    // 'import/prefer-default-export': 0,
     // 'functional/prefer-tacit': 0,
     // 'consistent-return': 0,
     // 'no-useless-catch': 0,
@@ -64,7 +64,6 @@ module.exports = {
     // 'no-bitwise': 0,
 
     '@typescript-eslint/no-explicit-any': 0,
-    'no-param-reassign': 0,
   },
 
   overrides: [

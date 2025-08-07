@@ -6,7 +6,7 @@ import getSystemInfo from '../../../helpers/dockerode/getSystemInfo/getSystemInf
  * Get all agents from running Docker containers
  * Filters containers with type=source or type=target in their environment variables
  */
-export const getAgents: GetAgentsHandler = async (req, reply) => {
+const getAgents: GetAgentsHandler = async (req, reply) => {
   try {
     // Get all containers (running and stopped)
     const containerList = await req.server.docker.listContainers({
@@ -108,3 +108,5 @@ export const getAgents: GetAgentsHandler = async (req, reply) => {
     });
   }
 };
+
+export default getAgents;
