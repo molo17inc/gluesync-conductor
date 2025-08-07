@@ -1,4 +1,3 @@
-import type { FastifyReply, FastifyRequest } from 'fastify';
 import { GetAgentsHandler } from './getAgents.model';
 import parseImage from '../../../helpers/parseImage/parseImage';
 import getSystemInfo from '../../../helpers/dockerode/getSystemInfo/getSystemInfo';
@@ -7,10 +6,7 @@ import getSystemInfo from '../../../helpers/dockerode/getSystemInfo/getSystemInf
  * Get all agents from running Docker containers
  * Filters containers with type=source or type=target in their environment variables
  */
-export const getAgents: GetAgentsHandler = async (
-  req: FastifyRequest,
-  reply: FastifyReply,
-) => {
+export const getAgents: GetAgentsHandler = async (req, reply) => {
   try {
     // Get all containers (running and stopped)
     const containerList = await req.server.docker.listContainers({

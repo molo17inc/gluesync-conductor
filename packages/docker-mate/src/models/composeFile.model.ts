@@ -3,9 +3,9 @@ export enum LabelPrefix {
   COMPOSE = 'com.docker.compose',
 }
 
-export type ComposeServiceFieldConfig = {
+export type ComposeServiceFieldConfig = Readonly<{
   separator: string;
-};
+}>;
 
 export const composeServiceFieldConfig = {
   environment: { separator: '=' },
@@ -41,13 +41,17 @@ export type CommonComposeService = Readonly<{
   deploy?: ComposeServiceDeploy;
 }>;
 
-export type RawComposeService = CommonComposeService &
-  Partial<Record<ComposeServiceFieldName, ReadonlyArray<string>>>;
+export type RawComposeService = Readonly<
+  CommonComposeService &
+    Partial<Record<ComposeServiceFieldName, ReadonlyArray<string>>>
+>;
 
-export type RawComposeFile = CommonComposeFile & {
-  services?: Record<string, RawComposeService>;
-  [key: string]: any;
-};
+export type RawComposeFile = Readonly<
+  CommonComposeFile & {
+    services?: Record<string, RawComposeService>;
+    [key: string]: any;
+  }
+>;
 
 export type ComposeVolume = Readonly<{
   type?: string;
@@ -62,14 +66,18 @@ export type ComposePort = Readonly<{
   protocol?: 'tcp' | 'udp';
 }>;
 
-export type ComposeService = CommonComposeService &
-  Readonly<{
-    labels?: Record<string, string | number | boolean | null | undefined>;
-    volumes?: ReadonlyArray<ComposeVolume>;
-    ports?: ReadonlyArray<ComposePort>;
-  }>;
+export type ComposeService = Readonly<
+  CommonComposeService &
+    Readonly<{
+      labels?: Record<string, string | number | boolean | null | undefined>;
+      volumes?: ReadonlyArray<ComposeVolume>;
+      ports?: ReadonlyArray<ComposePort>;
+    }>
+>;
 
-export type ComposeFile = CommonComposeFile & {
-  services?: Record<string, ComposeService>;
-  [key: string]: any;
-};
+export type ComposeFile = Readonly<
+  CommonComposeFile & {
+    services?: Record<string, ComposeService>;
+    [key: string]: any;
+  }
+>;

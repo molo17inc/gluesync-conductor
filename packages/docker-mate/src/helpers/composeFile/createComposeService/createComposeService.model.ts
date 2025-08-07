@@ -1,6 +1,6 @@
 import { RawComposeService } from '../../../models/composeFile.model';
 
-export type CreateComposeServiceOptions = {
+export type CreateComposeServiceOptions = Readonly<{
   imageName: string;
   type: string;
   nickname?: string;
@@ -9,7 +9,7 @@ export type CreateComposeServiceOptions = {
   ports?: readonly string[];
   volumes?: readonly string[];
   labels?: Record<string, string>;
-};
+}>;
 
 export type CreateComposeService = (
   type: 'agent' | 'module' | 'container',

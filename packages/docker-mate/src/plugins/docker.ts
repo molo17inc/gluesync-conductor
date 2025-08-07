@@ -4,7 +4,7 @@ import Docker from 'dockerode';
 import * as os from 'os';
 import * as fs from 'fs';
 
-const dockerPlugin = async (fastify: FastifyInstance) => {
+const dockerPlugin = async (fastify: Readonly<FastifyInstance>) => {
   try {
     // eslint-disable-next-line functional/no-let
     let docker: Docker;

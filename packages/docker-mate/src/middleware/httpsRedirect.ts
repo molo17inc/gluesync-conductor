@@ -24,7 +24,9 @@ import { isSslEnabled } from '../utils/ssl';
  * This only redirects browser requests, not API clients or local connections,
  * to ensure compatibility with internal services and API clients.
  */
-export default function httpsRedirectMiddleware(server: FastifyInstance): void {
+export default function httpsRedirectMiddleware(
+  server: Readonly<FastifyInstance>,
+): void {
   // Skip if SSL is not enabled
   if (!isSslEnabled()) {
     return;
@@ -33,7 +35,11 @@ export default function httpsRedirectMiddleware(server: FastifyInstance): void {
   server.addHook(
     'onRequest',
     // eslint-disable-next-line consistent-return
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (
+      request: Readonly<FastifyRequest>,
+      reply: Readonly<FastifyReply>,
+      // eslint-disable-next-line consistent-return
+    ) => {
       // Get protocol from headers or request
       const protocol =
         request.headers['x-forwarded-proto'] || request.protocol || 'http';

@@ -64,7 +64,6 @@ module.exports = {
     // 'no-bitwise': 0,
 
     '@typescript-eslint/no-explicit-any': 0,
-    'functional/prefer-immutable-types': 0,
     'functional/immutable-data': 0,
     'no-param-reassign': 0,
   },

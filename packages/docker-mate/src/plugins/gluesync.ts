@@ -46,9 +46,9 @@ interface FastifyInstance {
  * with automatic initialization, retry logic, and proper error handling.
  */
 async function gluesyncPlugin(
-  fastify: FastifyInstance,
+  fastify: Readonly<FastifyInstance>,
   options: any,
-  done: (error?: Error) => void,
+  done: (error?: Readonly<Error>) => void,
 ): Promise<void> {
   // Get the singleton instance of the SDK client
   const sdkClient = getGluesyncSdkClient();
@@ -106,9 +106,9 @@ async function gluesyncPlugin(
 
 // eslint-disable-next-line func-names
 export default function (
-  fastify: FastifyInstance,
+  fastify: Readonly<FastifyInstance>,
   options: any,
-  done: (error?: Error) => void,
+  done: (error?: Readonly<Error>) => void,
 ): void {
   gluesyncPlugin(fastify, options, done).catch(error => {
     console.error('Unhandled error in gluesync plugin:', error);

@@ -31,7 +31,7 @@ const mergeTwoServices: MergeTwoServices = (service1, service2) => ({
 });
 
 export const mergeServices = (
-  servicesList: Record<string, RawComposeService>[],
+  servicesList: Readonly<Record<string, RawComposeService>[]>,
 ) =>
   servicesList.reduce(
     (merged, services) =>
