@@ -21,6 +21,7 @@ import writeComposeFile from '../../../helpers/composeFile/writeComposeFile/writ
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import { RawComposeService } from '../../../models/composeFile.model';
 
+// eslint-disable-next-line consistent-return
 const handler: UpdateContainerHandler = async (req, reply) => {
   try {
     const { id } = req.params;
@@ -30,7 +31,9 @@ const handler: UpdateContainerHandler = async (req, reply) => {
     // Read the current compose file
     const composeFile = await readComposeFile({ raw: true });
 
+    // eslint-disable-next-line consistent-return
     // Find the service with the matching container ID
+    // eslint-disable-next-line functional/no-let
     let serviceKey: string | null = null;
 
     // First, get the container details to match with the compose file
@@ -42,6 +45,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       const containerName = details.Name ? details.Name.replace(/^\//, '') : '';
 
       // Find the service with the matching container name
+      // eslint-disable-next-line no-restricted-syntax, functional/no-loop-statements
       for (const [key, service] of Object.entries(composeFile.services || {})) {
         if (service.container_name === containerName) {
           serviceKey = key;
@@ -74,6 +78,8 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       const containerTag = tag || currentTag;
 
       // Update the service
+      // @ts-expect-error this must be refactored
+      // eslint-disable-next-line functional/immutable-data
       composeFile.services = {
         ...composeFile.services,
         [serviceKey]: {
@@ -130,7 +136,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       // Write the updated compose file
       await writeComposeFile(composeFile);
 
-      reply.statusCode = 200;
+      reply.code(200);
       reply.send({
         success: true,
         data: composeFile,

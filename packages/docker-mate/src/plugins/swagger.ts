@@ -6,7 +6,7 @@ import path from 'path';
 /**
  * This plugin integrates Swagger documentation with Fastify for the Gluesync Conductor API
  */
-async function swaggerPlugin(fastify: FastifyInstance) {
+async function swaggerPlugin(fastify: Readonly<FastifyInstance>) {
   // Get the static Swagger file
   const swaggerFilePath = path.join(process.cwd(), 'swagger-static.json');
   const swaggerContent = JSON.parse(fs.readFileSync(swaggerFilePath, 'utf8'));

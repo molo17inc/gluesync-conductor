@@ -1,4 +1,3 @@
-import { FastifyReply, FastifyRequest } from 'fastify';
 import { RestartContainerHandler } from './restartContainer.model';
 
 /**
@@ -21,7 +20,7 @@ const handler: RestartContainerHandler = async (req, reply) => {
       await container.inspect();
     } catch (inspectError) {
       req.log.error(`Container not found: ${id}`);
-      reply.statusCode = 404;
+      reply.code(404);
       reply.send({
         success: false,
         error: `Container with ID ${id} not found`,
@@ -36,7 +35,7 @@ const handler: RestartContainerHandler = async (req, reply) => {
 
     req.log.debug(`Successfully restarted container ${id}`);
 
-    reply.statusCode = 200;
+    reply.code(200);
     reply.send({
       success: true,
       data: [`Container ${id} restarted successfully`],
@@ -46,7 +45,7 @@ const handler: RestartContainerHandler = async (req, reply) => {
       `Error restarting container ${req.params.id}: ${error instanceof Error ? error.message : String(error)}`,
     );
 
-    reply.statusCode = 500;
+    reply.code(500);
     reply.send({
       success: false,
       error: error instanceof Error ? error.message : String(error),

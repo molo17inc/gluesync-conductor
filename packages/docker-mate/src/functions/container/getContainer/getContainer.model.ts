@@ -16,7 +16,7 @@
  */
 
 import { RouteHandlerMethod } from 'fastify';
-import { ErrorResponse, SuccessResponse } from '../../../models/common.model';
+import { ErrorResponse } from '../../../models/common.model';
 import { SystemInfo } from '../../../models/dockerode.model';
 
 export type GetContainerParams = Readonly<{

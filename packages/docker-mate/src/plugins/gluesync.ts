@@ -15,9 +15,10 @@
  * Copyright (C) 2025 MOLO17. All rights reserved.
  */
 
-import { getGluesyncSdkClient } from '../gluesyncSdkClient';
 // If you need settings, import from the SDK package as before
 import { settings } from 'gluesync-sdk-client';
+
+import { getGluesyncSdkClient } from '../gluesyncSdkClient';
 
 // Define Node.js process variable
 declare const process: {
@@ -27,6 +28,7 @@ declare const process: {
 };
 
 // Define types for Fastify
+// eslint-disable-next-line functional/no-mixed-types
 interface FastifyInstance {
   log: {
     info: (message: string) => void;
@@ -44,15 +46,16 @@ interface FastifyInstance {
  * with automatic initialization, retry logic, and proper error handling.
  */
 async function gluesyncPlugin(
-  fastify: FastifyInstance,
+  fastify: Readonly<FastifyInstance>,
   options: any,
-  done: (error?: Error) => void,
+  done: (error?: Readonly<Error>) => void,
 ): Promise<void> {
   // Get the singleton instance of the SDK client
   const sdkClient = getGluesyncSdkClient();
 
   // Set the module tag from environment variable or use default
   const moduleTag = process.env.GLUESYNC_MODULE_TAG || 'gluesync-conductor';
+  // eslint-disable-next-line functional/immutable-data
   settings.moduleTag = moduleTag;
   fastify.log.info(`Using module tag: ${settings.moduleTag}`);
 
@@ -102,10 +105,11 @@ async function gluesyncPlugin(
   done();
 }
 
+// eslint-disable-next-line func-names
 export default function (
-  fastify: FastifyInstance,
+  fastify: Readonly<FastifyInstance>,
   options: any,
-  done: (error?: Error) => void,
+  done: (error?: Readonly<Error>) => void,
 ): void {
   gluesyncPlugin(fastify, options, done).catch(error => {
     console.error('Unhandled error in gluesync plugin:', error);

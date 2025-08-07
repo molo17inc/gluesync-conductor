@@ -23,7 +23,7 @@ export const castValue = (
 
   const num = Number(lowerValue);
 
-  return !isNaN(num) && lowerValue.trim() !== '' ? num : value;
+  return !Number.isNaN(num) && lowerValue.trim() !== '' ? num : value;
 };
 
 export const castObject: CastObject = <T = Record<string, any>>(

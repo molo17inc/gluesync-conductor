@@ -68,13 +68,13 @@ const handler: AddAgentsHandler = async (req, reply) => {
 
     await writeComposeFile(newComposeFile);
 
-    reply.statusCode = 200;
+    reply.code(200);
     reply.send({ success: true, data: newComposeFile });
   } catch (error) {
     req.log.error(
       `Error adding agent: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
     );
-    reply.statusCode = 500;
+    reply.code(500);
     reply.send({
       success: false,
       error: `Failed to add agent: ${error instanceof Error ? error.message : String(error)}`,
