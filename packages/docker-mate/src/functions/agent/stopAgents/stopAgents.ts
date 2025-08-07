@@ -13,7 +13,7 @@ const handler: StopAgentsHandler = async (req, reply) => {
     const composeJson = await readComposeFile({ raw: true });
 
     if (!composeJson.services || !composeJson.services[id]) {
-      reply.statusCode = 404;
+      reply.code(404);
       reply.send({ success: false, error: `Agent ${id} not found` });
       return;
     }
@@ -27,7 +27,7 @@ const handler: StopAgentsHandler = async (req, reply) => {
 
     req.log.debug(result);
 
-    reply.statusCode = 200;
+    reply.code(200);
     reply.send({
       success: true,
       data: result.err
@@ -39,7 +39,7 @@ const handler: StopAgentsHandler = async (req, reply) => {
     });
   } catch (error) {
     req.log.error(error);
-    reply.statusCode = 500;
+    reply.code(500);
     reply.send({ success: false, error: 'Internal server error' });
   }
 };

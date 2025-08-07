@@ -3,6 +3,6 @@ import { FastifyInstance } from 'fastify';
 import { SystemInfo } from '../../../models/dockerode.model';
 
 export type GetSystemInfo = (
-  docker: FastifyInstance['docker'],
-  logger: FastifyInstance['log'],
+  docker: Readonly<FastifyInstance['docker']>,
+  logger: Readonly<FastifyInstance['log']>,
 ) => Promise<SystemInfo>;

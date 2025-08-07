@@ -1,6 +1,5 @@
 import fastify from 'fastify';
 import Docker from 'dockerode';
-import fs from 'fs';
 
 import dockerPlugin from './plugins/docker';
 import swaggerPlugin from './plugins/swagger';
@@ -21,7 +20,7 @@ import getContainer from './functions/container/getContainer/getContainer';
 import updateContainer from './functions/container/updateContainer/updateContainer';
 import addContainer from './functions/container/addContainer/addContainer';
 import addAgents from './functions/agent/addAgents/addAgents';
-import { getAgents } from './functions/agent/getAgents/getAgents';
+import getAgents from './functions/agent/getAgents/getAgents';
 import removeAgent from './functions/agent/removeAgent/removeAgent';
 import startAgents from './functions/agent/startAgents/startAgents';
 import stopAgents from './functions/agent/stopAgents/stopAgents';
@@ -39,7 +38,7 @@ declare module 'fastify' {
   }
 }
 
-const port: number = process.env.PORT ? parseInt(process.env.PORT) : 50000;
+const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
 const host: string = process.env.HOST || '0.0.0.0';
 
 // Create server with HTTPS support if SSL is enabled

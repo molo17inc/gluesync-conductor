@@ -72,13 +72,13 @@ const handler: AddContainerHandler = async (req, reply) => {
 
     await writeComposeFile(newComposeFile);
 
-    reply.statusCode = 200;
+    reply.code(200);
     reply.send({ success: true, data: newComposeFile });
   } catch (error) {
     req.log.error(
       `Error adding container: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
     );
-    reply.statusCode = 500;
+    reply.code(500);
     reply.send({
       success: false,
       error: `Failed to add container: ${error instanceof Error ? error.message : String(error)}`,

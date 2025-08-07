@@ -16,9 +16,7 @@
  */
 
 import fs from 'fs';
-import path from 'path';
-import { FastifyServerOptions, FastifyHttpsOptions } from 'fastify';
-import { Server as HttpsServer } from 'https';
+import { FastifyServerOptions } from 'fastify';
 
 /**
  * Check if SSL is enabled based on environment variables

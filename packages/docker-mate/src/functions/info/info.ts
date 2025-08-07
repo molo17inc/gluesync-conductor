@@ -4,7 +4,7 @@ const handler: RouteHandlerMethod = async (req, reply) => {
   try {
     const info = await req.server.docker.info();
 
-    reply.statusCode = 200;
+    reply.code(200);
     reply.send({ success: true, data: info });
   } catch (error) {
     req.log.error(`Error: ${JSON.stringify(error)}`);

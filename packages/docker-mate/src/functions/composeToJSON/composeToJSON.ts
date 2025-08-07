@@ -18,13 +18,13 @@ const handler: ComposeToJSONHandler = async (req, reply) => {
 
     await writeComposeFile(composeJsonRaw, 'compose.generated.yml');
 
-    reply.statusCode = 200;
+    reply.code(200);
     reply.send({ success: true, data: composeJson });
   } catch (error) {
     req.log.error(
       `Error getting compose file: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
     );
-    reply.statusCode = 500;
+    reply.code(500);
     reply.send({
       success: false,
       error: `Failed to get compose file: ${error instanceof Error ? error.message : String(error)}`,

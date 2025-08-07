@@ -3,10 +3,8 @@ import mergeComposeKeyValueField from '../mergeKeyValueStrings/mergeKeyValueStri
 import { CreateComposeService } from './createComposeService.model';
 
 // Universal port mapper function
-const mapPorts = (
-  ports: ReadonlyArray<string> | ReadonlyArray<ComposePort>,
-) => {
-  return ports.reduce<ReadonlyArray<string>>((acc, port) => {
+const mapPorts = (ports: ReadonlyArray<string> | ReadonlyArray<ComposePort>) =>
+  ports.reduce<ReadonlyArray<string>>((acc, port) => {
     // Check if it's a string or object
     if (typeof port === 'string') {
       // Handle string format: "host:container" Es:"8080:80" / or "host:container/protocol" Es: Es:"8080:80/tcp"
@@ -17,7 +15,7 @@ const mapPorts = (
         return acc;
       }
 
-      return [...acc, `${host}:${container}${protocol ? '/' + protocol : ''}`];
+      return [...acc, `${host}:${container}${protocol ? `/${protocol}` : ''}`];
     }
     if (typeof port === 'object' && port !== null) {
       // Handle object format: { host, container, protocol }
@@ -27,13 +25,12 @@ const mapPorts = (
       }
       return [
         ...acc,
-        `${host}:${container}${String(host)?.trim() ? '/' + protocol : ''}`,
+        `${host}:${container}${String(host)?.trim() ? `/${protocol}` : ''}`,
       ];
     }
     // Fallback for unexpected formats
     return acc;
   }, []);
-};
 
 const createComposeService: CreateComposeService = (
   serviceType,

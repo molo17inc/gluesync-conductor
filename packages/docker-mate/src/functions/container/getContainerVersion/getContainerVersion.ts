@@ -17,8 +17,8 @@
 
 import { RouteHandlerMethod } from 'fastify';
 import axios from 'axios';
-import parseImage from '../../../helpers/parseImage/parseImage';
 import Docker from 'dockerode';
+import parseImage from '../../../helpers/parseImage/parseImage';
 
 const handler: RouteHandlerMethod = async (req, reply) => {
   try {
