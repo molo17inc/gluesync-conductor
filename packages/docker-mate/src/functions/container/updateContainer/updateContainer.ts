@@ -78,6 +78,7 @@ const handler: UpdateContainerHandler = async (req, reply) => {
       const containerTag = tag || currentTag;
 
       // Update the service
+      // @ts-ignore
       composeFile.services = {
         ...composeFile.services,
         [serviceKey]: {
