@@ -59,9 +59,7 @@ const createComposeService: CreateComposeService = (
     image: `molo17/${imageName}:${tag || 'latest'}`,
     container_name: containerDisplayName,
     restart: 'unless-stopped',
-    deploy: {
-      resources,
-    },
+    deploy: { resources },
     labels: Object.entries({
       ...labels,
       ...defaultLabels,

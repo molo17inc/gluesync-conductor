@@ -463,11 +463,17 @@ server.post('/agents', {
               },
               ports: {
                 type: 'array',
-                items: { type: 'string' },
+                items: { type: ['object', 'string'] },
               },
               volumes: {
                 type: 'array',
                 items: { type: 'string' },
+              },
+              reservations: {
+                type: 'object',
+              },
+              limits: {
+                type: 'object',
               },
             },
             required: ['imageName', 'type'],
@@ -713,7 +719,6 @@ server.post('/containers/:id/restart', {
         properties: {
           success: { type: 'boolean' },
           data: {
-            additionalProperties: true, // Allow any properties in the response
             type: 'array',
             items: { type: 'string' },
           },
