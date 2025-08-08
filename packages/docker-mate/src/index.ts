@@ -18,7 +18,6 @@ import listContainers from './functions/container/listContainers/listContainers'
 import getContainerVersion from './functions/container/getContainerVersion/getContainerVersion';
 import getContainer from './functions/container/getContainer/getContainer';
 import updateContainer from './functions/container/updateContainer/updateContainer';
-import addContainer from './functions/container/addContainer/addContainer';
 import addAgents from './functions/agent/addAgents/addAgents';
 import getAgents from './functions/agent/getAgents/getAgents';
 import removeAgent from './functions/agent/removeAgent/removeAgent';
@@ -328,83 +327,6 @@ server.get('/containers/:id/version', {
     },
   },
   handler: getContainerVersion,
-});
-
-server.post('/containers', {
-  schema: {
-    tags: ['containers'],
-    description: 'Add new containers to the system',
-    body: {
-      type: 'object',
-      properties: {
-        containers: {
-          type: 'array',
-          items: {
-            type: 'object',
-            required: ['imageName', 'type'],
-            properties: {
-              imageName: {
-                type: 'string',
-                description: 'Name of the Docker image',
-              },
-              type: {
-                type: 'string',
-                enum: ['target', 'source'],
-                description: 'Type of the agent',
-              },
-              nickname: {
-                type: 'string',
-                description: 'Optional nickname for the container',
-              },
-              tag: { type: 'string', description: 'Optional Docker image tag' },
-              environment: {
-                type: 'object',
-                additionalProperties: true,
-                description: 'Optional environment variables',
-              },
-              ports: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Optional port mappings',
-              },
-              volumes: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'Optional volume mappings',
-              },
-            },
-          },
-        },
-      },
-    },
-    response: {
-      200: {
-        type: 'object',
-        properties: {
-          success: { type: 'boolean' },
-          data: {
-            additionalProperties: true, // Allow any properties in the response
-            type: 'object',
-          },
-        },
-      },
-      400: {
-        type: 'object',
-        properties: {
-          success: { type: 'boolean' },
-          error: { type: 'string' },
-        },
-      },
-      500: {
-        type: 'object',
-        properties: {
-          success: { type: 'boolean' },
-          error: { type: 'string' },
-        },
-      },
-    },
-  },
-  handler: addContainer,
 });
 
 server.delete('/containers/:id', {
