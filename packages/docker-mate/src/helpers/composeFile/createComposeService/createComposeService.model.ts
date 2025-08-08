@@ -1,4 +1,5 @@
 import { RawComposeService } from '../../../models/composeFile.model';
+import { ConductorServiceTypes } from '../../../models/conductor.model';
 
 export type CreateComposeServiceOptions = Readonly<{
   imageName: string;
@@ -12,6 +13,6 @@ export type CreateComposeServiceOptions = Readonly<{
 }>;
 
 export type CreateComposeService = (
-  type: 'agent' | 'module' | 'container',
+  type: ConductorServiceTypes,
   options: CreateComposeServiceOptions,
 ) => RawComposeService;

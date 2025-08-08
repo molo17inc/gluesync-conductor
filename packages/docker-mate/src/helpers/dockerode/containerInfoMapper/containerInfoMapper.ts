@@ -6,7 +6,6 @@ import { ContainerInfoMapper } from './containerInfoMapper.model';
 
 import getCustomLabels from '../../composeFile/getCustomLabels/getCustomLabels';
 import parseImage from '../../../helpers/parseImage/parseImage';
-import { LabelPrefix } from '../../../models/composeFile.model';
 
 const containerInfoMapper: ContainerInfoMapper = container => {
   if (!container) {
@@ -29,10 +28,12 @@ const containerInfoMapper: ContainerInfoMapper = container => {
     Mounts: mounts,
   } = container;
 
-  const { unique_id: uniqueId, versiontag } = getCustomLabels(labels);
+  const {
+    unique_id: uniqueId,
+    versiontag: versionTag,
+    type,
+  } = getCustomLabels(labels);
   const { tag } = parseImage(image);
-
-  const currentServiceName = labels[`${LabelPrefix.COMPOSE}.service`];
 
   return {
     id,
@@ -106,8 +107,9 @@ const containerInfoMapper: ContainerInfoMapper = container => {
       }),
     ),
     tag,
-    versionTag: versiontag || '',
-    persisted: uniqueId === currentServiceName,
+    versionTag,
+    uniqueId,
+    type,
   };
 };
 

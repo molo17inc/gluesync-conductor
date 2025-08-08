@@ -61,9 +61,10 @@ export type ContainerInfo = Readonly<{
   name: string;
   image: string;
   imageID: string;
+  type?: string;
   tag: string;
-  versionTag: string;
-  persisted: boolean;
+  versionTag?: string;
+  uniqueId?: string;
   command: string;
   created: number;
   ports: ReadonlyArray<Port>;
