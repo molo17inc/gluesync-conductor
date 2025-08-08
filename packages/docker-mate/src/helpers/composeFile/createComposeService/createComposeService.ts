@@ -1,5 +1,36 @@
+import { ComposePort } from '../../../models/composeFile.model';
 import mergeComposeKeyValueField from '../mergeKeyValueStrings/mergeKeyValueStrings';
 import { CreateComposeService } from './createComposeService.model';
+
+// Universal port mapper function
+const mapPorts = (ports: ReadonlyArray<string> | ReadonlyArray<ComposePort>) =>
+  ports.reduce<ReadonlyArray<string>>((acc, port) => {
+    // Check if it's a string or object
+    if (typeof port === 'string') {
+      // Handle string format: "host:container" Es:"8080:80" / or "host:container/protocol" Es: Es:"8080:80/tcp"
+      const [host = '', containerAndProtocol = ''] = port.trim().split(':');
+      const [container = '', protocol = ''] = containerAndProtocol.split('/');
+
+      if (!host || !container) {
+        return acc;
+      }
+
+      return [...acc, `${host}:${container}${protocol ? `/${protocol}` : ''}`];
+    }
+    if (typeof port === 'object' && port !== null) {
+      // Handle object format: { host, container, protocol }
+      const { host = '', container = '', protocol } = port;
+      if (!String(host).trim() || !String(host).trim()) {
+        return acc;
+      }
+      return [
+        ...acc,
+        `${host}:${container}${String(host)?.trim() ? `/${protocol}` : ''}`,
+      ];
+    }
+    // Fallback for unexpected formats
+    return acc;
+  }, []);
 
 const createComposeService: CreateComposeService = (
   serviceType,
@@ -12,6 +43,7 @@ const createComposeService: CreateComposeService = (
     ports = [],
     volumes = [],
     labels = {},
+    resources,
   },
 ) => {
   const containerName = `${imageName}-${type}-${serviceType}`;
@@ -27,6 +59,7 @@ const createComposeService: CreateComposeService = (
     image: `molo17/${imageName}:${tag || 'latest'}`,
     container_name: containerDisplayName,
     restart: 'unless-stopped',
+    deploy: { resources },
     labels: Object.entries({
       ...labels,
       ...defaultLabels,
@@ -38,7 +71,7 @@ const createComposeService: CreateComposeService = (
       GLUESYNC_MODULE_TAG: 'gluesync-conductor',
       ...environment,
     }).map(([key, value]) => `${key}=${value}`),
-    ports,
+    ports: mapPorts(ports),
     volumes: mergeComposeKeyValueField(
       'volumes',
       [
