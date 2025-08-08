@@ -42,7 +42,7 @@ const containerInfoMapper: ContainerInfoMapper = container => {
     imageID,
     command,
     created,
-    ports: ports.map(
+    ports: (ports || []).map(
       ({
         IP: ip,
         PrivatePort: privatePort,
@@ -85,7 +85,7 @@ const containerInfoMapper: ContainerInfoMapper = container => {
         {},
       ),
     },
-    mounts: mounts.map(
+    mounts: (mounts || []).map(
       ({
         Name: name,
         Type: type,
