@@ -27,6 +27,8 @@ const handler: AddAgentsHandler = async (req, reply) => {
           labels,
           ports = [],
           volumes = [],
+          limits,
+          reservations,
         } = agent;
 
         const service = createComposeService('agent', {
@@ -36,8 +38,15 @@ const handler: AddAgentsHandler = async (req, reply) => {
           tag,
           environment,
           ports,
-          volumes,
+          volumes: volumes.map(
+            ({ host, container, mode }) =>
+              `${host}:${container}${mode ? `/${mode}` : ''}`,
+          ),
           labels,
+          resources: {
+            limits,
+            reservations,
+          },
         });
 
         req.log.debug(`Creating service for agent: ${JSON.stringify(service)}`);
@@ -51,10 +60,7 @@ const handler: AddAgentsHandler = async (req, reply) => {
 
         return {
           ...acc,
-          services: mergeServices([
-            acc.services || {},
-            { [service.container_name]: service },
-          ]),
+          services,
         };
       },
       {},

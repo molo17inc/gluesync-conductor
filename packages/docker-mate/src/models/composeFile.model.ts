@@ -24,12 +24,12 @@ export type CommonComposeFile = Readonly<{
 export type ComposeServiceDeploy = Readonly<{
   resources?: {
     reservations?: {
-      cpus?: number;
-      memory?: string;
+      cpus?: number | null;
+      memory?: string | null;
     };
     limits?: {
-      cpus?: number;
-      memory?: string;
+      cpus?: number | null;
+      memory?: string | null;
     };
   };
 }>;
@@ -61,8 +61,8 @@ export type ComposeVolume = Readonly<{
 }>;
 
 export type ComposePort = Readonly<{
-  host: string;
-  container: string;
+  host: string | number;
+  container: string | number;
   protocol?: 'tcp' | 'udp';
 }>;
 
