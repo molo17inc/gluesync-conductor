@@ -18,9 +18,15 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{URL}}/containers",
+              "raw": "{{URL}}/containers?type=all",
               "host": ["{{URL}}"],
-              "path": ["containers"]
+              "path": ["containers"],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "all"
+                }
+              ]
             }
           },
           "response": []
