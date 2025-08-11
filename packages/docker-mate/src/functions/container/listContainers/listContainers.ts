@@ -1,14 +1,26 @@
 import { ContainerInfo } from 'dockerode';
 
 import { LabelPrefix } from '../../../models/composeFile.model';
-import { ListContainersHandler } from './listContainers.model';
+import {
+  ListContainersHandler,
+  ListContainersParams,
+  ListContainersSuccessResponse,
+} from './listContainers.model';
 
 import containerInfoMapper from '../../../helpers/dockerode/containerInfoMapper/containerInfoMapper';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import getSystemInfo from '../../../helpers/dockerode/getSystemInfo/getSystemInfo';
+import { castObject } from '../../../helpers/composeFile/extractKeyValue/extractKeyValue';
+import parseServiceType from '../../../helpers/composeFile/parseServiceType/parseServiceType';
+import {
+  ConductorServiceTypes,
+  conductorServiceTypes,
+} from '../../../models/conductor.model';
 
 const handler: ListContainersHandler = async (req, reply) => {
   try {
+    const { type } = castObject<ListContainersParams>(req.query);
+
     // Get Docker system information (CPU count and total memory)
     // Read the compose file to check which containers are persisted
     // Use all: true to show all containers (not just running ones)
@@ -50,22 +62,49 @@ const handler: ListContainersHandler = async (req, reply) => {
       ]),
     ];
 
-    const containers = allServicesNames.map(id => {
-      const info = containerInfoMapper(containerListMap[id]);
-      const service = composeJson.services?.[id];
+    const containers: ListContainersSuccessResponse['containers'] =
+      allServicesNames.map(id => {
+        const service = composeJson.services?.[id];
+        const info = containerInfoMapper(containerListMap[id]);
 
-      return {
-        id,
-        service,
-        info,
-      };
+        const serviceName =
+          service?.labels?.[`${LabelPrefix.CONDUCTOR}.service`];
+        const persisted = info?.uniqueId === serviceName;
+
+        const serviceType = parseServiceType(
+          service?.labels?.[`${LabelPrefix.CONDUCTOR}.type`],
+        );
+
+        return {
+          id,
+          persisted,
+          type:
+            (persisted ? serviceType : parseServiceType(info?.type)) ||
+            'unknown',
+          service,
+          info,
+        };
+      });
+
+    const filteredContainers = containers.filter(({ type: currentType }) => {
+      if (!type || type === 'all') {
+        return true;
+      }
+
+      if (type === 'unknown') {
+        return !conductorServiceTypes.includes(
+          currentType as ConductorServiceTypes,
+        );
+      }
+
+      return currentType === type;
     });
 
     reply.code(200);
     reply.send({
       success: true,
       data: {
-        containers,
+        containers: filteredContainers,
         systemInfo,
       },
     });
