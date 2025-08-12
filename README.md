@@ -35,6 +35,24 @@ yarn install
 PORT=50015 yarn dev
 ```
 
+## Available Scripts
+
+### Code Quality
+- **`yarn format`** - Format all files using Prettier
+- **`yarn format:check`** - Check if files are properly formatted
+- **`yarn format:write`** - Format files and write changes
+- **`yarn lint`** - Run ESLint across all workspaces
+- **`yarn lint:fix`** - Auto-fix ESLint issues across workspaces
+
+### Development
+- **`yarn type-check`** - Run TypeScript type checking across workspaces
+- **`yarn build`** - Build all packages in topological order
+- **`yarn do`** - Complete setup: install → build → type-check
+
+### Documentation
+- **`yarn get-openapi`** - Generate OpenAPI documentation from docker-mate service
+
+
 ## API Endpoints
 
 The Gluesync Conductor API provides the following endpoints for container management:
