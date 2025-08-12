@@ -1,6 +1,11 @@
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// ESM equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const PORT = 8080;
 const DOCS_DIR = path.join(__dirname, 'docs');
@@ -25,10 +30,10 @@ const server = http.createServer((req, res) => {
   }
 
   // Serve the docs/index.html or redirect to it
-  let filePath =
+  const filePath =
     req.url === '/' || req.url === '/docs'
       ? path.join(DOCS_DIR, 'index.html')
-      : path.join(__dirname, req.url);
+      : path.join(__dirname, req.url || '');
 
   const extname = path.extname(filePath);
   let contentType = 'text/html';
@@ -47,7 +52,15 @@ const server = http.createServer((req, res) => {
       contentType = 'image/png';
       break;
     case '.jpg':
-      contentType = 'image/jpg';
+    case '.jpeg':
+      contentType = 'image/jpeg';
+      break;
+    case '.yaml':
+    case '.yml':
+      contentType = 'application/yaml';
+      break;
+    case '.svg':
+      contentType = 'image/svg+xml';
       break;
   }
 

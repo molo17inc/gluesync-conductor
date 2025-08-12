@@ -1,5 +1,6 @@
 {
   "name": "docker-mate",
+  "type": "module",
   "scripts": {
     "format": "prettier --ignore-path ../.prettierignore .",
     "format:check": "yarn format --check",
@@ -7,10 +8,11 @@
     "lint": "eslint .",
     "lint:fix": "yarn lint --fix",
     "type-check": "yarn tsc --noEmit --incremental --tsBuildInfoFile .tsbuildinfo",
-    "dev": "nodemon src/index.ts",
     "dev:docker": "nodemon src/index.ts",
     "build": "buildService",
-    "start": "node build/index.js"
+    "start": "node build/index.js",
+    "dev": "yarn build && node --watch build/index.js",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fastify/swagger": "^9.4.2",
