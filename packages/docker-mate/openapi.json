@@ -1,0 +1,1041 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "version": "1.0.0",
+    "title": ""
+  },
+  "definitions": {
+    "def-0": {
+      "additionalProperties": true,
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "services": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "image": {
+                "type": "string"
+              },
+              "container_name": {
+                "type": "string"
+              },
+              "restart": {
+                "type": "string"
+              },
+              "environment": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "volumes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "title": "ComposeFile"
+    }
+  },
+  "paths": {
+    "/openapi.json": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Health check endpoint",
+        "tags": [
+          "system"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "data": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/compose-to-json": {
+      "get": {
+        "description": "Convert compose file to JSON",
+        "tags": [
+          "system"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "data": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/info": {
+      "get": {
+        "description": "Get system information",
+        "tags": [
+          "system"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "data": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/version": {
+      "get": {
+        "description": "Get API version",
+        "tags": [
+          "system"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "data": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/containers": {
+      "get": {
+        "description": "List all containers",
+        "tags": [
+          "containers"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "data": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "properties": {
+                    "systemInfo": {
+                      "type": "object",
+                      "properties": {
+                        "ncpu": {
+                          "type": "number"
+                        },
+                        "memTotal": {
+                          "type": "number"
+                        }
+                      }
+                    },
+                    "containers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true,
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "image": {
+                            "type": "string"
+                          },
+                          "tag": {
+                            "type": "string"
+                          },
+                          "versionTag": {
+                            "type": "string"
+                          },
+                          "persisted": {
+                            "type": "boolean"
+                          },
+                          "created": {
+                            "type": "string"
+                          },
+                          "running": {
+                            "type": "boolean"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "exitCode": {
+                            "type": "number"
+                          },
+                          "startedAt": {
+                            "type": "string"
+                          },
+                          "finishedAt": {
+                            "type": "string"
+                          },
+                          "cmd": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "env": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "labels": {
+                            "type": "object",
+                            "additionalProperties": true
+                          },
+                          "networkMode": {
+                            "type": "string"
+                          },
+                          "privileged": {
+                            "type": "boolean"
+                          },
+                          "ports": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          },
+                          "mounts": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          },
+                          "hostConfig": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": "string"
+                },
+                "details": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/containers/{id}": {
+      "get": {
+        "description": "Get a container configuration",
+        "tags": [
+          "containers"
+        ],
+        "parameters": [
+          {
+            "type": "string",
+            "description": "Container ID",
+            "required": true,
+            "in": "path",
+            "name": "id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "data": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "properties": {
+                    "imageName": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "target",
+                        "source"
+                      ]
+                    },
+                    "nickname": {
+                      "type": "string"
+                    },
+                    "tag": {
+                      "type": "string"
+                    },
+                    "versionTag": {
+                      "type": "string"
+                    },
+                    "persisted": {
+                      "type": "boolean"
+                    },
+                    "environment": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "ports": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "volumes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "hostConfig": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  }
+                },
+                "systemInfo": {
+                  "type": "object",
+                  "properties": {
+                    "ncpu": {
+                      "type": "number"
+                    },
+                    "memTotal": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "description": "Update a container configuration",
+        "tags": [
+          "containers"
+        ],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "imageName": {
+                  "type": "string",
+                  "description": "Name of the Docker image"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "target",
+                    "source"
+                  ],
+                  "description": "Type of the agent"
+                },
+                "nickname": {
+                  "type": "string",
+                  "description": "Optional nickname for the agent"
+                },
+                "tag": {
+                  "type": "string",
+                  "description": "Optional Docker image tag"
+                },
+                "environment": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "Optional environment variables"
+                },
+                "ports": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Optional port mappings"
+                },
+                "volumes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Optional volume mappings"
+                }
+              }
+            }
+          },
+          {
+            "type": "string",
+            "description": "Container ID to update",
+            "required": true,
+            "in": "path",
+            "name": "id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "data": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "description": "Remove a container from the compose file",
+        "tags": [
+          "containers"
+        ],
+        "parameters": [
+          {
+            "type": "string",
+            "description": "Container ID to remove",
+            "required": true,
+            "in": "path",
+            "name": "id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "data": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/containers/{id}/version": {
+      "get": {
+        "description": "Get container version information",
+        "tags": [
+          "containers"
+        ],
+        "parameters": [
+          {
+            "type": "string",
+            "description": "Container ID",
+            "required": true,
+            "in": "path",
+            "name": "id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "data": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "properties": {
+                    "containerId": {
+                      "type": "string"
+                    },
+                    "containerName": {
+                      "type": "string"
+                    },
+                    "currentImage": {
+                      "type": "string"
+                    },
+                    "currentTag": {
+                      "type": "string"
+                    },
+                    "latestVersion": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/containers/{id}/start": {
+      "post": {
+        "description": "Start a container",
+        "tags": [
+          "containers"
+        ],
+        "parameters": [
+          {
+            "type": "string",
+            "description": "Container ID to start",
+            "required": true,
+            "in": "path",
+            "name": "id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "data": {
+                  "additionalProperties": true,
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/containers/{id}/stop": {
+      "post": {
+        "description": "Stop a container",
+        "tags": [
+          "containers"
+        ],
+        "parameters": [
+          {
+            "type": "string",
+            "description": "Container ID to stop",
+            "required": true,
+            "in": "path",
+            "name": "id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "data": {
+                  "additionalProperties": true,
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/containers/{id}/pull": {
+      "post": {
+        "description": "Pull the latest image for a container",
+        "tags": [
+          "containers"
+        ],
+        "parameters": [
+          {
+            "type": "string",
+            "description": "Container ID to pull image for",
+            "required": true,
+            "in": "path",
+            "name": "id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "data": {
+                  "additionalProperties": true,
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/containers/{id}/restart": {
+      "post": {
+        "description": "Restart a container",
+        "tags": [
+          "containers"
+        ],
+        "parameters": [
+          {
+            "type": "string",
+            "description": "Container ID to restart",
+            "required": true,
+            "in": "path",
+            "name": "id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agents": {
+      "post": {
+        "description": "Add agents",
+        "tags": [
+          "agents"
+        ],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "agents": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "imageName": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "target",
+                          "source"
+                        ]
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "tag": {
+                        "type": "string"
+                      },
+                      "environment": {
+                        "type": "object",
+                        "additionalProperties": true
+                      },
+                      "ports": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "host": {
+                                  "type": "string"
+                                },
+                                "container": {
+                                  "type": "string"
+                                },
+                                "protocol": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "host",
+                                "container"
+                              ]
+                            },
+                            {
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "volumes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "reservations": {
+                        "type": "object"
+                      },
+                      "limits": {
+                        "type": "object"
+                      }
+                    },
+                    "required": [
+                      "imageName",
+                      "type"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "agents"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean"
+                },
+                "data": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

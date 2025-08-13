@@ -1345,11 +1345,14 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./packages/scripts/",\
         "packageDependencies": [\
           ["@gluesync/scripts", "workspace:packages/scripts"],\
+          ["@fastify/swagger", "npm:9.5.0"],\
+          ["@fastify/swagger-ui", "npm:5.2.2"],\
           ["@types/node", "npm:22.14.1"],\
           ["@typescript-eslint/eslint-plugin", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:6.21.0"],\
           ["@typescript-eslint/parser", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:6.21.0"],\
           ["dotenv", "npm:16.5.0"],\
           ["esbuild", "npm:0.25.2"],\
+          ["esbuild-plugin-copy", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:2.1.1"],\
           ["eslint", "npm:8.57.1"],\
           ["eslint-plugin-deprecation", "virtual:beb8dda6f7964700067e23ce77cb39672e53232747d9207129ce290669aa7b52a4867d6f76308bd24f79bcd9d13683b90dcd0eadd6b5cdd6c82249bcb0d213d1#npm:2.0.0"],\
           ["eslint-plugin-functional", "virtual:beb8dda6f7964700067e23ce77cb39672e53232747d9207129ce290669aa7b52a4867d6f76308bd24f79bcd9d13683b90dcd0eadd6b5cdd6c82249bcb0d213d1#npm:6.6.3"],\
@@ -4323,6 +4326,32 @@ const RAW_RUNTIME_STATE =
         "linkType": "HARD"\
       }]\
     ]],\
+    ["esbuild-plugin-copy", [\
+      ["npm:2.1.1", {\
+        "packageLocation": "./.yarn/cache/esbuild-plugin-copy-npm-2.1.1-ba42aff336-29b89f5b7f.zip/node_modules/esbuild-plugin-copy/",\
+        "packageDependencies": [\
+          ["esbuild-plugin-copy", "npm:2.1.1"]\
+        ],\
+        "linkType": "SOFT"\
+      }],\
+      ["virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:2.1.1", {\
+        "packageLocation": "./.yarn/__virtual__/esbuild-plugin-copy-virtual-a6533654b0/0/cache/esbuild-plugin-copy-npm-2.1.1-ba42aff336-29b89f5b7f.zip/node_modules/esbuild-plugin-copy/",\
+        "packageDependencies": [\
+          ["esbuild-plugin-copy", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:2.1.1"],\
+          ["@types/esbuild", null],\
+          ["chalk", "npm:4.1.2"],\
+          ["chokidar", "npm:3.6.0"],\
+          ["esbuild", "npm:0.25.2"],\
+          ["fs-extra", "npm:10.1.0"],\
+          ["globby", "npm:11.1.0"]\
+        ],\
+        "packagePeers": [\
+          "@types/esbuild",\
+          "esbuild"\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
     ["escalade", [\
       ["npm:3.2.0", {\
         "packageLocation": "./.yarn/cache/escalade-npm-3.2.0-19b50dd48f-9d7169e396.zip/node_modules/escalade/",\
@@ -5189,6 +5218,16 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["fs-extra", [\
+      ["npm:10.1.0", {\
+        "packageLocation": "./.yarn/cache/fs-extra-npm-10.1.0-86573680ed-05ce2c3b59.zip/node_modules/fs-extra/",\
+        "packageDependencies": [\
+          ["fs-extra", "npm:10.1.0"],\
+          ["graceful-fs", "npm:4.2.11"],\
+          ["jsonfile", "npm:6.1.0"],\
+          ["universalify", "npm:2.0.1"]\
+        ],\
+        "linkType": "HARD"\
+      }],\
       ["npm:11.3.0", {\
         "packageLocation": "./.yarn/cache/fs-extra-npm-11.3.0-a6b1b4d5ad-c9fe7b23dd.zip/node_modules/fs-extra/",\
         "packageDependencies": [\
