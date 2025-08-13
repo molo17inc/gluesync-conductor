@@ -8,6 +8,7 @@ import removeAgent from '../functions/agent/removeAgent/removeAgent';
 import startAgents from '../functions/agent/startAgents/startAgents';
 import stopAgents from '../functions/agent/stopAgents/stopAgents';
 import { FastifyInstance, FastifyPluginOptions } from 'fastify';
+import doContainersAction from '../functions/container/doContainersAction/doContainersAction';
 
 const containerRoutes = async (
   fastify: FastifyInstance,
@@ -111,6 +112,46 @@ const containerRoutes = async (
       },
     },
     handler: listContainers,
+  });
+
+  fastify.post('/containers', {
+    schema: {
+      tags: ['containers'],
+      description: 'Containers action',
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              additionalProperties: true, // Allow any properties in the response
+              type: 'object',
+              properties: {
+                containers: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: true, // Allow any properties in the response
+                    properties: {
+                      id: { type: 'string' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        500: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            error: { type: 'string' },
+            details: { type: 'string' },
+          },
+        },
+      },
+    },
+    handler: doContainersAction,
   });
 
   fastify.get('/containers/:id', {

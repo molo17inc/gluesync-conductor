@@ -30,6 +30,31 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Do containers action",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"stop\",\n    \"ids\": [\n        \"apache_service\",\n        \"ergre\"\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/containers",
+              "host": ["{{URL}}"],
+              "path": ["containers"]
+            }
+          },
+          "response": []
         }
       ]
     },
@@ -95,9 +120,9 @@
               }
             },
             "url": {
-              "raw": "{{URL}}/agents/start",
+              "raw": "{{URL}}/containers/apache_service/start",
               "host": ["{{URL}}"],
-              "path": ["agents", "start"]
+              "path": ["containers", "apache_service", "start"]
             }
           },
           "response": []

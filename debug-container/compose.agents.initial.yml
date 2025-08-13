@@ -1,4 +1,12 @@
 services:
+  apache_service:
+    image: httpd:latest
+    container_name: apache_service
+    restart: unless-stopped
+    ports:
+      - 8080:80
+    volumes:
+      - /Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/public-html:/usr/local/apache2/htdocs/
   gluesync-mssql-cdc-target-agent: # Labels "com.docker.compose.service"
     image: molo17/gluesync-mssql-cdc:latest # Image
     container_name: gluesync-mssql-cdc-target-agent # "Names": ["/gluesync-mssql-cdc-source-agent"]
