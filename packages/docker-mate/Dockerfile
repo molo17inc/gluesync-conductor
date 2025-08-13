@@ -22,6 +22,7 @@ WORKDIR /opt/docker-mate
 
 COPY build/index.js index.js
 COPY build/index.js.map index.js.map
+COPY build/static/ static/
 
 COPY swagger-static.json swagger-static.json
 COPY docs/gluesync-conductor.svg static/logo.svg
