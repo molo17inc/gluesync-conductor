@@ -1,8 +1,5 @@
 import fastify from 'fastify';
 import Docker from 'dockerode';
-import fastifySwagger from '@fastify/swagger';
-import fastifySwaggerUI from '@fastify/swagger-ui';
-
 import dockerPlugin from './plugins/docker';
 import swaggerPlugin from './plugins/swagger';
 import gluesyncPlugin from './plugins/gluesync';
@@ -27,7 +24,7 @@ declare module 'fastify' {
 const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
 const host: string = process.env.HOST || '0.0.0.0';
 
-async function startServer() {
+const startServer = async () => {
   const serverOptions = createFastifyHttpsOptions();
   const server = fastify(serverOptions);
 
@@ -35,40 +32,7 @@ async function startServer() {
   httpsRedirectMiddleware(server);
 
   // Register Swagger plugins first
-  await server.register(fastifySwagger, {
-    openapi: {
-      openapi: '3.0.0',
-      info: {
-        title: 'Gluesync Conductor API',
-        description: 'API documentation for Gluesync Conductor',
-        version: '1.0.0',
-      },
-      servers: [
-        {
-          url: `http://localhost:${port}`,
-          description: 'Development server',
-        },
-      ],
-      tags: [
-        { name: 'system', description: 'System related endpoints' },
-        { name: 'containers', description: 'Container related endpoints' },
-        { name: 'agents', description: 'Agent related endpoints' },
-      ],
-      components: {
-        securitySchemes: {
-          apiKey: {
-            type: 'apiKey',
-            name: 'apiKey',
-            in: 'header',
-          },
-        },
-      },
-    },
-  });
-
-  await server.register(fastifySwaggerUI, {
-    routePrefix: '/docs',
-  });
+  await server.register(swaggerPlugin);
 
   // Register other plugins
   await server.register(dockerPlugin);
@@ -78,11 +42,6 @@ async function startServer() {
   await server.register(systemRoutes);
   await server.register(containerRoutes);
   await server.register(agentRoutes);
-
-  // Add OpenAPI JSON endpoint
-  server.get('/openapi.json', async (request, reply) => {
-    return server.swagger();
-  });
 
   await server.ready();
   await server.listen({ host, port });
@@ -95,7 +54,7 @@ async function startServer() {
     `OpenAPI JSON available at ${protocol}://${host === '0.0.0.0' ? 'localhost' : host}:${port}/openapi.json`,
   );
   console.info(`Gluesync Conductor server started on port ${port}`);
-}
+};
 
 // Handle unhandled rejections
 process.on('unhandledRejection', err => {

@@ -3,10 +3,10 @@ import info from '../functions/info/info';
 import version from '../functions/version/version';
 import composeToJSON from '../functions/composeToJSON/composeToJSON';
 
-export default async function systemRoutes(
+const systemRoutes = async (
   fastify: FastifyInstance,
   options: FastifyPluginOptions,
-) {
+) => {
   fastify.get('/health', {
     schema: {
       tags: ['system'],
@@ -100,4 +100,6 @@ export default async function systemRoutes(
     },
     handler: version,
   });
-}
+};
+
+export default systemRoutes;

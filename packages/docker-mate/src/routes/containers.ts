@@ -9,10 +9,10 @@ import startAgents from '../functions/agent/startAgents/startAgents';
 import stopAgents from '../functions/agent/stopAgents/stopAgents';
 import { FastifyInstance, FastifyPluginOptions } from 'fastify';
 
-export default async function containerRoutes(
+const containerRoutes = async (
   fastify: FastifyInstance,
   options: FastifyPluginOptions,
-) {
+) => {
   // Register ComposeFile schema
   fastify.addSchema({
     $id: 'ComposeFile',
@@ -482,4 +482,6 @@ export default async function containerRoutes(
     },
     handler: restartContainer,
   });
-}
+};
+
+export default containerRoutes;

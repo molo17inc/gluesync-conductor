@@ -14,8 +14,8 @@ interface OpenApiSpec {
 
 let serverProcess: ChildProcess | null = null;
 
-async function startServer(): Promise<void> {
-  return new Promise((resolve, reject) => {
+const startServer = async (): Promise<void> =>
+  new Promise((resolve, reject) => {
     console.log('🚀 Starting server...');
 
     serverProcess = spawn('yarn', ['start'], {
@@ -43,9 +43,8 @@ async function startServer(): Promise<void> {
       resolve();
     }, 8000);
   });
-}
 
-async function stopServer(): Promise<void> {
+const stopServer = async (): Promise<void> => {
   if (serverProcess) {
     console.log('🛑 Stopping server...');
     serverProcess.kill('SIGTERM');
@@ -57,9 +56,9 @@ async function stopServer(): Promise<void> {
       }
     }, 5000);
   }
-}
+};
 
-async function fetchOpenApiSpec(): Promise<OpenApiSpec> {
+const fetchOpenApiSpec = async (): Promise<OpenApiSpec> => {
   const port: number = process.env.PORT
     ? parseInt(process.env.PORT, 10)
     : DEFAULT_PORT;
@@ -96,9 +95,9 @@ async function fetchOpenApiSpec(): Promise<OpenApiSpec> {
     console.error('❌ Failed to fetch OpenAPI spec:', errorMessage);
     throw error;
   }
-}
+};
 
-async function main(): Promise<void> {
+const main = async (): Promise<void> => {
   try {
     // Start server
     await startServer();
@@ -119,7 +118,7 @@ async function main(): Promise<void> {
     await stopServer();
     process.exit(0);
   }
-}
+};
 
 // Handle process termination
 process.on('SIGINT', async () => {
