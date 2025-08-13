@@ -1,35 +1,48 @@
-import { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
-import fs from 'fs';
-import path from 'path';
+import { FastifyInstance, FastifyPluginAsync } from 'fastify';
+import fastifySwagger from '@fastify/swagger';
+import fastifySwaggerUI from '@fastify/swagger-ui';
 
-/**
- * This plugin integrates Swagger documentation with Fastify for the Gluesync Conductor API
- */
-async function swaggerPlugin(fastify: Readonly<FastifyInstance>) {
-  // Get the static Swagger file
-  const swaggerFilePath = path.join(process.cwd(), 'swagger-static.json');
-  const swaggerContent = JSON.parse(fs.readFileSync(swaggerFilePath, 'utf8'));
+const swaggerPlugin: FastifyPluginAsync = async (fastify: FastifyInstance) => {
+  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
 
-  // Register Swagger
-  await fastify.register(import('@fastify/swagger'), {
-    mode: 'static',
-    specification: {
-      document: swaggerContent,
+  await fastify.register(fastifySwagger, {
+    mode: 'dynamic',
+    document: {
+      openapi: '3.0.0',
+      info: {
+        title: 'Gluesync Conductor API',
+        description: 'API documentation for Gluesync Conductor',
+        version: '1.0.0',
+      },
+      servers: [
+        {
+          url: `http://localhost:${port}`,
+          description: 'Development server',
+        },
+      ],
+      tags: [
+        { name: 'system', description: 'System related endpoints' },
+        { name: 'containers', description: 'Container related endpoints' },
+        { name: 'agents', description: 'Agent related endpoints' },
+      ],
+      components: {
+        securitySchemes: {
+          apiKey: {
+            type: 'apiKey',
+            name: 'apiKey',
+            in: 'header',
+          },
+        },
+      },
     },
   });
 
-  // Register Swagger UI
-  await fastify.register(import('@fastify/swagger-ui'), {
+  await fastify.register(fastifySwaggerUI, {
     routePrefix: '/docs',
-    uiConfig: {
-      docExpansion: 'list',
-      deepLinking: true,
-    },
-    staticCSP: true,
   });
 
-  fastify.log.info('Swagger UI available at /docs');
-}
+  fastify.get('/openapi.json', async () => fastify.swagger());
+};
 
 export default fp(swaggerPlugin);

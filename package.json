@@ -13,7 +13,8 @@
     "lint:fix": "yarn workspaces foreach -v -i --all --parallel --exclude gluesync-nodejs-monorepo run lint:fix",
     "type-check": "yarn workspaces foreach -v -i --all --parallel --exclude gluesync-nodejs-monorepo run type-check",
     "build": "yarn workspaces foreach -v -i --all --topological-dev --parallel --exclude gluesync-nodejs-monorepo run build",
-    "do": "echo 'Installing dependencies...' && yarn && echo 'Building...' && yarn build && echo 'Type check...' && yarn type-check"
+    "do": "echo 'Installing dependencies...' && yarn && echo 'Building...' && yarn build && echo 'Type check...' && yarn type-check",
+    "get-openapi": "yarn workspace docker-mate start:with-docs"
   },
   "devDependencies": {
     "@types/dockerode": "^3.3.38",

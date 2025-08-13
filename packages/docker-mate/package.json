@@ -7,10 +7,13 @@
     "lint": "eslint .",
     "lint:fix": "yarn lint --fix",
     "type-check": "yarn tsc --noEmit --incremental --tsBuildInfoFile .tsbuildinfo",
-    "dev": "nodemon src/index.ts",
     "dev:docker": "nodemon src/index.ts",
+    "dev": "nodemon src/index.ts",
     "build": "buildService",
-    "start": "node build/index.js"
+    "start": "node build/index.js",
+    "get-openapi": "yarn dlx tsx scripts/fetchOpenApiSpec.ts",
+    "get-openapi:ts-node": "yarn ts-node scripts/fetchOpenApiSpec.ts",
+    "start:with-docs": "yarn start & sleep 5 && yarn get-openapi"
   },
   "dependencies": {
     "@fastify/swagger": "^9.4.2",
