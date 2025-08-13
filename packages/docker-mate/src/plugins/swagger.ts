@@ -2,6 +2,7 @@ import fp from 'fastify-plugin';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUI from '@fastify/swagger-ui';
+import path from 'path';
 
 const swaggerPlugin: FastifyPluginAsync = async (fastify: FastifyInstance) => {
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
@@ -40,6 +41,9 @@ const swaggerPlugin: FastifyPluginAsync = async (fastify: FastifyInstance) => {
 
   await fastify.register(fastifySwaggerUI, {
     routePrefix: '/docs',
+    baseDir: path.join(__dirname, 'static'), // Relative to index.js (in build)
+    // staticCSP: true,                                     // not needed because it runs locally
+    // transformStaticCSP: (header: string) => header,      // if there is the need to change the header
   });
 
   fastify.get('/openapi.json', async () => fastify.swagger());

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 import path from 'path';
-
 import esbuild from 'esbuild';
+import { copy } from 'esbuild-plugin-copy';
+import { createRequire } from 'module';
 
 const DEFAULT_ENTRY_POINT = './src/index.ts';
 const DEFAULT_OUTFILE_NAME = 'index.js';
@@ -21,6 +22,20 @@ const build = async (
       }\n`,
     );
 
+    // Resolve the swagger-ui static path from Yarn PnP
+    const require = createRequire(import.meta.url);
+
+    // Resolve the path to the package.json of @fastify/swagger-ui
+    const swaggerUiPackagePath = require.resolve(
+      '@fastify/swagger-ui/package.json',
+    );
+
+    // Get the directory of the package
+    const swaggerUiDir = path.dirname(swaggerUiPackagePath);
+
+    // Construct the path to the static assets
+    const swaggerUiStatic = path.join(swaggerUiDir, 'static');
+
     await esbuild.build({
       write: true,
       entryPoints: [entryPoint],
@@ -32,6 +47,15 @@ const build = async (
       bundle: true,
       external: ['*.node'],
       outfile: path.join('build', outfileName),
+      plugins: [
+        copy({
+          resolveFrom: 'cwd',
+          assets: {
+            from: [`${swaggerUiStatic}/**/*`],
+            to: ['build/static'],
+          },
+        }),
+      ],
     });
 
     process.stdout.write('Done.\n');
