@@ -121,15 +121,13 @@ const main = async (): Promise<void> => {
     await fetchOpenApiSpec();
 
     console.log('🎉 Done! Server will now stop.');
+    if (serverProcess) {
+      await stopServer(serverProcess);
+    }
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : 'Unknown error';
     console.error('❌ Script failed:', errorMessage);
-  } finally {
-    if (serverProcess) {
-      await stopServer(serverProcess);
-    }
-    process.exit(0);
   }
 };
 
