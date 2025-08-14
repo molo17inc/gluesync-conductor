@@ -4,7 +4,9 @@ import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUI from '@fastify/swagger-ui';
 import path from 'path';
 
-const swaggerPlugin: FastifyPluginAsync = async (fastify: FastifyInstance) => {
+const swaggerPlugin: FastifyPluginAsync = async (
+  fastify: Readonly<FastifyInstance>,
+) => {
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
 
   await fastify.register(fastifySwagger, {

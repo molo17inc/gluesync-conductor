@@ -13,12 +13,17 @@ import systemRoutes from './routes/system';
 import containerRoutes from './routes/containers';
 import agentRoutes from './routes/agents';
 
+type FastifyServices = {
+  docker: Docker;
+  gluesyncSdk: any;
+};
+
+type FastifyMethods = {
+  swagger: (opts?: Readonly<{ yaml?: boolean; transform?: any }>) => any;
+};
+
 declare module 'fastify' {
-  interface FastifyInstance {
-    docker: Docker;
-    gluesyncSdk: any;
-    swagger: (opts?: { yaml?: boolean; transform?: any }) => any;
-  }
+  interface FastifyInstance extends FastifyServices, FastifyMethods {}
 }
 
 const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
