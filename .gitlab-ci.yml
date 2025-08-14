@@ -33,8 +33,8 @@ build_mr:
     - yarn --version 
     - yarn install
     - yarn do
-  only:
-    - merge_requests
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 build:
   stage: build
@@ -57,11 +57,11 @@ build:
       - packages/gluesync-sdk/dist
     expire_in: 3 days
     when: on_success
-  only:
-    - develop
-    - staging
-    - main
-    - tags
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"  # Se vuoi ancora develop
+    - if: $CI_COMMIT_BRANCH == "staging"  # Se vuoi ancora staging
+    # Oppure solo: - if: $CI_COMMIT_BRANCH == "main"
 
 quality:
   stage: quality
@@ -70,48 +70,66 @@ quality:
   script:
     - echo "Running quality checks..."
     # Add your quality checks here
-  only:
-    - develop
-    - staging
-    - main
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH == "staging"
 
 deploy:
   stage: deploy
-  image: docker:20.10.0
+  image: docker:latest
   services:
     - name: docker:dind
+      variables:
+        DOCKER_TLS_CERTDIR: ""
   needs:
     - build
   script:
-   - |
+    - |
       if [[ $CI_COMMIT_BRANCH == "develop" ]] || [[ $CI_COMMIT_BRANCH == "" ]]; then export ENV="dev"; fi
       if [[ $CI_COMMIT_BRANCH == "staging" ]]; then export ENV="test"; fi
       if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
-
-      apk add --no-cache bash
-      echo "APP_NAME=$APP_NAME"
-      docker login -u $CI_REGISTRY_USER -p "$CI_REGISTRY_PASSWORD"
-
+      
+    - apk add --no-cache bash
+    - echo "APP_NAME=$APP_NAME"
+    - docker login -u $CI_REGISTRY_USER -p "$CI_REGISTRY_PASSWORD"
+    
+    - |
       DEFAULT_NAME="$DOCKER_REGISTRY/$APP_NAME"
-      echo "DEFAULT_NAME=$DEFAULT_NAME"
-
+      
       if [ -n "$CI_COMMIT_TAG" ]; then
         TAGPART=$(echo "$CI_COMMIT_TAG" | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)')
         VERSION_TAG="${DOCKER_REGISTRY}/${APP_NAME}:${TAGPART}"
+        
+        if [[ $CI_COMMIT_TAG == release-* ]]; then
+          echo "Building multi-architecture release with latest tag..."
+          docker run --privileged --rm tonistiigi/binfmt --install all
+          docker buildx create --name multiarch-builder --use
+          docker buildx inspect --bootstrap
+          
+          cd packages/docker-mate
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            --tag $DEFAULT_NAME:latest \
+            --tag "$VERSION_TAG" \
+            --push .
+        elif [[ $CI_COMMIT_TAG == tag-* ]]; then
+          echo "Building amd64-only version without latest tag..."
+          cd packages/docker-mate
+          docker build --tag "$VERSION_TAG" .
+          docker push "$VERSION_TAG"
+        else
+          cd packages/docker-mate
+          docker build -t "$VERSION_TAG" .
+          docker push "$VERSION_TAG"
+        fi
       else
         VERSION_TAG="${DOCKER_REGISTRY}/${APP_NAME}:${ENV}"
+        cd packages/docker-mate
+        docker build -t "$VERSION_TAG" .
+        docker push "$VERSION_TAG"
       fi
-
-      echo "VERSION_TAG=$VERSION_TAG"
-
-      cd packages/docker-mate
-      docker build -t "$VERSION_TAG" .
-      docker push "$VERSION_TAG"
-  only:
-    - develop
-    - staging
-    - main
-    - tags
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"  # Solo per main come volevi
 
 notify:
   stage: notify
@@ -124,7 +142,5 @@ notify:
 
     - echo "Notification sent for ${ENV} environment"
     # Add your notification logic here
-  only:
-    - develop
-    - staging
-    - main
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
