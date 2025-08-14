@@ -57,7 +57,7 @@ export type ComposeVolume = Readonly<{
   type?: string;
   host: string;
   container: string;
-  mode?: 'rw' | 'ro';
+  opts?: 'rw' | 'ro';
 }>;
 
 export type ComposePort = Readonly<{

@@ -1,6 +1,7 @@
 import {
   ComposePort,
   ComposeServiceDeploy,
+  ComposeVolume,
   RawComposeService,
 } from '../../../models/composeFile.model';
 import { ConductorServiceTypes } from '../../../models/conductor.model';
@@ -13,7 +14,7 @@ export type CreateComposeServiceOptions = Readonly<
     tag?: string;
     environment?: Record<string, string>;
     ports?: ReadonlyArray<string> | ReadonlyArray<ComposePort>;
-    volumes?: ReadonlyArray<string>;
+    volumes?: ReadonlyArray<string> | ReadonlyArray<ComposeVolume>;
     labels?: Record<string, string>;
   }
 >;

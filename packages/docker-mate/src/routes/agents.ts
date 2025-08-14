@@ -46,7 +46,22 @@ const agentRoutes = async (
                 },
                 volumes: {
                   type: 'array',
-                  items: { type: 'string' },
+                  items: {
+                    anyOf: [
+                      {
+                        type: 'object',
+                        properties: {
+                          host: { type: 'string' },
+                          container: { type: 'string' },
+                          opts: { type: 'string' },
+                        },
+                        required: ['host', 'container'],
+                      },
+                      {
+                        type: 'string',
+                      },
+                    ],
+                  },
                 },
                 reservations: {
                   type: 'object',

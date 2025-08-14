@@ -38,10 +38,7 @@ const handler: AddAgentsHandler = async (req, reply) => {
           tag,
           environment,
           ports,
-          volumes: volumes.map(
-            ({ host, container, mode }) =>
-              `${host}:${container}${mode ? `/${mode}` : ''}`,
-          ),
+          volumes,
           labels,
           resources: {
             limits,

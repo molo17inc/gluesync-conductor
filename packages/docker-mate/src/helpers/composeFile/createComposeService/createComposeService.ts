@@ -1,4 +1,4 @@
-import { ComposePort } from '../../../models/composeFile.model';
+import { ComposePort, ComposeVolume } from '../../../models/composeFile.model';
 import mergeComposeKeyValueField from '../mergeKeyValueStrings/mergeKeyValueStrings';
 import { CreateComposeService } from './createComposeService.model';
 
@@ -29,6 +29,55 @@ const mapPorts = (ports: ReadonlyArray<string> | ReadonlyArray<ComposePort>) =>
       ];
     }
     // Fallback for unexpected formats
+    return acc;
+  }, []);
+
+const mapVolumes = (
+  volumes: ReadonlyArray<string> | ReadonlyArray<ComposeVolume>,
+) =>
+  volumes.reduce<ReadonlyArray<string>>((acc, vol) => {
+    // String input: "host:container[:opts]"
+    if (typeof vol === 'string') {
+      const raw = vol.trim();
+      if (!raw) return acc;
+
+      // Split into host, container, opts (opts is optional)
+      const [host = '', container = '', opts] = raw.split(':');
+
+      const hostT = host.trim();
+      const containerT = container.trim();
+      const optsT = opts?.trim();
+
+      if (!hostT || !containerT) return acc;
+
+      // Normalize opts to only 'rw' or 'ro' if present; ignore others
+      const normalizedOpts =
+        optsT === 'rw' || optsT === 'ro' ? optsT : undefined;
+
+      return [
+        ...acc,
+        `${hostT}:${containerT}${normalizedOpts ? `:${normalizedOpts}` : ''}`,
+      ];
+    }
+
+    // Object input: { host, container, opts? }
+    if (typeof vol === 'object' && vol !== null) {
+      const hostT = String(vol.host ?? '').trim();
+      const containerT = String(vol.container ?? '').trim();
+      const optsT = vol.opts?.toString().trim();
+
+      if (!hostT || !containerT) return acc;
+
+      const normalizedOpts =
+        optsT === 'rw' || optsT === 'ro' ? optsT : undefined;
+
+      return [
+        ...acc,
+        `${hostT}:${containerT}${normalizedOpts ? `:${normalizedOpts}` : ''}`,
+      ];
+    }
+
+    // Unexpected type: skip
     return acc;
   }, []);
 
@@ -82,7 +131,7 @@ const createComposeService: CreateComposeService = (
         './bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro',
         `./${containerName}:/opt/gluesync/data`,
       ],
-      volumes,
+      mapVolumes(volumes),
     ),
   };
 };
