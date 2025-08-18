@@ -1,10 +1,7 @@
-import { FastifyInstance, FastifyPluginOptions } from 'fastify';
+import { FastifyInstance } from 'fastify';
 import addAgents from '../functions/agent/addAgents/addAgents';
 
-const agentRoutes = async (
-  fastify: FastifyInstance,
-  options: FastifyPluginOptions,
-) => {
+const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.post('/agents', {
     schema: {
       description: 'Add agents',
