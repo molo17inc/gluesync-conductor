@@ -16,8 +16,10 @@
     "do": "echo 'Installing dependencies...' && yarn && echo 'Building...' && yarn build && echo 'Type check...' && yarn type-check",
     "get-openapi": "yarn workspace docker-mate start:with-docs",
     "docker:build:builder": "docker buildx build --platform linux/amd64,linux/arm64 --progress=plain --no-cache -t repo-ws-builder .",
-    "docker:build:services": "yarn workspaces foreach --all run docker:build",
-    "docker:build:all": "yarn docker:build:builder && yarn docker:build:services"
+    "docker:load:services": "yarn workspaces foreach --all run docker:load",
+    "docker:push:services": "yarn workspaces foreach --all run docker:push",
+    "docker:load:all": "yarn docker:build:builder && yarn docker:load:services",
+    "docker:push:all": "yarn docker:build:builder && yarn docker:push:services"
   },
   "devDependencies": {
     "@types/dockerode": "^3.3.38",
