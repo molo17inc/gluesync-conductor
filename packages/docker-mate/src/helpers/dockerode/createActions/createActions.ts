@@ -1,4 +1,4 @@
-import { upAll } from 'docker-compose';
+import { downAll, upAll } from 'docker-compose';
 
 import { CreateActions } from './createActions.model';
 
@@ -58,11 +58,14 @@ const createActions: CreateActions = ({
       return `Container ${id} removed`;
     },
     kill: async id => {
-      const container = docker.getContainer(id);
+      const result = await downAll({
+        cwd: getRootPath(),
+        config: filename,
+        log: true,
+        commandOptions: ['--volumes', '--remove-orphans', id], // remove attached volumes and orphans container attached to the same network
+      });
 
-      await container.kill();
-
-      return `Container ${id} killed`;
+      return result.out.trim() || result.err.trim();
     },
   };
 };

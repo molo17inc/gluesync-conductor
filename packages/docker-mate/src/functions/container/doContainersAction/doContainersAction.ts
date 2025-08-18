@@ -2,6 +2,28 @@ import { DoContainersActionHandler } from './doContainersAction.model';
 
 import createActions from '../../../helpers/dockerode/createActions/createActions';
 
+type FulfilledResultType = {
+  status: 'fulfilled';
+  value: any;
+};
+
+type RejectedResultType = {
+  status: 'rejected';
+  reason: {
+    json?: {
+      message?: string;
+    };
+    err?: any;
+  };
+};
+
+type ResultType = FulfilledResultType | RejectedResultType;
+
+const extractMessage = (result: Readonly<ResultType>) => {
+  if (result.status === 'fulfilled') return result.value;
+  return result?.reason?.json?.message ?? result?.reason?.err;
+};
+
 const handler: DoContainersActionHandler = async (req, reply) => {
   try {
     const containerAction = req.body.action;
@@ -27,8 +49,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         containers: results.map((result, index) => ({
           id: containerIds[index],
           status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
-          message:
-            result.status === 'fulfilled' ? result.value : result?.reason?.err,
+          message: extractMessage(result),
         })),
       },
     });
