@@ -3,10 +3,13 @@ import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUI from '@fastify/swagger-ui';
 import path from 'path';
+import fs from 'fs';
 
 const swaggerPlugin: FastifyPluginAsync = async (
   fastify: Readonly<FastifyInstance>,
 ) => {
+  const staticPath = path.join(__dirname, 'static');
+  const hasStaticDir = fs.existsSync(staticPath);
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
 
   await fastify.register(fastifySwagger, {
@@ -43,7 +46,7 @@ const swaggerPlugin: FastifyPluginAsync = async (
 
   await fastify.register(fastifySwaggerUI, {
     routePrefix: '/docs',
-    baseDir: path.join(__dirname, 'static'), // Relative to index.js (in build)
+    baseDir: hasStaticDir ? staticPath : undefined, // Relative to index.js (in build)
     // staticCSP: true,                                     // not needed because it runs locally
     // transformStaticCSP: (header: string) => header,      // if there is the need to change the header
   });
