@@ -11,7 +11,7 @@ const swaggerPlugin: FastifyPluginAsync = async (
 
   await fastify.register(fastifySwagger, {
     mode: 'dynamic',
-    document: {
+    openapi: {
       openapi: '3.0.0',
       info: {
         title: 'Gluesync Conductor API',
