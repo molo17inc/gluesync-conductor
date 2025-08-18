@@ -36,44 +36,44 @@ const mapVolumes = (
   volumes: ReadonlyArray<string> | ReadonlyArray<ComposeVolume>,
 ) =>
   volumes.reduce<ReadonlyArray<string>>((acc, vol) => {
-    // String input: "host:container[:opts]"
+    // String input: "host:container[:mode]"
     if (typeof vol === 'string') {
       const raw = vol.trim();
       if (!raw) return acc;
 
-      // Split into host, container, opts (opts is optional)
-      const [host = '', container = '', opts] = raw.split(':');
+      // Split into host, container, mode (mode is optional)
+      const [host = '', container = '', mode] = raw.split(':');
 
       const hostT = host.trim();
       const containerT = container.trim();
-      const optsT = opts?.trim();
+      const modeT = mode?.trim();
 
       if (!hostT || !containerT) return acc;
 
-      // Normalize opts to only 'rw' or 'ro' if present; ignore others
-      const normalizedOpts =
-        optsT === 'rw' || optsT === 'ro' ? optsT : undefined;
+      // Normalize mode to only 'rw' or 'ro' if present; ignore others
+      const normalizedMode =
+        modeT === 'rw' || modeT === 'ro' ? modeT : undefined;
 
       return [
         ...acc,
-        `${hostT}:${containerT}${normalizedOpts ? `:${normalizedOpts}` : ''}`,
+        `${hostT}:${containerT}${normalizedMode ? `:${normalizedMode}` : ''}`,
       ];
     }
 
-    // Object input: { host, container, opts? }
+    // Object input: { host, container, mode? }
     if (typeof vol === 'object' && vol !== null) {
       const hostT = String(vol.host ?? '').trim();
       const containerT = String(vol.container ?? '').trim();
-      const optsT = vol.opts?.toString().trim();
+      const modeT = vol.mode?.toString().trim();
 
       if (!hostT || !containerT) return acc;
 
-      const normalizedOpts =
-        optsT === 'rw' || optsT === 'ro' ? optsT : undefined;
+      const normalizedMode =
+        modeT === 'rw' || modeT === 'ro' ? modeT : undefined;
 
       return [
         ...acc,
-        `${hostT}:${containerT}${normalizedOpts ? `:${normalizedOpts}` : ''}`,
+        `${hostT}:${containerT}${normalizedMode ? `:${normalizedMode}` : ''}`,
       ];
     }
 

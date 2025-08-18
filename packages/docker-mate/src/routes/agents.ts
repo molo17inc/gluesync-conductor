@@ -58,7 +58,7 @@ const agentRoutes = async (
                         properties: {
                           host: { type: 'string' },
                           container: { type: 'string' },
-                          opts: { type: 'string' },
+                          mode: { type: 'string' },
                         },
                         required: ['host', 'container'],
                       },
