@@ -1,6 +1,6 @@
 services:
   gluesync-conductor:
-    build: .
+    build: ./packages/docker-mate
     container_name: gluesync-conductor
     image: gluesync-conductor
     restart: always

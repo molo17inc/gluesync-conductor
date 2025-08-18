@@ -1,3 +1,6 @@
+# Stage 1: builder
+FROM repo-ws-builder AS builder
+
 FROM node:22-alpine
 
 # Install Docker CLI
@@ -20,9 +23,10 @@ ENV DOCKER_HOST=unix:///var/run/docker.sock
 # Setup app directory
 WORKDIR /opt/docker-mate
 
-COPY build/index.js index.js
-COPY build/index.js.map index.js.map
-COPY build/static/ static/
+# Copy only the build of the current package from the builder
+COPY --from=builder /opt/repo/packages/docker-mate/build/index.js index.js
+COPY --from=builder /opt/repo/packages/docker-mate/build/index.js.map index.js.map
+COPY --from=builder /opt/repo/packages/docker-mate/build/static/ static/
 
 COPY swagger-static.json swagger-static.json
 COPY docs/gluesync-conductor.svg static/logo.svg

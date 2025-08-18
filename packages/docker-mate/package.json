@@ -13,7 +13,8 @@
     "start": "node build/index.js",
     "get-openapi": "yarn dlx tsx scripts/fetchOpenApiSpec.ts",
     "get-openapi:ts-node": "yarn ts-node scripts/fetchOpenApiSpec.ts",
-    "start:with-docs": "yarn start & sleep 5 && yarn get-openapi"
+    "start:with-docs": "yarn start & sleep 5 && yarn get-openapi",
+    "docker:build": "docker build --no-cache -t service-$(basename \"$(pwd)\") ."
   },
   "dependencies": {
     "@fastify/swagger": "^9.4.2",
