@@ -34,7 +34,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     });
   } catch (error) {
     req.log.error(
-      `Error listing containers: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
+      `Error do containers action: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
     );
 
     try {
@@ -49,7 +49,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     reply.code(500);
     reply.send({
       success: false,
-      error: 'Failed to list containers',
+      error: 'Failed to do containers action',
       details: error instanceof Error ? error.message : String(error),
     });
   }
