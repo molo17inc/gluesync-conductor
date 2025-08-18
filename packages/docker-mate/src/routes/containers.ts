@@ -251,7 +251,6 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
             description: 'Array of container NAMEs to perform the action on',
           },
         },
-        additionalProperties: false,
       },
       response: {
         200: {
@@ -283,14 +282,11 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                         description: 'Result message or error description',
                       },
                     },
-                    additionalProperties: false,
                   },
                 },
               },
-              additionalProperties: false,
             },
           },
-          additionalProperties: false,
         },
         500: {
           type: 'object',
