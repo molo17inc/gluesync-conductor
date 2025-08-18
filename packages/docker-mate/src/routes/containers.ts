@@ -274,7 +274,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                       },
                       status: {
                         type: 'string',
-                        enum: ['OK', 'ERRROR'],
+                        enum: ['OK', 'ERROR'],
                         description: 'Action execution status',
                       },
                       message: {

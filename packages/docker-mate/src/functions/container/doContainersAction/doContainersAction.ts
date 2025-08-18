@@ -26,7 +26,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       data: {
         containers: results.map((result, index) => ({
           id: containerIds[index],
-          status: result.status === 'fulfilled' ? 'OK' : 'ERRROR',
+          status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
           message:
             result.status === 'fulfilled' ? result.value : result?.reason?.err,
         })),

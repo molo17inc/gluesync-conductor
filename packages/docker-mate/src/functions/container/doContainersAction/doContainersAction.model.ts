@@ -5,7 +5,7 @@ import { ContainerActions } from '../../../models/conductor.model';
 
 export type DoContainersActionItem = Readonly<{
   id: string;
-  status: 'OK' | 'ERRROR';
+  status: 'OK' | 'ERROR';
   message: string;
 }>;
 
