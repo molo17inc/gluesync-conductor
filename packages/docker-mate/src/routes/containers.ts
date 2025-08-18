@@ -117,37 +117,87 @@ const containerRoutes = async (
   fastify.post('/containers', {
     schema: {
       tags: ['containers'],
-      description: 'Containers action',
+      summary: 'Execute action on containers',
+      description:
+        'Performs the specified action (start, stop, restart, remove, kill) on one or more containers',
+      body: {
+        type: 'object',
+        required: ['action', 'ids'],
+        properties: {
+          action: {
+            type: 'string',
+            enum: ['start', 'stop', 'restart', 'remove', 'kill'],
+            description: 'The action to perform on the containers',
+          },
+          ids: {
+            type: 'array',
+            items: { type: 'string' },
+            minItems: 1,
+            description: 'Array of container NAMEs to perform the action on',
+          },
+        },
+        additionalProperties: false,
+      },
       response: {
         200: {
           type: 'object',
+          required: ['success', 'data'],
           properties: {
-            success: { type: 'boolean' },
+            success: {
+              type: 'boolean',
+              const: true,
+            },
             data: {
-              additionalProperties: true, // Allow any properties in the response
               type: 'object',
+              required: ['containers'],
               properties: {
                 containers: {
                   type: 'array',
                   items: {
                     type: 'object',
-                    additionalProperties: true, // Allow any properties in the response
+                    required: ['id', 'status', 'message'],
                     properties: {
-                      id: { type: 'string' },
+                      id: {
+                        type: 'string',
+                        description: 'Container NAME',
+                      },
+                      status: {
+                        type: 'string',
+                        enum: ['OK', 'ERRROR'],
+                        description: 'Action execution status',
+                      },
+                      message: {
+                        type: 'string',
+                        description: 'Result message or error description',
+                      },
                     },
+                    additionalProperties: false,
                   },
                 },
               },
+              additionalProperties: false,
             },
           },
+          additionalProperties: false,
         },
         500: {
           type: 'object',
+          required: ['success', 'error'],
           properties: {
-            success: { type: 'boolean' },
-            error: { type: 'string' },
-            details: { type: 'string' },
+            success: {
+              type: 'boolean',
+              const: false,
+            },
+            error: {
+              type: 'string',
+              description: 'Error message',
+            },
+            details: {
+              type: 'string',
+              description: 'Additional error details',
+            },
           },
+          additionalProperties: false,
         },
       },
     },
