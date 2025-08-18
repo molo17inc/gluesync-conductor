@@ -14,7 +14,7 @@
     "get-openapi": "yarn dlx tsx scripts/fetchOpenApiSpec.ts",
     "get-openapi:ts-node": "yarn ts-node scripts/fetchOpenApiSpec.ts",
     "start:with-docs": "yarn start & sleep 5 && yarn get-openapi",
-    "docker:build": "docker buildx build --platform linux/amd64,linux/arm64 --no-cache -t service-$(basename \"$(pwd)\") ."
+    "docker:build": "docker buildx build --platform linux/amd64,linux/arm64 --no-cache -t gluesync-conductor ."
   },
   "dependencies": {
     "@fastify/swagger": "^9.4.2",
