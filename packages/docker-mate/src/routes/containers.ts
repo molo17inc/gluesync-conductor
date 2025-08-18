@@ -1,3 +1,4 @@
+import { FastifyInstance } from 'fastify';
 import listContainers from '../functions/container/listContainers/listContainers';
 import getContainer from '../functions/container/getContainer/getContainer';
 import getContainerVersion from '../functions/container/getContainerVersion/getContainerVersion';
@@ -7,12 +8,8 @@ import restartContainer from '../functions/container/restartContainer/restartCon
 import removeAgent from '../functions/agent/removeAgent/removeAgent';
 import startAgents from '../functions/agent/startAgents/startAgents';
 import stopAgents from '../functions/agent/stopAgents/stopAgents';
-import { FastifyInstance, FastifyPluginOptions } from 'fastify';
 
-const containerRoutes = async (
-  fastify: FastifyInstance,
-  options: FastifyPluginOptions,
-) => {
+const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
   // Register ComposeFile schema
   fastify.addSchema({
     $id: 'ComposeFile',

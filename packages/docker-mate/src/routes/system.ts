@@ -1,12 +1,9 @@
-import { FastifyInstance, FastifyPluginOptions } from 'fastify';
+import { FastifyInstance } from 'fastify';
 import info from '../functions/info/info';
 import version from '../functions/version/version';
 import composeToJSON from '../functions/composeToJSON/composeToJSON';
 
-const systemRoutes = async (
-  fastify: FastifyInstance,
-  options: FastifyPluginOptions,
-) => {
+const systemRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.get('/health', {
     schema: {
       tags: ['system'],
