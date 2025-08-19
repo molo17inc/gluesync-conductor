@@ -1,7 +1,7 @@
 # Stage 1: builder
 FROM repo-ws-builder AS builder
 
-FROM node:22-alpine
+FROM node:22.13.1-alpine
 
 # Install Docker CLI
 RUN apk add --no-cache docker-cli docker-cli-compose
