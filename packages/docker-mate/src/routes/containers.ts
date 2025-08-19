@@ -1,3 +1,4 @@
+import { FastifyInstance } from 'fastify';
 import listContainers from '../functions/container/listContainers/listContainers';
 import getContainer from '../functions/container/getContainer/getContainer';
 import getContainerVersion from '../functions/container/getContainerVersion/getContainerVersion';
@@ -7,12 +8,8 @@ import restartContainer from '../functions/container/restartContainer/restartCon
 import removeAgent from '../functions/agent/removeAgent/removeAgent';
 import startAgents from '../functions/agent/startAgents/startAgents';
 import stopAgents from '../functions/agent/stopAgents/stopAgents';
-import { FastifyInstance, FastifyPluginOptions } from 'fastify';
 
-const containerRoutes = async (
-  fastify: FastifyInstance,
-  options: FastifyPluginOptions,
-) => {
+const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
   // Register ComposeFile schema
   fastify.addSchema({
     $id: 'ComposeFile',
@@ -41,14 +38,15 @@ const containerRoutes = async (
   fastify.get('/containers', {
     schema: {
       tags: ['containers'],
-      description: 'List all containers',
+      summary: 'List all Docker containers',
+      description:
+        'Retrieves a comprehensive list of all Docker containers with their current status, configuration, and system information including CPU and memory details.',
       response: {
         200: {
           type: 'object',
           properties: {
             success: { type: 'boolean' },
             data: {
-              additionalProperties: true,
               type: 'object',
               properties: {
                 systemInfo: {
@@ -62,38 +60,155 @@ const containerRoutes = async (
                   type: 'array',
                   items: {
                     type: 'object',
-                    additionalProperties: true,
                     properties: {
                       id: { type: 'string' },
-                      name: { type: 'string' },
-                      image: { type: 'string' },
-                      tag: { type: 'string' },
-                      versionTag: { type: 'string' },
+                      type: {
+                        type: 'string',
+                        enum: ['agent', 'module', 'unknown'],
+                      },
                       persisted: { type: 'boolean' },
-                      created: { type: 'string' },
-                      running: { type: 'boolean' },
-                      status: { type: 'string' },
-                      exitCode: { type: 'number' },
-                      startedAt: { type: 'string' },
-                      finishedAt: { type: 'string' },
-                      cmd: { type: 'array', items: { type: 'string' } },
-                      env: { type: 'array', items: { type: 'string' } },
-                      labels: { type: 'object', additionalProperties: true },
-                      networkMode: { type: 'string' },
-                      privileged: { type: 'boolean' },
-                      ports: {
-                        type: 'array',
-                        items: { type: 'object', additionalProperties: true },
-                      },
-                      mounts: {
-                        type: 'array',
-                        items: { type: 'object', additionalProperties: true },
-                      },
-                      hostConfig: {
+
+                      service: {
                         type: 'object',
-                        additionalProperties: true,
+                        properties: {
+                          image: { type: 'string' },
+                          container_name: { type: 'string' },
+                          restart: { type: 'string' },
+                          deploy: {
+                            type: 'object',
+                            properties: {
+                              resources: {
+                                type: 'object',
+                                properties: {
+                                  reservations: {
+                                    type: 'object',
+                                    properties: {
+                                      cpus: { type: 'number' },
+                                      memory: { type: 'string' },
+                                    },
+                                  },
+                                  limits: {
+                                    type: 'object',
+                                    properties: {
+                                      cpus: { type: 'number' },
+                                      memory: { type: 'string' },
+                                    },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                          labels: {
+                            type: 'object',
+                            additionalProperties: true,
+                          },
+                          environment: {
+                            type: 'object',
+                            additionalProperties: true,
+                          },
+                          ports: {
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              properties: {
+                                host: { type: 'string' },
+                                container: { type: 'string' },
+                                protocol: {
+                                  type: 'string',
+                                  enum: ['tcp', 'udp'],
+                                },
+                              },
+                            },
+                          },
+                          volumes: {
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              properties: {
+                                host: { type: 'string' },
+                                container: { type: 'string' },
+                                opts: { type: 'string', enum: ['rw', 'ro'] },
+                              },
+                            },
+                          },
+                        },
+                      },
+
+                      info: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string' },
+                          name: { type: 'string' },
+                          image: { type: 'string' },
+                          imageID: { type: 'string' },
+                          tag: { type: 'string' },
+                          versionTag: { type: 'string' },
+                          command: { type: 'string' },
+                          created: { type: 'number' },
+                          state: { type: 'string' },
+                          status: { type: 'string' },
+                          ports: {
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              properties: {
+                                ip: { type: 'string' },
+                                privatePort: { type: 'number' },
+                                publicPort: { type: 'number' },
+                                type: { type: 'string' },
+                              },
+                            },
+                          },
+                          labels: {
+                            type: 'object',
+                            additionalProperties: true,
+                          },
+                          hostConfig: {
+                            type: 'object',
+                            properties: {
+                              networkMode: { type: 'string' },
+                            },
+                            additionalProperties: true,
+                          },
+                          networkSettings: {
+                            type: 'object',
+                            properties: {
+                              networks: {
+                                type: 'object',
+                                additionalProperties: {
+                                  type: 'object',
+                                  properties: {
+                                    networkID: { type: 'string' },
+                                    endpointID: { type: 'string' },
+                                    gateway: { type: 'string' },
+                                    iPAddress: { type: 'string' },
+                                    iPPrefixLen: { type: 'number' },
+                                    macAddress: { type: 'string' },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                          mounts: {
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              properties: {
+                                type: { type: 'string' },
+                                source: { type: 'string' },
+                                destination: { type: 'string' },
+                                mode: { type: 'string' },
+                                rw: { type: 'boolean' },
+                                propagation: { type: 'string' },
+                                name: { type: 'string' },
+                                driver: { type: 'string' },
+                              },
+                            },
+                          },
+                        },
                       },
                     },
+                    required: ['id', 'persisted'],
                   },
                 },
               },

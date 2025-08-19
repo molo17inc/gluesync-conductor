@@ -12,13 +12,11 @@ interface OpenApiSpec {
   [key: string]: any;
 }
 
-let serverProcess: ChildProcess | null = null;
-
-const startServer = async (): Promise<void> =>
+const startServer = async (): Promise<ChildProcess> =>
   new Promise((resolve, reject) => {
     console.log('🚀 Starting server...');
 
-    serverProcess = spawn('yarn', ['start'], {
+    const serverProcess = spawn('yarn', ['start'], {
       stdio: 'pipe',
       detached: false,
     });
@@ -27,7 +25,7 @@ const startServer = async (): Promise<void> =>
       const output = data.toString();
       if (output.includes('server started') || output.includes('listening')) {
         console.log('✅ Server is ready!');
-        resolve();
+        resolve(serverProcess); // 👈 return the process
       }
     });
 
@@ -37,25 +35,23 @@ const startServer = async (): Promise<void> =>
 
     serverProcess.on('error', reject);
 
-    // Fallback timeout
     setTimeout(() => {
       console.log('⏱️ Assuming server is ready (timeout)');
-      resolve();
+      resolve(serverProcess); // 👈 fallback return
     }, 8000);
   });
 
-const stopServer = async (): Promise<void> => {
-  if (serverProcess) {
-    console.log('🛑 Stopping server...');
-    serverProcess.kill('SIGTERM');
+const stopServer = async (
+  serverProcess: Readonly<ChildProcess>,
+): Promise<void> => {
+  console.log('🛑 Stopping server...');
+  serverProcess.kill('SIGTERM');
 
-    // Force kill after 5 seconds if not stopped
-    setTimeout(() => {
-      if (serverProcess && !serverProcess.killed) {
-        serverProcess.kill('SIGKILL');
-      }
-    }, 5000);
-  }
+  setTimeout(() => {
+    if (!serverProcess.killed) {
+      serverProcess.kill('SIGKILL');
+    }
+  }, 5000);
 };
 
 const fetchOpenApiSpec = async (): Promise<OpenApiSpec> => {
@@ -99,38 +95,40 @@ const fetchOpenApiSpec = async (): Promise<OpenApiSpec> => {
 
 const main = async (): Promise<void> => {
   try {
-    // Start server
-    await startServer();
+    const serverProcess: ChildProcess = await startServer();
 
-    // Wait a bit more for full initialization
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    process.on('SIGINT', async () => {
+      console.log('\n🛑 Received SIGINT, stopping server...');
+      if (serverProcess) {
+        await stopServer(serverProcess);
+      }
+      process.exit(0);
+    });
 
-    // Fetch OpenAPI spec
+    process.on('SIGTERM', async () => {
+      console.log('\n🛑 Received SIGTERM, stopping server...');
+      if (serverProcess) {
+        await stopServer(serverProcess);
+      }
+      process.exit(0);
+    });
+
+    // additional timeout
+    await new Promise<void>(resolve => {
+      setTimeout(resolve, 2000);
+    });
+
     await fetchOpenApiSpec();
 
     console.log('🎉 Done! Server will now stop.');
+    if (serverProcess) {
+      await stopServer(serverProcess);
+    }
   } catch (error: unknown) {
     const errorMessage =
       error instanceof Error ? error.message : 'Unknown error';
     console.error('❌ Script failed:', errorMessage);
-  } finally {
-    // Always stop the server
-    await stopServer();
-    process.exit(0);
   }
 };
-
-// Handle process termination
-process.on('SIGINT', async () => {
-  console.log('\n🛑 Received SIGINT, stopping server...');
-  await stopServer();
-  process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-  console.log('\n🛑 Received SIGTERM, stopping server...');
-  await stopServer();
-  process.exit(0);
-});
 
 main();

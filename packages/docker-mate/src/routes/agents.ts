@@ -1,13 +1,11 @@
-import { FastifyInstance, FastifyPluginOptions } from 'fastify';
+import { FastifyInstance } from 'fastify';
 import addAgents from '../functions/agent/addAgents/addAgents';
 
-const agentRoutes = async (
-  fastify: FastifyInstance,
-  options: FastifyPluginOptions,
-) => {
+const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.post('/agents', {
     schema: {
-      description: 'Add agents',
+      summary: 'Add a list of agents',
+      description: 'Agents specifications are written in docker compose file',
       tags: ['agents'],
       body: {
         type: 'object',
@@ -19,9 +17,13 @@ const agentRoutes = async (
               properties: {
                 imageName: { type: 'string' },
                 type: { type: 'string', enum: ['target', 'source'] },
-                name: { type: 'string' },
+                nickname: { type: 'string' },
                 tag: { type: 'string' },
                 environment: {
+                  type: 'object',
+                  additionalProperties: true,
+                },
+                labels: {
                   type: 'object',
                   additionalProperties: true,
                 },
@@ -46,7 +48,22 @@ const agentRoutes = async (
                 },
                 volumes: {
                   type: 'array',
-                  items: { type: 'string' },
+                  items: {
+                    anyOf: [
+                      {
+                        type: 'object',
+                        properties: {
+                          host: { type: 'string' },
+                          container: { type: 'string' },
+                          mode: { type: 'string' },
+                        },
+                        required: ['host', 'container'],
+                      },
+                      {
+                        type: 'string',
+                      },
+                    ],
+                  },
                 },
                 reservations: {
                   type: 'object',
