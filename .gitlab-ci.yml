@@ -51,6 +51,12 @@ quality:
       artifacts: true
   script:
     - echo "Running quality checks..."
+    - corepack enable
+    - node --version
+    - yarn --version
+
+    - echo "Installing dependencies..."
+    - yarn install --immutable --immutable-cache
 
     - echo "Running linting..."
     - yarn lint
