@@ -24,7 +24,7 @@ while [ "$#" -gt 0 ]; do
       --progress=plain \
       --no-cache \
       -t "$FULL_IMAGE_NAME" \
-      . --push
+      --push .
       
   ) &
   

@@ -66,7 +66,7 @@ build_push_docker_images:
     - docker buildx inspect --bootstrap
 
     - echo "Docker ws builder..."
-    - docker buildx build --pull=false --platform linux/amd64,linux/arm64 --progress=plain --no-cache -t repo-ws-builder .
+    - docker buildx build --pull=false --platform linux/amd64 --progress=plain --no-cache -t repo-ws-builder --load .
 
     - echo "Docker push images..."
     - /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor:dev-dk
