@@ -1,6 +1,7 @@
 stages:
+  - build
   - quality
-  - docker_images
+  - deploy
 
 default:
   tags:
@@ -19,11 +20,11 @@ variables:
   DOCKER_REGISTRY: registry.gitlab.com/molo17-public/gluesync/gluesync-conductor
   CONTAINER_MATE_IMAGE: ${DOCKER_REGISTRY}:${CI_COMMIT_REF_SLUG}
 
-quality:
-  stage: quality
+build_artifacts:
+  stage: build
   image: node:22.13.1-alpine
   script:
-    - echo "Running quality checks..."
+    - echo "Building artifacts..."
     - corepack enable
     - node --version
     - yarn --version
@@ -31,11 +32,25 @@ quality:
     - echo "Installing dependencies..."
     - yarn install --immutable --immutable-cache
 
-    - echo "Running linting..."
-    - yarn lint
-
     - echo "Building..."
     - yarn build
+  artifacts:
+    paths:
+      - packages/**/build
+      - packages/**/lib
+    expire_in: 1h
+
+quality:
+  stage: quality
+  image: node:22.13.1-alpine
+  needs:
+    - job: build_artifacts
+      artifacts: true
+  script:
+    - echo "Running quality checks..."
+
+    - echo "Running linting..."
+    - yarn lint
     
     - echo "Running type-check..."
     - yarn type-check
@@ -43,13 +58,15 @@ quality:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "push"
 
-build_push_docker_images:
-  stage: docker_images
+docker_images:
+  stage: deploy
   image: docker:28.3.3
   services:
     - name: docker:dind
   needs:
-    - quality
+    - job: build_artifacts
+      artifacts: true
+    - job: quality
   script:
     - echo "Running build and push docker images..."
     - apk add --no-cache bash
@@ -64,9 +81,6 @@ build_push_docker_images:
     # Create a new builder using docker-container driver
     - docker buildx create --name multiarch-builder --driver docker-container --use
     - docker buildx inspect --bootstrap
-
-    - echo "Docker ws builder..."
-    - docker buildx build --pull=false --platform linux/amd64 --progress=plain --no-cache -t repo-ws-builder --load .
 
     - echo "Docker push images..."
     - /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor:dev-dk
