@@ -13,25 +13,39 @@ errors=()
 
 while [ "$#" -gt 0 ]; do
   CONTEXT="$1"
-  FULL_IMAGE_NAME="$2"
+  IMAGE_NAME="$2"
   shift 2
 
   (
     cd "$CONTEXT" || { echo "Failed to enter $CONTEXT"; exit 1; }
-    echo "Building $FULL_IMAGE_NAME from context: $CONTEXT"
-    docker buildx build \
-      --platform linux/amd64,linux/arm64 \
-      --progress=plain \
-      --no-cache \
-      -t "$FULL_IMAGE_NAME" \
-      --push .
-      
+    FULL_IMAGE="$CI_REGISTRY_IMAGE/$IMAGE_NAME"
+    echo "Building $FULL_IMAGE from context: $CONTEXT"
+
+    # Retry up to 3 times in case of error
+    attempt=0
+    until [ $attempt -ge 3 ]; do
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        --progress=plain \
+        --no-cache \
+        -t "$FULL_IMAGE" \
+        --push . && break
+
+      attempt=$((attempt+1))
+      echo "Retry $attempt for $FULL_IMAGE..."
+      sleep 10
+    done
+
+    if [ $attempt -ge 3 ]; then
+      echo "Build failed for $FULL_IMAGE after 3 attempts"
+      exit 1
+    fi
   ) &
-  
+
   pids+=($!)
 done
 
-# Wait for all background jobs and check exit codes
+# Wait for all parallel jobs
 for pid in "${pids[@]}"; do
   wait $pid || errors+=($pid)
 done
