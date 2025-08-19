@@ -1,4 +1,4 @@
-import { downAll, upAll } from 'docker-compose';
+import { downAll, pullAll, upAll } from 'docker-compose';
 
 import { CreateActions } from './createActions.model';
 
@@ -36,13 +36,16 @@ const createActions: CreateActions = ({
 
       return `Container ${id} restarted`;
     },
-    // pull: async id => {
-    //   const container = docker.getContainer(id);
+    pull: async id => {
+      const result = await pullAll({
+        cwd: getRootPath(),
+        config: filename,
+        log: true,
+        commandOptions: ['--include-deps', id], // also pull services declared as dependencies
+      });
 
-    //   await container.pull();
-
-    //   return `Container ${id} pulled`;
-    // },
+      return result.out.trim() || result.err.trim();
+    },
     // update: async id => {
     //   const container = docker.getContainer(id);
 
@@ -51,11 +54,14 @@ const createActions: CreateActions = ({
     //   return `Container ${id} updated`;
     // },
     remove: async id => {
-      const container = docker.getContainer(id);
+      const result = await downAll({
+        cwd: getRootPath(),
+        config: filename,
+        log: true,
+        commandOptions: ['--volumes', '--remove-orphans', id], // remove attached volumes and orphans container attached to the same network
+      });
 
-      await container.remove({ force: true });
-
-      return `Container ${id} removed`;
+      return result.out.trim() || result.err.trim();
     },
     kill: async id => {
       const result = await downAll({

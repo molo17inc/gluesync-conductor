@@ -10,7 +10,7 @@ export const containerActions = [
   'start',
   'stop',
   'restart',
-  // 'pull',
+  'pull',
   // 'update',
   'remove',
   'kill',

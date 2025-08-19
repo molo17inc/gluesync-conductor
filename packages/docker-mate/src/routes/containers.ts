@@ -9,6 +9,7 @@ import removeAgent from '../functions/agent/removeAgent/removeAgent';
 import startAgents from '../functions/agent/startAgents/startAgents';
 import stopAgents from '../functions/agent/stopAgents/stopAgents';
 import doContainersAction from '../functions/container/doContainersAction/doContainersAction';
+import { containerActions } from '../models/conductor.model';
 
 const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
   // Register ComposeFile schema
@@ -241,7 +242,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
         properties: {
           action: {
             type: 'string',
-            enum: ['start', 'stop', 'restart', 'remove', 'kill'],
+            enum: containerActions,
             description: 'The action to perform on the containers',
           },
           ids: {
