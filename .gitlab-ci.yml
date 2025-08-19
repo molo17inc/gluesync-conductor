@@ -1,6 +1,6 @@
 stages:
   - quality
-  - build_deploy_docker
+  - docker_images
 
 default:
   tags:
@@ -40,7 +40,36 @@ quality:
     - echo "Running type-check..."
     - yarn type-check
   rules:
-  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+
+build_push_docker_images:
+  stage: docker_images
+  image: docker:28.3.3
+  services:
+    - name: docker:dind
+  needs:
+    - quality
+  script:
+    - echo "Running build and push docker images..."
+    - apk add --no-cache bash
+    - docker version
+
+    # Enable Buildx
+    - docker buildx version
+
+    # Register QEMU for multiarch
+    - docker run --rm --privileged tonistiigi/binfmt --install all
+
+    # Create a new builder using docker-container driver
+    - docker buildx create --name multiarch-builder --driver docker-container --use
+    - docker buildx inspect --bootstrap
+
+    - echo "Docker ws builder..."
+    - docker buildx build --pull=false --platform linux/amd64,linux/arm64 --progress=plain --no-cache -t repo-ws-builder .
+
+    - echo "Docker push images..."
+    - /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor:dev-dk
 
 # build:
 #   stage: build
