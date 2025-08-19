@@ -1,6 +1,7 @@
 import { rm, kill, pullAll, restartAll, stop, upAll } from 'docker-compose';
 import { CreateActions, DockerComposeCmd } from './createActions.model';
 import getRootPath from '../../getRootPath/getRootPath';
+import cleanupOrphanNetworkByName from './cleanOrphanNetwork';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'compose.agents.yml';
 
@@ -20,7 +21,10 @@ const runCmd = async (
   return result.out.trim() || result.err.trim();
 };
 
-const createActions: CreateActions = ({ filename = dkrComposeFile }) => {
+const createActions: CreateActions = ({
+  docker,
+  filename = dkrComposeFile,
+}) => {
   console.log('getRootPath:', getRootPath());
 
   return {
@@ -30,6 +34,8 @@ const createActions: CreateActions = ({ filename = dkrComposeFile }) => {
     pull: id => runCmd(pullAll, id, filename, ['--include-deps']),
     remove: id => runCmd(rm, id, filename, ['-s', '-v']),
     kill: id => runCmd(kill, id, filename, []),
+    removeNetowk: () =>
+      cleanupOrphanNetworkByName(docker, 'docker-mate_default'),
     // update: async id => {
     //   const container = docker.getContainer(id);
 

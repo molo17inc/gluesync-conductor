@@ -14,6 +14,7 @@ export const containerActions = [
   // 'update',
   'remove',
   'kill',
+  'removeNetowk',
 ] as const;
 
 export type ContainerActions = (typeof containerActions)[number];
