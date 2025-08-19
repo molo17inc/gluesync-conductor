@@ -234,7 +234,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
     schema: {
       tags: ['containers'],
       summary: 'Execute action on containers',
-      description: `Performs the specified action (${containerActions.map((possibleAction, index) => `${possibleAction}`)}) on one or more containers`,
+      description: `Performs the specified action (${containerActions.map(possibleAction => `${possibleAction}`)}) on one or more containers`,
       body: {
         type: 'object',
         required: ['action', 'ids'],

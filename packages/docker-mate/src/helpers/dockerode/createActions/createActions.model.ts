@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
-import { ContainerActions } from '../../../models/conductor.model';
 import { IDockerComposeResult } from 'docker-compose';
+import { ContainerActions } from '../../../models/conductor.model';
 
 export type ContainerAction = (id: string) => Promise<string>;
 
