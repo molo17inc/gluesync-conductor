@@ -37,6 +37,7 @@ build_artifacts:
   artifacts:
     paths:
       - packages/**/build
+      - packages/**/dist
       - packages/**/lib
     expire_in: 1h
   rules:
