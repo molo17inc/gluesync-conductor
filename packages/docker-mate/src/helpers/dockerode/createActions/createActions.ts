@@ -1,12 +1,4 @@
-import {
-  downAll,
-  IDockerComposeResult,
-  kill,
-  pullAll,
-  restartAll,
-  stop,
-  upAll,
-} from 'docker-compose';
+import { rm, kill, pullAll, restartAll, stop, upAll } from 'docker-compose';
 import { CreateActions, DockerComposeCmd } from './createActions.model';
 import getRootPath from '../../getRootPath/getRootPath';
 
@@ -36,8 +28,7 @@ const createActions: CreateActions = ({ filename = dkrComposeFile }) => {
     stop: id => runCmd(stop, id, filename, []),
     restart: id => runCmd(restartAll, id, filename, ['--no-deps']),
     pull: id => runCmd(pullAll, id, filename, ['--include-deps']),
-    remove: id =>
-      runCmd(downAll, id, filename, ['--volumes', '--remove-orphans']),
+    remove: id => runCmd(rm, id, filename, ['-s', '-v']),
     kill: id => runCmd(kill, id, filename, []),
     // update: async id => {
     //   const container = docker.getContainer(id);
