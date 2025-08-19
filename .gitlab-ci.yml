@@ -39,6 +39,9 @@ build_artifacts:
       - packages/**/build
       - packages/**/lib
     expire_in: 1h
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
 
 quality:
   stage: quality
