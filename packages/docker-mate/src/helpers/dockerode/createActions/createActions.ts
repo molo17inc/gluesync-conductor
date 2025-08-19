@@ -64,14 +64,11 @@ const createActions: CreateActions = ({
       return result.out.trim() || result.err.trim();
     },
     kill: async id => {
-      const result = await downAll({
-        cwd: getRootPath(),
-        config: filename,
-        log: true,
-        commandOptions: ['--volumes', '--remove-orphans', id], // remove attached volumes and orphans container attached to the same network
-      });
+      const container = docker.getContainer(id);
 
-      return result.out.trim() || result.err.trim();
+      await container.kill();
+
+      return `Container ${id} killed`;
     },
   };
 };
