@@ -18,6 +18,6 @@ export type DockerComposeCmd = (
     cwd: string;
     config: string;
     log: boolean;
-    commandOptions?: string[];
+    commandOptions?: ReadonlyArray<string>;
   }>,
 ) => Promise<IDockerComposeResult>;
