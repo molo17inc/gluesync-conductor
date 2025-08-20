@@ -94,86 +94,31 @@ docker_images:
     - docker buildx create --name multiarch-builder --driver docker-container --use
     - docker buildx inspect --bootstrap
 
-    - echo "Docker push images..."
-    - /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor dev-dk,latest
+    # Extract version part from tag if available
+    - |
+      if [[ -n "$CI_COMMIT_TAG" ]]; then
+        TAGPART=`echo $CI_COMMIT_TAG | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)'`
+        echo "Using TAGPART=$TAGPART"
+      fi
 
-# build:
-#   stage: build
-#   script:
-#     - if [[ $CI_COMMIT_BRANCH == "develop" ]] || [[ $CI_COMMIT_BRANCH == "" ]]; then export ENV="dev"; fi
-#     - if [[ $CI_COMMIT_BRANCH == "staging" ]]; then export ENV="test"; fi
-#     - if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
-    
-#     - echo "Building..."
-#     - corepack enable
-#     - yarn --version 
-#     - yarn install
-#     - yarn do
-    
-#     - echo "Lint check..."
-#   artifacts:
-#     paths:
-#       - packages/docker-mate/build
-#       - packages/gluesync-sdk-client/dist
-#       - packages/gluesync-sdk/dist
-#     expire_in: 3 days
-#     when: on_success
-#   rules:
-#     - if: $CI_COMMIT_BRANCH == "main"
-#     - if: $CI_COMMIT_BRANCH == "develop"  # Se vuoi ancora develop
-#     - if: $CI_COMMIT_BRANCH == "staging"  # Se vuoi ancora staging
-#     # Oppure solo: - if: $CI_COMMIT_BRANCH == "main"
+    # Decide which build to run
+    - |
+      if [[ $CI_COMMIT_TAG == release-* ]]; then
+        echo "Release tag detected: multi-arch build with latest and version tags"
+        /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor "$TAGPART,latest"
 
-# deploy:
-#   stage: deploy
-#   image: docker:20.10.0
-#   services:
-#     - name: docker:dind
-#   needs:
-#     - build
-#   script:
-#     - |
-#       if [[ $CI_COMMIT_BRANCH == "develop" ]] || [[ $CI_COMMIT_BRANCH == "" ]]; then export ENV="dev"; fi
-#       if [[ $CI_COMMIT_BRANCH == "staging" ]]; then export ENV="test"; fi
-#       if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
-      
-#     - apk add --no-cache bash
-#     - echo "APP_NAME=$APP_NAME"
-#     - docker login -u $CI_REGISTRY_USER -p "$CI_REGISTRY_PASSWORD"
-    
-#     - |
-#       DEFAULT_NAME="$DOCKER_REGISTRY/$APP_NAME"
-      
-#       if [ -n "$CI_COMMIT_TAG" ]; then
-#         TAGPART=$(echo "$CI_COMMIT_TAG" | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)')
-#         VERSION_TAG="${DOCKER_REGISTRY}/${APP_NAME}:${TAGPART}"
-        
-#         if [[ $CI_COMMIT_TAG == release-* ]]; then
-#           echo "Building multi-architecture release with latest tag..."
-#           docker run --privileged --rm tonistiigi/binfmt --install all
-#           docker buildx create --name multiarch-builder --use
-#           docker buildx inspect --bootstrap
-          
-#           cd packages/docker-mate
-#           docker buildx build --platform linux/amd64,linux/arm64 \
-#             --tag $DEFAULT_NAME:latest \
-#             --tag "$VERSION_TAG" \
-#             --push .
-#         elif [[ $CI_COMMIT_TAG == tag-* ]]; then
-#           echo "Building amd64-only version without latest tag..."
-#           cd packages/docker-mate
-#           docker build --tag "$VERSION_TAG" .
-#           docker push "$VERSION_TAG"
-#         else
-#           cd packages/docker-mate
-#           docker build -t "$VERSION_TAG" .
-#           docker push "$VERSION_TAG"
-#         fi
-#       else
-#         VERSION_TAG="${DOCKER_REGISTRY}/${APP_NAME}:${ENV}"
-#         cd packages/docker-mate
-#         docker build -t "$VERSION_TAG" .
-#         docker push "$VERSION_TAG"
-#       fi
-#   rules:
-#     - if: $CI_COMMIT_BRANCH == "main"  # Solo per main come volevi
+      elif [[ $CI_COMMIT_TAG == tag-* ]]; then
+        echo "Regular tag detected: amd64-only build"
+        /bin/bash ./packages/scripts/docker_images.sh --platform linux/amd64 packages/docker-mate gluesync-conductor "$TAGPART"
+
+      elif [[ $CI_COMMIT_BRANCH == "develop" ]]; then
+        echo "Develop branch detected: multi-arch build with tag 'develop'"
+        /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor "develop"
+
+      else
+        echo "Unknown branch/tag format: $CI_COMMIT_BRANCH / $CI_COMMIT_TAG"
+        exit 1
+      fi
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "develop"

@@ -3,10 +3,19 @@ set -e
 set -o pipefail
 
 # Usage:
-# ./script.sh /path/to/context image_name tag1,tag2,tag3 [/another/path image_name tagX,tagY]
+# ./script.sh [--platform linux/amd64,linux/arm64] /path/to/context image_name tag1,tag2,tag3 [...]
+
+# Default platform
+PLATFORM="linux/amd64,linux/arm64"
+
+# Check if first parameter is --platform
+if [[ "$1" == "--platform" ]]; then
+  PLATFORM="$2"
+  shift 2
+fi
 
 if [ "$#" -lt 3 ]; then
-  echo "Usage: $0 /path/to/context image_name tag1,tag2,tag3 [/another/path image_name tagX,tagY ...]"
+  echo "Usage: $0 [--platform linux/amd64,linux/arm64] /path/to/context image_name tag1,tag2,tag3 [/another/path image_name tagX,tagY ...]"
   exit 1
 fi
 
@@ -25,10 +34,11 @@ while [ "$#" -gt 0 ]; do
   (
     cd "$CONTEXT" || { echo "Failed to enter $CONTEXT"; exit 1; }
     echo "Building image $IMAGE_NAME from context: $CONTEXT"
+    echo "Platform: $PLATFORM"
     echo "Tags: ${TAGS[*]}"
 
     # Build docker buildx command with multiple tags
-    DOCKER_CMD="docker buildx build --platform linux/amd64,linux/arm64 --progress=plain --no-cache"
+    DOCKER_CMD="docker buildx build --platform $PLATFORM --progress=plain --no-cache"
     for TAG in "${TAGS[@]}"; do
       FULL_IMAGE="$CI_REGISTRY_IMAGE/$IMAGE_NAME:$TAG"
       DOCKER_CMD="$DOCKER_CMD -t $FULL_IMAGE"
