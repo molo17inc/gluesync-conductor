@@ -95,7 +95,7 @@ docker_images:
     - docker buildx inspect --bootstrap
 
     - echo "Docker push images..."
-    - /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor:dev-dk
+    - /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor dev-dk,latest
 
 # build:
 #   stage: build
