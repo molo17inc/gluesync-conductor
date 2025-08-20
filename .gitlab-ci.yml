@@ -99,9 +99,12 @@ docker_images:
       set -euo pipefail
       set -x  # Debug: print all commands before execution
 
-      echo "Branch=\"$CI_COMMIT_BRANCH\", Tag=\"$CI_COMMIT_TAG\""
+      BRANCH="${CI_COMMIT_BRANCH:-undefined}"
+      TAG="${CI_COMMIT_TAG:-undefined}"
 
-      if [[ "$CI_COMMIT_BRANCH" == "develop" && -z "${CI_COMMIT_TAG:-}" ]]; then
+      echo "Branch=\"$BRANCH\", Tag=\"$TAG\""
+
+      if [[ "$BRANCH" == "develop" && -z "${CI_COMMIT_TAG:-}" ]]; then
           echo "[INFO] Develop branch detected → multi-arch build with tag 'develop'"
           /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor "develop"
 
@@ -130,7 +133,7 @@ docker_images:
           fi
 
       else
-          echo "[ERROR] Unknown branch/tag combination: branch=\"$CI_COMMIT_BRANCH\", tag=\"$CI_COMMIT_TAG\""
+          echo "[ERROR] Unknown branch/tag combination: branch=\"$BRANCH\", tag=\"$TAG\""
           exit 1
       fi
   rules:
