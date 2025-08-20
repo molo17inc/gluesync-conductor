@@ -18,9 +18,7 @@ services:
       ]
 
   gluesync-conductor:
-    build:
-      context: ../packages/docker-mate
-    image: molo17/gluesync-conductor:latest
+    build: ../packages/docker-mate
     container_name: gluesync-conductor
     restart: unless-stopped
     environment:
