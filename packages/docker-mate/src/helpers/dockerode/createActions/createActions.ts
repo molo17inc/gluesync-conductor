@@ -9,13 +9,13 @@ const runCmd = async (
   cmdFn: DockerComposeCmd,
   id: string,
   filename: string,
-  extraOptions: ReadonlyArray<string> = [],
+  extraOptions?: ReadonlyArray<string>,
 ) => {
   const result = await cmdFn({
     cwd: getRootPath(),
     config: filename,
     log: true,
-    commandOptions: [...extraOptions, id],
+    commandOptions: [...(extraOptions ?? []), id],
   });
 
   return result.out.trim() || result.err.trim();
@@ -29,11 +29,11 @@ const createActions: CreateActions = ({
 
   return {
     start: id => runCmd(upAll, id, filename, ['--no-deps']),
-    stop: id => runCmd(stop, id, filename, []),
+    stop: id => runCmd(stop, id, filename),
     restart: id => runCmd(restartAll, id, filename, ['--no-deps']),
     pull: id => runCmd(pullAll, id, filename, ['--include-deps']),
     remove: id => runCmd(rm, id, filename, ['-s', '-v']),
-    kill: id => runCmd(kill, id, filename, []),
+    kill: id => runCmd(kill, id, filename),
     removeNetwork: id => cleanupOrphanNetworkByName(docker, id),
     // update: async id => {
     //   const container = docker.getContainer(id);
