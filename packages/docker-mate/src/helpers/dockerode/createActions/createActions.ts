@@ -34,7 +34,7 @@ const createActions: CreateActions = ({
     pull: id => runCmd(pullAll, id, filename, ['--include-deps']),
     remove: id => runCmd(rm, id, filename, ['-s', '-v']),
     kill: id => runCmd(kill, id, filename, []),
-    removeNetowk: id => cleanupOrphanNetworkByName(docker, id),
+    removeNetwork: id => cleanupOrphanNetworkByName(docker, id),
     // update: async id => {
     //   const container = docker.getContainer(id);
 
