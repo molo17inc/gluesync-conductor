@@ -82,7 +82,7 @@ docker_images:
     - apk add --no-cache bash
     - docker version
 
-    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
     
     # Enable Buildx
     - docker buildx version
@@ -94,31 +94,37 @@ docker_images:
     - docker buildx create --name multiarch-builder --driver docker-container --use
     - docker buildx inspect --bootstrap
 
-    # Extract version part from tag if available
+    # Decide build strategy
     - |
-      if [[ -n "$CI_COMMIT_TAG" ]]; then
-        TAGPART=`echo $CI_COMMIT_TAG | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)'`
-        echo "Using TAGPART=$TAGPART"
-      fi
+      if [[ "$CI_COMMIT_BRANCH" == "develop" && -z "$CI_COMMIT_TAG" ]]; then
+          echo "Develop branch detected: multi-arch build with tag 'develop'"
+          /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor "develop"
 
-    # Decide which build to run
-    - |
-      if [[ $CI_COMMIT_TAG == release-* ]]; then
-        echo "Release tag detected: multi-arch build with latest and version tags"
-        /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor "$TAGPART,latest"
+      elif [[ -n "$CI_COMMIT_TAG" ]]; then
+          TAGPART=$(echo "$CI_COMMIT_TAG" | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)')
+          if [[ -z "$TAGPART" ]]; then
+              echo "Error: failed to extract version number from CI_COMMIT_TAG=\"$CI_COMMIT_TAG\""
+              exit 1
+          fi
+          echo "Using TAGPART=\"$TAGPART\""
 
-      elif [[ $CI_COMMIT_TAG == tag-* ]]; then
-        echo "Regular tag detected: amd64-only build"
-        /bin/bash ./packages/scripts/docker_images.sh --platform linux/amd64 packages/docker-mate gluesync-conductor "$TAGPART"
+          if [[ "$CI_COMMIT_TAG" == release-* ]]; then
+              echo "Release tag detected: multi-arch build with latest and version tags"
+              /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor "$TAGPART,latest"
 
-      elif [[ $CI_COMMIT_BRANCH == "develop" ]]; then
-        echo "Develop branch detected: multi-arch build with tag 'develop'"
-        /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor "develop"
+          elif [[ "$CI_COMMIT_TAG" == tag-* ]]; then
+              echo "Regular tag detected: amd64-only build"
+              /bin/bash ./packages/scripts/docker_images.sh --platform linux/amd64 packages/docker-mate gluesync-conductor "$TAGPART"
+
+          else
+              echo "Unknown tag format: \"$CI_COMMIT_TAG\""
+              exit 1
+          fi
 
       else
-        echo "Unknown branch/tag format: $CI_COMMIT_BRANCH / $CI_COMMIT_TAG"
-        exit 1
+          echo "Unknown branch/tag combination: branch=\"$CI_COMMIT_BRANCH\", tag=\"$CI_COMMIT_TAG\""
+          exit 1
       fi
   rules:
-    - if: $CI_COMMIT_TAG
-    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
