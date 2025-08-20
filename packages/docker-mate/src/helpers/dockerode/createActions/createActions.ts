@@ -8,13 +8,13 @@ const runCmd = async (
   cmdFn: DockerComposeCmd,
   id: string,
   filename: string,
-  extraOptions: ReadonlyArray<string> = [],
+  extraOptions?: ReadonlyArray<string>,
 ) => {
   const result = await cmdFn({
     cwd: getRootPath(),
     config: filename,
     log: true,
-    commandOptions: [...extraOptions, id],
+    commandOptions: [...(extraOptions ?? []), id],
   });
 
   return result.out.trim() || result.err.trim();
