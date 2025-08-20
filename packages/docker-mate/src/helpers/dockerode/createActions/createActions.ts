@@ -25,8 +25,6 @@ const createActions: CreateActions = ({
   docker,
   filename = dkrComposeFile,
 }) => {
-  console.log('getRootPath:', getRootPath());
-
   return {
     start: id => runCmd(upAll, id, filename, ['--no-deps']),
     stop: id => runCmd(stop, id, filename),
