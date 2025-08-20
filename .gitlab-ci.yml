@@ -100,35 +100,35 @@ docker_images:
       set -x  # Debug: print all commands before execution
 
       BRANCH="${CI_COMMIT_BRANCH:-undefined}"
-      TAG="${CI_COMMIT_TAG:-undefined}"
+      TAG="${CI_COMMIT_TAG:-}"
 
       echo "Branch=\"$BRANCH\", Tag=\"$TAG\""
 
-      if [[ "$BRANCH" == "develop" && -z "${CI_COMMIT_TAG:-}" ]]; then
+      if [[ "$BRANCH" == "develop" && -z "$TAG" ]]; then
           echo "[INFO] Develop branch detected → multi-arch build with tag 'develop'"
           /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor "develop"
 
-      elif [[ -n "${CI_COMMIT_TAG:-}" ]]; then
-          echo "[INFO] Tag detected: \"$CI_COMMIT_TAG\""
-          TAGPART=$(echo "$CI_COMMIT_TAG" | grep -oE '[0-9]+\.[0-9]+\.[0-9].*' || true)
+      elif [[ -n "$TAG" ]]; then
+          echo "[INFO] Tag detected: \"$TAG\""
 
-          if [[ -z "$TAGPART" ]]; then
-              echo "[ERROR] Failed to extract version number from CI_COMMIT_TAG=\"$CI_COMMIT_TAG\""
-              exit 1
-          fi
-
-          echo "[INFO] Using TAGPART=\"$TAGPART\""
-
-          if [[ "$CI_COMMIT_TAG" == release-* ]]; then
-              echo "[INFO] Release tag detected → multi-arch build with latest and version tags"
+          if [[ "$TAG" == release-* ]]; then
+              # Extract version part from release-* (must start with X.Y.Z)
+              TAGPART=$(echo "$TAG" | grep -oE '^release-([0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._-]+)?)$' | sed 's/^release-//')
+              if [[ -z "$TAGPART" ]]; then
+                  echo "[ERROR] Invalid release tag format: \"$TAG\""
+                  exit 1
+              fi
+              echo "[INFO] Release tag detected → using TAGPART=\"$TAGPART\""
               /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor "$TAGPART,latest"
 
-          elif [[ "$CI_COMMIT_TAG" == tag-* ]]; then
-              echo "[INFO] Regular tag detected → amd64-only build"
+          elif [[ "$TAG" == tag-* ]]; then
+              # Take everything after "tag-"
+              TAGPART=$(echo "$TAG" | sed 's/^tag-//')
+              echo "[INFO] Regular tag detected → using TAGPART=\"$TAGPART\""
               /bin/bash ./packages/scripts/docker_images.sh --platform linux/amd64 packages/docker-mate gluesync-conductor "$TAGPART"
 
           else
-              echo "[ERROR] Unknown tag format: \"$CI_COMMIT_TAG\""
+              echo "[ERROR] Unknown tag format: \"$TAG\""
               exit 1
           fi
 
