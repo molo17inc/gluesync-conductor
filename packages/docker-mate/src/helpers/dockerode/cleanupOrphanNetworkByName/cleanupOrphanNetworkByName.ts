@@ -1,9 +1,9 @@
-import Docker from 'dockerode';
+import { CleanupOrphanNetworkByName } from './cleanupOrphanNetworkByName.model';
 
-const cleanupOrphanNetworkByName = async (
-  docker: Readonly<Docker>,
-  networkName: Readonly<string>,
-): Promise<string> => {
+const cleanupOrphanNetworkByName: CleanupOrphanNetworkByName = async (
+  docker,
+  networkName,
+) => {
   try {
     // List all networks to find the one with the specified name
     const networks = await docker.listNetworks();

@@ -1,7 +1,7 @@
 import { rm, kill, pullAll, restartAll, stop, upAll } from 'docker-compose';
 import { CreateActions, DockerComposeCmd } from './createActions.model';
 import getRootPath from '../../getRootPath/getRootPath';
-import cleanupOrphanNetworkByName from '../cleanupOrphanNetworkByName/cleanOrphanNetwork';
+import cleanupOrphanNetworkByName from '../cleanupOrphanNetworkByName/cleanupOrphanNetworkByName';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'compose.agents.yml';
 
