@@ -8,6 +8,8 @@ import restartContainer from '../functions/container/restartContainer/restartCon
 import removeAgent from '../functions/agent/removeAgent/removeAgent';
 import startAgents from '../functions/agent/startAgents/startAgents';
 import stopAgents from '../functions/agent/stopAgents/stopAgents';
+import doContainersAction from '../functions/container/doContainersAction/doContainersAction';
+import { containerActions } from '../models/conductor.model';
 
 const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
   // Register ComposeFile schema
@@ -226,6 +228,87 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
       },
     },
     handler: listContainers,
+  });
+
+  fastify.post('/containers', {
+    schema: {
+      tags: ['containers'],
+      summary: 'Execute action on containers',
+      description: `Performs the specified action (${containerActions.map(possibleAction => `${possibleAction}`)}) on one or more containers`,
+      body: {
+        type: 'object',
+        required: ['action', 'ids'],
+        properties: {
+          action: {
+            type: 'string',
+            enum: containerActions,
+            description: 'The action to perform on the containers',
+          },
+          ids: {
+            type: 'array',
+            items: { type: 'string' },
+            minItems: 1,
+            description: 'Array of container NAMEs to perform the action on',
+          },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: {
+              type: 'boolean',
+              const: true,
+            },
+            data: {
+              type: 'object',
+              properties: {
+                containers: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: {
+                        type: 'string',
+                        description: 'Container NAME',
+                      },
+                      status: {
+                        type: 'string',
+                        enum: ['OK', 'ERROR'],
+                        description: 'Action execution status',
+                      },
+                      message: {
+                        type: 'string',
+                        description: 'Result message or error description',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        500: {
+          type: 'object',
+          properties: {
+            success: {
+              type: 'boolean',
+              const: false,
+            },
+            error: {
+              type: 'string',
+              description: 'Error message',
+            },
+            details: {
+              type: 'string',
+              description: 'Additional error details',
+            },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    handler: doContainersAction,
   });
 
   fastify.get('/containers/:id', {
