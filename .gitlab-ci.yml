@@ -96,33 +96,41 @@ docker_images:
 
     # Decide build strategy
     - |
-      if [[ "$CI_COMMIT_BRANCH" == "develop" && -z "$CI_COMMIT_TAG" ]]; then
-          echo "Develop branch detected: multi-arch build with tag 'develop'"
+      set -euo pipefail
+      set -x  # Debug: print all commands before execution
+
+      echo "Branch=\"$CI_COMMIT_BRANCH\", Tag=\"$CI_COMMIT_TAG\""
+
+      if [[ "$CI_COMMIT_BRANCH" == "develop" && -z "${CI_COMMIT_TAG:-}" ]]; then
+          echo "[INFO] Develop branch detected → multi-arch build with tag 'develop'"
           /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor "develop"
 
-      elif [[ -n "$CI_COMMIT_TAG" ]]; then
-          TAGPART=$(echo "$CI_COMMIT_TAG" | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)')
+      elif [[ -n "${CI_COMMIT_TAG:-}" ]]; then
+          echo "[INFO] Tag detected: \"$CI_COMMIT_TAG\""
+          TAGPART=$(echo "$CI_COMMIT_TAG" | grep -oE '[0-9]+\.[0-9]+\.[0-9].*' || true)
+
           if [[ -z "$TAGPART" ]]; then
-              echo "Error: failed to extract version number from CI_COMMIT_TAG=\"$CI_COMMIT_TAG\""
+              echo "[ERROR] Failed to extract version number from CI_COMMIT_TAG=\"$CI_COMMIT_TAG\""
               exit 1
           fi
-          echo "Using TAGPART=\"$TAGPART\""
+
+          echo "[INFO] Using TAGPART=\"$TAGPART\""
 
           if [[ "$CI_COMMIT_TAG" == release-* ]]; then
-              echo "Release tag detected: multi-arch build with latest and version tags"
+              echo "[INFO] Release tag detected → multi-arch build with latest and version tags"
               /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor "$TAGPART,latest"
 
           elif [[ "$CI_COMMIT_TAG" == tag-* ]]; then
-              echo "Regular tag detected: amd64-only build"
+              echo "[INFO] Regular tag detected → amd64-only build"
               /bin/bash ./packages/scripts/docker_images.sh --platform linux/amd64 packages/docker-mate gluesync-conductor "$TAGPART"
 
           else
-              echo "Unknown tag format: \"$CI_COMMIT_TAG\""
+              echo "[ERROR] Unknown tag format: \"$CI_COMMIT_TAG\""
               exit 1
           fi
 
       else
-          echo "Unknown branch/tag combination: branch=\"$CI_COMMIT_BRANCH\", tag=\"$CI_COMMIT_TAG\""
+          echo "[ERROR] Unknown branch/tag combination: branch=\"$CI_COMMIT_BRANCH\", tag=\"$CI_COMMIT_TAG\""
           exit 1
       fi
   rules:
