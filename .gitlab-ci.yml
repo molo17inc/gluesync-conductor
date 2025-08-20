@@ -82,7 +82,9 @@ docker_images:
     - apk add --no-cache bash
     - docker version
 
-    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    # Login to Docker hub registry as default
+    # - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin
     
     # Enable Buildx
     - docker buildx version
