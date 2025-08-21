@@ -6,7 +6,6 @@ import updateContainer from '../functions/container/updateContainer/updateContai
 import pullContainer from '../functions/container/pullContainer/pullContainer';
 import restartContainer from '../functions/container/restartContainer/restartContainer';
 import removeAgent from '../functions/agent/removeAgent/removeAgent';
-import startAgents from '../functions/agent/startAgents/startAgents';
 import stopAgents from '../functions/agent/stopAgents/stopAgents';
 import doContainersAction from '../functions/container/doContainersAction/doContainersAction';
 import { containerActions } from '../models/conductor.model';
@@ -526,41 +525,6 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
       },
     },
     handler: removeAgent,
-  });
-
-  fastify.post('/containers/:id/start', {
-    schema: {
-      description: 'Start a container',
-      tags: ['containers'],
-      params: {
-        type: 'object',
-        required: ['id'],
-        properties: {
-          id: { type: 'string', description: 'Container ID to start' },
-        },
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            data: {
-              additionalProperties: true,
-              type: 'array',
-              items: { type: 'string' },
-            },
-          },
-        },
-        404: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean', default: false },
-            error: { type: 'string' },
-          },
-        },
-      },
-    },
-    handler: startAgents,
   });
 
   fastify.post('/containers/:id/stop', {
