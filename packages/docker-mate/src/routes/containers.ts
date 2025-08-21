@@ -1,6 +1,5 @@
 import { FastifyInstance } from 'fastify';
 import listContainers from '../functions/container/listContainers/listContainers';
-import getContainer from '../functions/container/getContainer/getContainer';
 import getContainerVersion from '../functions/container/getContainerVersion/getContainerVersion';
 import updateContainer from '../functions/container/updateContainer/updateContainer';
 import removeAgent from '../functions/agent/removeAgent/removeAgent';
@@ -305,66 +304,6 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
       },
     },
     handler: doContainersAction,
-  });
-
-  fastify.get('/containers/:id', {
-    schema: {
-      description: 'Get a container configuration',
-      tags: ['containers'],
-      params: {
-        type: 'object',
-        required: ['id'],
-        properties: {
-          id: { type: 'string', description: 'Container ID' },
-        },
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            data: {
-              additionalProperties: true,
-              type: 'object',
-              properties: {
-                imageName: { type: 'string' },
-                type: { type: 'string', enum: ['target', 'source'] },
-                nickname: { type: 'string' },
-                tag: { type: 'string' },
-                versionTag: { type: 'string' },
-                persisted: { type: 'boolean' },
-                environment: { type: 'object', additionalProperties: true },
-                ports: { type: 'array', items: { type: 'string' } },
-                volumes: { type: 'array', items: { type: 'string' } },
-                hostConfig: { type: 'object', additionalProperties: true },
-              },
-            },
-            systemInfo: {
-              type: 'object',
-              properties: {
-                ncpu: { type: 'number' },
-                memTotal: { type: 'number' },
-              },
-            },
-          },
-        },
-        404: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            error: { type: 'string' },
-          },
-        },
-        500: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            error: { type: 'string' },
-          },
-        },
-      },
-    },
-    handler: getContainer,
   });
 
   fastify.get('/containers/:id/version', {
