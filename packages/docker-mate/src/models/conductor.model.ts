@@ -7,14 +7,15 @@ export const conductorServiceTypes = ['agent', 'module'] as const;
 export type ConductorServiceTypes = (typeof conductorServiceTypes)[number];
 
 export const containerActions = [
+  'kill',
+  'pull',
+  'remove',
+  'removeNetwork',
+  'restart',
   'start',
   'stop',
-  'restart',
-  'pull',
   // 'update',
-  'remove',
-  'kill',
-  'removeNetwork',
+  'undeploy',
 ] as const;
 
 export type ContainerActions = (typeof containerActions)[number];
