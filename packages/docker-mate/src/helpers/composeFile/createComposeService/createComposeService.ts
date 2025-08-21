@@ -100,7 +100,7 @@ const createComposeService: CreateComposeService = (
 
   const defaultLabels = {
     'com.molo17.conductor.unique_id': containerDisplayName,
-    'com.molo17.conductor.versiontag': tag || 'latest',
+    'com.molo17.conductor.versiontag': tag || undefined,
     'com.molo17.conductor.type': serviceType,
   };
 
@@ -109,10 +109,10 @@ const createComposeService: CreateComposeService = (
     container_name: containerDisplayName,
     restart: 'unless-stopped',
     deploy: { resources },
-    labels: Object.entries({
-      ...labels,
-      ...defaultLabels,
-    }).map(([key, value]) => `${key}=${value}`),
+    labels: Object.entries({ ...labels, ...defaultLabels }).reduce<string[]>(
+      (acc, [key, value]) => (value ? [...acc, `${key}=${value}`] : acc),
+      [],
+    ),
     environment: Object.entries({
       type,
       maxRamPercentage: 90.0,
