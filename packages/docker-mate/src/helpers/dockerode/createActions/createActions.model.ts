@@ -13,7 +13,7 @@ export type CreateActions = (
   options: CreateActionsOptions,
 ) => Record<ContainerActions, ContainerAction>;
 
-export type DockerComposeCmd = (
+export type RunCmdFn = (
   options: Readonly<{
     cwd: string;
     config: string;
@@ -21,3 +21,10 @@ export type DockerComposeCmd = (
     commandOptions?: string[];
   }>,
 ) => Promise<IDockerComposeResult>;
+
+export type RunCmd = (
+  cmdFn: RunCmdFn,
+  id: string,
+  filename: string,
+  extraOptions?: ReadonlyArray<string>,
+) => Promise<string>;
