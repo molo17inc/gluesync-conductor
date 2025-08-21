@@ -28,30 +28,7 @@ const runCmd: RunCmd = async (
     throw new Error(message);
   }
 
-  console.log(`Error: ${JSON.stringify(result)}`);
-
-  return result.out.trim() || result.err.trim();
-};
-
-const cleanFromFile = async (id: string) => {
-  try {
-    const composeJson = await readComposeFile({ raw: true });
-
-    if (!composeJson.services || !composeJson.services[id]) {
-      return `Agent ${id} not found`;
-    }
-
-    const composeFile: RawComposeFile = {
-      ...composeJson,
-      services: removeKey(composeJson.services, id),
-    };
-
-    await writeComposeFile(composeFile);
-
-    return `Agent ${id} undeployed successfully`;
-  } catch (error) {
-    return `Error: ${JSON.stringify(error)}`;
-  }
+  return message;
 };
 
 const createActions: CreateActions = ({
@@ -66,15 +43,24 @@ const createActions: CreateActions = ({
   start: id => runCmd(upAll, id, filename, ['--no-deps']),
   stop: id => runCmd(stop, id, filename),
   undeploy: async (id: string) => {
-    try {
-      // Step 1: Remove the container
-      await runCmd(rm, id, filename, ['-s', '-v']);
+    // Step 1: Remove the container
+    await runCmd(rm, id, filename, ['-s', '-v']);
 
-      // Step 2: Remove the agent from file
-      return await cleanFromFile(id);
-    } catch (error) {
-      return `Error: ${JSON.stringify(error)}`;
+    // Step 2: Remove the agent from file
+    const composeJson = await readComposeFile({ raw: true });
+
+    if (!composeJson.services || !composeJson.services[id]) {
+      return `Agent ${id} not found`;
     }
+
+    const composeFile: RawComposeFile = {
+      ...composeJson,
+      services: removeKey(composeJson.services, id),
+    };
+
+    await writeComposeFile(composeFile);
+
+    return `Agent ${id} undeployed successfully`;
   },
   // update: async id => {
   //   const container = docker.getContainer(id);
