@@ -2,7 +2,6 @@ import { FastifyInstance } from 'fastify';
 import listContainers from '../functions/container/listContainers/listContainers';
 import getContainerVersion from '../functions/container/getContainerVersion/getContainerVersion';
 import updateContainer from '../functions/container/updateContainer/updateContainer';
-import removeAgent from '../functions/agent/removeAgent/removeAgent';
 import doContainersAction from '../functions/container/doContainersAction/doContainersAction';
 import { containerActions } from '../models/conductor.model';
 
@@ -427,40 +426,6 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
       },
     },
     handler: updateContainer,
-  });
-
-  fastify.delete('/containers/:id', {
-    schema: {
-      description: 'Remove a container from the compose file',
-      tags: ['containers'],
-      params: {
-        type: 'object',
-        required: ['id'],
-        properties: {
-          id: { type: 'string', description: 'Container ID to remove' },
-        },
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            data: {
-              additionalProperties: true,
-              type: 'object',
-            },
-          },
-        },
-        404: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean', default: false },
-            error: { type: 'string' },
-          },
-        },
-      },
-    },
-    handler: removeAgent,
   });
 };
 
