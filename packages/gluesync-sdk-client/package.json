@@ -1,0 +1,31 @@
+{
+  "name": "gluesync-sdk-client",
+  "version": "1.0.0",
+  "description": "Gluesync SDK integration for Container Mate",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": "dist/standalone.js",
+  "scripts": {
+    "format": "prettier --ignore-path ../.prettierignore .",
+    "format:check": "yarn format --check",
+    "format:write": "yarn format --write",
+    "type-check": "yarn tsc --noEmit --incremental --tsBuildInfoFile .tsbuildinfo",
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
+    "start": "node dist/standalone.js",
+    "dev": "ts-node src/standalone.ts",
+    "test": "jest"
+  },
+  "dependencies": {
+    "fastify": "^5.2.1",
+    "gluesync-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@gluesync/scripts": "workspace:*",
+    "@types/node": "^22.14.1",
+    "rimraf": "^5.0.5",
+    "ts-node": "^10.9.2",
+    "typescript": "5.8.3"
+  }
+}

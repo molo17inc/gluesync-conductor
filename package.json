@@ -1,13 +1,38 @@
 {
-  "name": "container-mate",
+  "name": "gluesync-nodejs-monorepo",
+  "private": true,
   "packageManager": "yarn@4.6.0",
   "workspaces": [
     "packages/*"
   ],
+  "scripts": {
+    "format": "prettier .",
+    "format:check": "yarn format --check",
+    "format:write": "yarn format --write",
+    "lint": "yarn workspaces foreach -v -i --all --parallel --exclude gluesync-nodejs-monorepo run lint",
+    "lint:fix": "yarn workspaces foreach -v -i --all --parallel --exclude gluesync-nodejs-monorepo run lint:fix",
+    "type-check": "yarn workspaces foreach -v -i --all --parallel --exclude gluesync-nodejs-monorepo run type-check",
+    "build": "yarn workspaces foreach -v -i --all --topological-dev --parallel --exclude gluesync-nodejs-monorepo run build",
+    "do": "echo 'Installing dependencies...' && yarn && echo 'Building...' && yarn build && echo 'Type check...' && yarn type-check",
+    "get-openapi": "yarn workspace gluesync-conductor start:with-docs",
+    "docker:build:builder": "docker buildx build --platform linux/amd64,linux/arm64 --progress=plain --no-cache -t repo-ws-builder .",
+    "docker:load:services": "yarn workspaces foreach --all run docker:load",
+    "docker:push:services": "yarn workspaces foreach --all run docker:push",
+    "docker:load:all": "yarn docker:build:builder && yarn docker:load:services",
+    "docker:push:all": "yarn docker:build:builder && yarn docker:push:services"
+  },
   "devDependencies": {
-    "@types/node": "^22.13.0",
-    "eslint": "^9.19.0",
+    "@types/dockerode": "^3.3.38",
+    "@types/node": "^22.14.1",
+    "eslint": "^8.56.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-import-resolver-node": "^0.3.9",
+    "eslint-plugin-deprecation": "^2.0.0",
+    "eslint-plugin-functional": "^6.0.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-prettier": "^5.1.0",
     "prettier": "^3.4.2",
-    "typescript": "^5.7.3"
+    "typescript": "5.8.3"
   }
 }

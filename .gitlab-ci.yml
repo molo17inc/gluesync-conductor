@@ -1,0 +1,143 @@
+stages:
+  - build
+  - quality
+  - deploy
+
+default:
+  tags:
+    - gs-runners-hq
+
+variables:
+  GIT_STRATEGY: fetch
+  GIT_SUBMODULE_STRATEGY: recursive
+  GIT_DEPTH: 20
+  FF_USE_FASTZIP: 'true'
+  ARTIFACT_COMPRESSION_LEVEL: 'fastest'
+  CACHE_COMPRESSION_LEVEL: 'fastest'
+  TRANSFER_METER_FREQUENCY: '1s'
+  YARN_ENABLE_IMMUTABLE_INSTALLS: 'false'
+  DOCKER_TLS_CERTDIR: ''
+  DOCKER_REGISTRY: registry.gitlab.com/molo17-public/gluesync/gluesync-conductor
+  CONTAINER_MATE_IMAGE: ${DOCKER_REGISTRY}:${CI_COMMIT_REF_SLUG}
+
+build_artifacts:
+  stage: build
+  image: node:22.13.1-alpine
+  script:
+    - echo "Building artifacts..."
+    - corepack enable
+    - node --version
+    - yarn --version
+
+    - echo "Installing dependencies..."
+    - yarn install --immutable --immutable-cache
+
+    - echo "Building..."
+    - yarn build
+  artifacts:
+    paths:
+      - packages/**/build
+      - packages/**/dist
+      - packages/**/lib
+    expire_in: 1h
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+
+quality:
+  stage: quality
+  image: node:22.13.1-alpine
+  needs:
+    - job: build_artifacts
+      artifacts: true
+  script:
+    - echo "Running quality checks..."
+    - corepack enable
+    - node --version
+    - yarn --version
+
+    - echo "Installing dependencies..."
+    - yarn install --immutable --immutable-cache
+
+    - echo "Running linting..."
+    - yarn lint
+    
+    - echo "Running type-check..."
+    - yarn type-check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+
+docker_images:
+  stage: deploy
+  image: docker:28.3.3
+  services:
+    - name: docker:dind
+  needs:
+    - job: build_artifacts
+      artifacts: true
+    - job: quality
+  script:
+    - echo "Running build and push docker images..."
+    - apk add --no-cache bash
+    - docker version
+
+    # Login to Docker hub registry as default
+    # - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin
+    
+    # Enable Buildx
+    - docker buildx version
+
+    # Register QEMU for multiarch
+    - docker run --rm --privileged tonistiigi/binfmt --install all
+
+    # Create a new builder using docker-container driver
+    - docker buildx create --name multiarch-builder --driver docker-container --use
+    - docker buildx inspect --bootstrap
+
+    # Decide build strategy
+    - |
+      set -euo pipefail
+      set -x  # Debug: print all commands before execution
+
+      BRANCH="${CI_COMMIT_BRANCH:-undefined}"
+      TAG="${CI_COMMIT_TAG:-}"
+
+      echo "Branch=\"$BRANCH\", Tag=\"$TAG\""
+
+      if [[ "$BRANCH" == "develop" && -z "$TAG" ]]; then
+          echo "[INFO] Develop branch detected → multi-arch build with tag 'develop'"
+          /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "develop"
+
+      elif [[ -n "$TAG" ]]; then
+          echo "[INFO] Tag detected: \"$TAG\""
+
+          if [[ "$TAG" == release-* ]]; then
+              # Extract version part from release-* (must start with X.Y.Z)
+              TAGPART=$(echo "$TAG" | grep -oE '^release-([0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._-]+)?)$' | sed 's/^release-//')
+              if [[ -z "$TAGPART" ]]; then
+                  echo "[ERROR] Invalid release tag format: \"$TAG\""
+                  exit 1
+              fi
+              echo "[INFO] Release tag detected → using TAGPART=\"$TAGPART\""
+              /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "$TAGPART,latest"
+
+          elif [[ "$TAG" == tag-* ]]; then
+              # Take everything after "tag-"
+              TAGPART=$(echo "$TAG" | sed 's/^tag-//')
+              echo "[INFO] Regular tag detected → using TAGPART=\"$TAGPART\""
+              /bin/bash ./packages/scripts/docker_images.sh --platform linux/amd64 packages/gluesync-conductor gluesync-conductor "$TAGPART"
+
+          else
+              echo "[ERROR] Unknown tag format: \"$TAG\""
+              exit 1
+          fi
+
+      else
+          echo "[ERROR] Unknown branch/tag combination: branch=\"$BRANCH\", tag=\"$TAG\""
+          exit 1
+      fi
+  rules:
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_COMMIT_BRANCH == "develop"'

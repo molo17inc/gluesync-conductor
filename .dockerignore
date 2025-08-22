@@ -1,0 +1,13 @@
+.vscode
+.yarn/sdks
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+node_modules
+compose.yml
+README.md
+.git
+.gitignore
+**/build
+**/*.log
+debug-container

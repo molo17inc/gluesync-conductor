@@ -1,26 +1,9 @@
 name: 'debug-container'
 
 services:
-  apache:
-    image: httpd:latest
-    container_name: apache
-    restart: unless-stopped
-    environment:
-      - AAA='xia weoifoew'
-      - BBA:"xia weiofhoewif"
-      - file = debug-container/compose.yml wioefnew
-      - 1sffile:debug-container/compose.yml oiewfjoew
-      - ENABLED=true
-      - DEBUG=false
-      - MAX_RETRIES=5
-      - TIMEOUT=3.5
-    ports:
-      - 8080:80
-    volumes:
-      - ./public-html:/usr/local/apache2/htdocs/
   portainer:
     image: portainer/portainer-ce:latest
-    container_name: apache
+    container_name: portainer
     restart: unless-stopped
     ports:
       - 8000:8000
@@ -28,3 +11,49 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # - ./portainer_data:/data
+    command:
+      [
+        '--admin-password',
+        '$$2y$$05$$wxahdaIgY6yjxyPjvSqyr.NeLhCOY/pWLXSJykVsfUGaRXnjq3etK',
+      ]
+
+  gluesync-conductor:
+    build: ../packages/gluesync-conductor
+    container_name: gluesync-conductor
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - LOGGER_LEVEL=trace
+      - GLUESYNC_LICENSE_FILE=/opt/gluesync/data/gs-license.dat
+      - GLUESYNC_SECURITY_CONFIG=/opt/gluesync/data/security-config.json
+      - GLUESYNC_MODULE_TAG=gluesync-conductor
+      - HOST=0.0.0.0
+      - PORT=1717
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    ports:
+      - 5017:1717
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/opt/gluesync/data
+      - ./gs-conf/gs-license.dat:/opt/gluesync/data/gs-license.dat
+      - ./compose.agents.yml:/opt/gluesync-conductor/compose.agents.yml
+    networks:
+      - gluesync-network
+
+  gluesync-core-hub:
+    image: molo17/gluesync-core-hub:2.1.0.0.1f094fc18
+    ports:
+      - 1717:1717
+    environment:
+      - LOG_CONFIG_FILE=/opt/gluesync/data/logback.xml
+    volumes:
+      - ./gs-conf/gs-license.dat:/opt/gluesync/data/gs-license.dat
+      - ./gs-conf/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json
+      - ./gs-conf/security-config.json:/opt/gluesync/data/security-config.json
+      - ./gs-conf/gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks
+    networks:
+      - gluesync-network
+
+networks:
+  gluesync-network:
+    driver: bridge

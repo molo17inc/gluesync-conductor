@@ -1,6 +1,7 @@
 # Start custom conf
 
 gs-license.dat
+*.jks
 
 packages/**/build
 packages/**/lib
@@ -15,10 +16,6 @@ packages/**/lib
 
 test-results.json
 eslint-danger.json
-
-# Swagger generated files
-# Uncomment if you need to ignore specific swagger files
-# packages/docker-mate/public/swagger.yaml
 
 # Temporary files
 temp/
