@@ -1,9 +1,9 @@
+import fs from 'fs';
+import path from 'path';
 import fp from 'fastify-plugin';
 import { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUI from '@fastify/swagger-ui';
-import path from 'path';
-import fs from 'fs';
 
 const swaggerPlugin: FastifyPluginAsync = async (
   fastify: Readonly<FastifyInstance>,
@@ -21,12 +21,12 @@ const swaggerPlugin: FastifyPluginAsync = async (
         description: 'API documentation for Gluesync Conductor',
         version: '1.0.0',
       },
-      servers: [
-        {
-          url: `http://localhost:${port}`,
-          description: 'Development server',
-        },
-      ],
+      // servers: [
+      //   {
+      //     url: `http://localhost:${port}`,
+      //     description: 'Development server',
+      //   },
+      // ],
       tags: [
         { name: 'system', description: 'System related endpoints' },
         { name: 'containers', description: 'Container related endpoints' },
