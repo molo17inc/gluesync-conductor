@@ -39,7 +39,7 @@ const startServer = async () => {
   // Register Swagger plugins first
   await server.register(swaggerPlugin);
 
-  // Register other plugins
+  // Register Docker plugin
   await server.register(dockerPlugin);
 
   // Register Gluesync plugin
