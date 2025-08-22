@@ -10,7 +10,6 @@ const swaggerPlugin: FastifyPluginAsync = async (
 ) => {
   const staticPath = path.join(__dirname, 'static');
   const hasStaticDir = fs.existsSync(staticPath);
-  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
 
   await fastify.register(fastifySwagger, {
     mode: 'dynamic',
