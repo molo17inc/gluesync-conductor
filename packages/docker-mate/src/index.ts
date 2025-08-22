@@ -2,6 +2,7 @@ import fastify from 'fastify';
 import Docker from 'dockerode';
 import dockerPlugin from './plugins/docker';
 import swaggerPlugin from './plugins/swagger';
+import gluesyncPlugin from './plugins/gluesync';
 import httpsRedirectMiddleware from './middleware/httpsRedirect';
 import {
   createFastifyHttpsOptions,
@@ -40,6 +41,9 @@ const startServer = async () => {
 
   // Register other plugins
   await server.register(dockerPlugin);
+
+  // Register other gluesync
+  await server.register(gluesyncPlugin);
 
   // Register route modules
   await server.register(systemRoutes);
