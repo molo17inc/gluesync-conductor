@@ -1,5 +1,5 @@
 {
-  "name": "docker-mate",
+  "name": "gluesync-conductor",
   "scripts": {
     "format": "prettier --ignore-path ../.prettierignore .",
     "format:check": "yarn format --check",

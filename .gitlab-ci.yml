@@ -108,7 +108,7 @@ docker_images:
 
       if [[ "$BRANCH" == "develop" && -z "$TAG" ]]; then
           echo "[INFO] Develop branch detected → multi-arch build with tag 'develop'"
-          /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor "develop"
+          /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "develop"
 
       elif [[ -n "$TAG" ]]; then
           echo "[INFO] Tag detected: \"$TAG\""
@@ -121,13 +121,13 @@ docker_images:
                   exit 1
               fi
               echo "[INFO] Release tag detected → using TAGPART=\"$TAGPART\""
-              /bin/bash ./packages/scripts/docker_images.sh packages/docker-mate gluesync-conductor "$TAGPART,latest"
+              /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "$TAGPART,latest"
 
           elif [[ "$TAG" == tag-* ]]; then
               # Take everything after "tag-"
               TAGPART=$(echo "$TAG" | sed 's/^tag-//')
               echo "[INFO] Regular tag detected → using TAGPART=\"$TAGPART\""
-              /bin/bash ./packages/scripts/docker_images.sh --platform linux/amd64 packages/docker-mate gluesync-conductor "$TAGPART"
+              /bin/bash ./packages/scripts/docker_images.sh --platform linux/amd64 packages/gluesync-conductor gluesync-conductor "$TAGPART"
 
           else
               echo "[ERROR] Unknown tag format: \"$TAG\""

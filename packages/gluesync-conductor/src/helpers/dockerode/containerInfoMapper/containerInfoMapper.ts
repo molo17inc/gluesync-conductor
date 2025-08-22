@@ -5,7 +5,7 @@ import {
 import { ContainerInfoMapper } from './containerInfoMapper.model';
 
 import getCustomLabels from '../../composeFile/getCustomLabels/getCustomLabels';
-import parseImage from '../../../helpers/parseImage/parseImage';
+import parseImage from '../../parseImage/parseImage';
 
 const containerInfoMapper: ContainerInfoMapper = container => {
   if (!container) {

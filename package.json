@@ -14,7 +14,7 @@
     "type-check": "yarn workspaces foreach -v -i --all --parallel --exclude gluesync-nodejs-monorepo run type-check",
     "build": "yarn workspaces foreach -v -i --all --topological-dev --parallel --exclude gluesync-nodejs-monorepo run build",
     "do": "echo 'Installing dependencies...' && yarn && echo 'Building...' && yarn build && echo 'Type check...' && yarn type-check",
-    "get-openapi": "yarn workspace docker-mate start:with-docs",
+    "get-openapi": "yarn workspace gluesync-conductor start:with-docs",
     "docker:build:builder": "docker buildx build --platform linux/amd64,linux/arm64 --progress=plain --no-cache -t repo-ws-builder .",
     "docker:load:services": "yarn workspaces foreach --all run docker:load",
     "docker:push:services": "yarn workspaces foreach --all run docker:push",

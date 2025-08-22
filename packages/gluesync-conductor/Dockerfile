@@ -18,7 +18,7 @@ ENV PORT=1717
 ENV DOCKER_HOST=unix:///var/run/docker.sock
 
 # Setup app directory
-WORKDIR /opt/docker-mate
+WORKDIR /opt/gluesync-conductor
 
 # Copy only the build
 COPY build/index.js index.js

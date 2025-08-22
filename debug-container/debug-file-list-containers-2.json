@@ -40,7 +40,7 @@
         "desktop.docker.io/binds/1/Target": "/opt/gluesync/data/gs-license.dat",
         "desktop.docker.io/binds/2/Source": "/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/compose.agents.yml",
         "desktop.docker.io/binds/2/SourceKind": "hostFile",
-        "desktop.docker.io/binds/2/Target": "/opt/docker-mate/compose.agents.yml",
+        "desktop.docker.io/binds/2/Target": "/opt/gluesync-conductor/compose.agents.yml",
         "desktop.docker.io/binds/3/Source": "/var/run/docker.sock",
         "desktop.docker.io/binds/3/SourceKind": "dockerSocketProxied",
         "desktop.docker.io/binds/3/Target": "/var/run/docker.sock",
@@ -85,7 +85,7 @@
         {
           "Type": "bind",
           "Source": "/host_mnt/Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/compose.agents.yml",
-          "Destination": "/opt/docker-mate/compose.agents.yml",
+          "Destination": "/opt/gluesync-conductor/compose.agents.yml",
           "Mode": "rw",
           "RW": true,
           "Propagation": "rprivate"
