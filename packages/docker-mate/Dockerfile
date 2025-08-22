@@ -25,8 +25,7 @@ COPY build/index.js index.js
 COPY build/index.js.map index.js.map
 COPY build/static/ static/
 
-COPY swagger-static.json swagger-static.json
-COPY docs/gluesync-conductor.svg static/logo.svg
+COPY public/gluesync-conductor.svg static/logo.svg
 
 EXPOSE 1717
 

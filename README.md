@@ -1,6 +1,6 @@
 # Gluesync Conductor - Container Management API
 
-![Gluesync Conductor Logo](./docs/assets/gluesync-conductor.svg)
+![Gluesync Conductor Logo](./packages/docker-mate/public/gluesync-conductor.svg)
 
 ## Overview
 
