@@ -15,8 +15,8 @@ const RAW_RUNTIME_STATE =
       "reference": "workspace:."\
     },\
     {\
-      "name": "docker-mate",\
-      "reference": "workspace:packages/docker-mate"\
+      "name": "gluesync-conductor",\
+      "reference": "workspace:packages/gluesync-conductor"\
     },\
     {\
       "name": "gluesync-sdk",\
@@ -35,7 +35,7 @@ const RAW_RUNTIME_STATE =
   "ignorePatternData": "(^(?:\\\\.yarn\\\\/sdks(?:\\\\/(?!\\\\.{1,2}(?:\\\\/|$))(?:(?:(?!(?:^|\\\\/)\\\\.{1,2}(?:\\\\/|$)).)*?)|$))$)",\
   "fallbackExclusionList": [\
     ["@gluesync/scripts", ["workspace:packages/scripts"]],\
-    ["docker-mate", ["workspace:packages/docker-mate"]],\
+    ["gluesync-conductor", ["workspace:packages/gluesync-conductor"]],\
     ["gluesync-nodejs-monorepo", ["workspace:."]],\
     ["gluesync-sdk", ["workspace:packages/gluesync-sdk"]],\
     ["gluesync-sdk-client", ["workspace:packages/gluesync-sdk-client"]]\
@@ -1327,10 +1327,10 @@ const RAW_RUNTIME_STATE =
         ],\
         "linkType": "SOFT"\
       }],\
-      ["virtual:3d33b049617b3fe1cd7800fc182eddee4bbabf110fe1abf73403d7c95e72c7a9d02d8cfff6510d29db88e97310c39420e641c5ad69ddc427da5f5853edd06b57#npm:5.1.0", {\
-        "packageLocation": "./.yarn/__virtual__/@fastify-type-provider-typebox-virtual-2540c312cb/0/cache/@fastify-type-provider-typebox-npm-5.1.0-102bee9bd7-455ef16a1f.zip/node_modules/@fastify/type-provider-typebox/",\
+      ["virtual:ae019b20ec517cc67897d669514df0c569aec6fd41976fa9549e05378b711fa024b475ee68d76b4910090761fecf36f5dc595058cc147ccd84d2b67172a0edb8#npm:5.1.0", {\
+        "packageLocation": "./.yarn/__virtual__/@fastify-type-provider-typebox-virtual-4cee634a69/0/cache/@fastify-type-provider-typebox-npm-5.1.0-102bee9bd7-455ef16a1f.zip/node_modules/@fastify/type-provider-typebox/",\
         "packageDependencies": [\
-          ["@fastify/type-provider-typebox", "virtual:3d33b049617b3fe1cd7800fc182eddee4bbabf110fe1abf73403d7c95e72c7a9d02d8cfff6510d29db88e97310c39420e641c5ad69ddc427da5f5853edd06b57#npm:5.1.0"],\
+          ["@fastify/type-provider-typebox", "virtual:ae019b20ec517cc67897d669514df0c569aec6fd41976fa9549e05378b711fa024b475ee68d76b4910090761fecf36f5dc595058cc147ccd84d2b67172a0edb8#npm:5.1.0"],\
           ["@sinclair/typebox", "npm:0.34.33"],\
           ["@types/sinclair__typebox", null]\
         ],\
@@ -1345,11 +1345,14 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./packages/scripts/",\
         "packageDependencies": [\
           ["@gluesync/scripts", "workspace:packages/scripts"],\
+          ["@fastify/swagger", "npm:9.5.0"],\
+          ["@fastify/swagger-ui", "npm:5.2.2"],\
           ["@types/node", "npm:22.14.1"],\
           ["@typescript-eslint/eslint-plugin", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:6.21.0"],\
           ["@typescript-eslint/parser", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:6.21.0"],\
           ["dotenv", "npm:16.5.0"],\
           ["esbuild", "npm:0.25.2"],\
+          ["esbuild-plugin-copy", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:2.1.1"],\
           ["eslint", "npm:8.57.1"],\
           ["eslint-plugin-deprecation", "virtual:beb8dda6f7964700067e23ce77cb39672e53232747d9207129ce290669aa7b52a4867d6f76308bd24f79bcd9d13683b90dcd0eadd6b5cdd6c82249bcb0d213d1#npm:2.0.0"],\
           ["eslint-plugin-functional", "virtual:beb8dda6f7964700067e23ce77cb39672e53232747d9207129ce290669aa7b52a4867d6f76308bd24f79bcd9d13683b90dcd0eadd6b5cdd6c82249bcb0d213d1#npm:6.6.3"],\
@@ -3961,39 +3964,6 @@ const RAW_RUNTIME_STATE =
         "linkType": "HARD"\
       }]\
     ]],\
-    ["docker-mate", [\
-      ["workspace:packages/docker-mate", {\
-        "packageLocation": "./packages/docker-mate/",\
-        "packageDependencies": [\
-          ["docker-mate", "workspace:packages/docker-mate"],\
-          ["@fastify/swagger", "npm:9.5.0"],\
-          ["@fastify/swagger-ui", "npm:5.2.2"],\
-          ["@fastify/type-provider-typebox", "virtual:3d33b049617b3fe1cd7800fc182eddee4bbabf110fe1abf73403d7c95e72c7a9d02d8cfff6510d29db88e97310c39420e641c5ad69ddc427da5f5853edd06b57#npm:5.1.0"],\
-          ["@gluesync/scripts", "workspace:packages/scripts"],\
-          ["@types/dockerode", "npm:3.3.38"],\
-          ["@types/node", "npm:22.14.1"],\
-          ["@typescript-eslint/eslint-plugin", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:6.21.0"],\
-          ["@typescript-eslint/parser", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:6.21.0"],\
-          ["axios", "npm:1.8.4"],\
-          ["docker-compose", "npm:1.2.0"],\
-          ["dockerode", "npm:4.0.5"],\
-          ["eslint", "npm:8.57.1"],\
-          ["eslint-plugin-deprecation", "virtual:beb8dda6f7964700067e23ce77cb39672e53232747d9207129ce290669aa7b52a4867d6f76308bd24f79bcd9d13683b90dcd0eadd6b5cdd6c82249bcb0d213d1#npm:2.0.0"],\
-          ["eslint-plugin-functional", "virtual:beb8dda6f7964700067e23ce77cb39672e53232747d9207129ce290669aa7b52a4867d6f76308bd24f79bcd9d13683b90dcd0eadd6b5cdd6c82249bcb0d213d1#npm:6.6.3"],\
-          ["eslint-plugin-import", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:2.32.0"],\
-          ["eslint-plugin-prettier", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:5.5.3"],\
-          ["fastify", "npm:5.3.0"],\
-          ["fastify-plugin", "npm:5.0.1"],\
-          ["gluesync-sdk-client", "workspace:packages/gluesync-sdk-client"],\
-          ["nodemon", "npm:3.1.9"],\
-          ["prettier", "npm:3.5.3"],\
-          ["ts-node", "virtual:034f9ed205a5f66264fee41c6df436c9dcef3f8116beb72d220f3710a40569698233dbcf841b133703c95cf748137a93ca21390dc36b185b836a4c7aff3d5dc7#npm:10.9.2"],\
-          ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"],\
-          ["yaml", "npm:2.7.1"]\
-        ],\
-        "linkType": "SOFT"\
-      }]\
-    ]],\
     ["docker-modem", [\
       ["npm:5.0.6", {\
         "packageLocation": "./.yarn/cache/docker-modem-npm-5.0.6-ba160bac18-4977797814.zip/node_modules/docker-modem/",\
@@ -4319,6 +4289,32 @@ const RAW_RUNTIME_STATE =
           ["@esbuild/win32-arm64", "npm:0.25.2"],\
           ["@esbuild/win32-ia32", "npm:0.25.2"],\
           ["@esbuild/win32-x64", "npm:0.25.2"]\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
+    ["esbuild-plugin-copy", [\
+      ["npm:2.1.1", {\
+        "packageLocation": "./.yarn/cache/esbuild-plugin-copy-npm-2.1.1-ba42aff336-29b89f5b7f.zip/node_modules/esbuild-plugin-copy/",\
+        "packageDependencies": [\
+          ["esbuild-plugin-copy", "npm:2.1.1"]\
+        ],\
+        "linkType": "SOFT"\
+      }],\
+      ["virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:2.1.1", {\
+        "packageLocation": "./.yarn/__virtual__/esbuild-plugin-copy-virtual-a6533654b0/0/cache/esbuild-plugin-copy-npm-2.1.1-ba42aff336-29b89f5b7f.zip/node_modules/esbuild-plugin-copy/",\
+        "packageDependencies": [\
+          ["esbuild-plugin-copy", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:2.1.1"],\
+          ["@types/esbuild", null],\
+          ["chalk", "npm:4.1.2"],\
+          ["chokidar", "npm:3.6.0"],\
+          ["esbuild", "npm:0.25.2"],\
+          ["fs-extra", "npm:10.1.0"],\
+          ["globby", "npm:11.1.0"]\
+        ],\
+        "packagePeers": [\
+          "@types/esbuild",\
+          "esbuild"\
         ],\
         "linkType": "HARD"\
       }]\
@@ -5189,6 +5185,16 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["fs-extra", [\
+      ["npm:10.1.0", {\
+        "packageLocation": "./.yarn/cache/fs-extra-npm-10.1.0-86573680ed-05ce2c3b59.zip/node_modules/fs-extra/",\
+        "packageDependencies": [\
+          ["fs-extra", "npm:10.1.0"],\
+          ["graceful-fs", "npm:4.2.11"],\
+          ["jsonfile", "npm:6.1.0"],\
+          ["universalify", "npm:2.0.1"]\
+        ],\
+        "linkType": "HARD"\
+      }],\
       ["npm:11.3.0", {\
         "packageLocation": "./.yarn/cache/fs-extra-npm-11.3.0-a6b1b4d5ad-c9fe7b23dd.zip/node_modules/fs-extra/",\
         "packageDependencies": [\
@@ -5440,6 +5446,39 @@ const RAW_RUNTIME_STATE =
           ["slash", "npm:3.0.0"]\
         ],\
         "linkType": "HARD"\
+      }]\
+    ]],\
+    ["gluesync-conductor", [\
+      ["workspace:packages/gluesync-conductor", {\
+        "packageLocation": "./packages/gluesync-conductor/",\
+        "packageDependencies": [\
+          ["gluesync-conductor", "workspace:packages/gluesync-conductor"],\
+          ["@fastify/swagger", "npm:9.5.0"],\
+          ["@fastify/swagger-ui", "npm:5.2.2"],\
+          ["@fastify/type-provider-typebox", "virtual:ae019b20ec517cc67897d669514df0c569aec6fd41976fa9549e05378b711fa024b475ee68d76b4910090761fecf36f5dc595058cc147ccd84d2b67172a0edb8#npm:5.1.0"],\
+          ["@gluesync/scripts", "workspace:packages/scripts"],\
+          ["@types/dockerode", "npm:3.3.38"],\
+          ["@types/node", "npm:22.14.1"],\
+          ["@typescript-eslint/eslint-plugin", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:6.21.0"],\
+          ["@typescript-eslint/parser", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:6.21.0"],\
+          ["axios", "npm:1.8.4"],\
+          ["docker-compose", "npm:1.2.0"],\
+          ["dockerode", "npm:4.0.5"],\
+          ["eslint", "npm:8.57.1"],\
+          ["eslint-plugin-deprecation", "virtual:beb8dda6f7964700067e23ce77cb39672e53232747d9207129ce290669aa7b52a4867d6f76308bd24f79bcd9d13683b90dcd0eadd6b5cdd6c82249bcb0d213d1#npm:2.0.0"],\
+          ["eslint-plugin-functional", "virtual:beb8dda6f7964700067e23ce77cb39672e53232747d9207129ce290669aa7b52a4867d6f76308bd24f79bcd9d13683b90dcd0eadd6b5cdd6c82249bcb0d213d1#npm:6.6.3"],\
+          ["eslint-plugin-import", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:2.32.0"],\
+          ["eslint-plugin-prettier", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:5.5.3"],\
+          ["fastify", "npm:5.3.0"],\
+          ["fastify-plugin", "npm:5.0.1"],\
+          ["gluesync-sdk-client", "workspace:packages/gluesync-sdk-client"],\
+          ["nodemon", "npm:3.1.9"],\
+          ["prettier", "npm:3.5.3"],\
+          ["ts-node", "virtual:034f9ed205a5f66264fee41c6df436c9dcef3f8116beb72d220f3710a40569698233dbcf841b133703c95cf748137a93ca21390dc36b185b836a4c7aff3d5dc7#npm:10.9.2"],\
+          ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"],\
+          ["yaml", "npm:2.7.1"]\
+        ],\
+        "linkType": "SOFT"\
       }]\
     ]],\
     ["gluesync-nodejs-monorepo", [\

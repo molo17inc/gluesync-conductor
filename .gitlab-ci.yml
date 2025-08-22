@@ -1,11 +1,7 @@
 stages:
   - build
-  - merge_request
   - quality
   - deploy
-  - notify
-
-image: node:22.13.1
 
 default:
   tags:
@@ -24,107 +20,124 @@ variables:
   DOCKER_REGISTRY: registry.gitlab.com/molo17-public/gluesync/gluesync-conductor
   CONTAINER_MATE_IMAGE: ${DOCKER_REGISTRY}:${CI_COMMIT_REF_SLUG}
 
-build_mr:
-  stage: merge_request
-  script:
-    - export ENV="dev"
-    - echo "Building..."
-    - corepack enable
-    - yarn --version 
-    - yarn install
-    - yarn do
-  only:
-    - merge_requests
-
-build:
+build_artifacts:
   stage: build
+  image: node:22.13.1-alpine
   script:
-    - if [[ $CI_COMMIT_BRANCH == "develop" ]] || [[ $CI_COMMIT_BRANCH == "" ]]; then export ENV="dev"; fi
-    - if [[ $CI_COMMIT_BRANCH == "staging" ]]; then export ENV="test"; fi
-    - if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
-    
-    - echo "Building..."
+    - echo "Building artifacts..."
     - corepack enable
-    - yarn --version 
-    - yarn install
-    - yarn do
-    
-    - echo "Lint check..."
+    - node --version
+    - yarn --version
+
+    - echo "Installing dependencies..."
+    - yarn install --immutable --immutable-cache
+
+    - echo "Building..."
+    - yarn build
   artifacts:
     paths:
-      - packages/docker-mate/build
-      - packages/gluesync-sdk-client/dist
-      - packages/gluesync-sdk/dist
-    expire_in: 3 days
-    when: on_success
-  only:
-    - develop
-    - staging
-    - main
-    - tags
+      - packages/**/build
+      - packages/**/dist
+      - packages/**/lib
+    expire_in: 1h
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
 
 quality:
   stage: quality
+  image: node:22.13.1-alpine
   needs:
-    - build
+    - job: build_artifacts
+      artifacts: true
   script:
     - echo "Running quality checks..."
-    # Add your quality checks here
-  only:
-    - develop
-    - staging
-    - main
+    - corepack enable
+    - node --version
+    - yarn --version
 
-deploy:
+    - echo "Installing dependencies..."
+    - yarn install --immutable --immutable-cache
+
+    - echo "Running linting..."
+    - yarn lint
+    
+    - echo "Running type-check..."
+    - yarn type-check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+
+docker_images:
   stage: deploy
-  image: docker:20.10.0
+  image: docker:28.3.3
   services:
     - name: docker:dind
   needs:
-    - build
+    - job: build_artifacts
+      artifacts: true
+    - job: quality
   script:
-   - |
-      if [[ $CI_COMMIT_BRANCH == "develop" ]] || [[ $CI_COMMIT_BRANCH == "" ]]; then export ENV="dev"; fi
-      if [[ $CI_COMMIT_BRANCH == "staging" ]]; then export ENV="test"; fi
-      if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
+    - echo "Running build and push docker images..."
+    - apk add --no-cache bash
+    - docker version
 
-      apk add --no-cache bash
-      echo "APP_NAME=$APP_NAME"
-      docker login -u $CI_REGISTRY_USER -p "$CI_REGISTRY_PASSWORD"
+    # Login to Docker hub registry as default
+    # - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin
+    
+    # Enable Buildx
+    - docker buildx version
 
-      DEFAULT_NAME="$DOCKER_REGISTRY/$APP_NAME"
-      echo "DEFAULT_NAME=$DEFAULT_NAME"
+    # Register QEMU for multiarch
+    - docker run --rm --privileged tonistiigi/binfmt --install all
 
-      if [ -n "$CI_COMMIT_TAG" ]; then
-        TAGPART=$(echo "$CI_COMMIT_TAG" | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)')
-        VERSION_TAG="${DOCKER_REGISTRY}/${APP_NAME}:${TAGPART}"
+    # Create a new builder using docker-container driver
+    - docker buildx create --name multiarch-builder --driver docker-container --use
+    - docker buildx inspect --bootstrap
+
+    # Decide build strategy
+    - |
+      set -euo pipefail
+      set -x  # Debug: print all commands before execution
+
+      BRANCH="${CI_COMMIT_BRANCH:-undefined}"
+      TAG="${CI_COMMIT_TAG:-}"
+
+      echo "Branch=\"$BRANCH\", Tag=\"$TAG\""
+
+      if [[ "$BRANCH" == "develop" && -z "$TAG" ]]; then
+          echo "[INFO] Develop branch detected → multi-arch build with tag 'develop'"
+          /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "develop"
+
+      elif [[ -n "$TAG" ]]; then
+          echo "[INFO] Tag detected: \"$TAG\""
+
+          if [[ "$TAG" == release-* ]]; then
+              # Extract version part from release-* (must start with X.Y.Z)
+              TAGPART=$(echo "$TAG" | grep -oE '^release-([0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._-]+)?)$' | sed 's/^release-//')
+              if [[ -z "$TAGPART" ]]; then
+                  echo "[ERROR] Invalid release tag format: \"$TAG\""
+                  exit 1
+              fi
+              echo "[INFO] Release tag detected → using TAGPART=\"$TAGPART\""
+              /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "$TAGPART,latest"
+
+          elif [[ "$TAG" == tag-* ]]; then
+              # Take everything after "tag-"
+              TAGPART=$(echo "$TAG" | sed 's/^tag-//')
+              echo "[INFO] Regular tag detected → using TAGPART=\"$TAGPART\""
+              /bin/bash ./packages/scripts/docker_images.sh --platform linux/amd64 packages/gluesync-conductor gluesync-conductor "$TAGPART"
+
+          else
+              echo "[ERROR] Unknown tag format: \"$TAG\""
+              exit 1
+          fi
+
       else
-        VERSION_TAG="${DOCKER_REGISTRY}/${APP_NAME}:${ENV}"
+          echo "[ERROR] Unknown branch/tag combination: branch=\"$BRANCH\", tag=\"$TAG\""
+          exit 1
       fi
-
-      echo "VERSION_TAG=$VERSION_TAG"
-
-      cd packages/docker-mate
-      docker build -t "$VERSION_TAG" .
-      docker push "$VERSION_TAG"
-  only:
-    - develop
-    - staging
-    - main
-    - tags
-
-notify:
-  stage: notify
-  needs:
-    - deploy
-  script:
-    - if [[ $CI_COMMIT_BRANCH == "develop" ]] || [[ $CI_COMMIT_BRANCH == "" ]]; then export ENV="dev"; fi
-    - if [[ $CI_COMMIT_BRANCH == "staging" ]]; then export ENV="test"; fi
-    - if [[ $CI_COMMIT_BRANCH == "main" ]]; then export ENV="prod"; fi
-
-    - echo "Notification sent for ${ENV} environment"
-    # Add your notification logic here
-  only:
-    - develop
-    - staging
-    - main
+  rules:
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_COMMIT_BRANCH == "develop"'

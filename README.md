@@ -1,6 +1,6 @@
 # Gluesync Conductor - Container Management API
 
-![Gluesync Conductor Logo](./docs/assets/gluesync-conductor.svg)
+![Gluesync Conductor Logo](./packages/gluesync-conductor/public/gluesync-conductor.svg)
 
 ## Overview
 
@@ -28,12 +28,30 @@ Gluesync Conductor is a container management platform that provides a comprehens
 
 ```bash
 # Install dependencies
-cd packages/docker-mate
+cd packages/gluesync-conductor
 yarn install
 
 # Start the service
 PORT=50015 yarn dev
 ```
+
+## Available Scripts
+
+### Code Quality
+- **`yarn format`** - Format all files using Prettier
+- **`yarn format:check`** - Check if files are properly formatted
+- **`yarn format:write`** - Format files and write changes
+- **`yarn lint`** - Run ESLint across all workspaces
+- **`yarn lint:fix`** - Auto-fix ESLint issues across workspaces
+
+### Development
+- **`yarn type-check`** - Run TypeScript type checking across workspaces
+- **`yarn build`** - Build all packages in topological order
+- **`yarn do`** - Complete setup: install → build → type-check
+
+### Documentation
+- **`yarn get-openapi`** - Generate OpenAPI documentation from gluesync-conductor service
+
 
 ## API Endpoints
 
@@ -355,7 +373,7 @@ PROJECT_CWD=/path/to/your/directory PORT=50015 yarn dev
 
 ## Integration Guide
 
-For detailed integration flows and code examples showing how to use the Gluesync Conductor API in your applications, see the [Integration Flows Guide](./packages/docker-mate/docs/integration-flows.md). This guide includes:
+For detailed integration flows and code examples showing how to use the Gluesync Conductor API in your applications, see the [Integration Flows Guide](./packages/gluesync-conductor/docs/integration-flows.md). This guide includes:
 
 - Diagrams for container addition and update workflows
 - Code examples for common operations

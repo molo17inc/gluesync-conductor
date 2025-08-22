@@ -19,12 +19,17 @@
     "lint:fix": "yarn lint:ts:fix && yarn lint:js:fix",
     "build": "yarn tsc"
   },
+  "dependencies": {
+    "@fastify/swagger": "^9.4.2",
+    "@fastify/swagger-ui": "^5.2.2"
+  },
   "devDependencies": {
     "@types/node": "^22.14.1",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
     "dotenv": "^16.5.0",
     "esbuild": "0.25.2",
+    "esbuild-plugin-copy": "2.1.1",
     "eslint": "^8.56.0",
     "eslint-plugin-deprecation": "^2.0.0",
     "eslint-plugin-functional": "^6.0.0",

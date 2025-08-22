@@ -2,6 +2,8 @@
 import fs from 'fs';
 import path from 'path';
 import esbuild from 'esbuild';
+import { copy } from 'esbuild-plugin-copy';
+import { createRequire } from 'module';
 
 const DEFAULT_ENTRY_POINT = './src/index.ts';
 const DEFAULT_OUTFILE_NAME = 'index.js';
@@ -10,7 +12,6 @@ const entryPointFilePath = process.argv[2] || DEFAULT_ENTRY_POINT;
 const outFileName = process.argv[3] || DEFAULT_OUTFILE_NAME;
 
 const outdir = 'build';
-const outfile = path.join(outdir, outFileName);
 
 const build = async (
   entryPoint = DEFAULT_ENTRY_POINT,
@@ -22,6 +23,20 @@ const build = async (
     process.stdout.write(
       `Building functions...${entryPoint !== DEFAULT_ENTRY_POINT ? ` [${entryPoint}]` : ''}\n`,
     );
+
+    // Resolve the swagger-ui static path from Yarn PnP
+    const require = createRequire(import.meta.url);
+
+    // Resolve the path to the package.json of @fastify/swagger-ui
+    const swaggerUiPackagePath = require.resolve(
+      '@fastify/swagger-ui/package.json',
+    );
+
+    // Get the directory of the package
+    const swaggerUiDir = path.dirname(swaggerUiPackagePath);
+
+    // Construct the path to the static assets
+    const swaggerUiStatic = path.join(swaggerUiDir, 'static');
 
     await esbuild.build({
       write: true,
@@ -35,13 +50,22 @@ const build = async (
       packages: 'external', // ← AGGIUNGI QUESTO
       external: ['node:*'], // ← AGGIUNGI QUESTO
       resolveExtensions: ['.ts', '.tsx', '.js', '.jsx'], // ← AGGIUNGI QUESTO
-      bundle: true,
       outfile: path.join('build', outfileName),
+      plugins: [
+        copy({
+          resolveFrom: 'cwd',
+          assets: {
+            from: [`${swaggerUiStatic}/**/*`],
+            to: ['build/static'],
+          },
+        }),
+      ],
     });
 
     process.stdout.write('Done.\n');
   } catch (error) {
     process.stderr.write(`Error!\n${error.stack || error}\n`);
+    // eslint-disable-next-line functional/immutable-data
     process.exitCode = 1;
   }
 };

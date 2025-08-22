@@ -743,11 +743,14 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@gluesync/scripts@workspace:packages/scripts"
   dependencies:
+    "@fastify/swagger": "npm:^9.4.2"
+    "@fastify/swagger-ui": "npm:^5.2.2"
     "@types/node": "npm:^22.14.1"
     "@typescript-eslint/eslint-plugin": "npm:^6.15.0"
     "@typescript-eslint/parser": "npm:^6.15.0"
     dotenv: "npm:^16.5.0"
     esbuild: "npm:0.25.2"
+    esbuild-plugin-copy: "npm:2.1.1"
     eslint: "npm:^8.56.0"
     eslint-plugin-deprecation: "npm:^2.0.0"
     eslint-plugin-functional: "npm:^6.0.0"
@@ -2441,7 +2444,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"chalk@npm:^4.0.0, chalk@npm:^4.0.2":
+"chalk@npm:^4.0.0, chalk@npm:^4.0.2, chalk@npm:^4.1.2":
   version: 4.1.2
   resolution: "chalk@npm:4.1.2"
   dependencies:
@@ -2458,7 +2461,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"chokidar@npm:^3.5.2":
+"chokidar@npm:^3.5.2, chokidar@npm:^3.5.3":
   version: 3.6.0
   resolution: "chokidar@npm:3.6.0"
   dependencies:
@@ -2814,37 +2817,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"docker-mate@workspace:packages/docker-mate":
-  version: 0.0.0-use.local
-  resolution: "docker-mate@workspace:packages/docker-mate"
-  dependencies:
-    "@fastify/swagger": "npm:^9.4.2"
-    "@fastify/swagger-ui": "npm:^5.2.2"
-    "@fastify/type-provider-typebox": "npm:^5.1.0"
-    "@gluesync/scripts": "workspace:*"
-    "@types/dockerode": "npm:^3.3.34"
-    "@types/node": "npm:^22.14.1"
-    "@typescript-eslint/eslint-plugin": "npm:^6.15.0"
-    "@typescript-eslint/parser": "npm:^6.15.0"
-    axios: "npm:^1.8.4"
-    docker-compose: "npm:^1.2.0"
-    dockerode: "npm:^4.0.4"
-    eslint: "npm:^8.56.0"
-    eslint-plugin-deprecation: "npm:^2.0.0"
-    eslint-plugin-functional: "npm:^6.0.0"
-    eslint-plugin-import: "npm:^2.29.1"
-    eslint-plugin-prettier: "npm:^5.1.0"
-    fastify: "npm:^5.2.1"
-    fastify-plugin: "npm:^5.0.1"
-    gluesync-sdk-client: "workspace:*"
-    nodemon: "npm:^3.1.9"
-    prettier: "npm:^3.4.2"
-    ts-node: "npm:^10.9.2"
-    typescript: "npm:5.8.3"
-    yaml: "npm:^2.7.0"
-  languageName: unknown
-  linkType: soft
-
 "docker-modem@npm:^5.0.6":
   version: 5.0.6
   resolution: "docker-modem@npm:5.0.6"
@@ -3109,6 +3081,20 @@ __metadata:
     is-date-object: "npm:^1.0.5"
     is-symbol: "npm:^1.0.4"
   checksum: 10/17faf35c221aad59a16286cbf58ef6f080bf3c485dff202c490d074d8e74da07884e29b852c245d894eac84f73c58330ec956dfd6d02c0b449d75eb1012a3f9b
+  languageName: node
+  linkType: hard
+
+"esbuild-plugin-copy@npm:2.1.1":
+  version: 2.1.1
+  resolution: "esbuild-plugin-copy@npm:2.1.1"
+  dependencies:
+    chalk: "npm:^4.1.2"
+    chokidar: "npm:^3.5.3"
+    fs-extra: "npm:^10.0.1"
+    globby: "npm:^11.0.3"
+  peerDependencies:
+    esbuild: ">= 0.14.0"
+  checksum: 10/29b89f5b7f67830d6297583ab8cc327b9114ace6122f0cff1edc1ea1cbd28f1ae73cd9c9d8ddbc4da16a060f447f96a6707b5f6d24aad062e078e5d8cf110217
   languageName: node
   linkType: hard
 
@@ -3789,6 +3775,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"fs-extra@npm:^10.0.1":
+  version: 10.1.0
+  resolution: "fs-extra@npm:10.1.0"
+  dependencies:
+    graceful-fs: "npm:^4.2.0"
+    jsonfile: "npm:^6.0.1"
+    universalify: "npm:^2.0.0"
+  checksum: 10/05ce2c3b59049bcb7b52001acd000e44b3c4af4ec1f8839f383ef41ec0048e3cfa7fd8a637b1bddfefad319145db89be91f4b7c1db2908205d38bf91e7d1d3b7
+  languageName: node
+  linkType: hard
+
 "fs-extra@npm:^11.2.0":
   version: 11.3.0
   resolution: "fs-extra@npm:11.3.0"
@@ -4020,7 +4017,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"globby@npm:^11.1.0":
+"globby@npm:^11.0.3, globby@npm:^11.1.0":
   version: 11.1.0
   resolution: "globby@npm:11.1.0"
   dependencies:
@@ -4033,6 +4030,37 @@ __metadata:
   checksum: 10/288e95e310227bbe037076ea81b7c2598ccbc3122d87abc6dab39e1eec309aa14f0e366a98cdc45237ffcfcbad3db597778c0068217dcb1950fef6249104e1b1
   languageName: node
   linkType: hard
+
+"gluesync-conductor@workspace:packages/gluesync-conductor":
+  version: 0.0.0-use.local
+  resolution: "gluesync-conductor@workspace:packages/gluesync-conductor"
+  dependencies:
+    "@fastify/swagger": "npm:^9.4.2"
+    "@fastify/swagger-ui": "npm:^5.2.2"
+    "@fastify/type-provider-typebox": "npm:^5.1.0"
+    "@gluesync/scripts": "workspace:*"
+    "@types/dockerode": "npm:^3.3.34"
+    "@types/node": "npm:^22.14.1"
+    "@typescript-eslint/eslint-plugin": "npm:^6.15.0"
+    "@typescript-eslint/parser": "npm:^6.15.0"
+    axios: "npm:^1.8.4"
+    docker-compose: "npm:^1.2.0"
+    dockerode: "npm:^4.0.4"
+    eslint: "npm:^8.56.0"
+    eslint-plugin-deprecation: "npm:^2.0.0"
+    eslint-plugin-functional: "npm:^6.0.0"
+    eslint-plugin-import: "npm:^2.29.1"
+    eslint-plugin-prettier: "npm:^5.1.0"
+    fastify: "npm:^5.2.1"
+    fastify-plugin: "npm:^5.0.1"
+    gluesync-sdk-client: "workspace:*"
+    nodemon: "npm:^3.1.9"
+    prettier: "npm:^3.4.2"
+    ts-node: "npm:^10.9.2"
+    typescript: "npm:5.8.3"
+    yaml: "npm:^2.7.0"
+  languageName: unknown
+  linkType: soft
 
 "gluesync-nodejs-monorepo@workspace:.":
   version: 0.0.0-use.local
