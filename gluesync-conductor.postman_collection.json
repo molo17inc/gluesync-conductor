@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "2dfbc395-d0cd-464f-8879-ccb75f7907e5",
+    "_postman_id": "df4e6551-a942-44b8-8dbe-9b01656f1d5b",
     "name": "gluesync-conductor",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "33557734"
@@ -32,7 +32,57 @@
           "response": []
         },
         {
-          "name": "Do containers action",
+          "name": "Start container",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"start\",\n    \"ids\": [\n        \"apache_service\",\n        \"custom-mssql-target\"\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/containers",
+              "host": ["{{URL}}"],
+              "path": ["containers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Restart container",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"restart\",\n    \"ids\": [\n        \"apache_service\",\n        \"custom-mssql-target\"\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/containers",
+              "host": ["{{URL}}"],
+              "path": ["containers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Stop container",
           "request": {
             "auth": {
               "type": "noauth"
@@ -42,6 +92,131 @@
             "body": {
               "mode": "raw",
               "raw": "{\n    \"action\": \"stop\",\n    \"ids\": [\n        \"apache_service\",\n        \"ergre\"\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/containers",
+              "host": ["{{URL}}"],
+              "path": ["containers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Kill container",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"kill\",\n    \"ids\": [\n        \"apache_service\",\n        \"custom-mssql-target\"\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/containers",
+              "host": ["{{URL}}"],
+              "path": ["containers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pull container",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"stop\",\n    \"ids\": [\n        \"apache_service\",\n        \"ergre\"\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/containers",
+              "host": ["{{URL}}"],
+              "path": ["containers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remove container",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"remove\",\n    \"ids\": [\n        \"apache_service\",\n        \"custom-mssql-target\"\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/containers",
+              "host": ["{{URL}}"],
+              "path": ["containers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remove orphan network",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"removeNetwork\",\n    \"ids\": [\n        \"gluesync-conductor_default\"\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{URL}}/containers",
+              "host": ["{{URL}}"],
+              "path": ["containers"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Undeploy container",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"action\": \"undeploy\",\n    \"ids\": [\n        \"apache_service\",\n        \"custom-mssql-target\"\n    ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -71,7 +246,7 @@
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"agents\": [\n    {\n      \"imageName\": \"gluesync-mssql-cdc\",\n      \"type\": \"target\",\n      \"environment\": {\n        \"NODE_ENV\": \"production forse\",\n        \"DB_HOST\": \"db\",\n        \"DB_USER\": \"root\",\n        \"DB_PASS\": \"password\",\n        \"privileged\": true,\n        \"start_from\": 0\n      },\n      \"labels\": {\n        \"test\": \"new label\"\n      }\n    },\n    {\n      \"imageName\": \"gluesync-mssql-cdc\",\n      \"type\": \"source\",\n      \"environment\": {\n        \"NODE_ENV\": \"development\",\n        \"DB_HOST\": \"dbaaa\",\n        \"DB_USER\": \"rooooooot\",\n        \"DB_PASS\": \"password\"\n      },\n      \"reservations\": {\n        \"cpus\": 1.0,\n        \"memory\": \"2.0G\"\n      },\n      \"limits\": {\n        \"cpus\": 2.0,\n        \"memory\": \"6.4G\"\n      }\n    },\n    {\n      \"imageName\": \"gluesync-aerospike\",\n      \"type\": \"target\",\n      \"nickname\": \"custom-aerospike-agt\",\n      \"ports\": [\"9090:9090\", \"9090:9091\", \"8080:80\"]\n    },\n    {\n      \"imageName\": \"gluesync-mssql-cdc\",\n      \"type\": \"source\",\n      \"environment\": {\n        \"DB_PASS\": \"new_password\"\n      },\n      \"reservations\": {\n        \"cpus\": 1.0,\n        \"memory\": \"2.3G\"\n      },\n      \"limits\": {\n        \"cpus\": 2.0,\n        \"memory\": \"6.8G\"\n      }\n    }\n  ]\n}\n",
+              "raw": "{\n  \"agents\": [\n    {\n      \"imageName\": \"gluesync-mssql-cdc\",       // maps to Docker image\n      \"type\": \"target\",                        // source or target (required for processing)\n      \"nickname\": \"custom-mssql-target\",       // custom service/container name override\n      \"tag\": \"2.1.2.6\",                        // optional image version tag\n      \"environment\": {                         // env variables in service\n        \"NODE_ENV\": \"production\",\n        \"DB_HOST\": \"db\",\n        \"DB_USER\": \"root\",\n        \"DB_PASS\": \"password\",\n        \"privileged\": true,\n        \"start_from\": 0\n      },\n      \"labels\": {                              // docker-compose labels\n        \"team\": \"data-eng\",\n        \"stage\": \"prod\"\n      },\n      \"ports\": [                               // port mappings\n        \"9090:9090\",\n        \"9090:9091\",\n        \"8080:80\"\n      ],\n      \"volumes\": [                             // volume mounts\n        \"./data:/var/lib/mysql\",\n        \"./logs:/var/log/mssql\"\n      ],\n      \"reservations\": {                        // resource reservations\n        \"cpus\": 1.0,\n        \"memory\": \"2.0G\"\n      },\n      \"limits\": {                              // resource limits\n        \"cpus\": 2.0,\n        \"memory\": \"6.4G\"\n      }\n    }\n  ]\n}\n",
               "options": {
                 "raw": {
                   "language": "json"
@@ -82,97 +257,6 @@
               "raw": "{{URL}}/agents",
               "host": ["{{URL}}"],
               "path": ["agents"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Get agents",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{URL}}/agents",
-              "host": ["{{URL}}"],
-              "path": ["agents"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Start agents",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{URL}}/containers/apache_service/start",
-              "host": ["{{URL}}"],
-              "path": ["containers", "apache_service", "start"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Stop agents",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{URL}}/agents/stop",
-              "host": ["{{URL}}"],
-              "path": ["agents", "stop"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Remove agent",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "DELETE",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"agents\": [\n        {\n            \"imageName\": \"gluesync-mssql-cdc\",\n            \"type\": \"target\"\n        }\n    ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{URL}}/agents/remove",
-              "host": ["{{URL}}"],
-              "path": ["agents", "remove"]
             }
           },
           "response": []
