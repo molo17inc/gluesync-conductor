@@ -42,7 +42,7 @@ const startServer = async () => {
   // Register other plugins
   await server.register(dockerPlugin);
 
-  // Register other gluesync
+  // Register Gluesync plugin
   await server.register(gluesyncPlugin);
 
   // Register route modules
