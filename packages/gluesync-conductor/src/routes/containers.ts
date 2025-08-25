@@ -1,6 +1,5 @@
 import { FastifyInstance } from 'fastify';
 import listContainers from '../functions/container/listContainers/listContainers';
-import getContainerVersion from '../functions/container/getContainerVersion/getContainerVersion';
 import updateContainer from '../functions/container/updateContainer/updateContainer';
 import doContainersAction from '../functions/container/doContainersAction/doContainersAction';
 import { containerActions } from '../models/conductor.model';
@@ -303,54 +302,6 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
       },
     },
     handler: doContainersAction,
-  });
-
-  fastify.get('/containers/:id/version', {
-    schema: {
-      tags: ['containers'],
-      description: 'Get container version information',
-      params: {
-        type: 'object',
-        required: ['id'],
-        properties: {
-          id: { type: 'string', description: 'Container ID' },
-        },
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            data: {
-              additionalProperties: true,
-              type: 'object',
-              properties: {
-                containerId: { type: 'string' },
-                containerName: { type: 'string' },
-                currentImage: { type: 'string' },
-                currentTag: { type: 'string' },
-                latestVersion: { type: 'object', additionalProperties: true },
-              },
-            },
-          },
-        },
-        404: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            error: { type: 'string' },
-          },
-        },
-        502: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            error: { type: 'string' },
-          },
-        },
-      },
-    },
-    handler: getContainerVersion,
   });
 
   fastify.put('/containers/:id', {

@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import addAgents from '../functions/agent/addAgents/addAgents';
+import getAgentVersion from '../functions/agent/getAgentVersion/getAgentVersion';
 
 const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.post('/agents', {
@@ -99,6 +100,55 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
       },
     },
     handler: addAgents,
+  });
+
+  fastify.get('/agents/:id/version', {
+    schema: {
+      tags: ['agents'],
+      summary: 'Get agent version information',
+      description:
+        'Calls the service backoffice.molo17 and returns the agent version information',
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', description: 'Agent ID' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              additionalProperties: true,
+              type: 'object',
+              properties: {
+                currentVersion: { type: 'string' },
+                latestVersionAlpha: { type: 'string' },
+                latestVersionBeta: { type: 'string' },
+                latestVersionGA: { type: 'string' },
+              },
+            },
+          },
+        },
+        404: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            error: { type: 'string' },
+          },
+        },
+        502: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            error: { type: 'string' },
+          },
+        },
+      },
+    },
+    handler: getAgentVersion,
   });
 };
 
