@@ -41,7 +41,6 @@ const processAgents: ProcessAgents = async (
           reject(createAgentError(typeErrorMsg, 400, serviceId));
         } else {
           const service = createService(agent);
-          console.log('>>>>>>>>>>>>>>>> agentPromises', service);
 
           resolve({
             success: true,
