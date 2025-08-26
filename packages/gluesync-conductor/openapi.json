@@ -1,60 +1,70 @@
 {
-  "swagger": "2.0",
+  "openapi": "3.0.0",
   "info": {
-    "version": "1.0.0",
-    "title": ""
+    "title": "Gluesync Conductor API",
+    "description": "API documentation for Gluesync Conductor",
+    "version": "1.0.0"
   },
-  "definitions": {
-    "def-0": {
-      "additionalProperties": true,
-      "type": "object",
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "services": {
-          "type": "object",
-          "additionalProperties": {
+  "components": {
+    "securitySchemes": {
+      "apiKey": {
+        "type": "apiKey",
+        "name": "apiKey",
+        "in": "header"
+      }
+    },
+    "schemas": {
+      "def-0": {
+        "additionalProperties": true,
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "services": {
             "type": "object",
-            "properties": {
-              "image": {
-                "type": "string"
-              },
-              "container_name": {
-                "type": "string"
-              },
-              "restart": {
-                "type": "string"
-              },
-              "environment": {
-                "type": "array",
-                "items": {
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "image": {
                   "type": "string"
-                }
-              },
-              "ports": {
-                "type": "array",
-                "items": {
+                },
+                "container_name": {
                   "type": "string"
-                }
-              },
-              "volumes": {
-                "type": "array",
-                "items": {
+                },
+                "restart": {
                   "type": "string"
-                }
-              },
-              "labels": {
-                "type": "array",
-                "items": {
-                  "type": "string"
+                },
+                "environment": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "ports": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "volumes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "labels": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               }
             }
           }
-        }
-      },
-      "title": "ComposeFile"
+        },
+        "title": "ComposeFile"
+      }
     }
   },
   "paths": {
@@ -69,35 +79,43 @@
     },
     "/health": {
       "get": {
-        "description": "Health check endpoint",
         "tags": [
           "system"
         ],
+        "description": "Health check endpoint",
         "responses": {
           "200": {
             "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "data": {
-                  "type": "string"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
           },
           "500": {
             "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "error": {
-                  "type": "string"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
@@ -107,22 +125,26 @@
     },
     "/compose-to-json": {
       "get": {
-        "description": "Convert compose file to JSON",
         "tags": [
           "system"
         ],
+        "description": "Convert compose file to JSON",
         "responses": {
           "200": {
             "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "data": {
-                  "additionalProperties": true,
-                  "type": "object"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    }
+                  }
                 }
               }
             }
@@ -132,22 +154,26 @@
     },
     "/info": {
       "get": {
-        "description": "Get system information",
         "tags": [
           "system"
         ],
+        "description": "Get system information",
         "responses": {
           "200": {
             "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "data": {
-                  "additionalProperties": true,
-                  "type": "object"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    }
+                  }
                 }
               }
             }
@@ -157,22 +183,26 @@
     },
     "/version": {
       "get": {
-        "description": "Get API version",
         "tags": [
           "system"
         ],
+        "description": "Get API version",
         "responses": {
           "200": {
             "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "data": {
-                  "additionalProperties": true,
-                  "type": "object"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    }
+                  }
                 }
               }
             }
@@ -182,115 +212,287 @@
     },
     "/containers": {
       "get": {
-        "description": "List all containers",
+        "summary": "List all Docker containers",
         "tags": [
           "containers"
         ],
+        "description": "Retrieves a comprehensive list of all Docker containers with their current status, configuration, and system information including CPU and memory details.",
         "responses": {
           "200": {
             "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "data": {
-                  "additionalProperties": true,
+            "content": {
+              "application/json": {
+                "schema": {
                   "type": "object",
                   "properties": {
-                    "systemInfo": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
                       "type": "object",
                       "properties": {
-                        "ncpu": {
-                          "type": "number"
+                        "systemInfo": {
+                          "type": "object",
+                          "properties": {
+                            "ncpu": {
+                              "type": "number"
+                            },
+                            "memTotal": {
+                              "type": "number"
+                            }
+                          }
                         },
-                        "memTotal": {
-                          "type": "number"
-                        }
-                      }
-                    },
-                    "containers": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "additionalProperties": true,
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "image": {
-                            "type": "string"
-                          },
-                          "tag": {
-                            "type": "string"
-                          },
-                          "versionTag": {
-                            "type": "string"
-                          },
-                          "persisted": {
-                            "type": "boolean"
-                          },
-                          "created": {
-                            "type": "string"
-                          },
-                          "running": {
-                            "type": "boolean"
-                          },
-                          "status": {
-                            "type": "string"
-                          },
-                          "exitCode": {
-                            "type": "number"
-                          },
-                          "startedAt": {
-                            "type": "string"
-                          },
-                          "finishedAt": {
-                            "type": "string"
-                          },
-                          "cmd": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          },
-                          "env": {
-                            "type": "array",
-                            "items": {
-                              "type": "string"
-                            }
-                          },
-                          "labels": {
+                        "containers": {
+                          "type": "array",
+                          "items": {
                             "type": "object",
-                            "additionalProperties": true
-                          },
-                          "networkMode": {
-                            "type": "string"
-                          },
-                          "privileged": {
-                            "type": "boolean"
-                          },
-                          "ports": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "additionalProperties": true
-                            }
-                          },
-                          "mounts": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "additionalProperties": true
-                            }
-                          },
-                          "hostConfig": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "agent",
+                                  "module",
+                                  "unknown"
+                                ]
+                              },
+                              "persisted": {
+                                "type": "boolean"
+                              },
+                              "service": {
+                                "type": "object",
+                                "properties": {
+                                  "image": {
+                                    "type": "string"
+                                  },
+                                  "container_name": {
+                                    "type": "string"
+                                  },
+                                  "restart": {
+                                    "type": "string"
+                                  },
+                                  "deploy": {
+                                    "type": "object",
+                                    "properties": {
+                                      "resources": {
+                                        "type": "object",
+                                        "properties": {
+                                          "reservations": {
+                                            "type": "object",
+                                            "properties": {
+                                              "cpus": {
+                                                "type": "number"
+                                              },
+                                              "memory": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          },
+                                          "limits": {
+                                            "type": "object",
+                                            "properties": {
+                                              "cpus": {
+                                                "type": "number"
+                                              },
+                                              "memory": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "labels": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                  },
+                                  "environment": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                  },
+                                  "ports": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "host": {
+                                          "type": "string"
+                                        },
+                                        "container": {
+                                          "type": "string"
+                                        },
+                                        "protocol": {
+                                          "type": "string",
+                                          "enum": [
+                                            "tcp",
+                                            "udp"
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "volumes": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "host": {
+                                          "type": "string"
+                                        },
+                                        "container": {
+                                          "type": "string"
+                                        },
+                                        "opts": {
+                                          "type": "string",
+                                          "enum": [
+                                            "rw",
+                                            "ro"
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "info": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "image": {
+                                    "type": "string"
+                                  },
+                                  "imageID": {
+                                    "type": "string"
+                                  },
+                                  "tag": {
+                                    "type": "string"
+                                  },
+                                  "versionTag": {
+                                    "type": "string"
+                                  },
+                                  "command": {
+                                    "type": "string"
+                                  },
+                                  "created": {
+                                    "type": "number"
+                                  },
+                                  "state": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "type": "string"
+                                  },
+                                  "ports": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "ip": {
+                                          "type": "string"
+                                        },
+                                        "privatePort": {
+                                          "type": "number"
+                                        },
+                                        "publicPort": {
+                                          "type": "number"
+                                        },
+                                        "type": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "labels": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                  },
+                                  "hostConfig": {
+                                    "type": "object",
+                                    "properties": {
+                                      "networkMode": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "additionalProperties": true
+                                  },
+                                  "networkSettings": {
+                                    "type": "object",
+                                    "properties": {
+                                      "networks": {
+                                        "type": "object",
+                                        "additionalProperties": {
+                                          "type": "object",
+                                          "properties": {
+                                            "networkID": {
+                                              "type": "string"
+                                            },
+                                            "endpointID": {
+                                              "type": "string"
+                                            },
+                                            "gateway": {
+                                              "type": "string"
+                                            },
+                                            "iPAddress": {
+                                              "type": "string"
+                                            },
+                                            "iPPrefixLen": {
+                                              "type": "number"
+                                            },
+                                            "macAddress": {
+                                              "type": "string"
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "mounts": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "type": {
+                                          "type": "string"
+                                        },
+                                        "source": {
+                                          "type": "string"
+                                        },
+                                        "destination": {
+                                          "type": "string"
+                                        },
+                                        "mode": {
+                                          "type": "string"
+                                        },
+                                        "rw": {
+                                          "type": "boolean"
+                                        },
+                                        "propagation": {
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "type": "string"
+                                        },
+                                        "driver": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "persisted"
+                            ]
                           }
                         }
                       }
@@ -302,17 +504,142 @@
           },
           "500": {
             "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "error": {
-                  "type": "string"
-                },
-                "details": {
-                  "type": "string"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Execute action on containers",
+        "tags": [
+          "containers"
+        ],
+        "description": "Performs the specified action (kill,pull,remove,removeNetwork,restart,start,stop,undeploy) on one or more containers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "action",
+                  "ids"
+                ],
+                "properties": {
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "kill",
+                      "pull",
+                      "remove",
+                      "removeNetwork",
+                      "restart",
+                      "start",
+                      "stop",
+                      "undeploy"
+                    ],
+                    "description": "The action to perform on the containers"
+                  },
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "description": "Array of container NAMEs to perform the action on"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "containers": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "Container NAME"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "OK",
+                                  "ERROR"
+                                ],
+                                "description": "Action execution status"
+                              },
+                              "message": {
+                                "type": "string",
+                                "description": "Result message or error description"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error message"
+                    },
+                    "details": {
+                      "type": "string",
+                      "description": "Additional error details"
+                    }
+                  },
+                  "additionalProperties": false
                 }
               }
             }
@@ -321,589 +648,126 @@
       }
     },
     "/containers/{id}": {
-      "get": {
-        "description": "Get a container configuration",
+      "put": {
         "tags": [
           "containers"
         ],
+        "description": "Update a container configuration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "imageName": {
+                    "type": "string",
+                    "description": "Name of the Docker image"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "target",
+                      "source"
+                    ],
+                    "description": "Type of the agent"
+                  },
+                  "nickname": {
+                    "type": "string",
+                    "description": "Optional nickname for the agent"
+                  },
+                  "tag": {
+                    "type": "string",
+                    "description": "Optional Docker image tag"
+                  },
+                  "environment": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "Optional environment variables"
+                  },
+                  "ports": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Optional port mappings"
+                  },
+                  "volumes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Optional volume mappings"
+                  }
+                }
+              }
+            }
+          }
+        },
         "parameters": [
           {
-            "type": "string",
-            "description": "Container ID",
-            "required": true,
+            "schema": {
+              "type": "string"
+            },
             "in": "path",
-            "name": "id"
+            "name": "id",
+            "required": true,
+            "description": "Container ID to update"
           }
         ],
         "responses": {
           "200": {
             "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "data": {
-                  "additionalProperties": true,
+            "content": {
+              "application/json": {
+                "schema": {
                   "type": "object",
                   "properties": {
-                    "imageName": {
-                      "type": "string"
-                    },
-                    "type": {
-                      "type": "string",
-                      "enum": [
-                        "target",
-                        "source"
-                      ]
-                    },
-                    "nickname": {
-                      "type": "string"
-                    },
-                    "tag": {
-                      "type": "string"
-                    },
-                    "versionTag": {
-                      "type": "string"
-                    },
-                    "persisted": {
+                    "success": {
                       "type": "boolean"
                     },
-                    "environment": {
-                      "type": "object",
-                      "additionalProperties": true
-                    },
-                    "ports": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "volumes": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "hostConfig": {
-                      "type": "object",
-                      "additionalProperties": true
+                    "data": {
+                      "additionalProperties": true,
+                      "type": "object"
                     }
                   }
-                },
-                "systemInfo": {
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
                   "type": "object",
                   "properties": {
-                    "ncpu": {
-                      "type": "number"
+                    "success": {
+                      "type": "boolean",
+                      "default": false
                     },
-                    "memTotal": {
-                      "type": "number"
+                    "error": {
+                      "type": "string"
                     }
                   }
                 }
               }
             }
           },
-          "404": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "error": {
-                  "type": "string"
-                }
-              }
-            }
-          },
           "500": {
             "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "error": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "description": "Update a container configuration",
-        "tags": [
-          "containers"
-        ],
-        "parameters": [
-          {
-            "name": "body",
-            "in": "body",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "imageName": {
-                  "type": "string",
-                  "description": "Name of the Docker image"
-                },
-                "type": {
-                  "type": "string",
-                  "enum": [
-                    "target",
-                    "source"
-                  ],
-                  "description": "Type of the agent"
-                },
-                "nickname": {
-                  "type": "string",
-                  "description": "Optional nickname for the agent"
-                },
-                "tag": {
-                  "type": "string",
-                  "description": "Optional Docker image tag"
-                },
-                "environment": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "description": "Optional environment variables"
-                },
-                "ports": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "description": "Optional port mappings"
-                },
-                "volumes": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  },
-                  "description": "Optional volume mappings"
-                }
-              }
-            }
-          },
-          {
-            "type": "string",
-            "description": "Container ID to update",
-            "required": true,
-            "in": "path",
-            "name": "id"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "data": {
-                  "additionalProperties": true,
-                  "type": "object"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean",
-                  "default": false
-                },
-                "error": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean",
-                  "default": false
-                },
-                "error": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "description": "Remove a container from the compose file",
-        "tags": [
-          "containers"
-        ],
-        "parameters": [
-          {
-            "type": "string",
-            "description": "Container ID to remove",
-            "required": true,
-            "in": "path",
-            "name": "id"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "data": {
-                  "additionalProperties": true,
-                  "type": "object"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean",
-                  "default": false
-                },
-                "error": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/containers/{id}/version": {
-      "get": {
-        "description": "Get container version information",
-        "tags": [
-          "containers"
-        ],
-        "parameters": [
-          {
-            "type": "string",
-            "description": "Container ID",
-            "required": true,
-            "in": "path",
-            "name": "id"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "data": {
-                  "additionalProperties": true,
+            "content": {
+              "application/json": {
+                "schema": {
                   "type": "object",
                   "properties": {
-                    "containerId": {
-                      "type": "string"
+                    "success": {
+                      "type": "boolean",
+                      "default": false
                     },
-                    "containerName": {
+                    "error": {
                       "type": "string"
-                    },
-                    "currentImage": {
-                      "type": "string"
-                    },
-                    "currentTag": {
-                      "type": "string"
-                    },
-                    "latestVersion": {
-                      "type": "object",
-                      "additionalProperties": true
                     }
                   }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "error": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "error": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/containers/{id}/start": {
-      "post": {
-        "description": "Start a container",
-        "tags": [
-          "containers"
-        ],
-        "parameters": [
-          {
-            "type": "string",
-            "description": "Container ID to start",
-            "required": true,
-            "in": "path",
-            "name": "id"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "data": {
-                  "additionalProperties": true,
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean",
-                  "default": false
-                },
-                "error": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/containers/{id}/stop": {
-      "post": {
-        "description": "Stop a container",
-        "tags": [
-          "containers"
-        ],
-        "parameters": [
-          {
-            "type": "string",
-            "description": "Container ID to stop",
-            "required": true,
-            "in": "path",
-            "name": "id"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "data": {
-                  "additionalProperties": true,
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean",
-                  "default": false
-                },
-                "error": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/containers/{id}/pull": {
-      "post": {
-        "description": "Pull the latest image for a container",
-        "tags": [
-          "containers"
-        ],
-        "parameters": [
-          {
-            "type": "string",
-            "description": "Container ID to pull image for",
-            "required": true,
-            "in": "path",
-            "name": "id"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "data": {
-                  "additionalProperties": true,
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean",
-                  "default": false
-                },
-                "error": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean",
-                  "default": false
-                },
-                "error": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/containers/{id}/restart": {
-      "post": {
-        "description": "Restart a container",
-        "tags": [
-          "containers"
-        ],
-        "parameters": [
-          {
-            "type": "string",
-            "description": "Container ID to restart",
-            "required": true,
-            "in": "path",
-            "name": "id"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "data": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean",
-                  "default": false
-                },
-                "error": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean",
-                  "default": false
-                },
-                "error": {
-                  "type": "string"
                 }
               }
             }
@@ -913,123 +777,471 @@
     },
     "/agents": {
       "post": {
-        "description": "Add agents",
+        "summary": "Add a list of agents",
         "tags": [
           "agents"
         ],
-        "parameters": [
-          {
-            "name": "body",
-            "in": "body",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "agents": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "imageName": {
-                        "type": "string"
-                      },
-                      "type": {
-                        "type": "string",
-                        "enum": [
-                          "target",
-                          "source"
-                        ]
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "tag": {
-                        "type": "string"
-                      },
-                      "environment": {
-                        "type": "object",
-                        "additionalProperties": true
-                      },
-                      "ports": {
-                        "type": "array",
-                        "items": {
-                          "anyOf": [
-                            {
-                              "type": "object",
-                              "properties": {
-                                "host": {
-                                  "type": "string"
-                                },
-                                "container": {
-                                  "type": "string"
-                                },
-                                "protocol": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "host",
-                                "container"
-                              ]
-                            },
-                            {
-                              "type": "string"
-                            }
-                          ]
-                        }
-                      },
-                      "volumes": {
-                        "type": "array",
-                        "items": {
+        "description": "Agents specifications are written in docker compose file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "agents": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "imageName": {
                           "type": "string"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "target",
+                            "source"
+                          ]
+                        },
+                        "nickname": {
+                          "type": "string"
+                        },
+                        "tag": {
+                          "type": "string"
+                        },
+                        "environment": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "labels": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "ports": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "host": {
+                                    "type": "string"
+                                  },
+                                  "container": {
+                                    "type": "string"
+                                  },
+                                  "protocol": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "host",
+                                  "container"
+                                ]
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "volumes": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "host": {
+                                    "type": "string"
+                                  },
+                                  "container": {
+                                    "type": "string"
+                                  },
+                                  "mode": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "host",
+                                  "container"
+                                ]
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "reservations": {
+                          "type": "object"
+                        },
+                        "limits": {
+                          "type": "object"
                         }
                       },
-                      "reservations": {
-                        "type": "object"
-                      },
-                      "limits": {
-                        "type": "object"
-                      }
-                    },
-                    "required": [
-                      "imageName",
-                      "type"
-                    ]
+                      "required": [
+                        "imageName",
+                        "type"
+                      ]
+                    }
                   }
-                }
-              },
-              "required": [
-                "agents"
-              ]
+                },
+                "required": [
+                  "agents"
+                ]
+              }
             }
-          }
-        ],
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean"
-                },
-                "data": {
-                  "additionalProperties": true,
-                  "type": "object"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "success": {
+                            "type": "boolean"
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "serviceId": {
+                            "type": "string"
+                          },
+                          "service": {
+                            "type": "object",
+                            "nullable": true,
+                            "additionalProperties": true
+                          }
+                        },
+                        "required": [
+                          "success",
+                          "serviceId"
+                        ]
+                      }
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "results"
+                  ]
                 }
               }
             }
           },
           "404": {
             "description": "Default Response",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "success": {
-                  "type": "boolean",
-                  "default": false
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Edit a list of agents",
+        "tags": [
+          "agents"
+        ],
+        "description": "Agents specifications are written in docker compose file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "agents": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "imageName": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "target",
+                            "source"
+                          ]
+                        },
+                        "nickname": {
+                          "type": "string"
+                        },
+                        "tag": {
+                          "type": "string"
+                        },
+                        "environment": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "labels": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "ports": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "host": {
+                                    "type": "string"
+                                  },
+                                  "container": {
+                                    "type": "string"
+                                  },
+                                  "protocol": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "host",
+                                  "container"
+                                ]
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "volumes": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "host": {
+                                    "type": "string"
+                                  },
+                                  "container": {
+                                    "type": "string"
+                                  },
+                                  "mode": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "host",
+                                  "container"
+                                ]
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "reservations": {
+                          "type": "object"
+                        },
+                        "limits": {
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "imageName",
+                        "type"
+                      ]
+                    }
+                  }
                 },
-                "error": {
-                  "type": "string"
+                "required": [
+                  "agents"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "success": {
+                            "type": "boolean"
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "serviceId": {
+                            "type": "string"
+                          },
+                          "service": {
+                            "type": "object",
+                            "nullable": true,
+                            "additionalProperties": true
+                          }
+                        },
+                        "required": [
+                          "success",
+                          "serviceId"
+                        ]
+                      }
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data",
+                    "results"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agents/{id}/version": {
+      "get": {
+        "summary": "Get agent version information",
+        "tags": [
+          "agents"
+        ],
+        "description": "Calls the service backoffice.molo17 and returns the agent version information",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "description": "Agent ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "additionalProperties": true,
+                      "type": "object",
+                      "properties": {
+                        "currentVersion": {
+                          "type": "string"
+                        },
+                        "latestVersionAlpha": {
+                          "type": "string"
+                        },
+                        "latestVersionBeta": {
+                          "type": "string"
+                        },
+                        "latestVersionGA": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
@@ -1037,5 +1249,19 @@
         }
       }
     }
-  }
+  },
+  "tags": [
+    {
+      "name": "system",
+      "description": "System related endpoints"
+    },
+    {
+      "name": "containers",
+      "description": "Container related endpoints"
+    },
+    {
+      "name": "agents",
+      "description": "Agent related endpoints"
+    }
+  ]
 }

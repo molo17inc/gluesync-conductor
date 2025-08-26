@@ -3,7 +3,7 @@ import { ErrorResponse } from '../../../models/common.model';
 import { RawComposeService } from '../../../models/composeFile.model';
 import { Agent } from '../../../helpers/processAgent/processAgent.model';
 
-export type AddAgentsBody = Readonly<{
+export type EditAgentsBody = Readonly<{
   agents: readonly Agent[];
 }>;
 
@@ -15,19 +15,19 @@ export type AgentResultItem =
     }
   | { success: false; serviceId: string; error: string };
 
-export type AddAgentsSuccessResponse = {
+export type EditAgentsSuccessResponse = {
   success: boolean;
   results: Array<AgentResultItem>;
 };
 
-export type AddAgentsResponse = AddAgentsSuccessResponse | ErrorResponse;
+export type EditAgentsResponse = EditAgentsSuccessResponse | ErrorResponse;
 
-export type AddAgentsHandler = RouteHandlerMethod<
+export type EditAgentsHandler = RouteHandlerMethod<
   any,
   any,
   any,
   {
-    Body: Partial<AddAgentsBody>;
-    Reply: AddAgentsResponse;
+    Body: Partial<EditAgentsBody>;
+    Reply: EditAgentsResponse;
   }
 >;

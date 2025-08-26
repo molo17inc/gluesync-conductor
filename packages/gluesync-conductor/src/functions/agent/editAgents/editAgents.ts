@@ -1,26 +1,29 @@
 import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
 import processAgents from '../../../helpers/processAgent/processAgent';
 import { Agent } from '../../../helpers/processAgent/processAgent.model';
-import { AddAgentsHandler, AddAgentsSuccessResponse } from './addAgents.model';
+import {
+  EditAgentsHandler,
+  EditAgentsSuccessResponse,
+} from './editAgents.model';
 
-const handler: AddAgentsHandler = async (req, reply) => {
+const handler: EditAgentsHandler = async (req, reply) => {
+  const agents: ReadonlyArray<Agent> = req.body.agents ?? [];
+
   try {
-    const agents: ReadonlyArray<Agent> = req.body.agents ?? [];
-
     const { results } = await processAgents(
       'agent',
       agents,
-      existingService => !!existingService, // error if agent exists
+      existingService => !existingService, // error if agent not exists
       ({ reservations, limits, ...agent }) =>
         createComposeService('agent', {
           ...agent,
           resources: { reservations, limits },
         }),
-      'Agent already existing in file',
+      'Agent not existing in file',
       'Agent type missing',
     );
 
-    const response: AddAgentsSuccessResponse = {
+    const response: EditAgentsSuccessResponse = {
       success: true,
       results,
     };
@@ -29,7 +32,7 @@ const handler: AddAgentsHandler = async (req, reply) => {
   } catch (error) {
     reply.code(500).send({
       success: false,
-      error: `Failed to add agents: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Failed to edit agents: ${error instanceof Error ? error.message : String(error)}`,
     });
   }
 };

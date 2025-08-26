@@ -7,8 +7,7 @@
     "lint": "eslint .",
     "lint:fix": "yarn lint --fix",
     "type-check": "yarn tsc --noEmit --incremental --tsBuildInfoFile .tsbuildinfo",
-    "dev:docker": "nodemon src/index.ts",
-    "dev": "nodemon src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "build": "buildService",
     "start": "node build/index.js",
     "get-openapi": "yarn dlx tsx scripts/fetchOpenApiSpec.ts",
@@ -40,9 +39,9 @@
     "eslint-plugin-functional": "^6.0.0",
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-prettier": "^5.1.0",
-    "nodemon": "^3.1.9",
     "prettier": "^3.4.2",
     "ts-node": "^10.9.2",
+    "tsx": "^4.20.4",
     "typescript": "5.8.3"
   }
 }
