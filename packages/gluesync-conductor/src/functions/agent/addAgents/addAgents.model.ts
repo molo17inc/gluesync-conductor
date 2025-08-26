@@ -2,40 +2,14 @@ import { RouteHandlerMethod } from 'fastify';
 
 import { ErrorResponse } from '../../../models/common.model';
 import {
-  ComposePort,
-  ComposeServiceDeploy,
-  ComposeVolume,
   RawComposeFile,
   RawComposeService,
 } from '../../../models/composeFile.model';
+import { Agent } from '../../../helpers/processAgent/processAgent.model';
 
 export type AddAgentsBody = Readonly<{
-  agents: ReadonlyArray<
-    ComposeServiceDeploy['resources'] & {
-      imageName: string;
-      type: 'target' | 'source';
-      nickname?: string;
-      tag?: string;
-      environment?: Record<string, any>;
-      labels: Record<string, any>;
-      ports?: ReadonlyArray<ComposePort>;
-      volumes?: ReadonlyArray<ComposeVolume>;
-    }
-  >;
+  agents: readonly Agent[];
 }>;
-
-export const createAgentError = (
-  message: string,
-  status: number,
-  serviceId: string,
-): Error & { status: number; serviceId: string } => {
-  const error = new Error(message);
-  return {
-    ...error, // copy native Error properties (message, stack, name)
-    status,
-    serviceId,
-  };
-};
 
 export type AgentResultItem =
   | {
