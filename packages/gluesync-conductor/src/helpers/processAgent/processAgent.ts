@@ -1,16 +1,13 @@
-import {
-  RawComposeFile,
-  RawComposeService,
-} from '../../models/composeFile.model';
+import { RawComposeFile } from '../../models/composeFile.model';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
-import { Agent, AgentResultItem } from './processAgent.model';
+import {
+  AgentResultItem,
+  CreateAgentError,
+  ProcessAgents,
+} from './processAgent.model';
 
-const createAgentError = (
-  message: string,
-  status: number,
-  serviceId: string,
-): Error & { status: number; serviceId: string; error: string } => {
+const createAgentError: CreateAgentError = (message, status, serviceId) => {
   const error = new Error(message);
   return {
     message: error.message,
@@ -22,12 +19,12 @@ const createAgentError = (
   };
 };
 
-const processAgents = async (
-  agents: ReadonlyArray<Agent>,
-  validateExistence: (existingService: any) => boolean,
-  createService: (agent: Agent) => RawComposeService,
-  existErrorMsg: string,
-  typeErrorMsg: string,
+const processAgents: ProcessAgents = async (
+  agents,
+  validateExistence,
+  createService,
+  existErrorMsg,
+  typeErrorMsg,
 ): Promise<{
   results: AgentResultItem[];
   updatedComposeJson: RawComposeFile;
@@ -58,12 +55,13 @@ const processAgents = async (
 
   const results = await Promise.allSettled(agentPromises);
 
-  const updatedServices = results.reduce((acc, result) => {
-    if (result.status === 'fulfilled' && result.value.success) {
-      return { ...acc, [result.value.serviceId]: result.value.service };
-    }
-    return acc;
-  }, {});
+  const updatedServices = results.reduce(
+    (acc, result) =>
+      result.status === 'fulfilled' && result.value.success
+        ? { ...acc, [result.value.serviceId]: result.value.service }
+        : acc,
+    {},
+  );
 
   const updatedComposeJson = {
     ...composeJson,
@@ -76,15 +74,17 @@ const processAgents = async (
   await writeComposeFile(updatedComposeJson);
 
   return {
-    results: results.map(r => {
-      if (r.status === 'fulfilled') return r.value;
-      const reason = r.reason || {};
-      return {
-        success: false,
-        error: reason.error || reason.message || 'Unknown error',
-        serviceId: reason.serviceId,
-      };
-    }),
+    results: results.map(r =>
+      r.status === 'fulfilled'
+        ? r.value
+        : {
+            success: false,
+            error:
+              (r.reason && (r.reason.error || r.reason.message)) ||
+              'Unknown error',
+            serviceId: r.reason?.serviceId,
+          },
+    ),
     updatedComposeJson,
   };
 };

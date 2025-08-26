@@ -1,6 +1,7 @@
 import {
   ComposePort,
   ComposeVolume,
+  RawComposeFile,
   RawComposeService,
 } from '../../models/composeFile.model';
 
@@ -30,3 +31,20 @@ export type AgentResultItem =
       service: RawComposeService;
     }
   | { success: false; serviceId: string; error: string };
+
+export type CreateAgentError = (
+  message: string,
+  status: number,
+  serviceId: string,
+) => Error & { status: number; serviceId: string; error: string };
+
+export type ProcessAgents = (
+  agents: ReadonlyArray<Agent>,
+  validateExistence: (existingService: any) => boolean,
+  createService: (agent: Agent) => RawComposeService,
+  existErrorMsg: string,
+  typeErrorMsg: string,
+) => Promise<{
+  results: AgentResultItem[];
+  updatedComposeJson: RawComposeFile;
+}>;
