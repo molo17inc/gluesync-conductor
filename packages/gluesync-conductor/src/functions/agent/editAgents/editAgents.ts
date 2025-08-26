@@ -14,7 +14,11 @@ const handler: EditAgentsHandler = async (req, reply) => {
       'agent',
       agents,
       existingService => !existingService, // error if agent not exists
-      agent => createComposeService('agent', agent),
+      ({ reservations, limits, ...agent }) =>
+        createComposeService('agent', {
+          ...agent,
+          resources: { reservations, limits },
+        }),
       'Agent not existing in file',
       'Agent type missing',
     );

@@ -6,12 +6,16 @@ import { AddAgentsHandler, AddAgentsSuccessResponse } from './addAgents.model';
 const handler: AddAgentsHandler = async (req, reply) => {
   try {
     const agents: ReadonlyArray<Agent> = req.body.agents ?? [];
-
+    console.log('>>>>>>>>>>>>>>>>>> AGENTS', agents);
     const { results } = await processAgents(
       'agent',
       agents,
       existingService => !!existingService, // error if agent exists
-      agent => createComposeService('agent', agent),
+      ({ reservations, limits, ...agent }) =>
+        createComposeService('agent', {
+          ...agent,
+          resources: { reservations, limits },
+        }),
       'Agent already existing in file',
       'Agent type missing',
     );
