@@ -1,86 +1,110 @@
-import { AddAgentsHandler } from './addAgents.model';
-import { RawComposeFile } from '../../../models/composeFile.model';
-
-import writeComposeFile from '../../../helpers/composeFile/writeComposeFile/writeComposeFile';
-import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
-import mergeComposeFiles, {
-  mergeServices,
-} from '../../../helpers/composeFile/mergeComposeFiles/mergeComposeFiles';
 import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
+import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
+import writeComposeFile from '../../../helpers/composeFile/writeComposeFile/writeComposeFile';
+import {
+  AddAgentsHandler,
+  AgentResultItem,
+  AddAgentsSuccessResponse,
+  createAgentError,
+} from './addAgents.model';
 
 const handler: AddAgentsHandler = async (req, reply) => {
   try {
     const composeJson = await readComposeFile({ raw: true });
 
-    const composeFile = (req.body.agents || []).reduce<RawComposeFile>(
-      (acc, agent) => {
-        if (!agent.type) {
-          return acc;
-        }
-
-        const {
-          imageName,
-          type,
-          nickname,
-          tag,
-          environment,
-          labels,
-          ports = [],
-          volumes = [],
-          limits,
-          reservations,
-        } = agent;
-
-        const service = createComposeService('agent', {
-          imageName,
-          type,
-          nickname,
-          tag,
-          environment,
-          ports,
-          volumes,
-          labels,
-          resources: {
+    const agentPromises: Promise<AgentResultItem>[] = (
+      req.body.agents || []
+    ).map(
+      agent =>
+        new Promise<AgentResultItem>((resolve, reject) => {
+          const {
+            imageName,
+            type,
+            nickname,
+            tag,
+            environment,
+            labels,
+            ports = [],
+            volumes = [],
             limits,
             reservations,
-          },
-        });
+          } = agent;
 
-        req.log.debug(`Creating service for agent: ${JSON.stringify(service)}`);
+          const serviceId = `${imageName}-${type}-agent`;
+          const existingService = composeJson.services?.[serviceId];
 
-        const services = mergeServices([
-          acc.services || {},
-          { [service.container_name]: service },
-        ]);
+          if (existingService) {
+            reject(
+              createAgentError(
+                'Agent already existing in file',
+                404,
+                serviceId,
+              ),
+            );
+          } else if (!type) {
+            reject(createAgentError('Agent type missing', 400, serviceId));
+          } else {
+            const service = createComposeService('agent', {
+              imageName,
+              type,
+              nickname,
+              tag,
+              environment,
+              ports,
+              volumes,
+              labels,
+              resources: { limits, reservations },
+            });
 
-        req.log.debug(`New services: ${JSON.stringify(services)}`);
+            resolve({
+              success: true,
+              serviceId,
+              service,
+            });
+          }
+        }),
+    );
 
+    const results = await Promise.allSettled(agentPromises);
+
+    const newServices = results.reduce((acc, result) => {
+      if (result.status === 'fulfilled' && result.value.success) {
+        return { ...acc, [result.value.serviceId]: result.value.service };
+      }
+      return acc;
+    }, {});
+
+    const updatedCompose = {
+      ...composeJson,
+      services: { ...composeJson.services, ...newServices },
+    };
+
+    await writeComposeFile(updatedCompose);
+
+    // Compose the typed response object
+    const response: AddAgentsSuccessResponse = {
+      success: true,
+      results: results.map(r => {
+        if (r.status === 'fulfilled') {
+          return r.value;
+        }
+
+        // Extract proper error info from reject object
+        const reason = r.reason || {};
         return {
-          ...acc,
-          services,
+          success: false,
+          error: reason.error,
+          serviceId: reason.serviceId,
         };
-      },
-      {},
-    );
+      }),
+      data: updatedCompose,
+    };
 
-    req.log.debug(`Compose file to be merged: ${JSON.stringify(composeFile)}`);
-
-    const newComposeFile = mergeComposeFiles([composeJson, composeFile]);
-
-    req.log.debug(`Merged compose file: ${JSON.stringify(newComposeFile)}`);
-
-    await writeComposeFile(newComposeFile);
-
-    reply.code(200);
-    reply.send({ success: true, data: newComposeFile });
+    reply.code(200).send(response);
   } catch (error) {
-    req.log.error(
-      `Error adding agent: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
-    );
-    reply.code(500);
-    reply.send({
+    reply.code(500).send({
       success: false,
-      error: `Failed to add agent: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Failed to add agents: ${error instanceof Error ? error.message : String(error)}`,
     });
   }
 };
