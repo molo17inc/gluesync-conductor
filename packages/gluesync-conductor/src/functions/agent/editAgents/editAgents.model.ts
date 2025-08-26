@@ -1,10 +1,6 @@
 import { RouteHandlerMethod } from 'fastify';
-
 import { ErrorResponse } from '../../../models/common.model';
-import {
-  RawComposeFile,
-  RawComposeService,
-} from '../../../models/composeFile.model';
+import { RawComposeService } from '../../../models/composeFile.model';
 import { Agent } from '../../../helpers/processAgent/processAgent.model';
 
 export type EditAgentsBody = Readonly<{
@@ -21,7 +17,6 @@ export type AgentResultItem =
 
 export type EditAgentsSuccessResponse = {
   success: boolean;
-  data: RawComposeFile;
   results: Array<AgentResultItem>;
 };
 

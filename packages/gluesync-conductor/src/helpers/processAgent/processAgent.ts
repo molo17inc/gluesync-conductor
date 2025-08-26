@@ -1,4 +1,3 @@
-import { RawComposeFile } from '../../models/composeFile.model';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
 import {
@@ -20,22 +19,20 @@ const createAgentError: CreateAgentError = (message, status, serviceId) => {
 };
 
 const processAgents: ProcessAgents = async (
+  serviceType,
   agents,
   validateExistence,
   createService,
   existErrorMsg,
   typeErrorMsg,
-): Promise<{
-  results: AgentResultItem[];
-  updatedComposeJson: RawComposeFile;
-}> => {
+) => {
   const composeJson = await readComposeFile({ raw: true });
 
   const agentPromises = agents.map(
     agent =>
       new Promise<AgentResultItem>((resolve, reject) => {
         const { imageName, type } = agent;
-        const serviceId = `${imageName}-${type}-agent`;
+        const serviceId = `${imageName}-${type}-${serviceType}`;
         const existingService = composeJson.services?.[serviceId];
 
         if (validateExistence(existingService)) {

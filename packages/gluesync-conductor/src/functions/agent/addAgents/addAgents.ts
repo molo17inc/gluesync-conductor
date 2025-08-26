@@ -7,7 +7,8 @@ const handler: AddAgentsHandler = async (req, reply) => {
   try {
     const agents: ReadonlyArray<Agent> = req.body.agents ?? [];
 
-    const { results, updatedComposeJson } = await processAgents(
+    const { results } = await processAgents(
+      'agent',
       agents,
       existingService => !!existingService, // error if agent exists
       agent => createComposeService('agent', agent),
@@ -18,7 +19,6 @@ const handler: AddAgentsHandler = async (req, reply) => {
     const response: AddAgentsSuccessResponse = {
       success: true,
       results,
-      data: updatedComposeJson,
     };
 
     reply.code(200).send(response);

@@ -102,10 +102,6 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
                 required: ['success', 'serviceId'],
               },
             },
-            data: {
-              type: 'object',
-              additionalProperties: true,
-            },
           },
           required: ['success', 'results'],
         },
@@ -267,10 +263,6 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
                 },
                 required: ['success', 'serviceId'],
               },
-            },
-            data: {
-              type: 'object',
-              additionalProperties: true,
             },
           },
           required: ['success', 'data', 'results'],

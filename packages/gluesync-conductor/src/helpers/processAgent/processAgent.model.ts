@@ -4,6 +4,7 @@ import {
   RawComposeFile,
   RawComposeService,
 } from '../../models/composeFile.model';
+import { ConductorServiceTypes } from '../../models/conductor.model';
 
 export type Agent = Readonly<{
   imageName: string;
@@ -39,6 +40,7 @@ export type CreateAgentError = (
 ) => Error & { status: number; serviceId: string; error: string };
 
 export type ProcessAgents = (
+  type: ConductorServiceTypes,
   agents: ReadonlyArray<Agent>,
   validateExistence: (existingService: any) => boolean,
   createService: (agent: Agent) => RawComposeService,
