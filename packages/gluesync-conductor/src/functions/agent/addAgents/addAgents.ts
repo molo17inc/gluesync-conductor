@@ -93,7 +93,7 @@ const handler: AddAgentsHandler = async (req, reply) => {
         const reason = r.reason || {};
         return {
           success: false,
-          error: reason.error,
+          error: reason.error || reason.message || 'Unknown error',
           serviceId: reason.serviceId,
         };
       }),

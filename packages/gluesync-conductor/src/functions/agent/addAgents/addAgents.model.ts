@@ -24,12 +24,6 @@ export type AddAgentsBody = Readonly<{
   >;
 }>;
 
-// export type AgentResultItem = {
-//   success: boolean;
-//   error?: string;
-//   serviceId: string;
-// };
-
 export const createAgentError = (
   message: string,
   status: number,
