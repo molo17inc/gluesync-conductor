@@ -265,7 +265,7 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
               },
             },
           },
-          required: ['success', 'data', 'results'],
+          required: ['success', 'results'],
         },
         404: {
           type: 'object',
