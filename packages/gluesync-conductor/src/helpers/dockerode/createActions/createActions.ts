@@ -6,6 +6,8 @@ import { readComposeFile } from '../../composeFile/readComposeFile/readComposeFi
 import removeKey from '../../removeKey/removeKey';
 import { RawComposeFile } from '../../../models/composeFile.model';
 import writeComposeFile from '../../composeFile/writeComposeFile/writeComposeFile';
+import fetchAgentInfo from '../../agentInfo/agentInfo';
+import extractImageInfo from '../../extractImageInfo/extractImageInfo';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 
@@ -62,13 +64,21 @@ const createActions: CreateActions = ({
 
     return `Agent ${id} undeployed successfully`;
   },
-  // update: async id => {
-  //   const container = docker.getContainer(id);
 
-  //   await container.update();
+  update: async (id: string) => {
+    const composeJson = await readComposeFile({ raw: true });
+    const service = composeJson.services?.[id];
+    if (!service) {
+      return `Agent ${id} not found`;
+    }
+    const cleanedName = extractImageInfo(service.image).name;
+    const agentInfo = await fetchAgentInfo(cleanedName);
 
-  //   return \`Container ${id} updated\`;
-  // },
+    return String(
+      agentInfo.AvailableAgents?.latestVersionGA ??
+        `Agent ${id} update info not found`,
+    );
+  },
 });
 
 export default createActions;

@@ -1,6 +1,74 @@
 import { DoContainersActionHandler } from './doContainersAction.model';
-
 import createActions from '../../../helpers/dockerode/createActions/createActions';
+import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
+import { RawComposeFile } from '../../../models/composeFile.model';
+import extractImageInfo from '../../../helpers/extractImageInfo/extractImageInfo';
+import fetchAgentInfo from '../../../helpers/agentInfo/agentInfo';
+import { AgentInfoResponse } from '../../../helpers/agentInfo/agentInfo.model';
+
+const canUpdateContainers = async (
+  containerIds: ReadonlyArray<string>,
+  composeJson: RawComposeFile,
+): Promise<
+  | false
+  | string
+  | { errors: (string | null)[]; message: string }
+  | `Agent ${string} not found`
+> => {
+  const agentInfoPromises = containerIds.map(async id => {
+    const service = composeJson.services?.[id];
+    if (!service) {
+      throw new Error(`Agent ${id} not found`);
+    }
+    const cleanedName = extractImageInfo(service.image).name;
+    return fetchAgentInfo(cleanedName);
+  });
+
+  const settledResults = await Promise.allSettled(agentInfoPromises);
+
+  // Collect error messages or null for each container
+  const errors = settledResults.map(result =>
+    result.status === 'rejected'
+      ? result.reason?.message || String(result.reason)
+      : null,
+  );
+
+  // Return immediately if any "Agent not found" error exists
+  const notFoundError = errors.find(e => e?.startsWith('Agent '));
+  if (notFoundError) {
+    return notFoundError as `Agent ${string} not found`;
+  }
+
+  // Extract fulfilled results with agent info
+  const fulfilledAgentInfos = settledResults
+    .filter(
+      (r): r is PromiseFulfilledResult<AgentInfoResponse> =>
+        r.status === 'fulfilled',
+    )
+    .map(r => r.value);
+
+  // Extract latestVersionGA, filtering out falsy values
+  const latestVersions = fulfilledAgentInfos
+    .map(agentInfo => agentInfo.AvailableAgents?.latestVersionGA)
+    .filter((v): v is string => Boolean(v));
+
+  // Check if all latestVersionGA strings are equal (and non-empty)
+  const allEqual =
+    latestVersions.length > 0 &&
+    latestVersions.every(v => v === latestVersions[0]);
+
+  // If versions mismatched, return errors info otherwise the common version string
+  if (!allEqual) {
+    const errorMessages = errors.filter(Boolean).join('\n');
+
+    return {
+      errors,
+      message: errorMessages,
+    };
+  }
+
+  return latestVersions[0];
+};
 
 const handler: DoContainersActionHandler = async (req, reply) => {
   try {
@@ -9,9 +77,31 @@ const handler: DoContainersActionHandler = async (req, reply) => {
 
     const actions = createActions({ docker: req.server.docker });
     const action = actions[containerAction];
+
     if (!action) {
       reply.code(400);
       throw new Error(`Unknown action: ${containerAction}`);
+    }
+
+    if (containerAction === 'update') {
+      const composeJson = await readComposeFile({ raw: true });
+
+      const updateResult = await canUpdateContainers(containerIds, composeJson);
+
+      if (
+        typeof updateResult === 'object' &&
+        'errors' in updateResult &&
+        'message' in updateResult
+      ) {
+        reply.code(400);
+        reply.send({
+          success: false,
+          error: '',
+          details: updateResult.message,
+        });
+
+        return; // Exit after sending error response
+      }
     }
 
     const results = await Promise.allSettled(containerIds.map(action));

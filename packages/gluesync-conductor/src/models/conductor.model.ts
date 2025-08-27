@@ -14,7 +14,7 @@ export const containerActions = [
   'restart',
   'start',
   'stop',
-  // 'update',
+  'update',
   'undeploy',
 ] as const;
 
