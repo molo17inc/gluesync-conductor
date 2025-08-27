@@ -2,7 +2,7 @@ import { ComposeFile, RawComposeFile } from '../../../models/composeFile.model';
 import readYmlFile from '../../file/readYmlFile/readYmlFile';
 import parseComposeFile from '../parseComposeFile/parseComposeFile';
 
-const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'compose.agents.yml';
+const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 
 // Overload 1: raw === true
 export function readComposeFile(

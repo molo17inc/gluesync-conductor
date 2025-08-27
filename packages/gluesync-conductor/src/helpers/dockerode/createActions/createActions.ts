@@ -7,7 +7,7 @@ import removeKey from '../../removeKey/removeKey';
 import { RawComposeFile } from '../../../models/composeFile.model';
 import writeComposeFile from '../../composeFile/writeComposeFile/writeComposeFile';
 
-const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'compose.agents.yml';
+const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 
 const runCmd: RunCmd = async (
   cmdFn: RunCmdFn,

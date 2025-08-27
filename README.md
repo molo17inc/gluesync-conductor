@@ -360,11 +360,11 @@ This allows you to distinguish between containers that were created through the 
 
 ## YAML File Handling
 
-Gluesync Conductor uses a fixed YAML file named `compose.agents.yml` located at the project root. This file stores the container configurations and is used to determine which containers are persisted.
+Gluesync Conductor uses a fixed YAML file named `docker-compose.yml` located at the project root. This file stores the container configurations and is used to determine which containers are persisted.
 
 You can provide your own YAML file by:
 
-1. Placing a file named `compose.agents.yml` in the project root
+1. Placing a file named `docker-compose.yml` in the project root
 2. Setting the `PROJECT_CWD` environment variable to point to a directory containing your YAML file
 
 ```bash

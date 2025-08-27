@@ -1,5 +1,4 @@
-name: 'debug-container'
-
+name: debug-container
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -10,13 +9,9 @@ services:
       - 9443:9443
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      # - ./portainer_data:/data
     command:
-      [
-        '--admin-password',
-        '$$2y$$05$$wxahdaIgY6yjxyPjvSqyr.NeLhCOY/pWLXSJykVsfUGaRXnjq3etK',
-      ]
-
+      - --admin-password
+      - $$2y$$05$$wxahdaIgY6yjxyPjvSqyr.NeLhCOY/pWLXSJykVsfUGaRXnjq3etK
   gluesync-conductor:
     build: ../packages/gluesync-conductor
     container_name: gluesync-conductor
@@ -36,10 +31,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/opt/gluesync/data
       - ./gs-conf/gs-license.dat:/opt/gluesync/data/gs-license.dat
-      - ./compose.agents.yml:/opt/gluesync-conductor/compose.agents.yml
+      - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
     networks:
       - gluesync-network
-
   gluesync-core-hub:
     image: molo17/gluesync-core-hub:2.1.0.0.1f094fc18
     ports:
@@ -53,7 +47,6 @@ services:
       - ./gs-conf/gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks
     networks:
       - gluesync-network
-
 networks:
   gluesync-network:
     driver: bridge

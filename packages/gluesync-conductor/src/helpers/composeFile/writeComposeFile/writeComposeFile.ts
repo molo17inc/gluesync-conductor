@@ -2,7 +2,7 @@ import writeYmlFile from '../../file/writeYmlFile/writeYmlFile';
 
 import { WriteComposeFile } from './writeComposeFile.model';
 
-const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'compose.agents.yml';
+const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 
 const writeComposeFile: WriteComposeFile = async (
   json,
