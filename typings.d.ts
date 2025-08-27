@@ -12,5 +12,7 @@ declare namespace NodeJS {
     readonly HOST: string;
     readonly PORT: string;
     readonly DOCKER_HOST: string;
+
+    readonly CORE_HUB_NAME: string;
   }
 }

@@ -1,5 +1,5 @@
-import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
+import extractImageInfo from '../extractCleanImageName/extractImageInfo';
 import {
   AgentResultItem,
   CreateAgentError,
@@ -20,13 +20,21 @@ const createAgentError: CreateAgentError = (message, status, serviceId) => {
 
 const processAgents: ProcessAgents = async (
   serviceType,
+  composeJson,
   agents,
   validateExistence,
   createService,
   existErrorMsg,
   typeErrorMsg,
 ) => {
-  const composeJson = await readComposeFile({ raw: true });
+  const coreHub =
+    composeJson.services?.[process.env.CORE_HUB_NAME || 'gluesync-core-hub'];
+
+  const coreHubVersionTag = extractImageInfo(coreHub?.image || '').tag;
+
+  if (!coreHubVersionTag) {
+    throw new Error('Core-hub Version Tag not found or empty');
+  }
 
   const agentPromises = agents.map(
     agent =>
@@ -40,7 +48,10 @@ const processAgents: ProcessAgents = async (
         } else if (!type) {
           reject(createAgentError(typeErrorMsg, 400, serviceId));
         } else {
-          const service = createService(agent);
+          const service = createService({
+            ...agent,
+            tag: coreHubVersionTag,
+          });
 
           resolve({
             success: true,

@@ -6,7 +6,7 @@ import { castObject } from '../../../helpers/composeFile/extractKeyValue/extract
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import { LabelPrefix } from '../../../models/composeFile.model';
 import fetchAgentInfo from '../../../helpers/agentInfo/agentInfo';
-import extractCleanImageName from '../../../helpers/extractCleanImageName/extractCleanImageName';
+import extractCleanImageName from '../../../helpers/extractCleanImageName/extractImageInfo';
 
 const handler: GetAgentVersionHandler = async (req, reply) => {
   try {
@@ -25,7 +25,7 @@ const handler: GetAgentVersionHandler = async (req, reply) => {
     const cleanedName = extractCleanImageName(service.image);
 
     // Make a request to the backoffice API to get the latest version
-    const agentInfo = await fetchAgentInfo(cleanedName);
+    const agentInfo = await fetchAgentInfo(cleanedName.name);
 
     const version = service?.labels?.[`${LabelPrefix.CONDUCTOR}.versiontag`];
 
