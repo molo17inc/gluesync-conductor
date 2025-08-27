@@ -1,5 +1,5 @@
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
-import extractImageInfo from '../extractCleanImageName/extractImageInfo';
+import extractImageInfo from '../extractImageInfo/extractImageInfo';
 import {
   AgentResultItem,
   CreateAgentError,
