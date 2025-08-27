@@ -25,7 +25,6 @@ services:
       - HOST=0.0.0.0
       - PORT=1717
       - DOCKER_HOST=unix:///var/run/docker.sock
-      - CORE_HUB_NAME=gluesync-core-hub
     ports:
       - 5017:1717
     volumes:
