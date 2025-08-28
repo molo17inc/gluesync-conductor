@@ -1,4 +1,5 @@
 import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
+import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import processAgents from '../../../helpers/processAgent/processAgent';
 import { Agent } from '../../../helpers/processAgent/processAgent.model';
 import { AddAgentsHandler, AddAgentsSuccessResponse } from './addAgents.model';
@@ -7,8 +8,11 @@ const handler: AddAgentsHandler = async (req, reply) => {
   try {
     const agents: ReadonlyArray<Agent> = req.body.agents ?? [];
 
+    const composeJson = await readComposeFile({ raw: true });
+
     const { results } = await processAgents(
       'agent',
+      composeJson,
       agents,
       existingService => !!existingService, // error if agent exists
       ({ reservations, limits, ...agent }) =>

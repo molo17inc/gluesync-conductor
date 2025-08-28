@@ -10,6 +10,9 @@ export type Agent = Readonly<{
   imageName: string;
   type: 'target' | 'source';
   nickname?: string;
+  /**
+   * Contains the same core-hub version tag.
+   */
   tag?: string;
   environment?: Record<string, any>;
   labels: Record<string, any>;
@@ -41,6 +44,7 @@ export type CreateAgentError = (
 
 export type ProcessAgents = (
   type: ConductorServiceTypes,
+  composeJson: Partial<RawComposeFile>,
   agents: ReadonlyArray<Agent>,
   validateExistence: (existingService: any) => boolean,
   createService: (agent: Agent) => RawComposeService,

@@ -20,7 +20,8 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
                 imageName: { type: 'string' },
                 type: { type: 'string', enum: ['target', 'source'] },
                 nickname: { type: 'string' },
-                tag: { type: 'string' },
+                // Handled in Agent but forced to core-hub version tag
+                // tag: { type: 'string' },
                 environment: {
                   type: 'object',
                   additionalProperties: true,
@@ -182,7 +183,8 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
                 imageName: { type: 'string' },
                 type: { type: 'string', enum: ['target', 'source'] },
                 nickname: { type: 'string' },
-                tag: { type: 'string' },
+                // Handled in Agent but forced to core-hub version tag
+                // tag: { type: 'string' },
                 environment: {
                   type: 'object',
                   additionalProperties: true,

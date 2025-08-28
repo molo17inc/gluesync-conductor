@@ -16,6 +16,7 @@ ENV COREHUB_UDP_PORT_RANGE=1717-1727
 ENV HOST=0.0.0.0
 ENV PORT=1717
 ENV DOCKER_HOST=unix:///var/run/docker.sock
+ENV CORE_HUB_NAME=gluesync-core-hub
 
 # Setup app directory
 WORKDIR /opt/gluesync-conductor
