@@ -102,40 +102,32 @@ docker_images:
       set -x  # Debug: print all commands before execution
 
       BRANCH="${CI_COMMIT_BRANCH:-undefined}"
-      TAG="${CI_COMMIT_TAG:-}"
+      TAG_PART=$(echo "$CI_COMMIT_TAG" | grep -oE '[0-9]+\.[0-9]+\.[0-9](.*)')
 
-      echo "Branch=\"$BRANCH\", Tag=\"$TAG\""
+      echo "Branch=\"$BRANCH\", Tag=\"$TAG_PART\""
 
-      if [[ "$BRANCH" == "develop" && -z "$TAG" ]]; then
+      if [[ "$BRANCH" == "develop" && -z "$TAG_PART" ]]; then
           echo "[INFO] Develop branch detected → multi-arch build with tag 'develop'"
           /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "develop"
 
-      elif [[ -n "$TAG" ]]; then
-          echo "[INFO] Tag detected: \"$TAG\""
+      elif [[ -n "$TAG_PART" ]]; then
+          echo "[INFO] Tag detected: \"$TAG_PART\""
 
-          if [[ "$TAG" == release-* ]]; then
-              # Extract version part from release-* (must start with X.Y.Z)
-              TAGPART=$(echo "$TAG" | grep -oE '^release-([0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9._-]+)?)$' | sed 's/^release-//')
-              if [[ -z "$TAGPART" ]]; then
-                  echo "[ERROR] Invalid release tag format: \"$TAG\""
-                  exit 1
-              fi
-              echo "[INFO] Release tag detected → using TAGPART=\"$TAGPART\""
-              /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "$TAGPART,latest"
+          if [[ "$CI_COMMIT_TAG" == release-* ]]; then
+              echo "[INFO] Release tag detected → using TAG_PART=\"$TAG_PART\""
+              /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "$TAG_PART,latest"
 
-          elif [[ "$TAG" == tag-* ]]; then
-              # Take everything after "tag-"
-              TAGPART=$(echo "$TAG" | sed 's/^tag-//')
-              echo "[INFO] Regular tag detected → using TAGPART=\"$TAGPART\""
-              /bin/bash ./packages/scripts/docker_images.sh --platform linux/amd64 packages/gluesync-conductor gluesync-conductor "$TAGPART"
+          elif [[ "$CI_COMMIT_TAG" == tag-* ]]; then
+              echo "[INFO] Regular tag detected → using TAG_PART=\"$TAG_PART\""
+              /bin/bash ./packages/scripts/docker_images.sh --platform linux/amd64 packages/gluesync-conductor gluesync-conductor "$TAG_PART"
 
           else
-              echo "[ERROR] Unknown tag format: \"$TAG\""
+              echo "[ERROR] Unknown tag format: \"$TAG_PART\""
               exit 1
           fi
 
       else
-          echo "[ERROR] Unknown branch/tag combination: branch=\"$BRANCH\", tag=\"$TAG\""
+          echo "[ERROR] Unknown branch/tag combination: branch=\"$BRANCH\", tag=\"$TAG_PART\""
           exit 1
       fi
   rules:
