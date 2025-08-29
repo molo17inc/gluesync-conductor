@@ -6,8 +6,6 @@ import { readComposeFile } from '../../composeFile/readComposeFile/readComposeFi
 import removeKey from '../../removeKey/removeKey';
 import { RawComposeFile } from '../../../models/composeFile.model';
 import writeComposeFile from '../../composeFile/writeComposeFile/writeComposeFile';
-import fetchAgentInfo from '../../agentInfo/agentInfo';
-import extractImageInfo from '../../extractImageInfo/extractImageInfo';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 
@@ -39,45 +37,38 @@ const createActions: CreateActions = ({
 }) => ({
   kill: id => runCmd(kill, id, filename),
   pull: id => runCmd(pullAll, id, filename, ['--include-deps']),
-  remove: id => runCmd(rm, id, filename, ['-s', '-v']), // remove stopped container and remove also attached volumes
+  remove: id => runCmd(rm, id, filename, ['-s', '-v']),
   removeNetwork: id => cleanupOrphanNetworkByName(docker, id),
   restart: id => runCmd(restartAll, id, filename, ['--no-deps']),
   start: id => runCmd(upAll, id, filename, ['--no-deps']),
   stop: id => runCmd(stop, id, filename),
   undeploy: async (id: string) => {
-    // Step 1: Remove the container
     await runCmd(rm, id, filename, ['-s', '-v']);
 
-    // Step 2: Remove the agent from file
     const composeJson = await readComposeFile({ raw: true });
-
     if (!composeJson.services || !composeJson.services[id]) {
       return `Agent ${id} not found`;
     }
-
     const composeFile: RawComposeFile = {
       ...composeJson,
       services: removeKey(composeJson.services, id),
     };
-
     await writeComposeFile(composeFile);
-
     return `Agent ${id} undeployed successfully`;
   },
-
   update: async (id: string) => {
-    const composeJson = await readComposeFile({ raw: true });
-    const service = composeJson.services?.[id];
-    if (!service) {
-      return `Agent ${id} not found`;
-    }
-    const cleanedName = extractImageInfo(service.image).name;
-    const agentInfo = await fetchAgentInfo(cleanedName);
+    await runCmd(pullAll, id, filename, ['--include-deps']);
 
-    return String(
-      agentInfo.AvailableAgents?.latestVersionGA ??
-        `Agent ${id} update info not found`,
-    );
+    await runCmd(upAll, id, filename, ['--remove-orphans']);
+
+    const result = await docker.pruneImages({ force: true });
+
+    const imagesCount = result.ImagesDeleted ? result.ImagesDeleted.length : 0;
+    const reclaimedMb = result.SpaceReclaimed
+      ? (result.SpaceReclaimed / (1024 * 1024)).toFixed(2)
+      : '0';
+
+    return `Agent ${id} updated, restarted, deleted ${imagesCount} images, and reclaimed ${reclaimedMb} MB disk space successfully`;
   },
 });
 
