@@ -48,10 +48,18 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         `Container action ${containerAction}: ${JSON.stringify(results)}`,
       );
 
+      const resultPrune = await req.server.docker.pruneImages({ force: true });
+
+      const pruneResultText =
+        resultPrune.ImagesDeleted && resultPrune.ImagesDeleted.length
+          ? `Pruned ${resultPrune.ImagesDeleted.length} images, and reclaimed ${(resultPrune.SpaceReclaimed / (1024 * 1024)).toFixed(2)} MB disk space successfully`
+          : undefined;
+
       reply.code(200);
       reply.send({
         success: true,
         data: {
+          ...(pruneResultText && { pruneResult: pruneResultText }),
           containers: results.map((result, index) => ({
             id: containerIdsUpdate[index],
             status: result.status === 'fulfilled' ? 'OK' : 'ERROR',

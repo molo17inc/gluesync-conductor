@@ -61,14 +61,7 @@ const createActions: CreateActions = ({
 
     await runCmd(upAll, id, filename, ['--remove-orphans']);
 
-    const result = await docker.pruneImages({ force: true });
-
-    const imagesCount = result.ImagesDeleted ? result.ImagesDeleted.length : 0;
-    const reclaimedMb = result.SpaceReclaimed
-      ? (result.SpaceReclaimed / (1024 * 1024)).toFixed(2)
-      : '0';
-
-    return `Agent ${id} updated, restarted, deleted ${imagesCount} images, and reclaimed ${reclaimedMb} MB disk space successfully`;
+    return `Agent ${id} updated and restarted`;
   },
 });
 
