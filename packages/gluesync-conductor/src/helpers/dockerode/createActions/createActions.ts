@@ -37,38 +37,32 @@ const createActions: CreateActions = ({
 }) => ({
   kill: id => runCmd(kill, id, filename),
   pull: id => runCmd(pullAll, id, filename, ['--include-deps']),
-  remove: id => runCmd(rm, id, filename, ['-s', '-v']), // remove stopped container and remove also attached volumes
+  remove: id => runCmd(rm, id, filename, ['-s', '-v']),
   removeNetwork: id => cleanupOrphanNetworkByName(docker, id),
   restart: id => runCmd(restartAll, id, filename, ['--no-deps']),
   start: id => runCmd(upAll, id, filename, ['--no-deps']),
   stop: id => runCmd(stop, id, filename),
   undeploy: async (id: string) => {
-    // Step 1: Remove the container
     await runCmd(rm, id, filename, ['-s', '-v']);
 
-    // Step 2: Remove the agent from file
     const composeJson = await readComposeFile({ raw: true });
-
     if (!composeJson.services || !composeJson.services[id]) {
       return `Agent ${id} not found`;
     }
-
     const composeFile: RawComposeFile = {
       ...composeJson,
       services: removeKey(composeJson.services, id),
     };
-
     await writeComposeFile(composeFile);
-
     return `Agent ${id} undeployed successfully`;
   },
-  // update: async id => {
-  //   const container = docker.getContainer(id);
+  update: async (id: string) => {
+    await runCmd(pullAll, id, filename, ['--include-deps']);
 
-  //   await container.update();
+    await runCmd(upAll, id, filename, ['--remove-orphans']);
 
-  //   return \`Container ${id} updated\`;
-  // },
+    return `Agent ${id} updated and restarted`;
+  },
 });
 
 export default createActions;

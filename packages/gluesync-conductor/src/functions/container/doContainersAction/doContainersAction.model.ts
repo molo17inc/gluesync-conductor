@@ -10,6 +10,7 @@ export type DoContainersActionItem = Readonly<{
 }>;
 
 export type DoContainersActionSuccessResponse = Readonly<{
+  pruneResult?: string;
   containers: ReadonlyArray<DoContainersActionItem>;
 }>;
 
