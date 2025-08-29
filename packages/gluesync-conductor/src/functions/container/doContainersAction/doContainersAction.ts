@@ -14,6 +14,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
 
     if (!action) {
       reply.code(400);
+      throw new Error(`Unknown action: ${containerAction}`);
     }
 
     if (containerAction === 'update') {
@@ -30,7 +31,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       );
 
       if (!canUpdateContainersResult.success) {
-        reply.code(400);
+        reply.code(500);
         throw new Error(canUpdateContainersResult.message);
       }
 
