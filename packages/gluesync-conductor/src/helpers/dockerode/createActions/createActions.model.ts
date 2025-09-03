@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { IDockerComposeResult } from 'docker-compose';
+import { IDockerComposeOptions, IDockerComposeResult } from 'docker-compose';
 import { ContainerActions } from '../../../models/conductor.model';
 
 export type ContainerAction = (id: string) => Promise<string>;
@@ -14,12 +14,7 @@ export type CreateActions = (
 ) => Record<ContainerActions, ContainerAction>;
 
 export type RunCmdFn = (
-  options: Readonly<{
-    cwd: string;
-    config: string;
-    log: boolean;
-    commandOptions?: string[];
-  }>,
+  options: Readonly<IDockerComposeOptions>,
 ) => Promise<IDockerComposeResult>;
 
 export type RunCmd = (

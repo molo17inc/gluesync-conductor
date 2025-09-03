@@ -9,7 +9,7 @@ import getRootPath from '../../getRootPath/getRootPath';
 const writeYmlFile: WriteYmlFile = async (json, filename) => {
   const parsedJson = stringify(json, { indent: 2 });
 
-  const path = getRootPath(filename);
+  const path = getRootPath({ filename });
 
   await writeFile(path, parsedJson, 'utf8');
 };

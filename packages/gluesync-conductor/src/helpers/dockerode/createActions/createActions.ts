@@ -1,5 +1,5 @@
 import { rm, kill, pullAll, restartAll, stop, upAll } from 'docker-compose';
-import { CreateActions, RunCmd, RunCmdFn } from './createActions.model';
+import { CreateActions, RunCmd } from './createActions.model';
 import getRootPath from '../../getRootPath/getRootPath';
 import cleanupOrphanNetworkByName from '../cleanupOrphanNetworkByName/cleanupOrphanNetworkByName';
 import { readComposeFile } from '../../composeFile/readComposeFile/readComposeFile';
@@ -9,16 +9,16 @@ import writeComposeFile from '../../composeFile/writeComposeFile/writeComposeFil
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 
-const runCmd: RunCmd = async (
-  cmdFn: RunCmdFn,
-  id: string,
-  filename: string,
-  extraOptions?: ReadonlyArray<string>,
-) => {
+const runCmd: RunCmd = async (cmdFn, id, filename, extraOptions?) => {
   const result = await cmdFn({
     cwd: getRootPath(),
     config: filename,
     log: true,
+    // global options
+    composeOptions: [
+      '--project-directory',
+      getRootPath({ basePath: process.env.BASE_PATH }),
+    ],
     commandOptions: [...(extraOptions ?? []), id],
   });
 

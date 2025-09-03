@@ -25,6 +25,7 @@ services:
       - HOST=0.0.0.0
       - PORT=1717
       - DOCKER_HOST=unix:///var/run/docker.sock
+      - BASE_PATH=$PWD
     ports:
       - 5017:1717
     volumes:

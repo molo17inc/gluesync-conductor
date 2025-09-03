@@ -6,7 +6,7 @@ import { ReadYmlFile } from './readYmlFile.model';
 import getRootPath from '../../getRootPath/getRootPath';
 
 const readYmlFile: ReadYmlFile = async filename => {
-  const path = getRootPath(filename);
+  const path = getRootPath({ filename });
 
   try {
     const yamlFile = await readFile(path, 'utf8');
