@@ -1,4 +1,5 @@
 import {
+  ComposeDependsOn,
   ComposePort,
   ComposeServiceDeploy,
   ComposeVolume,
@@ -16,6 +17,7 @@ export type CreateComposeServiceOptions = Readonly<
     ports?: ReadonlyArray<string> | ReadonlyArray<ComposePort>;
     volumes?: ReadonlyArray<string> | ReadonlyArray<ComposeVolume>;
     labels?: Record<string, string>;
+    dependsOn?: ComposeDependsOn;
   }
 >;
 

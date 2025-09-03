@@ -93,6 +93,7 @@ const createComposeService: CreateComposeService = (
     volumes = [],
     labels = {},
     resources,
+    dependsOn = [],
   },
 ) => {
   const containerName = `${imageName}-${type}-${serviceType}`;
@@ -133,6 +134,16 @@ const createComposeService: CreateComposeService = (
       ],
       mapVolumes(volumes),
     ),
+    healthcheck: {
+      test: ['CMD-SHELL', '/scripts/agent_joined.sh'],
+      interval: '30s',
+      timeout: '10s',
+      retries: 999,
+    },
+    depends_on: {
+      'gluesync-core-hub': { condition: 'service_started' },
+      ...dependsOn, // Handle object or fallback to empty
+    },
   };
 };
 
