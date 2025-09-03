@@ -1,6 +1,5 @@
 import { FastifyInstance } from 'fastify';
 import listContainers from '../functions/container/listContainers/listContainers';
-import updateContainer from '../functions/container/updateContainer/updateContainer';
 import doContainersAction from '../functions/container/doContainersAction/doContainersAction';
 import { containerActions } from '../models/conductor.model';
 
@@ -305,81 +304,6 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
       },
     },
     handler: doContainersAction,
-  });
-
-  fastify.put('/containers/:id', {
-    schema: {
-      description: 'Update a container configuration',
-      tags: ['containers'],
-      params: {
-        type: 'object',
-        required: ['id'],
-        properties: {
-          id: { type: 'string', description: 'Container ID to update' },
-        },
-      },
-      body: {
-        type: 'object',
-        properties: {
-          imageName: {
-            type: 'string',
-            description: 'Name of the Docker image',
-          },
-          type: {
-            type: 'string',
-            enum: ['target', 'source'],
-            description: 'Type of the agent',
-          },
-          nickname: {
-            type: 'string',
-            description: 'Optional nickname for the agent',
-          },
-          tag: { type: 'string', description: 'Optional Docker image tag' },
-          environment: {
-            type: 'object',
-            additionalProperties: true,
-            description: 'Optional environment variables',
-          },
-          ports: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Optional port mappings',
-          },
-          volumes: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Optional volume mappings',
-          },
-        },
-      },
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            data: {
-              additionalProperties: true,
-              type: 'object',
-            },
-          },
-        },
-        404: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean', default: false },
-            error: { type: 'string' },
-          },
-        },
-        500: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean', default: false },
-            error: { type: 'string' },
-          },
-        },
-      },
-    },
-    handler: updateContainer,
   });
 };
 
