@@ -17,6 +17,10 @@ ENV HOST=0.0.0.0
 ENV PORT=1717
 ENV DOCKER_HOST=unix:///var/run/docker.sock
 ENV CORE_HUB_NAME=gluesync-core-hub
+ENV LOG_LEVEL=INFO
+ENV USE_SDK=False
+ENV SSL_SKIP_VERIFY=True
+ENV SSL_ENABLED=False
 
 # Setup app directory
 WORKDIR /opt/gluesync-conductor

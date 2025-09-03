@@ -18,7 +18,7 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - LOGGER_LEVEL=trace
+      - LOG_LEVEL=INFO
       - GLUESYNC_LICENSE_FILE=/opt/gluesync/data/gs-license.dat
       - GLUESYNC_SECURITY_CONFIG=/opt/gluesync/data/security-config.json
       - GLUESYNC_MODULE_TAG=gluesync-conductor
@@ -26,6 +26,12 @@ services:
       - PORT=1717
       - DOCKER_HOST=unix:///var/run/docker.sock
       - BASE_PATH=$PWD
+      - USE_SDK=False 
+      - SSL_SKIP_VERIFY=True
+      - SSL_ENABLED=False
+      # Test-reserved (add only for integration tests):
+      # - JOB_ID=not_set
+      # - TEST_NAME=DRY_RUN
     ports:
       - 5017:1717
     volumes:
@@ -35,6 +41,7 @@ services:
       - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
     networks:
       - gluesync-network
+
   gluesync-core-hub:
     image: molo17/gluesync-core-hub:2.1.0.0.1f094fc18
     ports:
