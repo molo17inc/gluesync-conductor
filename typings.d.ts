@@ -14,5 +14,6 @@ declare namespace NodeJS {
     readonly DOCKER_HOST: string;
 
     readonly CORE_HUB_NAME: string;
+    readonly BASE_PATH: string;
   }
 }
