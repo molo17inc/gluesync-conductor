@@ -35,6 +35,16 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
       summary: 'List all Docker containers',
       description:
         'Retrieves a comprehensive list of all Docker containers with their current status, configuration, and system information including CPU and memory details.',
+      querystring: {
+        type: 'object',
+        properties: {
+          type: {
+            type: 'string',
+            enum: ['agent', 'module', 'unknown', 'all'],
+            description: 'Filter containers by type',
+          },
+        },
+      },
       response: {
         200: {
           type: 'object',
