@@ -1,9 +1,9 @@
 {
 	"info": {
-		"_postman_id": "056b6a72-b31b-4850-92e9-a26e57f1a2aa",
+		"_postman_id": "cb8000ab-b5a9-4933-8ae6-bc5981cb8d72",
 		"name": "gluesync-conductor",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-		"_exporter_id": "47310671"
+		"_exporter_id": "47310671",
 	},
 	"item": [
 		{
@@ -45,7 +45,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"action\": \"start\",\n    \"ids\": [\n        \"apache_service\",\n        \"custom-mssql-target\"\n    ]\n}",
+							"raw": "{\n    \"action\": \"start\",\n    \"ids\": [\n        \"apache_service\",\n        \"gluesync-mssql-cdc-source-agent\"\n    ]\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -74,7 +74,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"action\": \"restart\",\n    \"ids\": [\n        \"apache_service\",\n        \"custom-mssql-target\"\n    ]\n}",
+							"raw": "{\n    \"action\": \"restart\",\n    \"ids\": [\n        \"apache_service\",\n        \"gluesync-mssql-cdc-source-agent\"\n    ]\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -103,7 +103,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"action\": \"stop\",\n    \"ids\": [\n        \"apache_service\",\n        \"ergre\"\n    ]\n}",
+							"raw": "{\n    \"action\": \"stop\",\n    \"ids\": [\n        \"apache_service\",\n        \"gluesync-mssql-cdc-source-agent\"\n    ]\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -132,7 +132,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"action\": \"kill\",\n    \"ids\": [\n        \"apache_service\",\n        \"custom-mssql-target\"\n    ]\n}",
+							"raw": "{\n    \"action\": \"kill\",\n    \"ids\": [\n        \"apache_service\",\n        \"gluesync-mssql-cdc-source-agent\"\n    ]\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -161,7 +161,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"action\": \"stop\",\n    \"ids\": [\n        \"apache_service\",\n        \"ergre\"\n    ]\n}",
+							"raw": "{\n    \"action\": \"stop\",\n    \"ids\": [\n        \"apache_service\",\n        \"gluesync-mssql-cdc-source-agent\"\n    ]\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -190,7 +190,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"action\": \"remove\",\n    \"ids\": [\n        \"apache_service\",\n        \"custom-mssql-target\"\n    ]\n}",
+							"raw": "{\n    \"action\": \"remove\",\n    \"ids\": [\n        \"apache_service\",\n        \"gluesync-mssql-cdc-source-agent\"\n    ]\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -248,7 +248,36 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"action\": \"undeploy\",\n    \"ids\": [\n        \"apache_service\",\n        \"custom-mssql-target\"\n    ]\n}",
+							"raw": "{\n    \"action\": \"undeploy\",\n    \"ids\": [\n        \"apache_service\",\n        \"gluesync-mssql-cdc-source-agent\"\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/containers",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"containers"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update container",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"action\": \"update\",\n    \"ids\": [\n        \"gluesync-mssql-cdc-source-agent\"\n    ]\n}",
 							"options": {
 								"raw": {
 									"language": "json"
