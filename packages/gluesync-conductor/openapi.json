@@ -957,6 +957,12 @@
                         },
                         "limits": {
                           "type": "object"
+                        },
+                        "healthcheck": {
+                          "type": "object"
+                        },
+                        "dependsOn": {
+                          "type": "object"
                         }
                       },
                       "required": [
