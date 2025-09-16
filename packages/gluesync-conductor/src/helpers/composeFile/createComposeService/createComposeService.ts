@@ -93,9 +93,12 @@ const createComposeService: CreateComposeService = (
     volumes = [],
     labels = {},
     resources,
-    dependsOn = [],
+    healthcheck,
+    dependsOn,
   },
 ) => {
+  const isIntegrationTest =
+    process.env.IS_INTEGRATION_TEST.toLowerCase() === 'true';
   const containerName = `${imageName}-${type}-${serviceType}`;
   const containerDisplayName = nickname || containerName;
 
@@ -104,6 +107,17 @@ const createComposeService: CreateComposeService = (
     'com.molo17.conductor.versiontag': tag || undefined,
     'com.molo17.conductor.type': serviceType,
   };
+
+  const defaultVolumes = isIntegrationTest
+    ? []
+    : [
+        './gs-license.dat:/opt/gluesync/data/gs-license.dat:ro',
+        './logback.xml:/opt/gluesync/data/logback.xml:ro',
+        './security-config.json:/opt/gluesync/data/security-config.json:ro',
+        './gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro',
+        './bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro',
+        `./${containerName}:/opt/gluesync/data`,
+      ];
 
   return {
     image: `molo17/${imageName}:${tag || 'latest'}`,
@@ -124,26 +138,11 @@ const createComposeService: CreateComposeService = (
     ports: mapPorts(ports),
     volumes: mergeComposeKeyValueField(
       'volumes',
-      [
-        './gs-license.dat:/opt/gluesync/data/gs-license.dat:ro',
-        './logback.xml:/opt/gluesync/data/logback.xml:ro',
-        './security-config.json:/opt/gluesync/data/security-config.json:ro',
-        './gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro',
-        './bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro',
-        `./${containerName}:/opt/gluesync/data`,
-      ],
+      defaultVolumes,
       mapVolumes(volumes),
     ),
-    healthcheck: {
-      test: ['CMD-SHELL', '/scripts/agent_joined.sh'],
-      interval: '30s',
-      timeout: '10s',
-      retries: 999,
-    },
-    depends_on: {
-      'gluesync-core-hub': { condition: 'service_started' },
-      ...dependsOn, // Handle object or fallback to empty
-    },
+    healthcheck,
+    depends_on: dependsOn,
   };
 };
 
