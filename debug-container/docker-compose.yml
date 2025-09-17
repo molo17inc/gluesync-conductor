@@ -26,6 +26,7 @@ services:
       - PORT=1717
       - DOCKER_HOST=unix:///var/run/docker.sock
       - BASE_PATH=$PWD
+      - ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080/,https://localhost:8080,https://127.0.0.1:8080/
     ports:
       - 5017:1717
     volumes:
@@ -35,6 +36,7 @@ services:
       - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
     networks:
       - gluesync-network
+
   gluesync-core-hub:
     image: molo17/gluesync-core-hub:2.1.0.0.1f094fc18
     ports:
