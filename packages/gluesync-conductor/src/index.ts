@@ -39,18 +39,7 @@ const startServer = async () => {
 
   // ✅ Register CORS before routes
   await server.register(cors, {
-    origin: (
-      origin: Readonly<string>,
-      cb: (err: Readonly<Error | null>, allow?: Readonly<boolean>) => void,
-    ) => {
-      const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') ?? [];
-
-      if (!origin) return cb(null, true); // allow non-browser clients
-      if (allowedOrigins.includes(origin)) {
-        return cb(null, true);
-      }
-      return cb(new Error('Not allowed by CORS'), false);
-    },
+    origin: true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
