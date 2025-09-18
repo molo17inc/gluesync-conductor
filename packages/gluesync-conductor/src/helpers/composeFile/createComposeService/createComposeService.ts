@@ -93,8 +93,12 @@ const createComposeService: CreateComposeService = (
     volumes = [],
     labels = {},
     resources,
+    healthcheck,
+    dependsOn,
   },
 ) => {
+  const isIntegrationTest =
+    process.env.IS_INTEGRATION_TEST.toLowerCase() === 'true';
   const containerName = `${imageName}-${type}-${serviceType}`;
   const containerDisplayName = nickname || containerName;
 
@@ -103,6 +107,17 @@ const createComposeService: CreateComposeService = (
     'com.molo17.conductor.versiontag': tag || undefined,
     'com.molo17.conductor.type': serviceType,
   };
+
+  const defaultVolumes = isIntegrationTest
+    ? []
+    : [
+        './gs-license.dat:/opt/gluesync/data/gs-license.dat:ro',
+        './logback.xml:/opt/gluesync/data/logback.xml:ro',
+        './security-config.json:/opt/gluesync/data/security-config.json:ro',
+        './gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro',
+        './bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro',
+        `./${containerName}:/opt/gluesync/data`,
+      ];
 
   return {
     image: `molo17/${imageName}:${tag || 'latest'}`,
@@ -123,16 +138,11 @@ const createComposeService: CreateComposeService = (
     ports: mapPorts(ports),
     volumes: mergeComposeKeyValueField(
       'volumes',
-      [
-        './gs-license.dat:/opt/gluesync/data/gs-license.dat:ro',
-        './logback.xml:/opt/gluesync/data/logback.xml:ro',
-        './security-config.json:/opt/gluesync/data/security-config.json:ro',
-        './gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro',
-        './bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro',
-        `./${containerName}:/opt/gluesync/data`,
-      ],
+      defaultVolumes,
       mapVolumes(volumes),
     ),
+    healthcheck,
+    depends_on: dependsOn,
   };
 };
 

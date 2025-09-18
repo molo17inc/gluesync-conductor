@@ -18,7 +18,7 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - LOGGER_LEVEL=trace
+      - LOG_LEVEL=trace
       - GLUESYNC_LICENSE_FILE=/opt/gluesync/data/gs-license.dat
       - GLUESYNC_SECURITY_CONFIG=/opt/gluesync/data/security-config.json
       - GLUESYNC_MODULE_TAG=gluesync-conductor
@@ -26,6 +26,13 @@ services:
       - PORT=1717
       - DOCKER_HOST=unix:///var/run/docker.sock
       - BASE_PATH=$PWD
+      - USE_SDK=False
+      - SSL_SKIP_VERIFY=True
+      - SSL_ENABLED=False
+      # Test-reserved (add only for integration tests):
+      # - JOB_ID=not_set
+      # - TEST_NAME=DRY_RUN
+      - IS_INTEGRATION_TEST=False
     ports:
       - 5017:1717
     volumes:
@@ -33,8 +40,6 @@ services:
       - ./data:/opt/gluesync/data
       - ./gs-conf/gs-license.dat:/opt/gluesync/data/gs-license.dat
       - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
-    networks:
-      - gluesync-network
   gluesync-core-hub:
     image: molo17/gluesync-core-hub:2.1.0.0.1f094fc18
     ports:
@@ -46,8 +51,3 @@ services:
       - ./gs-conf/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json
       - ./gs-conf/security-config.json:/opt/gluesync/data/security-config.json
       - ./gs-conf/gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks
-    networks:
-      - gluesync-network
-networks:
-  gluesync-network:
-    driver: bridge
