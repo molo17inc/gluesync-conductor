@@ -1,5 +1,5 @@
 import fastify from 'fastify';
-import cors from '@fastify/cors'; // <-- add this
+import cors from '@fastify/cors';
 import Docker from 'dockerode';
 import dockerPlugin from './plugins/docker';
 import swaggerPlugin from './plugins/swagger';
@@ -37,7 +37,7 @@ const startServer = async () => {
   logSslInfo();
   httpsRedirectMiddleware(server);
 
-  // ✅ Register CORS before routes
+  // Register CORS before routes
   await server.register(cors, {
     origin: true,
     credentials: true,
