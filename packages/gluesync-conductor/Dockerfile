@@ -1,7 +1,7 @@
 FROM node:22.13.1-alpine
 
 # Install Docker CLI
-RUN apk add --no-cache docker-cli docker-cli-compose
+RUN apk add --no-cache docker-cli docker-cli-compose curl
 
 # Create Gluesync data directory structure
 RUN mkdir -p /opt/gluesync/data
@@ -17,6 +17,11 @@ ENV HOST=0.0.0.0
 ENV PORT=1717
 ENV DOCKER_HOST=unix:///var/run/docker.sock
 ENV CORE_HUB_NAME=gluesync-core-hub
+ENV LOG_LEVEL=INFO
+ENV USE_SDK=False
+ENV SSL_SKIP_VERIFY=True
+ENV SSL_ENABLED=False
+ENV IS_INTEGRATION_TEST=False
 
 # Setup app directory
 WORKDIR /opt/gluesync-conductor
@@ -30,4 +35,4 @@ COPY public/gluesync-conductor.svg static/logo.svg
 
 EXPOSE 1717
 
-CMD ["index.js"]
+CMD ["node","index.js"]

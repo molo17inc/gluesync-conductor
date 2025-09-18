@@ -34,11 +34,33 @@ export type ComposeServiceDeploy = Readonly<{
   };
 }>;
 
+export type ComposeDependsOn =
+  | string[] // Simple: ['service1', 'service2']
+  | {
+      [serviceName: string]: {
+        condition:
+          | 'service_started'
+          | 'service_healthy'
+          | 'service_completed_successfully';
+      };
+    }[];
+
+export interface ComposeHealthcheck {
+  test: string | string[]; // Command to run (string for CMD-SHELL, array for CMD)
+  interval?: string; // e.g., '30s'
+  timeout?: string; // e.g., '10s'
+  retries?: number; // e.g., 3
+  start_period?: string; // e.g., '20s' (grace period)
+  disable?: boolean; // If true, disables healthcheck
+}
+
 export type CommonComposeService = Readonly<{
   image: string;
   container_name: string;
   restart?: string;
   deploy?: ComposeServiceDeploy;
+  depends_on?: ComposeDependsOn;
+  healthcheck?: ComposeHealthcheck;
 }>;
 
 export type RawComposeService = Readonly<

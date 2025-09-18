@@ -62,7 +62,7 @@ export function getSslFilePaths(): {
 export function createFastifyHttpsOptions(): FastifyServerOptions {
   const baseOptions: FastifyServerOptions = {
     logger: {
-      level: process.env.LOGGER_LEVEL || 'warn',
+      level: process.env.LOG_LEVEL || 'warn',
     },
     ignoreTrailingSlash: true,
     ajv: {

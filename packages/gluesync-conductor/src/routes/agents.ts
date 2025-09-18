@@ -74,6 +74,12 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
                 limits: {
                   type: 'object',
                 },
+                healthcheck: {
+                  type: 'object',
+                },
+                dependsOn: {
+                  type: 'object',
+                },
               },
               required: ['imageName', 'type'],
             },
@@ -235,6 +241,12 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
                   type: 'object',
                 },
                 limits: {
+                  type: 'object',
+                },
+                healthcheck: {
+                  type: 'object',
+                },
+                dependsOn: {
                   type: 'object',
                 },
               },

@@ -1,4 +1,5 @@
 import {
+  ComposeDependsOn,
   ComposePort,
   ComposeVolume,
   RawComposeFile,
@@ -26,6 +27,7 @@ export type Agent = Readonly<{
     cpus?: number | null;
     memory?: string | null;
   };
+  dependsOn: ComposeDependsOn;
 }>;
 
 export type AgentResultItem =

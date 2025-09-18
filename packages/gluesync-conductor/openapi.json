@@ -217,6 +217,23 @@
           "containers"
         ],
         "description": "Retrieves a comprehensive list of all Docker containers with their current status, configuration, and system information including CPU and memory details.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "module",
+                "unknown",
+                "all"
+              ]
+            },
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "description": "Filter containers by type"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Default Response",
@@ -530,7 +547,7 @@
         "tags": [
           "containers"
         ],
-        "description": "Performs the specified action (kill,pull,remove,removeNetwork,restart,start,stop,undeploy) on one or more containers",
+        "description": "Performs the specified action (kill,pull,remove,removeNetwork,restart,start,stop,update,undeploy) on one or more containers",
         "requestBody": {
           "content": {
             "application/json": {
@@ -551,6 +568,7 @@
                       "restart",
                       "start",
                       "stop",
+                      "update",
                       "undeploy"
                     ],
                     "description": "The action to perform on the containers"
@@ -586,6 +604,9 @@
                     "data": {
                       "type": "object",
                       "properties": {
+                        "pruneResult": {
+                          "type": "string"
+                        },
                         "containers": {
                           "type": "array",
                           "items": {
@@ -647,134 +668,6 @@
         }
       }
     },
-    "/containers/{id}": {
-      "put": {
-        "tags": [
-          "containers"
-        ],
-        "description": "Update a container configuration",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "imageName": {
-                    "type": "string",
-                    "description": "Name of the Docker image"
-                  },
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "target",
-                      "source"
-                    ],
-                    "description": "Type of the agent"
-                  },
-                  "nickname": {
-                    "type": "string",
-                    "description": "Optional nickname for the agent"
-                  },
-                  "tag": {
-                    "type": "string",
-                    "description": "Optional Docker image tag"
-                  },
-                  "environment": {
-                    "type": "object",
-                    "additionalProperties": true,
-                    "description": "Optional environment variables"
-                  },
-                  "ports": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "description": "Optional port mappings"
-                  },
-                  "volumes": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "description": "Optional volume mappings"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "description": "Container ID to update"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    },
-                    "data": {
-                      "additionalProperties": true,
-                      "type": "object"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "default": false
-                    },
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "default": false
-                    },
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/agents": {
       "post": {
         "summary": "Add a list of agents",
@@ -804,9 +697,6 @@
                           ]
                         },
                         "nickname": {
-                          "type": "string"
-                        },
-                        "tag": {
                           "type": "string"
                         },
                         "environment": {
@@ -878,6 +768,12 @@
                         },
                         "limits": {
                           "type": "object"
+                        },
+                        "healthcheck": {
+                          "type": "object"
+                        },
+                        "dependsOn": {
+                          "type": "object"
                         }
                       },
                       "required": [
@@ -931,10 +827,6 @@
                           "serviceId"
                         ]
                       }
-                    },
-                    "data": {
-                      "type": "object",
-                      "additionalProperties": true
                     }
                   },
                   "required": [
@@ -996,9 +888,6 @@
                         "nickname": {
                           "type": "string"
                         },
-                        "tag": {
-                          "type": "string"
-                        },
                         "environment": {
                           "type": "object",
                           "additionalProperties": true
@@ -1068,6 +957,12 @@
                         },
                         "limits": {
                           "type": "object"
+                        },
+                        "healthcheck": {
+                          "type": "object"
+                        },
+                        "dependsOn": {
+                          "type": "object"
                         }
                       },
                       "required": [
@@ -1121,15 +1016,10 @@
                           "serviceId"
                         ]
                       }
-                    },
-                    "data": {
-                      "type": "object",
-                      "additionalProperties": true
                     }
                   },
                   "required": [
                     "success",
-                    "data",
                     "results"
                   ]
                 }
