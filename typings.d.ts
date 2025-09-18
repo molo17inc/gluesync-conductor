@@ -16,7 +16,6 @@ declare namespace NodeJS {
     readonly CORE_HUB_NAME: string;
     readonly BASE_PATH: string;
 
-    readonly ALLOWED_ORIGINS: string;
     readonly USE_SDK: string;
     readonly SSL_SKIP_VERIFY: string;
     readonly SSL_ENABLED: string;
