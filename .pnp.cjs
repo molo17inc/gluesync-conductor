@@ -1397,6 +1397,17 @@ const RAW_RUNTIME_STATE =
         "linkType": "HARD"\
       }]\
     ]],\
+    ["@fastify/cors", [\
+      ["npm:11.1.0", {\
+        "packageLocation": "./.yarn/cache/@fastify-cors-npm-11.1.0-35a8bc0e0d-40a07d923d.zip/node_modules/@fastify/cors/",\
+        "packageDependencies": [\
+          ["@fastify/cors", "npm:11.1.0"],\
+          ["fastify-plugin", "npm:5.0.1"],\
+          ["toad-cache", "npm:3.7.0"]\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
     ["@fastify/error", [\
       ["npm:4.1.0", {\
         "packageLocation": "./.yarn/cache/@fastify-error-npm-4.1.0-b7325d3e2d-dc4d89ffaf.zip/node_modules/@fastify/error/",\
@@ -4125,10 +4136,10 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["docker-compose", [\
-      ["npm:1.2.0", {\
-        "packageLocation": "./.yarn/cache/docker-compose-npm-1.2.0-f7d3c775ab-a7cda05d7d.zip/node_modules/docker-compose/",\
+      ["npm:1.3.0", {\
+        "packageLocation": "./.yarn/cache/docker-compose-npm-1.3.0-31320ba01d-7c1b395fc1.zip/node_modules/docker-compose/",\
         "packageDependencies": [\
-          ["docker-compose", "npm:1.2.0"],\
+          ["docker-compose", "npm:1.3.0"],\
           ["yaml", "npm:2.7.1"]\
         ],\
         "linkType": "HARD"\
@@ -5666,6 +5677,7 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./packages/gluesync-conductor/",\
         "packageDependencies": [\
           ["gluesync-conductor", "workspace:packages/gluesync-conductor"],\
+          ["@fastify/cors", "npm:11.1.0"],\
           ["@fastify/swagger", "npm:9.5.0"],\
           ["@fastify/swagger-ui", "npm:5.2.2"],\
           ["@fastify/type-provider-typebox", "virtual:ae019b20ec517cc67897d669514df0c569aec6fd41976fa9549e05378b711fa024b475ee68d76b4910090761fecf36f5dc595058cc147ccd84d2b67172a0edb8#npm:5.1.0"],\
@@ -5675,7 +5687,7 @@ const RAW_RUNTIME_STATE =
           ["@typescript-eslint/eslint-plugin", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:6.21.0"],\
           ["@typescript-eslint/parser", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:6.21.0"],\
           ["axios", "npm:1.8.4"],\
-          ["docker-compose", "npm:1.2.0"],\
+          ["docker-compose", "npm:1.3.0"],\
           ["dockerode", "npm:4.0.5"],\
           ["eslint", "npm:8.57.1"],\
           ["eslint-plugin-deprecation", "virtual:beb8dda6f7964700067e23ce77cb39672e53232747d9207129ce290669aa7b52a4867d6f76308bd24f79bcd9d13683b90dcd0eadd6b5cdd6c82249bcb0d213d1#npm:2.0.0"],\
