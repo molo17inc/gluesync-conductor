@@ -55,8 +55,8 @@ const settings: GluesyncConfig = {
   coreHubUrl: process.env.CORE_HUB_URL,
 
   // SSL/TLS settings
-  useSSL: process.env.SSL_ENABLED === 'true',
-  skipSSLVerify: process.env.SSL_SKIP_VERIFY === 'true',
+  useSSL: process.env.SSL_ENABLED?.trim().toLowerCase() === 'true',
+  skipSSLVerify: process.env.SSL_SKIP_VERIFY?.toLowerCase() === 'true',
   sslCertFile: process.env.SSL_CERT_FILE,
   sslKeyFile: process.env.SSL_KEY_FILE,
 

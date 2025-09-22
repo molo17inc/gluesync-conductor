@@ -1,48 +1,28 @@
-/**
- * This file is part of Gluesync Container Mate.
- *
- * Gluesync Container Mate is dual-licensed under the following licenses:
- *
- * 1. GNU General Public License (GPL) Version 3
- *    You may use, modify, and distribute this software under the terms of the GPL v3.
- *    This option is available at no cost, but any derivative works must also be licensed under GPL v3.
- *
- * 2. MOLO17 Commercial License
- *    Alternatively, you may use this software under the MOLO17 Commercial License,
- *    which includes a warranty and permits proprietary use. Contact MOLO17 at info@molo17.com
- *    for licensing terms and conditions.
- *
- * Copyright (C) 2025 MOLO17. All rights reserved.
- */
-
 import fs from 'fs';
 import { FastifyServerOptions } from 'fastify';
 
 /**
  * Check if SSL is enabled based on environment variables
  */
-export function isSslEnabled(): boolean {
-  return process.env.SSL_ENABLED === 'true';
-}
+export const isSslEnabled = (): boolean =>
+  process.env.SSL_ENABLED?.trim().toLowerCase() === 'true';
 
 /**
  * Check if SSL certificate verification should be skipped
  */
-export function shouldSkipSslVerify(): boolean {
-  return process.env.SSL_SKIP_VERIFY === 'true';
-}
+export const shouldSkipSslVerify = (): boolean =>
+  process.env.SSL_SKIP_VERIFY?.trim().toLowerCase() === 'true';
 
 /**
  * Get SSL certificate and key file paths from environment variables
  */
-export function getSslFilePaths(): {
+export const getSslFilePaths = (): {
   certFile: string | null;
   keyFile: string | null;
-} {
+} => {
   const certFile = process.env.SSL_CERT_FILE || null;
   const keyFile = process.env.SSL_KEY_FILE || null;
 
-  // Verify files exist
   if (certFile && !fs.existsSync(certFile)) {
     console.warn(`SSL certificate file not found: ${certFile}`);
     return { certFile: null, keyFile: null };
@@ -54,12 +34,12 @@ export function getSslFilePaths(): {
   }
 
   return { certFile, keyFile };
-}
+};
 
 /**
  * Create Fastify HTTPS options if SSL is enabled
  */
-export function createFastifyHttpsOptions(): FastifyServerOptions {
+export const createFastifyHttpsOptions = (): FastifyServerOptions => {
   const baseOptions: FastifyServerOptions = {
     logger: {
       level: process.env.LOG_LEVEL || 'warn',
@@ -72,9 +52,7 @@ export function createFastifyHttpsOptions(): FastifyServerOptions {
     },
   };
 
-  if (!isSslEnabled()) {
-    return baseOptions;
-  }
+  if (!isSslEnabled()) return baseOptions;
 
   const { certFile, keyFile } = getSslFilePaths();
 
@@ -86,36 +64,30 @@ export function createFastifyHttpsOptions(): FastifyServerOptions {
   }
 
   try {
-    // Create HTTPS options with proper type casting
-    // Use a more generic type to avoid TypeScript errors with the HTTPS options
     const httpsOptions = {
       key: fs.readFileSync(keyFile),
       cert: fs.readFileSync(certFile),
-      // Allow older TLS versions for compatibility
-      minVersion: 'TLSv1',
-      // Skip certificate verification if configured
+      minVersion: 'TLSv1.2', // safer default than TLSv1
+      // rejectUnauthorized is not used by Node's HTTPS server, but kept for compatibility
       rejectUnauthorized: !shouldSkipSslVerify(),
     };
 
-    // Return server options with HTTPS
     return {
       ...baseOptions,
       https: httpsOptions,
-    } as any; // Use type assertion to bypass TypeScript checking
+    } as any;
   } catch (error) {
     console.error('Error creating HTTPS options:', error);
     console.warn('Falling back to HTTP mode');
     return baseOptions;
   }
-}
+};
 
 /**
  * Log helpful SSL information
  */
-export function logSslInfo(): void {
-  if (!isSslEnabled()) {
-    return;
-  }
+export const logSslInfo = (): void => {
+  if (!isSslEnabled()) return;
 
   const { certFile, keyFile } = getSslFilePaths();
 
@@ -135,4 +107,4 @@ export function logSslInfo(): void {
     );
     console.warn('For Firefox, you may need to add a security exception');
   }
-}
+};

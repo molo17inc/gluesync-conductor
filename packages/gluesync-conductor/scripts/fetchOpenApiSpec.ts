@@ -2,6 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 import { spawn, ChildProcess } from 'child_process';
+import { isSslEnabled } from '../src/utils/ssl';
 
 const DEFAULT_PORT: number = 50000;
 const DEFAULT_HOST: string = 'localhost';
@@ -59,8 +60,7 @@ const fetchOpenApiSpec = async (): Promise<OpenApiSpec> => {
     ? parseInt(process.env.PORT, 10)
     : DEFAULT_PORT;
   const host: string = process.env.HOST || DEFAULT_HOST;
-  const protocol: string =
-    process.env.SSL_ENABLED === 'true' ? 'https' : 'http';
+  const protocol: string = isSslEnabled() ? 'https' : 'http';
 
   const url: string = `${protocol}://${host === '0.0.0.0' ? 'localhost' : host}:${port}/openapi.json`;
 

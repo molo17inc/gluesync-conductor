@@ -1,20 +1,3 @@
-/**
- * This file is part of Gluesync Container Mate.
- *
- * Gluesync Container Mate is dual-licensed under the following licenses:
- *
- * 1. GNU General Public License (GPL) Version 3
- *    You may use, modify, and distribute this software under the terms of the GPL v3.
- *    This option is available at no cost, but any derivative works must also be licensed under GPL v3.
- *
- * 2. MOLO17 Commercial License
- *    Alternatively, you may use this software under the MOLO17 Commercial License,
- *    which includes a warranty and permits proprietary use. Contact MOLO17 at info@molo17.com
- *    for licensing terms and conditions.
- *
- * Copyright (C) 2025 MOLO17. All rights reserved.
- */
-
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { isSslEnabled } from '../utils/ssl';
 
@@ -24,9 +7,7 @@ import { isSslEnabled } from '../utils/ssl';
  * This only redirects browser requests, not API clients or local connections,
  * to ensure compatibility with internal services and API clients.
  */
-export default function httpsRedirectMiddleware(
-  server: Readonly<FastifyInstance>,
-): void {
+const httpsRedirectMiddleware = (server: Readonly<FastifyInstance>): void => {
   // Skip if SSL is not enabled
   if (!isSslEnabled()) {
     return;
@@ -34,7 +15,6 @@ export default function httpsRedirectMiddleware(
 
   server.addHook(
     'onRequest',
-    // eslint-disable-next-line consistent-return
     async (
       request: Readonly<FastifyRequest>,
       reply: Readonly<FastifyReply>,
@@ -63,15 +43,9 @@ export default function httpsRedirectMiddleware(
         // Only redirect browsers, not API clients or local connections
         if (isBrowser && !isLocal) {
           try {
-            // Get host from request headers
-            const host =
-              request.headers.host ||
-              `${process.env.HOST || '0.0.0.0'}:${process.env.PORT || '50000'}`;
-            const hostname = host.includes(':') ? host.split(':')[0] : host;
-
             // Create HTTPS URL (same port - we're not using dual mode)
-            const port = process.env.PORT || '50000';
-            const httpsUrl = `https://${hostname}:${port}${request.url}`;
+            const hostHeader = request.headers.host;
+            const httpsUrl = `https://${hostHeader}${request.url}`;
 
             server.log.info(
               `Redirecting browser from HTTP to HTTPS: ${httpsUrl}`,
@@ -85,4 +59,6 @@ export default function httpsRedirectMiddleware(
       }
     },
   );
-}
+};
+
+export default httpsRedirectMiddleware;
