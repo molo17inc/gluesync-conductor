@@ -8,7 +8,7 @@ const handler: GetAgentsHandler = async (req, reply) => {
     const { id } = castObject<GetAgentsParams>(req.params);
     const composeJson = await readComposeFile({ raw: false });
 
-    if (id && id.trim() !== '') {
+    if (!!id?.trim()) {
       const service = composeJson.services?.[id];
       if (!service) {
         return reply.code(404).send({
