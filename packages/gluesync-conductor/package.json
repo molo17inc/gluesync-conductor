@@ -26,6 +26,7 @@
     "fastify": "^5.2.1",
     "fastify-plugin": "^5.0.1",
     "gluesync-sdk-client": "workspace:*",
+    "uuid": "^13.0.0",
     "yaml": "^2.7.0"
   },
   "devDependencies": {
