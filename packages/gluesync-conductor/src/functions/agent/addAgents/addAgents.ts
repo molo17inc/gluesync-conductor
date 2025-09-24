@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import processAgents from '../../../helpers/processAgent/processAgent';
@@ -15,10 +16,14 @@ const handler: AddAgentsHandler = async (req, reply) => {
       composeJson,
       agents,
       existingService => !!existingService, // error if agent exists
-      ({ reservations, limits, ...agent }) =>
+      ({ reservations, limits, environment, ...agent }) =>
         createComposeService('agent', {
           ...agent,
           resources: { reservations, limits },
+          environment: {
+            ...environment,
+            CONDUCTOR_AGENT_ID: uuidv4().split('-')[0],
+          },
         }),
       'Agent already existing in file',
       'Agent type missing',
