@@ -129,9 +129,8 @@ const createComposeService: CreateComposeService = (
       [],
     ),
     environment: Object.entries({
-      type,
+      TYPE: type,
       maxRamPercentage: 90.0,
-      LOG_CONFIG_FILE: '/opt/gluesync/data/logback.xml',
       GLUESYNC_MODULE_TAG: 'gluesync-conductor',
       ...environment,
     }).map(([key, value]) => `${key}=${value}`),
