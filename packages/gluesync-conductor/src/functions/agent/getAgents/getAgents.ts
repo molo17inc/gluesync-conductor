@@ -1,6 +1,7 @@
 import { castObject } from '../../../helpers/composeFile/extractKeyValue/extractKeyValue';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import { ComposeService, LabelPrefix } from '../../../models/composeFile.model';
+import { ConductorServiceTypes } from '../../../models/conductor.model';
 import { GetAgentsHandler, GetAgentsParams } from './getAgents.model';
 
 const handler: GetAgentsHandler = async (req, reply) => {
@@ -27,7 +28,9 @@ const handler: GetAgentsHandler = async (req, reply) => {
     )
       .filter(
         ([, service]) =>
-          service.labels?.[`${LabelPrefix.CONDUCTOR}.type`] === 'agent',
+          (service.labels?.[`${LabelPrefix.CONDUCTOR}.type`] as
+            | ConductorServiceTypes
+            | undefined) === 'agent',
       )
       .reduce(
         (acc, [name, service]) => ({
