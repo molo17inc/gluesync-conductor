@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import addAgents from '../functions/agent/addAgents/addAgents';
 import getAgentVersion from '../functions/agent/getAgentVersion/getAgentVersion';
 import editAgents from '../functions/agent/editAgents/editAgents';
+import getAgents from '../functions/agent/getAgents/getAgents';
 
 const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.post('/agents', {
@@ -291,6 +292,51 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
       },
     },
     handler: editAgents,
+  });
+
+  fastify.get('/agents/:id?/', {
+    schema: {
+      tags: ['agents'],
+      summary: 'Get agent docker configuration',
+      description:
+        'Retrieve the docker compose configuration for a single agent by ID',
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Agent ID' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              additionalProperties: true,
+            },
+          },
+          required: ['success', 'data'],
+        },
+        404: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            error: { type: 'string' },
+          },
+          required: ['success', 'error'],
+        },
+        500: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            error: { type: 'string' },
+          },
+          required: ['success', 'error'],
+        },
+      },
+    },
+    handler: getAgents,
   });
 };
 
