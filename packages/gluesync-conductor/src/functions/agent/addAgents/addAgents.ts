@@ -11,19 +11,20 @@ const handler: AddAgentsHandler = async (req, reply) => {
 
     const composeJson = await readComposeFile({ raw: true });
 
+    const agentsWithIds = agents.map(agent => ({
+      ...agent,
+      id: uuidv4().split('-')[0],
+    }));
+
     const { results } = await processAgents(
       'agent',
       composeJson,
-      agents,
+      agentsWithIds,
       existingService => !!existingService, // error if agent exists
-      ({ reservations, limits, environment, ...agent }) =>
+      ({ reservations, limits, ...agent }) =>
         createComposeService('agent', {
           ...agent,
           resources: { reservations, limits },
-          environment: {
-            ...environment,
-            CONDUCTOR_AGENT_ID: uuidv4().split('-')[0],
-          },
         }),
       'Agent already existing in file',
       'Agent type missing',

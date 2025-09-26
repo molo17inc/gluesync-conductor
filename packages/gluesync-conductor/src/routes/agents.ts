@@ -187,6 +187,7 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
             items: {
               type: 'object',
               properties: {
+                id: { type: 'string' },
                 imageName: { type: 'string' },
                 type: { type: 'string', enum: ['target', 'source'] },
                 nickname: { type: 'string' },
@@ -251,7 +252,7 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
                   type: 'object',
                 },
               },
-              required: ['imageName', 'type'],
+              required: ['id', 'imageName', 'type'],
             },
           },
         },

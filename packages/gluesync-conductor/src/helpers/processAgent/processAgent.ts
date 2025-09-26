@@ -39,8 +39,8 @@ const processAgents: ProcessAgents = async (
   const agentPromises = agents.map(
     agent =>
       new Promise<AgentResultItem>((resolve, reject) => {
-        const { imageName, type } = agent;
-        const serviceId = `${imageName}-${type}-${serviceType}`;
+        const { type } = agent;
+        const serviceId = agent.id;
         const existingService = composeJson.services?.[serviceId];
 
         if (validateExistence(existingService)) {

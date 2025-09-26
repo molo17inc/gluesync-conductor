@@ -8,6 +8,7 @@ import {
 import { ConductorServiceTypes } from '../../models/conductor.model';
 
 export type Agent = Readonly<{
+  id: string;
   imageName: string;
   type: 'target' | 'source';
   nickname?: string;
