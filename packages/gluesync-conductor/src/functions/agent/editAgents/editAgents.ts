@@ -14,7 +14,6 @@ const handler: EditAgentsHandler = async (req, reply) => {
 
   try {
     const { results } = await processAgents(
-      'agent',
       composeJson,
       agents,
       existingService => !existingService, // error if agent not exists
