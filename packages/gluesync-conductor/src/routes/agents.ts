@@ -10,6 +10,14 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
       summary: 'Add a list of agents',
       description: 'Agents specifications are written in docker compose file',
       tags: ['agents'],
+      querystring: {
+        type: 'object',
+        properties: {
+          raw: { type: 'boolean' },
+        },
+        required: [],
+        additionalProperties: false,
+      },
       body: {
         type: 'object',
         properties: {
@@ -215,6 +223,14 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
       summary: 'Edit a list of agents',
       description: 'Agents specifications are written in docker compose file',
       tags: ['agents'],
+      querystring: {
+        type: 'object',
+        properties: {
+          raw: { type: 'boolean' },
+        },
+        required: [],
+        additionalProperties: false,
+      },
       body: {
         type: 'object',
         properties: {
@@ -353,7 +369,7 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
     handler: editAgents,
   });
 
-  fastify.get('/agents/', {
+  fastify.get('/agents', {
     schema: {
       tags: ['agents'],
       summary: 'Get agent docker configuration',

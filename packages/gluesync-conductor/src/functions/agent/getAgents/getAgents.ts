@@ -17,8 +17,6 @@ const handler: GetAgentsHandler = async (req, reply) => {
     const { raw } = castObject<GetAgentsQuerystring>(req.query) || false;
     const { id } = castObject<GetAgentsParams>(req.params);
 
-    console.log('>>>>>>>> grande come una casa >><<<<<', raw);
-
     req.log.debug(`Current query: ${raw}, ${typeof raw}`);
 
     const composeJson = await readComposeFile({ raw });
