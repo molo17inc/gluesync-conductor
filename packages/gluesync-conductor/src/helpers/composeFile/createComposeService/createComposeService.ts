@@ -130,7 +130,6 @@ const createComposeService: CreateComposeService = (
     ),
     environment: Object.entries({
       TYPE: type,
-      maxRamPercentage: 90.0,
       GLUESYNC_MODULE_TAG: 'gluesync-conductor',
       ...environment,
     }).map(([key, value]) => `${key}=${value}`),
