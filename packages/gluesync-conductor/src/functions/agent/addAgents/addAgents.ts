@@ -4,25 +4,25 @@ import processAgents from '../../../helpers/processAgent/processAgent';
 import { Agent } from '../../../helpers/processAgent/processAgent.model';
 import { AddAgentsHandler, AddAgentsSuccessResponse } from './addAgents.model';
 import createAgent from '../../../helpers/processAgent/agent.factory';
+import agentValidation from '../../../helpers/agentValidation/agentValidation';
 
 const handler: AddAgentsHandler = async (req, reply) => {
   try {
     const agents: ReadonlyArray<Agent> = req.body.agents ?? [];
-    const agentsWithIds = agents.map(agent => createAgent(agent));
+    const agentsWithIds = agents.map(createAgent);
 
     const composeJson = await readComposeFile({ raw: true });
 
     const { results } = await processAgents(
       composeJson,
       agentsWithIds,
-      existingService => !!existingService, // error if agent exists
+      (agentToValidate, servicesInCompose) =>
+        agentValidation('add', agentToValidate, servicesInCompose),
       ({ reservations, limits, ...agent }) =>
         createComposeService('agent', {
           ...agent,
           resources: { reservations, limits },
         }),
-      'Agent already existing in file',
-      'Agent type missing',
     );
 
     const response: AddAgentsSuccessResponse = {

@@ -1,3 +1,4 @@
+import agentValidation from '../../../helpers/agentValidation/agentValidation';
 import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import processAgents from '../../../helpers/processAgent/processAgent';
@@ -16,14 +17,13 @@ const handler: EditAgentsHandler = async (req, reply) => {
     const { results } = await processAgents(
       composeJson,
       agents,
-      existingService => !existingService, // error if agent not exists
+      (agentToValidate, servicesInCompose) =>
+        agentValidation('edit', agentToValidate, servicesInCompose),
       ({ reservations, limits, ...agent }) =>
         createComposeService('agent', {
           ...agent,
           resources: { reservations, limits },
         }),
-      'Agent not existing in file',
-      'Agent type missing',
     );
 
     const response: EditAgentsSuccessResponse = {

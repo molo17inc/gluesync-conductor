@@ -5,6 +5,7 @@ import {
   RawComposeFile,
   RawComposeService,
 } from '../../models/composeFile.model';
+import { ValidationResult } from '../agentValidation/agentValdiation.model';
 
 export type Agent = Readonly<{
   id: string;
@@ -47,10 +48,8 @@ export type CreateAgentError = (
 export type ProcessAgents = (
   composeJson: Partial<RawComposeFile>,
   agents: ReadonlyArray<Agent>,
-  validateExistence: (existingService: any) => boolean,
+  validate: (agent: Agent, services?: Record<string, any>) => ValidationResult,
   createService: (agent: Agent) => RawComposeService,
-  existErrorMsg: string,
-  typeErrorMsg: string,
 ) => Promise<{
   results: AgentResultItem[];
   updatedComposeJson: RawComposeFile;
