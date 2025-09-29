@@ -5,7 +5,6 @@ import {
   RawComposeFile,
   RawComposeService,
 } from '../../models/composeFile.model';
-import { ConductorServiceTypes } from '../../models/conductor.model';
 
 export type Agent = Readonly<{
   id: string;

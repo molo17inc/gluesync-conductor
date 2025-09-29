@@ -1,10 +1,9 @@
-import { v4 as uuidv4 } from 'uuid';
 import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import processAgents from '../../../helpers/processAgent/processAgent';
 import { Agent } from '../../../helpers/processAgent/processAgent.model';
 import { AddAgentsHandler, AddAgentsSuccessResponse } from './addAgents.model';
-import { createAgent } from '../../../helpers/processAgent/agent.factory';
+import createAgent from '../../../helpers/processAgent/agent.factory';
 
 const handler: AddAgentsHandler = async (req, reply) => {
   try {
