@@ -101,7 +101,6 @@ const createComposeService: CreateComposeService = (
   const isIntegrationTest =
     process.env.IS_INTEGRATION_TEST.toLowerCase() === 'true';
   const containerName = nickname || `${imageName}-${type}-${serviceType}`;
-  const containerDisplayName = nickname || containerName;
 
   const defaultLabels = {
     'com.molo17.conductor.unique_id': id,
@@ -122,7 +121,7 @@ const createComposeService: CreateComposeService = (
 
   return {
     image: `molo17/${imageName}:${tag || 'latest'}`,
-    container_name: containerDisplayName,
+    container_name: containerName,
     restart: 'unless-stopped',
     deploy: { resources },
     labels: Object.entries({ ...labels, ...defaultLabels }).reduce<string[]>(
