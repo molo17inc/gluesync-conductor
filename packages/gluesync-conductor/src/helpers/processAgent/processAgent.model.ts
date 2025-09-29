@@ -46,7 +46,6 @@ export type CreateAgentError = (
 ) => Error & { status: number; serviceId: string; error: string };
 
 export type ProcessAgents = (
-  type: ConductorServiceTypes,
   composeJson: Partial<RawComposeFile>,
   agents: ReadonlyArray<Agent>,
   validateExistence: (existingService: any) => boolean,

@@ -19,7 +19,6 @@ const createAgentError: CreateAgentError = (message, status, serviceId) => {
 };
 
 const processAgents: ProcessAgents = async (
-  serviceType,
   composeJson,
   agents,
   validateExistence,
