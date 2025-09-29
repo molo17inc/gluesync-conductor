@@ -3,7 +3,7 @@ import { Agent } from './processAgent.model';
 
 const generateId = (): string => uuidv4().split('-')[0];
 
-export const createAgent = (partial: Omit<Agent, 'id'>): Agent => ({
+export const createAgent = (agent: Omit<Agent, 'id'>): Agent => ({
+  ...agent,
   id: generateId(),
-  ...partial,
 });
