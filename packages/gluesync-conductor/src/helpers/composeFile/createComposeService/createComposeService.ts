@@ -84,6 +84,7 @@ const mapVolumes = (
 const createComposeService: CreateComposeService = (
   serviceType,
   {
+    id,
     imageName,
     type,
     nickname,
@@ -99,11 +100,10 @@ const createComposeService: CreateComposeService = (
 ) => {
   const isIntegrationTest =
     process.env.IS_INTEGRATION_TEST.toLowerCase() === 'true';
-  const containerName = `${imageName}-${type}-${serviceType}`;
-  const containerDisplayName = nickname || containerName;
+  const containerName = nickname || `${imageName}-${type}-${serviceType}`;
 
   const defaultLabels = {
-    'com.molo17.conductor.unique_id': containerDisplayName,
+    'com.molo17.conductor.unique_id': id,
     'com.molo17.conductor.versiontag': tag || undefined,
     'com.molo17.conductor.type': serviceType,
   };
@@ -121,7 +121,7 @@ const createComposeService: CreateComposeService = (
 
   return {
     image: `molo17/${imageName}:${tag || 'latest'}`,
-    container_name: containerDisplayName,
+    container_name: containerName,
     restart: 'unless-stopped',
     deploy: { resources },
     labels: Object.entries({ ...labels, ...defaultLabels }).reduce<string[]>(
@@ -131,6 +131,7 @@ const createComposeService: CreateComposeService = (
     environment: Object.entries({
       TYPE: type,
       GLUESYNC_MODULE_TAG: 'gluesync-conductor',
+      CONDUCTOR_AGENT_ID: id,
       ...environment,
     }).map(([key, value]) => `${key}=${value}`),
     ports: mapPorts(ports),

@@ -10,6 +10,7 @@ import { ConductorServiceTypes } from '../../../models/conductor.model';
 
 export type CreateComposeServiceOptions = Readonly<
   ComposeServiceDeploy & {
+    id: string;
     imageName: string;
     type: string;
     nickname?: string;

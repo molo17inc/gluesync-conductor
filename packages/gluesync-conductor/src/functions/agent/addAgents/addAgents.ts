@@ -1,32 +1,28 @@
-import { v4 as uuidv4 } from 'uuid';
 import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import processAgents from '../../../helpers/processAgent/processAgent';
 import { Agent } from '../../../helpers/processAgent/processAgent.model';
 import { AddAgentsHandler, AddAgentsSuccessResponse } from './addAgents.model';
+import createAgent from '../../../helpers/processAgent/agent.factory';
+import agentValidation from '../../../helpers/agentValidation/agentValidation';
 
 const handler: AddAgentsHandler = async (req, reply) => {
   try {
     const agents: ReadonlyArray<Agent> = req.body.agents ?? [];
+    const agentsWithIds = agents.map(createAgent);
 
     const composeJson = await readComposeFile({ raw: true });
 
     const { results } = await processAgents(
-      'agent',
       composeJson,
-      agents,
-      existingService => !!existingService, // error if agent exists
-      ({ reservations, limits, environment, ...agent }) =>
+      agentsWithIds,
+      (agentToValidate, servicesInCompose) =>
+        agentValidation('add', agentToValidate, servicesInCompose),
+      ({ reservations, limits, ...agent }) =>
         createComposeService('agent', {
           ...agent,
           resources: { reservations, limits },
-          environment: {
-            ...environment,
-            CONDUCTOR_AGENT_ID: uuidv4().split('-')[0],
-          },
         }),
-      'Agent already existing in file',
-      'Agent type missing',
     );
 
     const response: AddAgentsSuccessResponse = {

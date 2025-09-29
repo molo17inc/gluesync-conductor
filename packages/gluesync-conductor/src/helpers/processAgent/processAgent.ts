@@ -19,13 +19,10 @@ const createAgentError: CreateAgentError = (message, status, serviceId) => {
 };
 
 const processAgents: ProcessAgents = async (
-  serviceType,
   composeJson,
   agents,
-  validateExistence,
+  validate,
   createService,
-  existErrorMsg,
-  typeErrorMsg,
 ) => {
   const coreHub =
     composeJson.services?.[process.env.CORE_HUB_NAME || 'gluesync-core-hub'];
@@ -39,14 +36,18 @@ const processAgents: ProcessAgents = async (
   const agentPromises = agents.map(
     agent =>
       new Promise<AgentResultItem>((resolve, reject) => {
-        const { imageName, type } = agent;
-        const serviceId = `${imageName}-${type}-${serviceType}`;
-        const existingService = composeJson.services?.[serviceId];
+        const serviceId = agent.id;
 
-        if (validateExistence(existingService)) {
-          reject(createAgentError(existErrorMsg, 404, serviceId));
-        } else if (!type) {
-          reject(createAgentError(typeErrorMsg, 400, serviceId));
+        const validationResult = validate(agent, composeJson.services);
+
+        if (!validationResult.success) {
+          reject(
+            createAgentError(
+              validationResult.errorMessage,
+              validationResult.statusCode,
+              serviceId,
+            ),
+          );
         } else {
           const service = createService({
             ...agent,

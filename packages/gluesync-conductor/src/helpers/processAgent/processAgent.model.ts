@@ -5,9 +5,10 @@ import {
   RawComposeFile,
   RawComposeService,
 } from '../../models/composeFile.model';
-import { ConductorServiceTypes } from '../../models/conductor.model';
+import { ValidationResult } from '../agentValidation/agentValdiation.model';
 
 export type Agent = Readonly<{
+  id: string;
   imageName: string;
   type: 'target' | 'source';
   nickname?: string;
@@ -45,13 +46,10 @@ export type CreateAgentError = (
 ) => Error & { status: number; serviceId: string; error: string };
 
 export type ProcessAgents = (
-  type: ConductorServiceTypes,
   composeJson: Partial<RawComposeFile>,
   agents: ReadonlyArray<Agent>,
-  validateExistence: (existingService: any) => boolean,
+  validate: (agent: Agent, services?: Record<string, any>) => ValidationResult,
   createService: (agent: Agent) => RawComposeService,
-  existErrorMsg: string,
-  typeErrorMsg: string,
 ) => Promise<{
   results: AgentResultItem[];
   updatedComposeJson: RawComposeFile;
