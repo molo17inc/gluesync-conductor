@@ -4,17 +4,14 @@ import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/re
 import processAgents from '../../../helpers/processAgent/processAgent';
 import { Agent } from '../../../helpers/processAgent/processAgent.model';
 import { AddAgentsHandler, AddAgentsSuccessResponse } from './addAgents.model';
+import { createAgent } from '../../../helpers/processAgent/agent.factory';
 
 const handler: AddAgentsHandler = async (req, reply) => {
   try {
     const agents: ReadonlyArray<Agent> = req.body.agents ?? [];
+    const agentsWithIds = agents.map(agent => createAgent(agent));
 
     const composeJson = await readComposeFile({ raw: true });
-
-    const agentsWithIds = agents.map(agent => ({
-      ...agent,
-      id: uuidv4().split('-')[0],
-    }));
 
     const { results } = await processAgents(
       composeJson,
