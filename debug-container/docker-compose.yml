@@ -27,11 +27,10 @@ services:
       - DOCKER_HOST=unix:///var/run/docker.sock
       - BASE_PATH=$PWD
       - USE_SDK=False
-      - SSL_SKIP_VERIFY=True
-      - SSL_ENABLED=False
+      - SSL_SKIP_VERIFY=false
+      - SSL_ENABLED=false
       - SSL_CERT_FILE=/opt/gluesync/data/cert.pem
       - SSL_KEY_FILE=/opt/gluesync/data/key.pem
-      - SSL_SKIP_VERIFY=false
       # Test-reserved (add only for integration tests):
       # - JOB_ID=not_set
       # - TEST_NAME=DRY_RUN
