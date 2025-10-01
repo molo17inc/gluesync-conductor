@@ -29,7 +29,7 @@ const containerInfoMapper: ContainerInfoMapper = container => {
   } = container;
 
   const {
-    unique_id: uniqueId,
+    service_id: uniqueId,
     versiontag: versionTag,
     type,
   } = getCustomLabels(labels);

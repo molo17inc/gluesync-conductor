@@ -1,8 +1,13 @@
 import { AgentValidation } from './agentValdiation.model';
 
-const agentValidation: AgentValidation = (validationMode, agent, services) => {
-  const { id, type, nickname } = agent;
-  const existingService = services?.[id];
+const agentValidation: AgentValidation = (
+  validationMode,
+  agent,
+  currentServiceId,
+  services,
+) => {
+  const { type, nickname } = agent;
+  const existingService = services?.[currentServiceId];
 
   if (validationMode === 'add' && !!existingService) {
     return {
@@ -30,7 +35,9 @@ const agentValidation: AgentValidation = (validationMode, agent, services) => {
 
   const nicknameAlreadyExisting = Object.entries(services ?? {}).some(
     ([serviceId, service]) =>
-      !!nickname && serviceId !== id && nickname === service.container_name,
+      !!nickname &&
+      serviceId !== currentServiceId &&
+      nickname === service.container_name,
   );
 
   if (nicknameAlreadyExisting) {

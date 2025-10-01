@@ -19,6 +19,7 @@ const createAgentError: CreateAgentError = (message, status, serviceId) => {
 };
 
 const processAgents: ProcessAgents = async (
+  serviceType,
   composeJson,
   agents,
   validate,
@@ -36,9 +37,17 @@ const processAgents: ProcessAgents = async (
   const agentPromises = agents.map(
     agent =>
       new Promise<AgentResultItem>((resolve, reject) => {
-        const serviceId = agent.id;
+        const { imageName, type, id } = agent;
 
-        const validationResult = validate(agent, composeJson.services);
+        const serviceId =
+          agent.serviceId ??
+          `gs-${imageName}-${serviceType}${type ? `-${type}` : ''}-${id}`;
+
+        const validationResult = validate(
+          agent,
+          serviceId,
+          composeJson.services,
+        );
 
         if (!validationResult.success) {
           reject(
