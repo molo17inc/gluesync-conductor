@@ -36,7 +36,6 @@ const processAgents: ProcessAgents = async (
   const agentPromises = agents.map(
     agent =>
       new Promise<AgentResultItem>((resolve, reject) => {
-        console.log('>>>>> grande grande', agent.id);
         const serviceId = agent.id;
 
         const validationResult = validate(agent, composeJson.services);
