@@ -29,9 +29,8 @@ const agentValidation: AgentValidation = (validationMode, agent, services) => {
   }
 
   const nicknameAlreadyExisting = Object.entries(services ?? {}).some(
-    ([serviceId, service]) => {
-      return serviceId !== id && nickname === service.container_name;
-    },
+    ([serviceId, service]) =>
+      !!nickname && serviceId !== id && nickname === service.container_name,
   );
 
   if (nicknameAlreadyExisting) {
