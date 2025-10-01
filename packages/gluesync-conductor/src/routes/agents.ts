@@ -10,6 +10,14 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
       summary: 'Add a list of agents',
       description: 'Agents specifications are written in docker compose file',
       tags: ['agents'],
+      querystring: {
+        type: 'object',
+        properties: {
+          raw: { type: 'boolean' },
+        },
+        required: [],
+        additionalProperties: false,
+      },
       body: {
         type: 'object',
         properties: {
@@ -116,9 +124,31 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
         404: {
           type: 'object',
           properties: {
-            success: { type: 'boolean', default: false },
+            success: { type: 'boolean', const: false },
             error: { type: 'string' },
           },
+          required: ['success', 'error'],
+          additionalProperties: false,
+        },
+        409: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', const: false },
+            error: { type: 'string' },
+            details: { type: 'string', nullable: true },
+          },
+          required: ['success', 'error'],
+          additionalProperties: false,
+        },
+        500: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', const: false },
+            error: { type: 'string' },
+            details: { type: 'string', nullable: true },
+          },
+          required: ['success', 'error'],
+          additionalProperties: false,
         },
       },
     },
@@ -158,16 +188,30 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
         404: {
           type: 'object',
           properties: {
-            success: { type: 'boolean' },
+            success: { type: 'boolean', const: false },
             error: { type: 'string' },
           },
+          required: ['success', 'error'],
+          additionalProperties: false,
         },
         502: {
           type: 'object',
           properties: {
-            success: { type: 'boolean' },
+            success: { type: 'boolean', const: false },
             error: { type: 'string' },
           },
+          required: ['success', 'error'],
+          additionalProperties: false,
+        },
+        500: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', const: false },
+            error: { type: 'string' },
+            details: { type: 'string', nullable: true },
+          },
+          required: ['success', 'error'],
+          additionalProperties: false,
         },
       },
     },
@@ -179,6 +223,14 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
       summary: 'Edit a list of agents',
       description: 'Agents specifications are written in docker compose file',
       tags: ['agents'],
+      querystring: {
+        type: 'object',
+        properties: {
+          raw: { type: 'boolean' },
+        },
+        required: [],
+        additionalProperties: false,
+      },
       body: {
         type: 'object',
         properties: {
@@ -286,26 +338,50 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
         404: {
           type: 'object',
           properties: {
-            success: { type: 'boolean', default: false },
+            success: { type: 'boolean', const: false },
             error: { type: 'string' },
           },
+          required: ['success', 'error'],
+          additionalProperties: false,
+        },
+        409: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', const: false },
+            error: { type: 'string' },
+            details: { type: 'string', nullable: true },
+          },
+          required: ['success', 'error'],
+          additionalProperties: false,
+        },
+        500: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', const: false },
+            error: { type: 'string' },
+            details: { type: 'string', nullable: true },
+          },
+          required: ['success', 'error'],
+          additionalProperties: false,
         },
       },
     },
     handler: editAgents,
   });
 
-  fastify.get('/agents/:id?/', {
+  fastify.get('/agents', {
     schema: {
       tags: ['agents'],
       summary: 'Get agent docker configuration',
       description:
         'Retrieve the docker compose configuration for a single agent by ID',
-      params: {
+      querystring: {
         type: 'object',
         properties: {
-          id: { type: 'string', description: 'Agent ID' },
+          raw: { type: 'boolean' },
         },
+        required: [],
+        additionalProperties: false,
       },
       response: {
         200: {
@@ -322,18 +398,77 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
         404: {
           type: 'object',
           properties: {
-            success: { type: 'boolean' },
+            success: { type: 'boolean', const: false },
             error: { type: 'string' },
           },
           required: ['success', 'error'],
+          additionalProperties: false,
         },
         500: {
           type: 'object',
           properties: {
+            success: { type: 'boolean', const: false },
+            error: { type: 'string' },
+            details: { type: 'string', nullable: true },
+          },
+          required: ['success', 'error'],
+          additionalProperties: false,
+        },
+      },
+    },
+    handler: getAgents,
+  });
+
+  fastify.get('/agents/:id/', {
+    schema: {
+      tags: ['agents'],
+      summary: 'Get agent docker configuration',
+      description:
+        'Retrieve the docker compose configuration for a single agent by ID',
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: 'Agent ID' },
+        },
+      },
+      querystring: {
+        type: 'object',
+        properties: {
+          raw: { type: 'boolean' },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
             success: { type: 'boolean' },
+            data: {
+              type: 'object',
+              additionalProperties: true,
+            },
+          },
+          required: ['success', 'data'],
+        },
+        404: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', const: false },
             error: { type: 'string' },
           },
           required: ['success', 'error'],
+          additionalProperties: false,
+        },
+        500: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', const: false },
+            error: { type: 'string' },
+            details: { type: 'string', nullable: true },
+          },
+          required: ['success', 'error'],
+          additionalProperties: false,
         },
       },
     },

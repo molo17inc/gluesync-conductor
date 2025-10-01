@@ -1,16 +1,19 @@
 import agentValidation from '../../../helpers/agentValidation/agentValidation';
+import cleanResults from '../../../helpers/cleanResults/cleanResults';
 import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
+import { castObject } from '../../../helpers/composeFile/extractKeyValue/extractKeyValue';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import processAgents from '../../../helpers/processAgent/processAgent';
 import { Agent } from '../../../helpers/processAgent/processAgent.model';
 import {
   EditAgentsHandler,
+  EditAgentsQuerystring,
   EditAgentsSuccessResponse,
 } from './editAgents.model';
 
 const handler: EditAgentsHandler = async (req, reply) => {
+  const { raw } = castObject<EditAgentsQuerystring>(req.query) || false;
   const agents: ReadonlyArray<Agent> = req.body.agents ?? [];
-
   const composeJson = await readComposeFile({ raw: true });
 
   try {
@@ -28,7 +31,7 @@ const handler: EditAgentsHandler = async (req, reply) => {
 
     const response: EditAgentsSuccessResponse = {
       success: true,
-      results,
+      results: raw ? results : await cleanResults(results),
     };
 
     reply.code(200).send(response);
