@@ -21,13 +21,15 @@ const handler: AddAgentsHandler = async (req, reply) => {
     const rawComposeJson = await readComposeFile({ raw: true });
 
     const { results } = await processAgents(
+      'agent',
       rawComposeJson,
       agentsWithIds,
-      (agentToValidate, servicesInCompose) =>
-        agentValidation('add', agentToValidate, servicesInCompose),
+      (agentToValidate, serviceId, servicesInCompose) =>
+        agentValidation('add', agentToValidate, serviceId, servicesInCompose),
       ({ reservations, limits, ...agent }) =>
         createComposeService('agent', {
           ...agent,
+          id: agent.id,
           resources: { reservations, limits },
         }),
     );

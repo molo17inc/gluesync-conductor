@@ -103,7 +103,7 @@ const createComposeService: CreateComposeService = (
   const containerName = nickname || `${imageName}-${type}-${serviceType}`;
 
   const defaultLabels = {
-    'com.molo17.conductor.unique_id': id,
+    'com.molo17.conductor.service_id': id,
     'com.molo17.conductor.versiontag': tag || undefined,
     'com.molo17.conductor.type': serviceType,
   };
@@ -131,7 +131,7 @@ const createComposeService: CreateComposeService = (
     environment: Object.entries({
       TYPE: type,
       GLUESYNC_MODULE_TAG: 'gluesync-conductor',
-      CONDUCTOR_AGENT_ID: id,
+      INITIAL_AGENT_ID: id,
       ...environment,
     }).map(([key, value]) => `${key}=${value}`),
     ports: mapPorts(ports),

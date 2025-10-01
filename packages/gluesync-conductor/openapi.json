@@ -952,7 +952,7 @@
                     "items": {
                       "type": "object",
                       "properties": {
-                        "id": {
+                        "serviceId": {
                           "type": "string"
                         },
                         "imageName": {
@@ -1046,7 +1046,7 @@
                         }
                       },
                       "required": [
-                        "id",
+                        "serviceId",
                         "imageName",
                         "type"
                       ]

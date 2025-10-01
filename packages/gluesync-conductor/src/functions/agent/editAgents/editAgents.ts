@@ -14,17 +14,19 @@ import {
 const handler: EditAgentsHandler = async (req, reply) => {
   const { raw } = castObject<EditAgentsQuerystring>(req.query) || false;
   const agents: ReadonlyArray<Agent> = req.body.agents ?? [];
-  const composeJson = await readComposeFile({ raw: true });
+  const rawComposeJson = await readComposeFile({ raw: true });
 
   try {
     const { results } = await processAgents(
-      composeJson,
+      'agent',
+      rawComposeJson,
       agents,
-      (agentToValidate, servicesInCompose) =>
-        agentValidation('edit', agentToValidate, servicesInCompose),
+      (agentToValidate, serviceId, servicesInCompose) =>
+        agentValidation('edit', agentToValidate, serviceId, servicesInCompose),
       ({ reservations, limits, ...agent }) =>
         createComposeService('agent', {
           ...agent,
+          id: agent.serviceId ? (agent.serviceId.split('-').at(-1) ?? '') : '',
           resources: { reservations, limits },
         }),
     );

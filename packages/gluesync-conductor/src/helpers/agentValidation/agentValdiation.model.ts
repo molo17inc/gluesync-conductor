@@ -10,5 +10,6 @@ export type ValidationResult = {
 export type AgentValidation = (
   validationMode: 'add' | 'edit',
   agent: Agent,
+  currentServiceId: string,
   services?: Record<string, RawComposeService>,
 ) => ValidationResult;
