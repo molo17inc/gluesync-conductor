@@ -35,6 +35,8 @@ services:
       # - JOB_ID=not_set
       # - TEST_NAME=DRY_RUN
       - IS_INTEGRATION_TEST=False
+      - DKR_COMPOSE_FILE=docker-compose-agents.yml
+      - DKR_COMPOSE_FILE_SOURCE=docker-compose.yml
     ports:
       - 5017:1717
     volumes:
@@ -42,6 +44,7 @@ services:
       - ./data:/opt/gluesync/data
       - ./gs-conf/gs-license.dat:/opt/gluesync/data/gs-license.dat
       - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
+      - ./docker-compose-agents.yml:/opt/gluesync-conductor/docker-compose-agents.yml
       - ./gluesync-cert.pem:/opt/gluesync/data/cert.pem
       - ./gluesync-key.pem:/opt/gluesync/data/key.pem
   gluesync-core-hub:

@@ -1,3 +1,4 @@
+import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
 import extractImageInfo from '../extractImageInfo/extractImageInfo';
 import {
@@ -25,8 +26,14 @@ const processAgents: ProcessAgents = async (
   validate,
   createService,
 ) => {
-  const coreHub =
-    composeJson.services?.[process.env.CORE_HUB_NAME || 'gluesync-core-hub'];
+  const coreHub = (
+    process.env.DKR_COMPOSE_FILE_SOURCE !== process.env.DKR_COMPOSE_FILE
+      ? await readComposeFile({
+          filename: process.env.DKR_COMPOSE_FILE_SOURCE,
+          raw: true,
+        })
+      : composeJson
+  ).services?.[process.env.CORE_HUB_NAME || 'gluesync-core-hub'];
 
   const coreHubVersionTag = extractImageInfo(coreHub?.image || '').tag;
 

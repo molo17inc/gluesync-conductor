@@ -8,6 +8,7 @@ declare namespace NodeJS {
 
     readonly PROJECT_CWD: string;
     readonly DKR_COMPOSE_FILE: string;
+    readonly DKR_COMPOSE_FILE_SOURCE: string;
 
     readonly HOST: string;
     readonly PORT: string;
