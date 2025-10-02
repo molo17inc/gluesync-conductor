@@ -26,17 +26,17 @@ services:
       - PORT=1717
       - DOCKER_HOST=unix:///var/run/docker.sock
       - BASE_PATH=$PWD
-      - USE_SDK=False
+      - USE_SDK=false
       - SSL_SKIP_VERIFY=false
       - SSL_ENABLED=false
       - SSL_CERT_FILE=/opt/gluesync/data/cert.pem
       - SSL_KEY_FILE=/opt/gluesync/data/key.pem
+      - DKR_COMPOSE_FILE=docker-compose.agents.yml
+      # - DKR_COMPOSE_FILE_SOURCE=docker-compose.yml
+      # - IS_INTEGRATION_TEST=false
       # Test-reserved (add only for integration tests):
       # - JOB_ID=not_set
       # - TEST_NAME=DRY_RUN
-      - IS_INTEGRATION_TEST=False
-      - DKR_COMPOSE_FILE=docker-compose-agents.yml
-      - DKR_COMPOSE_FILE_SOURCE=docker-compose.yml
     ports:
       - 5017:1717
     volumes:
@@ -44,7 +44,7 @@ services:
       - ./data:/opt/gluesync/data
       - ./gs-conf/gs-license.dat:/opt/gluesync/data/gs-license.dat
       - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
-      - ./docker-compose-agents.yml:/opt/gluesync-conductor/docker-compose-agents.yml
+      - ./docker-compose.agents.yml:/opt/gluesync-conductor/docker-compose.agents.yml
       - ./gluesync-cert.pem:/opt/gluesync/data/cert.pem
       - ./gluesync-key.pem:/opt/gluesync/data/key.pem
   gluesync-core-hub:
