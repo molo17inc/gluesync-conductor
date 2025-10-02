@@ -42,7 +42,7 @@ services:
       - ./data:/opt/gluesync/data
       - ./gs-conf/gs-license.dat:/opt/gluesync/data/gs-license.dat
       - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
-      - ./docker-compose.agents.yml:/opt/gluesync-conductor/docker-compose.agents.yml
+      - ./agents:/opt/gluesync-conductor/agents
       - ./gluesync-cert.pem:/opt/gluesync/data/cert.pem
       - ./gluesync-key.pem:/opt/gluesync/data/key.pem
   gluesync-core-hub:
