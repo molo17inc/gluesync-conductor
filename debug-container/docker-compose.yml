@@ -29,9 +29,7 @@ services:
       - USE_SDK=false
       - SSL_SKIP_VERIFY=false
       - SSL_ENABLED=false
-      - SSL_CERT_FILE=/opt/gluesync/data/cert.pem
-      - SSL_KEY_FILE=/opt/gluesync/data/key.pem
-      - DKR_COMPOSE_FILE=docker-compose.agents.yml
+      - DKR_COMPOSE_FILE=/opt/gluesync-conductor/agents/docker-compose.agents.yml
       # - DKR_COMPOSE_FILE_SOURCE=docker-compose.yml
       # - IS_INTEGRATION_TEST=false
       # Test-reserved (add only for integration tests):
