@@ -12,7 +12,6 @@ export type CollectLogsBody = Readonly<{
 
 export type CollectLogsSuccessResponse = {
   success: true;
-  exitCode: number;
   output: string;
 };
 

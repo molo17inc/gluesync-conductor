@@ -8,7 +8,7 @@ const supportRoutes = async (fastify: Readonly<FastifyInstance>) => {
       tags: ['support'],
       summary: 'Send logs with ticket and email',
       description:
-        'Runs the support script and returns its output and exit code',
+        'Runs the support script that uploads the zipped logs and returns its output',
       querystring: {
         type: 'object',
         additionalProperties: false,
@@ -34,11 +34,10 @@ const supportRoutes = async (fastify: Readonly<FastifyInstance>) => {
       response: {
         200: {
           type: 'object',
-          required: ['success', 'exitCode', 'output'],
+          required: ['success', 'output'],
           additionalProperties: false,
           properties: {
             success: { type: 'boolean', const: true },
-            exitCode: { type: 'integer' },
             output: { type: 'string' },
           },
         },
@@ -69,9 +68,9 @@ const supportRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.post('/collectLogsStreaming', {
     schema: {
       tags: ['support'],
-      summary: 'Send logs with ticket and email',
+      summary: 'Send logs with ticket and email logging in the console',
       description:
-        'Runs the support script and returns its output and exit code',
+        'Runs the support script that uploads the zipped logs and returns its output',
       querystring: {
         type: 'object',
         additionalProperties: false,
@@ -97,11 +96,10 @@ const supportRoutes = async (fastify: Readonly<FastifyInstance>) => {
       response: {
         200: {
           type: 'object',
-          required: ['success', 'exitCode', 'output'],
+          required: ['success', 'output'],
           additionalProperties: false,
           properties: {
             success: { type: 'boolean', const: true },
-            exitCode: { type: 'integer' },
             output: { type: 'string' },
           },
         },

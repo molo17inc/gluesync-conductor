@@ -29,7 +29,7 @@ echo ""
 echo " If you have a support ticket, you can upload the logs directly to your secure"
 echo " MOLO17 support area for faster troubleshooting assistance."
 echo ""
-echo " Usage: $0 [-e email] [-t ticket]"
+echo " Usage: $0 -t <ticketId> -e <email>"
 echo "=================================================================================="
 echo ""
 
@@ -39,17 +39,25 @@ INTERVAL="0.25"  # seconds per dot
 start_msg="starting"
 end_msg="done"
 
-# Inputs: ticketId and email
-ticketId="$1"
-email="$2"
+# Parse command line arguments
+ticketId=""
+email=""
+
+while getopts "t:e:" opt; do
+  case $opt in
+    t) ticketId="$OPTARG" ;;
+    e) email="$OPTARG" ;;
+    *) echo "Usage: $0 -t <ticketId> -e <email>" >&2; exit 2 ;;
+  esac
+done
 
 # Basic argument validation
-if [ "$#" -ne 2 ]; then
-  echo "Usage: $0 <ticketId> <email>"
+if [ -z "$ticketId" ] || [ -z "$email" ]; then
+  echo "Usage: $0 -t <ticketId> -e <email>"
   exit 2
 fi
 
-# Very light email sanity check: one @ and non-empty parts
+# Very light email sanity check
 if ! printf '%s' "$email" | grep -Eq '^[^@[:space:]]+@[^@[:space:]]+$'; then
   echo "Invalid email format"
   exit 2

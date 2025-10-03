@@ -13,7 +13,7 @@ const handler: CollectLogsHandler = async (req, reply) => {
       return;
     }
 
-    // Very light email sanity check (should match your script’s check)
+    // Very light email sanity check
     if (!/^[^@\s]+@[^@\s]+$/.test(email)) {
       reply.code(400).send({ success: false, error: 'invalid email format' });
       return;
@@ -22,23 +22,15 @@ const handler: CollectLogsHandler = async (req, reply) => {
     // Absolute path to the script in the container
     const scriptPath = './script.sh';
 
-    // Build a safe command by avoiding shell interpolation issues.
-    // Prefer execFileSync when script path is known; but request was for execSync:
-    // Use quoting to minimize injection risk and pass args positionally.
-    const quoted = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
-    const cmd = `${quoted(scriptPath)} ${quoted(ticketId)} ${quoted(email)} 2>&1`; // merge stderr→stdout
-    const stdout = execFileSync(cmd, {
+    const stdout = execFileSync(scriptPath, ['-t', ticketId, '-e', email], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
-      shell: '/bin/bash',
       env: process.env,
       timeout: 60_000,
     });
-    console.log('>>>>>>>>>>> cmd', stdout);
 
     reply.code(200).send({
       success: true,
-      exitCode: 0,
       output: stdout,
     });
   } catch (err: any) {

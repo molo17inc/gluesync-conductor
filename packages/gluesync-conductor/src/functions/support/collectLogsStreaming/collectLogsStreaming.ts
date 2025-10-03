@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
 import { buffer } from 'node:stream/consumers';
-import { CollectLogsHandler } from '../collectLogs/collectLogs.model';
+import { CollectLogsStreamingHandler } from './collectLogsStreaming.model';
 
-const handler: CollectLogsHandler = async (req, reply) => {
+const handler: CollectLogsStreamingHandler = async (req, reply) => {
   const { ticketId, email } = req.body as Readonly<{
     ticketId?: string;
     email?: string;
@@ -21,11 +21,10 @@ const handler: CollectLogsHandler = async (req, reply) => {
   }
 
   try {
-    const child = spawn('./script.sh', [ticketId, email], {
+    const child = spawn('./script.sh', ['-t', ticketId, '-e', email], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
     });
-
     // Stream per-line logs as chunks arrive
     const logLines = (
       chunk: Buffer,
@@ -59,7 +58,6 @@ const handler: CollectLogsHandler = async (req, reply) => {
     if (exitCode === 0) {
       return reply.code(200).send({
         success: true,
-        exitCode,
         output: stdout,
       });
     }
