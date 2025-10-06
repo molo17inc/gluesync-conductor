@@ -1,7 +1,7 @@
 FROM node:22.13.1-alpine
 
 # Install Docker CLI
-RUN apk add --no-cache docker-cli docker-cli-compose curl bash 
+RUN apk add --no-cache docker-cli docker-cli-compose curl bash zip
 
 # Create Gluesync data directory structure
 RUN mkdir -p /opt/gluesync/data
@@ -30,7 +30,7 @@ ENV GLUESYNC_CONFIG_DIR=./shared
 WORKDIR /opt/gluesync-conductor
 
 # Copy script with execute bit; ensure LF endings
-COPY --chmod=755 script.sh script.sh
+COPY --chmod=755 scripts/script.sh script.sh
 # If CRLF may be present in source, normalize:
 RUN sed -i 's/\r$//' ./script.sh
 
