@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { buffer } from 'node:stream/consumers';
+import { access, constants } from 'node:fs/promises';
 import { CollectLogsHandler } from './collectLogs.model';
 
 const handler: CollectLogsHandler = async (req, reply) => {
@@ -20,12 +21,25 @@ const handler: CollectLogsHandler = async (req, reply) => {
       .send({ success: false, error: 'invalid email format' });
   }
 
+  const scriptPath = './collect-logs.sh';
+
+  // Check if script exists and is executable
   try {
-    //todo check if script present
-    const child = spawn('./collect-logs.sh', ['-t', ticketId, '-e', email], {
+    await access(scriptPath, constants.F_OK | constants.X_OK);
+  } catch (err) {
+    req.log.error({ err, scriptPath }, 'script not found or not executable');
+    return reply.code(500).send({
+      success: false,
+      error: 'log collection script not available',
+    });
+  }
+
+  try {
+    const child = spawn(scriptPath, ['-t', ticketId, '-e', email], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
     });
+
     // Stream per-line logs as chunks arrive
     const logLines = (
       chunk: Buffer,
@@ -43,6 +57,13 @@ const handler: CollectLogsHandler = async (req, reply) => {
     child.stderr.on('data', (chunk: Buffer) =>
       logLines(chunk, 'script stderr'),
     );
+
+    child.on('error', err => {
+      req.log.error({ err }, 'script spawn error');
+      return reply
+        .code(500)
+        .send({ success: false, error: 'failed to start script' });
+    });
 
     // Collect full stdout/stderr buffers in parallel
     const [stdoutBuf, stderrBuf, exitCode] = await Promise.all([

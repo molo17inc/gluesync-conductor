@@ -47,6 +47,8 @@ services:
       - ./services:/opt/gluesync-conductor/services
       - ./gluesync-cert.pem:/opt/gluesync/data/cert.pem
       - ./gluesync-key.pem:/opt/gluesync/data/key.pem
+      - ./collect-logs.sh:/opt/gluesync-conductor/collect-logs.sh
+      # - ./log:/log
   gluesync-core-hub:
     image: molo17/gluesync-core-hub:2.1.4.2
     ports:
