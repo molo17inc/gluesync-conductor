@@ -41,7 +41,8 @@ const handler: GetServicesHandler = async (req, reply) => {
       .filter(([, service]) =>
         raw
           ? Array.isArray(service.labels) &&
-            service.labels.includes(`${LabelPrefix.CONDUCTOR}.type=agent`)
+            (service.labels.includes(`${LabelPrefix.CONDUCTOR}.type=agent`) ||
+              service.labels.includes(`${LabelPrefix.CONDUCTOR}.type=module`))
           : (service.labels?.[`${LabelPrefix.CONDUCTOR}.type`] as
               | ConductorServiceTypes
               | undefined) === 'agent',
