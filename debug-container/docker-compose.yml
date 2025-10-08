@@ -29,7 +29,7 @@ services:
       - USE_SDK=false
       - SSL_SKIP_VERIFY=false
       - SSL_ENABLED=false
-      - DKR_COMPOSE_FILE=/opt/gluesync-conductor/agents/docker-compose.agents.yml
+      - DKR_COMPOSE_FILE=/opt/gluesync-conductor/services/docker-compose.services.yml
       # - DKR_COMPOSE_FILE_SOURCE=docker-compose.yml
       # - IS_INTEGRATION_TEST=false
       # Test-reserved (add only for integration tests):
@@ -42,7 +42,7 @@ services:
       - ./data:/opt/gluesync/data
       - ./gs-conf/gs-license.dat:/opt/gluesync/data/gs-license.dat
       - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
-      - ./agents:/opt/gluesync-conductor/agents
+      - ./services:/opt/gluesync-conductor/services
       - ./gluesync-cert.pem:/opt/gluesync/data/cert.pem
       - ./gluesync-key.pem:/opt/gluesync/data/key.pem
   gluesync-core-hub:
