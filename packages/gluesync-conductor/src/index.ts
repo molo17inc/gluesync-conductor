@@ -57,9 +57,9 @@ const startServer = async () => {
 
   // Register route modules
   await server.register(systemRoutes);
+  await server.register(serviceRoutes);
   await server.register(containerRoutes);
   await server.register(agentRoutes);
-  await server.register(serviceRoutes);
 
   await server.ready();
   await server.listen({ host, port });
