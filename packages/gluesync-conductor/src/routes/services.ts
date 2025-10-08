@@ -317,6 +317,7 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
         type: 'object',
         properties: {
           raw: { type: 'boolean' },
+          asString: { type: 'boolean' },
         },
         required: [],
         additionalProperties: false,
@@ -327,8 +328,13 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
           properties: {
             success: { type: 'boolean' },
             data: {
-              type: 'object',
-              additionalProperties: true,
+              oneOf: [
+                { type: 'string' },
+                {
+                  type: 'object',
+                  additionalProperties: true,
+                },
+              ],
             },
           },
           required: ['success', 'data'],
@@ -357,7 +363,7 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
     handler: getServices,
   });
 
-  fastify.get('/services/:id/', {
+  fastify.get('/services/:id', {
     schema: {
       tags: ['services'],
       summary: 'Get service docker configuration',
@@ -373,6 +379,7 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
         type: 'object',
         properties: {
           raw: { type: 'boolean' },
+          asString: { type: 'boolean' },
         },
         required: [],
         additionalProperties: false,
@@ -383,8 +390,13 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
           properties: {
             success: { type: 'boolean' },
             data: {
-              type: 'object',
-              additionalProperties: true,
+              oneOf: [
+                { type: 'string' },
+                {
+                  type: 'object',
+                  additionalProperties: true,
+                },
+              ],
             },
           },
           required: ['success', 'data'],
