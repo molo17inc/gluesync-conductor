@@ -1,6 +1,5 @@
 import { LabelPrefix } from '../../models/composeFile.model';
 import { ConductorServiceTypes } from '../../models/conductor.model';
-import parseServiceType from '../composeFile/parseServiceType/parseServiceType';
 import { ServiceValidation } from './serviceValdiation.model';
 
 const serviceValidation: ServiceValidation = (
@@ -13,7 +12,7 @@ const serviceValidation: ServiceValidation = (
   const existingService = services?.[currentServiceId];
 
   if (validationMode === 'add') {
-    if (!!existingService) {
+    if (existingService) {
       return {
         success: false,
         errorMessage: 'Service already existing in file',
