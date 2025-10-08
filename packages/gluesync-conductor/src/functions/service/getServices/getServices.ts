@@ -15,13 +15,11 @@ import {
 
 const handler: GetServicesHandler = async (req, reply) => {
   try {
-    const { raw, asString } =
+    const { raw, format } =
       castObject<GetServicesQuerystring>(req.query) || false;
     const { id } = castObject<GetServicesParams>(req.params);
 
-    req.log.debug(
-      `Current query: raw:${raw}, ${typeof raw} asString: ${asString}, ${typeof asString}`,
-    );
+    req.log.debug(`Current query: raw:${raw}, ${typeof raw} format: ${format}`);
 
     const composeJson = await readComposeFile({ raw });
 
@@ -40,7 +38,7 @@ const handler: GetServicesHandler = async (req, reply) => {
 
       return reply.send({
         success: true,
-        data: asString ? stringify(service) : service,
+        data: format === 'string' ? stringify(service) : service,
       });
     }
 
@@ -63,7 +61,7 @@ const handler: GetServicesHandler = async (req, reply) => {
 
     return reply.send({
       success: true,
-      data: asString ? stringify(services) : services,
+      data: format === 'string' ? stringify(services) : services,
     });
   } catch (error: unknown) {
     req.log.error(

@@ -317,7 +317,7 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
         type: 'object',
         properties: {
           raw: { type: 'boolean' },
-          asString: { type: 'boolean' },
+          format: { type: 'string', enum: ['string'] },
         },
         required: [],
         additionalProperties: false,
@@ -379,7 +379,7 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
         type: 'object',
         properties: {
           raw: { type: 'boolean' },
-          asString: { type: 'boolean' },
+          format: { type: 'string', enum: ['string'] },
         },
         required: [],
         additionalProperties: false,

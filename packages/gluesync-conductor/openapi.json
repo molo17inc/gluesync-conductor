@@ -1366,10 +1366,13 @@
           },
           {
             "schema": {
-              "type": "boolean"
+              "type": "string",
+              "enum": [
+                "string"
+              ]
             },
             "in": "query",
-            "name": "asString",
+            "name": "format",
             "required": false
           }
         ],
@@ -1481,10 +1484,13 @@
           },
           {
             "schema": {
-              "type": "boolean"
+              "type": "string",
+              "enum": [
+                "string"
+              ]
             },
             "in": "query",
-            "name": "asString",
+            "name": "format",
             "required": false
           },
           {

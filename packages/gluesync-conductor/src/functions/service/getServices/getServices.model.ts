@@ -17,7 +17,7 @@ export type GetServicesResponse = GetServicesSuccessResponse | ErrorResponse;
 
 export type GetServicesQuerystring = Readonly<{
   raw?: boolean;
-  asString?: boolean;
+  format?: 'string';
 }>;
 
 export type GetServicesParams = Readonly<{
