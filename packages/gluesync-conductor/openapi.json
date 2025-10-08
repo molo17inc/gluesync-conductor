@@ -1363,6 +1363,14 @@
             "in": "query",
             "name": "raw",
             "required": false
+          },
+          {
+            "schema": {
+              "type": "boolean"
+            },
+            "in": "query",
+            "name": "asString",
+            "required": false
           }
         ],
         "responses": {
@@ -1377,8 +1385,15 @@
                       "type": "boolean"
                     },
                     "data": {
-                      "type": "object",
-                      "additionalProperties": true
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -1448,7 +1463,7 @@
         }
       }
     },
-    "/services/{id}/": {
+    "/services/{id}": {
       "get": {
         "summary": "Get service docker configuration",
         "tags": [
@@ -1462,6 +1477,14 @@
             },
             "in": "query",
             "name": "raw",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "boolean"
+            },
+            "in": "query",
+            "name": "asString",
             "required": false
           },
           {
@@ -1486,8 +1509,15 @@
                       "type": "boolean"
                     },
                     "data": {
-                      "type": "object",
-                      "additionalProperties": true
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      ]
                     }
                   },
                   "required": [
