@@ -3,7 +3,8 @@
 		"_postman_id": "9305447e-682b-43a3-8cbc-708c142de4ac",
 		"name": "gluesync-conductor",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-		"_exporter_id": "47310671"},
+		"_exporter_id": "47310671"
+	},
 	"item": [
 		{
 			"name": "Containers",
@@ -298,10 +299,10 @@
 			]
 		},
 		{
-			"name": "Agents",
+			"name": "Services",
 			"item": [
 				{
-					"name": "Add agents",
+					"name": "Add services",
 					"request": {
 						"auth": {
 							"type": "noauth"
@@ -310,7 +311,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"agents\": [\n    {\n      \"imageName\": \"gluesync-mssql-cdc\",       // maps to Docker image\n      \"nickname\": \"9e54e237\",       // custom name for container \n      \"type\": \"target\",                        // source or target (required for processing)\n      \"tag\": \"2.1.2.6\",                        // optional image version tag\n      \"environment\": {                         // env variables in service\n        \"NODE_ENV\": \"production\",\n        \"DB_HOST\": \"db\",\n        \"DB_USER\": \"root\",\n        \"DB_PASS\": \"password\",\n        \"privileged\": true,\n        \"start_from\": 0\n      },\n      \"labels\": {                              // docker-compose labels\n        \"team\": \"data-eng\",\n        \"stage\": \"prod\"\n      },\n      \"ports\": [                               // port mappings\n        \"9090:9090\",\n        \"9090:9091\",\n        \"8080:80\"\n      ],\n      \"volumes\": [                             // volume mounts\n        \"./data:/var/lib/mysql\",\n        \"./logs:/var/log/mssql\"\n      ],\n      \"reservations\": {                        // resource reservations\n        \"cpus\": 1.0,\n        \"memory\": \"2.0G\"\n      },\n      \"limits\": {                              // resource limits\n        \"cpus\": 2.0,\n        \"memory\": \"6.4G\"\n      }\n    },\n    {\n      \"imageName\": \"gluesync-mssql-cdc\",       // maps to Docker image\n      \"nickname\": \"custom-mssql-source\",  \n      \"type\": \"source\",                        // source or target (required for processing)\n      \"tag\": \"2.1.2.6\",                        // optional image version tag\n      \"environment\": {                         // env variables in service\n        \"NODE_ENV\": \"production\",\n        \"DB_HOST\": \"db\",\n        \"DB_USER\": \"root\",\n        \"DB_PASS\": \"password\",\n        \"privileged\": true,\n        \"start_from\": 0\n      },\n      \"labels\": {                              // docker-compose labels\n        \"team\": \"data-eng\",\n        \"stage\": \"prod\"\n      },\n      \"ports\": [                               // port mappings\n        \"9090:9090\",\n        \"9090:9091\",\n        \"8080:80\"\n      ],\n      \"volumes\": [                             // volume mounts\n        \"./data:/var/lib/mysql\",\n        \"./logs:/var/log/mssql\"\n      ],\n      \"reservations\": {                        // resource reservations\n        \"cpus\": 1.0,\n        \"memory\": \"2.0G\"\n      },\n      \"limits\": {                              // resource limits\n        \"cpus\": 2.0,\n        \"memory\": \"6.4G\"\n      }\n    }\n  ]\n}\n",
+							"raw": "{\n  \"agents\": [\n    {\n      \"imageName\": \"gluesync-mssql-cdc\",       // maps to Docker image\n      \"type\": \"agent\",                         // agent of module \n      \"agentType\": \"target\",                   // source or target (required for processing)\n      \"tag\": \"2.1.2.6\",                        // optional image version tag\n      \"environment\": {                         // env variables in service\n        \"NODE_ENV\": \"production\",\n        \"DB_HOST\": \"db\",\n        \"DB_USER\": \"root\",\n        \"DB_PASS\": \"password\",\n        \"privileged\": true,\n        \"start_from\": 0\n      },\n      \"labels\": {                              // docker-compose labels\n        \"team\": \"data-eng\",\n        \"stage\": \"prod\"\n      },\n      \"ports\": [                               // port mappings\n        \"9090:9090\",\n        \"9090:9091\",\n        \"8080:80\"\n      ],\n      \"volumes\": [                             // volume mounts\n        \"./data:/var/lib/mysql\",\n        \"./logs:/var/log/mssql\"\n      ],\n      \"reservations\": {                        // resource reservations\n        \"cpus\": 1.0,\n        \"memory\": \"2.0G\"\n      },\n      \"limits\": {                              // resource limits\n        \"cpus\": 2.0,\n        \"memory\": \"6.4G\"\n      }\n    },\n    {\n      \"imageName\": \"gluesync-mssql-cdc\",       // maps to Docker image\n      \"type\": \"source\",                        // source or target (required for processing)\n      \"tag\": \"2.1.2.6\",                        // optional image version tag\n      \"environment\": {                         // env variables in service\n        \"NODE_ENV\": \"production\",\n        \"DB_HOST\": \"db\",\n        \"DB_USER\": \"root\",\n        \"DB_PASS\": \"password\",\n        \"privileged\": true,\n        \"start_from\": 0\n      },\n      \"labels\": {                              // docker-compose labels\n        \"team\": \"data-eng\",\n        \"stage\": \"prod\"\n      },\n      \"ports\": [                               // port mappings\n        \"9090:9090\",\n        \"9090:9091\",\n        \"8080:80\"\n      ],\n      \"volumes\": [                             // volume mounts\n        \"./data:/var/lib/mysql\",\n        \"./logs:/var/log/mssql\"\n      ],\n      \"reservations\": {                        // resource reservations\n        \"cpus\": 1.0,\n        \"memory\": \"2.0G\"\n      },\n      \"limits\": {                              // resource limits\n        \"cpus\": 2.0,\n        \"memory\": \"6.4G\"\n      }\n    }\n  ]\n}\n",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -318,19 +319,25 @@
 							}
 						},
 						"url": {
-							"raw": "{{URL}}/agents",
+							"raw": "{{URL}}/agents?raw=true",
 							"host": [
 								"{{URL}}"
 							],
 							"path": [
 								"agents"
+							],
+							"query": [
+								{
+									"key": "raw",
+									"value": "true"
+								}
 							]
 						}
 					},
 					"response": []
 				},
 				{
-					"name": "Edit agents",
+					"name": "Edit services",
 					"request": {
 						"auth": {
 							"type": "noauth"
@@ -339,7 +346,7 @@
 						"header": [],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"agents\": [\n    {\n      \"id\": \"463afa72\",\n      \"imageName\": \"gluesync-mssql-cdc\",       // maps to Docker image\n      \"nickname\": \"pippo\",       // custom name for container  \n      \"type\": \"target\",                        // source or target (required for processing)\n      \"tag\": \"2.1.2.6\",                        // optional image version tag\n      \"environment\": {                         // env variables in service\n        \"NODE_ENV\": \"production\",\n        \"DB_HOST\": \"db\",\n        \"DB_USER\": \"root\",\n        \"DB_PASS\": \"password\",\n        \"privileged\": true,\n        \"start_from\": 0,\n        \"CONDUCTOR_AGENT_ID\":\"c5f17841\"\n      },\n      \"labels\": {                              // docker-compose labels\n        \"team\": \"data-eng\",\n        \"stage\": \"prod\"\n      },\n      \"ports\": [                               // port mappings\n        \"9090:9090\",\n        \"9090:9091\",\n        \"8080:80\"\n      ],\n      \"volumes\": [                             // volume mounts\n        \"./data:/var/lib/mysql\",\n        \"./logs:/var/log/mssql\"\n      ],\n      \"reservations\": {                        // resource reservations\n        \"cpus\": 1.0,\n        \"memory\": \"2.0G\"\n      },\n      \"limits\": {                              // resource limits\n        \"cpus\": 2.0,\n        \"memory\": \"6.4G\"\n      }\n    },\n    {\n      \"id\": \"pippo\",\n      \"imageName\": \"gluesync-mssql-cdc\",       // maps to Docker image\n      \"nickname\": \"custom-mssql-source\",  \n      \"type\": \"source\",                        // source or target (required for processing)\n      \"tag\": \"2.1.2.6\",                        // optional image version tag\n      \"environment\": {                         // env variables in service\n        \"NODE_ENV\": \"production\",\n        \"DB_HOST\": \"db\",\n        \"DB_USER\": \"root\",\n        \"DB_PASS\": \"password\",\n        \"privileged\": true,\n        \"start_from\": 0\n      },\n      \"labels\": {                              // docker-compose labels\n        \"team\": \"data-eng\",\n        \"stage\": \"prod\"\n      },\n      \"ports\": [                               // port mappings\n        \"9090:9090\",\n        \"9090:9091\",\n        \"8080:80\"\n      ],\n      \"volumes\": [                             // volume mounts\n        \"./data:/var/lib/mysql\",\n        \"./logs:/var/log/mssql\"\n      ],\n      \"reservations\": {                        // resource reservations\n        \"cpus\": 1.0,\n        \"memory\": \"2.0G\"\n      },\n      \"limits\": {                              // resource limits\n        \"cpus\": 2.0,\n        \"memory\": \"6.4G\"\n      }\n    }\n  ]\n}\n",
+							"raw": "{\n  \"services\": [\n    {\n      \"serviceId\": \"gs-gluesync-mssql-cdc-agent-target-90522f0c\",\n      \"type\": \"agent\",                         // agent of module\n      \"imageName\": \"gluesync-mssql-cdc\",       // maps to Docker image\n      \"agentType\": \"source\",                   // source or target (required for processing)\n      \"tag\": \"2.1.2.6\",                        // optional image version tag\n      \"labels\": {                              // docker-compose labels\n        \"team\": \"data-eng\",\n        \"stage\": \"prod\"\n      },\n      \"ports\": [                               // port mappings\n        \"9090:9090\",\n        \"9090:9091\",\n        \"8080:80\"\n      ],\n      \"volumes\": [                             // volume mounts\n        \"./data:/var/lib/mysql\",\n        \"./logs:/var/log/mssql\"\n      ],\n      \"reservations\": {                        // resource reservations\n        \"cpus\": 1.0,\n        \"memory\": \"2.0G\"\n      },\n      \"limits\": {                              // resource limits\n        \"cpus\": 2.0,\n        \"memory\": \"6.4G\"\n      }\n    }\n  ]\n}\n",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -347,19 +354,25 @@
 							}
 						},
 						"url": {
-							"raw": "{{URL}}/agents",
+							"raw": "{{URL}}/services?raw=true",
 							"host": [
 								"{{URL}}"
 							],
 							"path": [
-								"agents"
+								"services"
+							],
+							"query": [
+								{
+									"key": "raw",
+									"value": "true"
+								}
 							]
 						}
 					},
 					"response": []
 				},
 				{
-					"name": "Get agents version",
+					"name": "Get services conf",
 					"protocolProfileBehavior": {
 						"disableBodyPruning": true
 					},
@@ -400,7 +413,87 @@
 					"response": []
 				},
 				{
-					"name": "Get agents conf",
+					"name": "Get services conf with id",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"agents\": [\n    {\n      \"imageName\": \"gluesync-mssql-cdc\",       // maps to Docker image\n      \"type\": \"target\",                        // source or target (required for processing)\n             // custom service/container name override\n      \"tag\": \"2.1.2.6\",                        // optional image version tag\n      \"environment\": {                         // env variables in service\n        \"NODE_ENV\": \"production\",\n        \"DB_HOST\": \"db\",\n        \"DB_USER\": \"root\",\n        \"DB_PASS\": \"password\",\n        \"privileged\": true,\n        \"start_from\": 0\n      },\n      \"labels\": {                              // docker-compose labels\n        \"team\": \"data-eng\",\n        \"stage\": \"prod\"\n      },\n      \"ports\": [                               // port mappings\n        \"9090:9090\",\n        \"9090:9091\",\n        \"8080:80\"\n      ],\n      \"volumes\": [                             // volume mounts\n        \"./data:/var/lib/mysql\",\n        \"./logs:/var/log/mssql\"\n      ],\n      \"reservations\": {                        // resource reservations\n        \"cpus\": 1.0,\n        \"memory\": \"2.0G\"\n      },\n      \"limits\": {                              // resource limits\n        \"cpus\": 2.0,\n        \"memory\": \"6.4G\"\n      }\n    }\n  ]\n}\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/agents/:id/version",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"agents",
+								":id",
+								"version"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "custom-mssql-target",
+									"description": "used for container name (default is gluesync-mssql-cdc-target-agent)"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Utility",
+			"item": [
+				{
+					"name": "Collect logs",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"ticketId\": \"213892137\",\n  \"email\": \"ciao\"\n}\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{URL}}/sendLogs",
+							"host": [
+								"{{URL}}"
+							],
+							"path": [
+								"sendLogs"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Agents",
+			"item": [
+				{
+					"name": "Get agents version",
 					"protocolProfileBehavior": {
 						"disableBodyPruning": true
 					},

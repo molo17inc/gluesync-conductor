@@ -6,13 +6,14 @@ import {
   RawComposeService,
 } from '../../models/composeFile.model';
 import { ConductorServiceTypes } from '../../models/conductor.model';
-import { ValidationResult } from '../agentValidation/agentValdiation.model';
+import { ValidationResult } from '../serviceValidation/serviceValdiation.model';
 
-export type Agent = Readonly<{
+export type Service = Readonly<{
   id: string;
   serviceId?: string;
   imageName: string;
-  type: 'target' | 'source';
+  type: ConductorServiceTypes;
+  agentType?: 'target' | 'source';
   nickname?: string;
   /**
    * Contains the same core-hub version tag.
@@ -33,7 +34,7 @@ export type Agent = Readonly<{
   dependsOn: ComposeDependsOn;
 }>;
 
-export type AgentResultItem =
+export type ServiceResultItem =
   | {
       success: true;
       serviceId: string;
@@ -41,23 +42,22 @@ export type AgentResultItem =
     }
   | { success: false; serviceId: string; error: string };
 
-export type CreateAgentError = (
+export type CreateServiceError = (
   message: string,
   status: number,
   serviceId: string,
 ) => Error & { status: number; serviceId: string; error: string };
 
-export type ProcessAgents = (
-  type: ConductorServiceTypes,
+export type ProcessServices = (
   composeJson: Partial<RawComposeFile>,
-  agents: ReadonlyArray<Agent>,
+  services: ReadonlyArray<Service>,
   validate: (
-    agent: Agent,
+    service: Service,
     serviceId: string,
     services?: Record<string, any>,
   ) => ValidationResult,
-  createService: (agent: Agent) => RawComposeService,
+  createService: (service: Service) => RawComposeService,
 ) => Promise<{
-  results: AgentResultItem[];
+  results: ServiceResultItem[];
   updatedComposeJson: RawComposeFile;
 }>;

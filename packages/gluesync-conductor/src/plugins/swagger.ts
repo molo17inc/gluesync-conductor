@@ -28,6 +28,7 @@ const swaggerPlugin: FastifyPluginAsync = async (
       // ],
       tags: [
         { name: 'system', description: 'System related endpoints' },
+        { name: 'services', description: 'Services related endpoints' },
         { name: 'containers', description: 'Container related endpoints' },
         { name: 'agents', description: 'Agent related endpoints' },
       ],
