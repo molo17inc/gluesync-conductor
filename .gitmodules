@@ -1,3 +1,6 @@
 [submodule "packages/gluesync-sdk"]
 	path = packages/gluesync-sdk
 	url = https://gitlab.com/molo17-public/gluesync/gluesync-nodejs-corehub-handshake-sdk.git
+[submodule "packages/gluesync-logs-uploader"]
+	path = packages/gluesync-logs-uploader
+	url = https://gitlab.com/molo17srl/products/gluesync/gluesync-logs-uploader.git
