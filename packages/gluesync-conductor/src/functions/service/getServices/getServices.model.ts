@@ -5,28 +5,28 @@ import {
   RawComposeService,
 } from '../../../models/composeFile.model';
 
-export type GetAgentsSuccessResponse = {
+export type GetServicesSuccessResponse = {
   success: boolean;
   data?: Record<string, ComposeService> | Record<string, RawComposeService>;
 };
 
-export type GetAgentsResponse = GetAgentsSuccessResponse | ErrorResponse;
+export type GetServicesResponse = GetServicesSuccessResponse | ErrorResponse;
 
-export type GetAgentsQuerystring = Readonly<{
+export type GetServicesQuerystring = Readonly<{
   raw?: boolean;
 }>;
 
-export type GetAgentsParams = Readonly<{
+export type GetServicesParams = Readonly<{
   id?: Readonly<string>;
 }>;
 
-export type GetAgentsHandler = RouteHandlerMethod<
+export type GetServicesHandler = RouteHandlerMethod<
   any,
   any,
   any,
   {
-    Querystring: GetAgentsQuerystring;
-    Params: GetAgentsParams;
-    Reply: GetAgentsResponse;
+    Querystring: GetServicesQuerystring;
+    Params: GetServicesParams;
+    Reply: GetServicesResponse;
   }
 >;

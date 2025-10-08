@@ -86,7 +86,7 @@ const createComposeService: CreateComposeService = (
   {
     id,
     imageName,
-    type,
+    agentType,
     nickname,
     tag,
     environment = {},
@@ -100,7 +100,9 @@ const createComposeService: CreateComposeService = (
 ) => {
   const isIntegrationTest =
     process.env.IS_INTEGRATION_TEST.toLowerCase() === 'true';
-  const containerName = nickname || `${imageName}-${type}-${serviceType}`;
+  const containerName =
+    nickname ??
+    `${imageName}${agentType ? `-${agentType}` : ''}-${serviceType}`;
 
   const defaultLabels = {
     'com.molo17.conductor.service_id': id,
@@ -129,7 +131,7 @@ const createComposeService: CreateComposeService = (
       [],
     ),
     environment: Object.entries({
-      TYPE: type,
+      ...(agentType ? { TYPE: agentType } : {}),
       GLUESYNC_MODULE_TAG: 'gluesync-conductor',
       INITIAL_AGENT_ID: id,
       ...environment,

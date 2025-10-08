@@ -12,7 +12,7 @@ export type CreateComposeServiceOptions = Readonly<
   ComposeServiceDeploy & {
     id: string;
     imageName: string;
-    type: string;
+    agentType?: string;
     nickname?: string;
     tag?: string;
     environment?: Record<string, string>;

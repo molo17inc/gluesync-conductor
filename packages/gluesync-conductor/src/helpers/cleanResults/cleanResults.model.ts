@@ -1,7 +1,7 @@
 import { ComposeService } from '../../models/composeFile.model';
-import { AgentResultItem } from '../processAgent/processAgent.model';
+import { ServiceResultItem } from '../processService/processService.model';
 
-export type AgentResultWithParsedService =
+export type ServiceResultWithParsedService =
   | {
       success: true;
       serviceId: string;
@@ -14,5 +14,5 @@ export type AgentResultWithParsedService =
     };
 
 export type CleanResults = (
-  results: ReadonlyArray<AgentResultItem>,
-) => Promise<ReadonlyArray<AgentResultWithParsedService>>;
+  results: ReadonlyArray<ServiceResultItem>,
+) => Promise<ReadonlyArray<ServiceResultWithParsedService>>;

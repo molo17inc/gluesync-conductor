@@ -7,15 +7,15 @@ import {
 } from '../../../models/composeFile.model';
 import { ConductorServiceTypes } from '../../../models/conductor.model';
 import {
-  GetAgentsHandler,
-  GetAgentsParams,
-  GetAgentsQuerystring,
-} from './getAgents.model';
+  GetServicesHandler,
+  GetServicesParams,
+  GetServicesQuerystring,
+} from './getServices.model';
 
-const handler: GetAgentsHandler = async (req, reply) => {
+const handler: GetServicesHandler = async (req, reply) => {
   try {
-    const { raw } = castObject<GetAgentsQuerystring>(req.query) || false;
-    const { id } = castObject<GetAgentsParams>(req.params);
+    const { raw } = castObject<GetServicesQuerystring>(req.query) || false;
+    const { id } = castObject<GetServicesParams>(req.params);
 
     req.log.debug(`Current query: ${raw}, ${typeof raw}`);
 
@@ -26,7 +26,7 @@ const handler: GetAgentsHandler = async (req, reply) => {
       if (!service) {
         return reply.code(404).send({
           success: false,
-          error: `Agent ${id} not found in docker file`,
+          error: `Service ${id} not found in docker file`,
         });
       }
       return reply.send({

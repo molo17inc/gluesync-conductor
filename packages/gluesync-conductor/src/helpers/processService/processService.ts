@@ -2,12 +2,12 @@ import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile'
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
 import extractImageInfo from '../extractImageInfo/extractImageInfo';
 import {
-  AgentResultItem,
-  CreateAgentError,
-  ProcessAgents,
-} from './processAgent.model';
+  ServiceResultItem,
+  CreateServiceError,
+  ProcessServices,
+} from './processService.model';
 
-const createAgentError: CreateAgentError = (message, status, serviceId) => {
+const createServiceError: CreateServiceError = (message, status, serviceId) => {
   const error = new Error(message);
   return {
     message: error.message,
@@ -19,10 +19,9 @@ const createAgentError: CreateAgentError = (message, status, serviceId) => {
   };
 };
 
-const processAgents: ProcessAgents = async (
-  serviceType,
+const processServices: ProcessServices = async (
   composeJson,
-  agents,
+  services,
   validate,
   createService,
 ) => {
@@ -41,45 +40,45 @@ const processAgents: ProcessAgents = async (
     throw new Error('Core-hub Version Tag not found or empty');
   }
 
-  const agentPromises = agents.map(
-    agent =>
-      new Promise<AgentResultItem>((resolve, reject) => {
-        const { imageName, type, id } = agent;
+  const servicePromises = services.map(
+    service =>
+      new Promise<ServiceResultItem>((resolve, reject) => {
+        const { imageName, type, agentType, id } = service;
 
         const serviceId =
-          agent.serviceId ??
-          `gs-${imageName}-${serviceType}${type ? `-${type}` : ''}-${id}`;
+          service.serviceId ??
+          `gs-${imageName}-${type}${agentType ? `-${agentType}` : ''}-${id}`;
 
         const validationResult = validate(
-          agent,
+          service,
           serviceId,
           composeJson.services,
         );
 
         if (!validationResult.success) {
           reject(
-            createAgentError(
+            createServiceError(
               validationResult.errorMessage,
               validationResult.statusCode,
               serviceId,
             ),
           );
         } else {
-          const service = createService({
-            ...agent,
+          const rawService = createService({
+            ...service,
             tag: coreHubVersionTag,
           });
 
           resolve({
             success: true,
             serviceId,
-            service,
+            service: rawService,
           });
         }
       }),
   );
 
-  const results = await Promise.allSettled(agentPromises);
+  const results = await Promise.allSettled(servicePromises);
 
   const updatedServices = results.reduce(
     (acc, result) =>
@@ -115,4 +114,4 @@ const processAgents: ProcessAgents = async (
   };
 };
 
-export default processAgents;
+export default processServices;

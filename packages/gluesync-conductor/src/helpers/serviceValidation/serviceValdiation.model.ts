@@ -1,5 +1,5 @@
 import { RawComposeService } from '../../models/composeFile.model';
-import { Agent } from '../processAgent/processAgent.model';
+import { Service } from '../processService/processService.model';
 
 export type ValidationResult = {
   success: boolean;
@@ -7,9 +7,9 @@ export type ValidationResult = {
   statusCode: 200 | 400 | 404 | 409 | 500;
 };
 
-export type AgentValidation = (
+export type ServiceValidation = (
   validationMode: 'add' | 'edit',
-  agent: Agent,
+  service: Service,
   currentServiceId: string,
   services?: Record<string, RawComposeService>,
 ) => ValidationResult;
