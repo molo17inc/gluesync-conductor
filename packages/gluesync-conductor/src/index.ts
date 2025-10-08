@@ -61,7 +61,7 @@ const startServer = async () => {
   await server.register(serviceRoutes);
   await server.register(containerRoutes);
   await server.register(agentRoutes);
-  await server.register(supportRoutes);
+  await server.register(serviceRoutes);
 
   await server.ready();
   await server.listen({ host, port });
