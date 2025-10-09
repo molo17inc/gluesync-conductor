@@ -7,13 +7,17 @@ import {
 
 export type GetServicesSuccessResponse = {
   success: boolean;
-  data?: Record<string, ComposeService> | Record<string, RawComposeService>;
+  data?:
+    | Record<string, ComposeService>
+    | Record<string, RawComposeService>
+    | string;
 };
 
 export type GetServicesResponse = GetServicesSuccessResponse | ErrorResponse;
 
 export type GetServicesQuerystring = Readonly<{
   raw?: boolean;
+  format?: 'string';
 }>;
 
 export type GetServicesParams = Readonly<{

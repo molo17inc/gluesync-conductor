@@ -392,20 +392,17 @@
 							}
 						},
 						"url": {
-							"raw": "{{URL}}/agents/:id/version",
+							"raw": "{{URL}}/services?format=string",
 							"host": [
 								"{{URL}}"
 							],
 							"path": [
-								"agents",
-								":id",
-								"version"
+								"services"
 							],
-							"variable": [
+							"query": [
 								{
-									"key": "id",
-									"value": "custom-mssql-target",
-									"description": "used for container name (default is gluesync-mssql-cdc-target-agent)"
+									"key": "format",
+									"value": "string"
 								}
 							]
 						}
@@ -433,20 +430,19 @@
 							}
 						},
 						"url": {
-							"raw": "{{URL}}/agents/:id/version",
+							"raw": "{{URL}}/services/gs-gluesync-mssql-cdc-agent-target-708ef927/?format=string",
 							"host": [
 								"{{URL}}"
 							],
 							"path": [
-								"agents",
-								":id",
-								"version"
+								"services",
+								"gs-gluesync-mssql-cdc-agent-target-708ef927",
+								""
 							],
-							"variable": [
+							"query": [
 								{
-									"key": "id",
-									"value": "custom-mssql-target",
-									"description": "used for container name (default is gluesync-mssql-cdc-target-agent)"
+									"key": "format",
+									"value": "string"
 								}
 							]
 						}

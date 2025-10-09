@@ -1,3 +1,4 @@
+import { stringify } from 'yaml';
 import { castObject } from '../../../helpers/composeFile/extractKeyValue/extractKeyValue';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import {
@@ -14,26 +15,30 @@ import {
 
 const handler: GetServicesHandler = async (req, reply) => {
   try {
-    const { raw } = castObject<GetServicesQuerystring>(req.query) || false;
+    const { raw, format } =
+      castObject<GetServicesQuerystring>(req.query) || false;
     const { id } = castObject<GetServicesParams>(req.params);
 
-    req.log.debug(`Current query: ${raw}, ${typeof raw}`);
+    req.log.debug(`Current query: raw:${raw}, ${typeof raw} format: ${format}`);
 
     const composeJson = await readComposeFile({ raw });
 
     if (id?.trim()) {
-      const service = composeJson.services?.[id];
-      if (!service) {
+      const composeService = composeJson.services?.[id];
+      if (!composeService) {
         return reply.code(404).send({
           success: false,
           error: `Service ${id} not found in docker file`,
         });
       }
+
+      const service = raw
+        ? { [id]: composeService as RawComposeService }
+        : { [id]: composeService as ComposeService };
+
       return reply.send({
         success: true,
-        data: raw
-          ? { [id]: service as RawComposeService }
-          : { [id]: service as ComposeService },
+        data: format === 'string' ? stringify(service) : service,
       });
     }
 
@@ -57,7 +62,7 @@ const handler: GetServicesHandler = async (req, reply) => {
 
     return reply.send({
       success: true,
-      data: services,
+      data: format === 'string' ? stringify(services) : services,
     });
   } catch (error: unknown) {
     req.log.error(
