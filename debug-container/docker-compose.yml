@@ -30,6 +30,7 @@ services:
       - SSL_SKIP_VERIFY=false
       - SSL_ENABLED=false
       - DKR_COMPOSE_FILE=/opt/gluesync-conductor/services/docker-compose.services.yml
+      - GLUESYNC_CONFIG_DIR=..
       # - DKR_COMPOSE_FILE_SOURCE=docker-compose.yml
       # - IS_INTEGRATION_TEST=false
       # Test-reserved (add only for integration tests):
