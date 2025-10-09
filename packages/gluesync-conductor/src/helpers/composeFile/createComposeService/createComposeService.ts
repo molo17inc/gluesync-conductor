@@ -110,14 +110,16 @@ const createComposeService: CreateComposeService = (
     'com.molo17.conductor.type': serviceType,
   };
 
+  const configDir = process.env.GLUESYNC_CONFIG_DIR ?? '.';
+
   const defaultVolumes = isIntegrationTest
     ? []
     : [
-        './gs-license.dat:/opt/gluesync/data/gs-license.dat:ro',
-        './logback.xml:/opt/gluesync/data/logback.xml:ro',
-        './security-config.json:/opt/gluesync/data/security-config.json:ro',
-        './gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro',
-        './bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro',
+        `${configDir}/gs-license.dat:/opt/gluesync/data/gs-license.dat:ro`,
+        `${configDir}/logback.xml:/opt/gluesync/data/logback.xml:ro`,
+        `${configDir}/security-config.json:/opt/gluesync/data/security-config.json:ro`,
+        `${configDir}/gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro`,
+        `${configDir}/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro`,
         `./${containerName}:/opt/gluesync/data`,
       ];
 
