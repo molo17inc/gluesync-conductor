@@ -110,7 +110,11 @@ const createComposeService: CreateComposeService = (
     'com.molo17.conductor.type': serviceType,
   };
 
-  const configDir = process.env.GLUESYNC_CONFIG_DIR || '.';
+  // remove trailing /
+  const configDir = (process.env.GLUESYNC_CONFIG_DIR || '.').replace(
+    /\/+$/,
+    '',
+  );
 
   const defaultVolumes = isIntegrationTest
     ? []

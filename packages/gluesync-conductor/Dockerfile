@@ -19,12 +19,12 @@ ENV PORT=1717
 ENV DOCKER_HOST=unix:///var/run/docker.sock
 ENV CORE_HUB_NAME=gluesync-core-hub
 ENV LOG_LEVEL=INFO
-ENV USE_SDK=False
-ENV SSL_SKIP_VERIFY=True
-ENV SSL_ENABLED=False
+ENV USE_SDK=true
+ENV SSL_SKIP_VERIFY=true
+ENV SSL_ENABLED=true
 ENV SSL_CERT_FILE=/opt/gluesync/data/cert.pem
 ENV SSL_KEY_FILE=/opt/gluesync/data/key.pem
-ENV IS_INTEGRATION_TEST=False
+ENV IS_INTEGRATION_TEST=false
 ENV GLUESYNC_CONFIG_DIR=.
 
 # Setup app directory
