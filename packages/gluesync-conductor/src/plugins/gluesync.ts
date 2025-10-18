@@ -54,7 +54,7 @@ async function gluesyncPlugin(
   const sdkClient = getGluesyncSdkClient();
 
   // Set the module tag from environment variable or use default
-  const moduleTag = process.env.GLUESYNC_MODULE_TAG || 'gluesync-conductor';
+  const moduleTag = process.env.GLUESYNC_MODULE_TAG || 'conductor';
   // eslint-disable-next-line functional/immutable-data
   settings.moduleTag = moduleTag;
   fastify.log.info(`Using module tag: ${settings.moduleTag}`);

@@ -138,7 +138,7 @@ const createComposeService: CreateComposeService = (
     ),
     environment: Object.entries({
       ...(agentType ? { TYPE: agentType } : {}),
-      GLUESYNC_MODULE_TAG: 'gluesync-conductor',
+      GLUESYNC_MODULE_TAG: 'conductor',
       INITIAL_AGENT_ID: id,
       ...environment,
     }).map(([key, value]) => `${key}=${value}`),

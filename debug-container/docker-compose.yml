@@ -21,7 +21,6 @@ services:
       - LOG_LEVEL=trace
       - GLUESYNC_LICENSE_FILE=/opt/gluesync/data/gs-license.dat
       - GLUESYNC_SECURITY_CONFIG=/opt/gluesync/data/security-config.json
-      - GLUESYNC_MODULE_TAG=gluesync-conductor
       - HOST=0.0.0.0
       - PORT=1717
       - DOCKER_HOST=unix:///var/run/docker.sock

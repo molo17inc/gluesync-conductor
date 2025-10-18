@@ -93,7 +93,7 @@ Returns a list of all containers with detailed information including:
       "status": "running",
       "ports": ["8080:8080"],
       "environment": {
-        "GLUESYNC_MODULE_TAG": "gluesync-conductor"
+        "GLUESYNC_MODULE_TAG": "conductor"
       }
     }
   ]
@@ -118,7 +118,7 @@ Retrieves detailed configuration for a specific container by its ID.
     "versionTag": "1.2.3",
     "persisted": true,
     "environment": {
-      "GLUESYNC_MODULE_TAG": "gluesync-conductor",
+      "GLUESYNC_MODULE_TAG": "conductor",
       "type": "target",
       "maxRamPercentage": 90.0
     },
@@ -335,7 +335,6 @@ Gluesync Conductor integrates with the Gluesync SDK to enable communication with
 
 The Gluesync SDK integration is configured using environment variables:
 
-- `GLUESYNC_MODULE_TAG`: Identifies the module in the CoreHub ecosystem (default: `gluesync-conductor`)
 - `GLUESYNC_LICENSE_FILE`: Path to the Gluesync license file (default: `/opt/gluesync/data/gs-license.dat`)
 - `GLUESYNC_SECURITY_CONFIG`: Path to the security configuration file (default: `/opt/gluesync/data/security-config.json`)
 - `COREHUB_UDP_PORT_RANGE`: Port range for CoreHub discovery (default: `1718-1727`, recommended: `1717-1727`)
@@ -347,7 +346,6 @@ The integration handles CoreHub connections with the following features:
 - Automatic initialization on server startup
 - Graceful shutdown on server termination
 - Proper error handling and logging
-- Module identification via the `GLUESYNC_MODULE_TAG` environment variable
 
 ## Persistence Management
 
