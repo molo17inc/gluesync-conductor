@@ -163,7 +163,7 @@ export class GluesyncSDKClient {
       process.env.GLUESYNC_LICENSE_FILE || '/opt/gluesync/data/gs-license.dat';
 
     // SSL configuration
-    if (process.env.SSL_ENABLED === 'true') {
+    if (process.env.SSL_ENABLED?.toLowerCase() === 'true') {
       useSSL = true;
     }
 
