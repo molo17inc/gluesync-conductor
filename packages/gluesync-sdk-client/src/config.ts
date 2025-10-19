@@ -94,6 +94,10 @@ export function updateCoreHubUrl(url: string | null): void {
       parseInt(parsedUrl.port, 10) ||
       (parsedUrl.protocol === 'https:' ? 443 : 80);
     settings.useSSL = parsedUrl.protocol === 'https:';
+    console.log(`CoreHub URL: ${url}`);
+    console.log(`CoreHub Host: ${settings.coreHubHost}`);
+    console.log(`CoreHub Port: ${settings.coreHubPort}`);
+    console.log(`Use SSL: ${settings.useSSL}`);
   } catch (error) {
     console.error(`Invalid CoreHub URL: ${url}`, error);
   }
