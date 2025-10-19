@@ -311,7 +311,7 @@ HTTPS support is configured using environment variables:
 - `SSL_ENABLED`: Set to `true` to enable HTTPS (default: `false`)
 - `SSL_CERT_FILE`: Path to the SSL certificate file
 - `SSL_KEY_FILE`: Path to the SSL private key file
-- `SSL_SKIP_VERIFY`: Set to `true` to skip certificate verification (default: `false`)
+- `SSL_SKIP_VERIFY`: Set to `true` to skip certificate verification (default: `true`)
 
 ### Example Usage
 
