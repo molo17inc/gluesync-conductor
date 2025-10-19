@@ -278,19 +278,14 @@ export class GluesyncSDKClient {
                 );
 
                 // Create new client with different discovery port
-                // Using type assertion to bypass type checking since the actual SDK implementation
-                // might have different property names than what's in the type definition
                 this._client = new GluesyncClient({
                   moduleTag: settings.moduleTag,
-                  licenseFile:
-                    settings.licenseFile || '/opt/gluesync/data/gs-license.dat',
-                  securityConfig:
-                    settings.securityConfig ||
-                    '/opt/gluesync/data/security-config.json',
-                  useSSL: useSSL,
-                  verifySSL:
-                    process.env.SSL_SKIP_VERIFY?.toLowerCase() !== 'true',
+                  licenseFilePath: settings.licenseFile || '/opt/gluesync/data/gs-license.dat',
+                  securityConfig: securityConfig || undefined,
+                  ssl: useSSL,
+                  verifySsl: process.env.SSL_SKIP_VERIFY?.toLowerCase() !== 'true',
                   discoveryPortRange: randomPortOffset,
+                  
                 } as any);
 
                 // Set up event handlers
