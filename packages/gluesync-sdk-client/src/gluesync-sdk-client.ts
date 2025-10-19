@@ -187,7 +187,7 @@ export class GluesyncSDKClient {
         moduleTag: settings.moduleTag,
         ssl: useSSL, // Property name is 'ssl' in the actual implementation
         securityConfig: securityConfig || undefined,
-        verifySSL: process.env.SSL_SKIP_VERIFY?.toLowerCase() !== 'true', // Skip SSL verification if requested
+        verifySsl: process.env.SSL_SKIP_VERIFY?.toLowerCase() !== 'true', // Skip SSL verification if requested
       } as any); // Use type assertion to bypass type checking
 
       // Set up event handlers

@@ -10,7 +10,7 @@ declare module 'gluesync-sdk' {
     moduleTag: string;
     useSSL?: boolean;
     securityConfig?: string;
-    verifySSL?: boolean;
+    verifySsl?: boolean;
   }
 
   export class GluesyncClient {
