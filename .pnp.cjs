@@ -5751,7 +5751,7 @@ const RAW_RUNTIME_STATE =
           ["ts-jest", "virtual:9c3b6e0d0209cfa3fcb52fdc1959eb31a7c433894a1a4a1f3855796caa02d7b6f425561a8151cba21b5c077241bc387e3c1516b60b40ebd760faea3e8d74df1f#npm:29.3.2"],\
           ["ts-node", "virtual:9c3b6e0d0209cfa3fcb52fdc1959eb31a7c433894a1a4a1f3855796caa02d7b6f425561a8151cba21b5c077241bc387e3c1516b60b40ebd760faea3e8d74df1f#npm:10.9.2"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"],\
-          ["ws", "virtual:9c3b6e0d0209cfa3fcb52fdc1959eb31a7c433894a1a4a1f3855796caa02d7b6f425561a8151cba21b5c077241bc387e3c1516b60b40ebd760faea3e8d74df1f#npm:8.18.1"]\
+          ["ws", "virtual:9c3b6e0d0209cfa3fcb52fdc1959eb31a7c433894a1a4a1f3855796caa02d7b6f425561a8151cba21b5c077241bc387e3c1516b60b40ebd760faea3e8d74df1f#npm:8.18.3"]\
         ],\
         "linkType": "SOFT"\
       }]\
@@ -9931,17 +9931,17 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["ws", [\
-      ["npm:8.18.1", {\
-        "packageLocation": "./.yarn/cache/ws-npm-8.18.1-369b0f5491-3f38e9594f.zip/node_modules/ws/",\
+      ["npm:8.18.3", {\
+        "packageLocation": "./.yarn/cache/ws-npm-8.18.3-665d39209d-725964438d.zip/node_modules/ws/",\
         "packageDependencies": [\
-          ["ws", "npm:8.18.1"]\
+          ["ws", "npm:8.18.3"]\
         ],\
         "linkType": "SOFT"\
       }],\
-      ["virtual:9c3b6e0d0209cfa3fcb52fdc1959eb31a7c433894a1a4a1f3855796caa02d7b6f425561a8151cba21b5c077241bc387e3c1516b60b40ebd760faea3e8d74df1f#npm:8.18.1", {\
-        "packageLocation": "./.yarn/__virtual__/ws-virtual-49bf7464f0/0/cache/ws-npm-8.18.1-369b0f5491-3f38e9594f.zip/node_modules/ws/",\
+      ["virtual:9c3b6e0d0209cfa3fcb52fdc1959eb31a7c433894a1a4a1f3855796caa02d7b6f425561a8151cba21b5c077241bc387e3c1516b60b40ebd760faea3e8d74df1f#npm:8.18.3", {\
+        "packageLocation": "./.yarn/__virtual__/ws-virtual-c0b4993f14/0/cache/ws-npm-8.18.3-665d39209d-725964438d.zip/node_modules/ws/",\
         "packageDependencies": [\
-          ["ws", "virtual:9c3b6e0d0209cfa3fcb52fdc1959eb31a7c433894a1a4a1f3855796caa02d7b6f425561a8151cba21b5c077241bc387e3c1516b60b40ebd760faea3e8d74df1f#npm:8.18.1"],\
+          ["ws", "virtual:9c3b6e0d0209cfa3fcb52fdc1959eb31a7c433894a1a4a1f3855796caa02d7b6f425561a8151cba21b5c077241bc387e3c1516b60b40ebd760faea3e8d74df1f#npm:8.18.3"],\
           ["@types/bufferutil", null],\
           ["@types/utf-8-validate", null],\
           ["bufferutil", null],\
