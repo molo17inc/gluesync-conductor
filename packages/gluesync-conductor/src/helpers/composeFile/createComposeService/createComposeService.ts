@@ -124,12 +124,12 @@ const createComposeService: CreateComposeService = (
         `${configDir}/security-config.json:/opt/gluesync/data/security-config.json:ro`,
         `${configDir}/gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro`,
         `${configDir}/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro`,
-        `..data/${containerName}:/opt/gluesync/data/logs`,
+        `..logs/${containerName}:/opt/gluesync/data/logs`,
       ]
     : [
         `${configDir}:/opt/gluesync/commons-config:ro`,
         `${configDir}/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro`,
-        `..data/${containerName}:/opt/gluesync/data/logs`,
+        `..logs/${containerName}:/opt/gluesync/data/logs`,
       ];
 
   return {
