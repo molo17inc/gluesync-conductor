@@ -31,7 +31,7 @@ services:
       - DKR_COMPOSE_FILE=/opt/gluesync-conductor/services/docker-compose.services.yml
       - GLUESYNC_CONFIG_DIR=..
       # - DKR_COMPOSE_FILE_SOURCE=docker-compose.yml
-      # - IS_INTEGRATION_TEST=false
+      - MOUNT_LEGACY_FILE_CONFIG=true
       # Test-reserved (add only for integration tests):
       # - JOB_ID=not_set
       # - TEST_NAME=DRY_RUN

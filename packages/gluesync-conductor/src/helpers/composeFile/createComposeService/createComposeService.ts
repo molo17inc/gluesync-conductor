@@ -98,8 +98,6 @@ const createComposeService: CreateComposeService = (
     dependsOn,
   },
 ) => {
-  const isIntegrationTest =
-    process.env.IS_INTEGRATION_TEST.toLowerCase() === 'true';
   const containerName =
     nickname ??
     `${imageName}${agentType ? `-${agentType}` : ''}-${serviceType}`;
@@ -116,15 +114,22 @@ const createComposeService: CreateComposeService = (
     '',
   );
 
-  const defaultVolumes = isIntegrationTest
-    ? []
-    : [
+  const mountLegacyFileConfig =
+    process.env.MOUNT_LEGACY_FILE_CONFIG.toLowerCase() === 'true';
+
+  const defaultVolumes = mountLegacyFileConfig
+    ? [
         `${configDir}/gs-license.dat:/opt/gluesync/data/gs-license.dat:ro`,
         `${configDir}/logback.xml:/opt/gluesync/data/logback.xml:ro`,
         `${configDir}/security-config.json:/opt/gluesync/data/security-config.json:ro`,
         `${configDir}/gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro`,
         `${configDir}/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro`,
-        `./${containerName}:/opt/gluesync/data`,
+        `..logs/${containerName}:/opt/gluesync/data/logs`,
+      ]
+    : [
+        `${configDir}:/opt/gluesync/commons-config:ro`,
+        `${configDir}/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro`,
+        `..logs/${containerName}:/opt/gluesync/data/logs`,
       ];
 
   return {

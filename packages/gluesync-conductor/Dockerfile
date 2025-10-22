@@ -23,7 +23,7 @@ ENV SSL_SKIP_VERIFY=true
 ENV SSL_ENABLED=true
 ENV SSL_CERT_FILE=/opt/gluesync/data/cert.pem
 ENV SSL_KEY_FILE=/opt/gluesync/data/key.pem
-ENV IS_INTEGRATION_TEST=false
+ENV MOUNT_LEGACY_FILE_CONFIG=false
 ENV GLUESYNC_CONFIG_DIR=.
 
 # Setup app directory
