@@ -21,6 +21,6 @@ declare namespace NodeJS {
     readonly USE_SDK: string;
     readonly SSL_SKIP_VERIFY: string;
     readonly SSL_ENABLED: string;
-    readonly IS_INTEGRATION_TEST: string;
+    readonly MOUNT_LEGACY_FILE_CONFIG: string;
   }
 }
