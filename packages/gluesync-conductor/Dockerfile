@@ -21,8 +21,8 @@ ENV LOG_LEVEL=INFO
 ENV USE_SDK=true
 ENV SSL_SKIP_VERIFY=true
 ENV SSL_ENABLED=true
-ENV SSL_CERT_FILE=/opt/gluesync/data/cert.pem
-ENV SSL_KEY_FILE=/opt/gluesync/data/key.pem
+ENV SSL_CERT_FILE=/opt/gluesync/data/gluesync-cert.pem
+ENV SSL_KEY_FILE=/opt/gluesync/data/gluesync-key.pem
 ENV MOUNT_LEGACY_FILE_CONFIG=false
 ENV GLUESYNC_CONFIG_DIR=.
 
