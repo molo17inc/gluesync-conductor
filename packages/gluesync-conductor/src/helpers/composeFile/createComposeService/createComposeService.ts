@@ -124,11 +124,15 @@ const createComposeService: CreateComposeService = (
         `${configDir}/security-config.json:/opt/gluesync/data/security-config.json:ro`,
         `${configDir}/gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro`,
         `${configDir}/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro`,
-        `./logs/${containerName}:/opt/gluesync/data/logs`,
+        ...(serviceType === 'agent'
+          ? [`./logs/${containerName}:/opt/gluesync/logs`]
+          : []),
       ]
     : [
         `${configDir}:/opt/gluesync/shared:ro`,
-        `./logs/${containerName}:/opt/gluesync/data/logs`,
+        ...(serviceType === 'agent'
+          ? [`./logs/${containerName}:/opt/gluesync/logs`]
+          : []),
       ];
 
   return {
@@ -143,9 +147,15 @@ const createComposeService: CreateComposeService = (
     environment: Object.entries({
       ...(agentType ? { TYPE: agentType } : {}),
       GLUESYNC_MODULE_TAG: 'conductor',
-      INITIAL_AGENT_ID: id,
+      ...(serviceType === 'agent'
+        ? {
+            INITIAL_AGENT_ID: id,
+            LOG_CONFIG_FILE: '/opt/gluesync/shared/logback.xml',
+          }
+        : {}),
       ...environment,
     }).map(([key, value]) => `${key}=${value}`),
+
     ports: mapPorts(ports),
     volumes: mergeComposeKeyValueField(
       'volumes',
