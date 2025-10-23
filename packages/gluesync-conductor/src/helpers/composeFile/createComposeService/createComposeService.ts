@@ -127,7 +127,7 @@ const createComposeService: CreateComposeService = (
         `..logs/${containerName}:/opt/gluesync/data/logs`,
       ]
     : [
-        `${configDir}:/opt/gluesync/commons-config:ro`,
+        `${configDir}:/opt/gluesync/shared:ro`,
         `${configDir}/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro`,
         `..logs/${containerName}:/opt/gluesync/data/logs`,
       ];
