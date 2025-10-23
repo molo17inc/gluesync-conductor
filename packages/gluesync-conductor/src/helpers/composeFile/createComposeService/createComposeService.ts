@@ -90,7 +90,7 @@ const createComposeService: CreateComposeService = (
     nickname,
     tag,
     environment = {},
-    ports = [],
+    ports,
     volumes = [],
     labels = {},
     resources,
@@ -156,7 +156,7 @@ const createComposeService: CreateComposeService = (
       ...environment,
     }).map(([key, value]) => `${key}=${value}`),
 
-    ports: mapPorts(ports),
+    ...(ports && ports.length > 0 ? { ports: mapPorts(ports) } : {}),
     volumes: mergeComposeKeyValueField(
       'volumes',
       defaultVolumes,
