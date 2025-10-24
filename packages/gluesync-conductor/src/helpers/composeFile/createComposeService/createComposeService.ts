@@ -1,4 +1,8 @@
-import { ComposePort, ComposeVolume } from '../../../models/composeFile.model';
+import {
+  ComposePort,
+  ComposeVolume,
+  LabelPrefix,
+} from '../../../models/composeFile.model';
 import mergeComposeKeyValueField from '../mergeKeyValueStrings/mergeKeyValueStrings';
 import { CreateComposeService } from './createComposeService.model';
 
@@ -103,9 +107,9 @@ const createComposeService: CreateComposeService = (
     `${imageName}${agentType ? `-${agentType}` : ''}-${serviceType}`;
 
   const defaultLabels = {
-    'com.molo17.conductor.service_id': id,
-    'com.molo17.conductor.versiontag': tag || undefined,
-    'com.molo17.conductor.type': serviceType,
+    [`${LabelPrefix.CONDUCTOR}.service_id`]: id,
+    [`${LabelPrefix.CONDUCTOR}.versiontag`]: tag || undefined,
+    [`${LabelPrefix.CONDUCTOR}.type`]: serviceType,
   };
 
   // remove trailing /
