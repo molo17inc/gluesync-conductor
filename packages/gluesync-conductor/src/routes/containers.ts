@@ -48,32 +48,62 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
       response: {
         200: {
           type: 'object',
+          required: ['success', 'data'],
           properties: {
-            success: { type: 'boolean' },
+            success: {
+              type: 'boolean',
+              description: 'Indicates if the request succeeded',
+            },
             data: {
               type: 'object',
               properties: {
                 systemInfo: {
                   type: 'object',
+                  description: 'Host system information',
                   properties: {
-                    ncpu: { type: 'number' },
-                    memTotal: { type: 'number' },
+                    ncpu: {
+                      type: 'number',
+                      description: 'Number of CPUs available',
+                    },
+                    memTotal: {
+                      type: 'number',
+                      description: 'Total memory in bytes',
+                    },
                   },
                 },
                 containers: {
                   type: 'array',
+                  description: 'List of containers',
                   items: {
                     type: 'object',
                     properties: {
-                      id: { type: 'string' },
+                      id: { type: 'string', description: 'Container ID' },
                       type: {
                         type: 'string',
                         enum: ['agent', 'module', 'unknown'],
+                        description: 'Container classification',
                       },
-                      persisted: { type: 'boolean' },
+                      persisted: {
+                        type: 'boolean',
+                        description: 'Whether container is persisted',
+                      },
+                      parsedImage: {
+                        type: 'object',
+                        description: 'Parsed Docker image details',
+                        properties: {
+                          registry: { type: 'string' },
+                          repository: { type: 'string' },
+                          tag: { type: 'string' },
+                          fullName: { type: 'string' },
+                          original: { type: 'string' },
+                          imageName: { type: 'string' },
+                        },
+                      },
 
                       service: {
                         type: 'object',
+                        description:
+                          'Service definition (docker-compose style)',
                         properties: {
                           image: { type: 'string' },
                           container_name: { type: 'string' },
@@ -140,12 +170,17 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
 
                       info: {
                         type: 'object',
+                        description: 'Runtime container information',
                         properties: {
                           id: { type: 'string' },
                           name: { type: 'string' },
                           image: { type: 'string' },
                           imageID: { type: 'string' },
-                          tag: { type: 'string' },
+                          tag: {
+                            description:
+                              'Deprecated: use parsedImage.tag instead',
+                            deprecated: true,
+                          },
                           versionTag: { type: 'string' },
                           command: { type: 'string' },
                           created: { type: 'number' },
@@ -210,6 +245,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                             },
                           },
                         },
+                        additionalProperties: true,
                       },
                     },
                     required: ['id', 'persisted'],
@@ -218,13 +254,13 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
               },
             },
           },
-        },
-        500: {
-          type: 'object',
-          properties: {
-            success: { type: 'boolean' },
-            error: { type: 'string' },
-            details: { type: 'string' },
+          500: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+              error: { type: 'string' },
+              details: { type: 'string' },
+            },
           },
         },
       },
