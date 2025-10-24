@@ -1,0 +1,4 @@
+{
+  "apiTokenSecret": "gs-trial",
+  "storageKey": "gluesync-storage-key"
+}

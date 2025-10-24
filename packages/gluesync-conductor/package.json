@@ -1,0 +1,49 @@
+{
+  "name": "gluesync-conductor",
+  "scripts": {
+    "format": "prettier --ignore-path ../.prettierignore .",
+    "format:check": "yarn format --check",
+    "format:write": "yarn format --write",
+    "lint": "eslint .",
+    "lint:fix": "yarn lint --fix",
+    "type-check": "yarn tsc --noEmit --incremental --tsBuildInfoFile .tsbuildinfo",
+    "dev": "tsx watch src/index.ts",
+    "build": "buildService",
+    "start": "node build/index.js",
+    "get-openapi": "yarn dlx tsx scripts/fetchOpenApiSpec.ts",
+    "get-openapi:ts-node": "yarn ts-node scripts/fetchOpenApiSpec.ts",
+    "start:with-docs": "yarn start & sleep 5 && yarn get-openapi",
+    "docker:load": "docker buildx build --platform linux/amd64,linux/arm64 --no-cache -t gluesync-conductor . --load",
+    "docker:push": "docker buildx build --platform linux/amd64,linux/arm64 --no-cache -t gluesync-conductor . --push"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "@fastify/swagger": "^9.4.2",
+    "@fastify/swagger-ui": "^5.2.2",
+    "axios": "^1.8.4",
+    "docker-compose": "^1.2.0",
+    "dockerode": "^4.0.4",
+    "fastify": "^5.2.1",
+    "fastify-plugin": "^5.0.1",
+    "gluesync-sdk-client": "workspace:*",
+    "uuid": "^13.0.0",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@fastify/type-provider-typebox": "^5.1.0",
+    "@gluesync/scripts": "workspace:*",
+    "@types/dockerode": "^3.3.34",
+    "@types/node": "^22.14.1",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "eslint": "^8.56.0",
+    "eslint-plugin-deprecation": "^2.0.0",
+    "eslint-plugin-functional": "^6.0.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-prettier": "^5.1.0",
+    "prettier": "^3.4.2",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.20.4",
+    "typescript": "5.8.3"
+  }
+}
