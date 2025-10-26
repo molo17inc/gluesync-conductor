@@ -130,18 +130,18 @@ const createComposeService: CreateComposeService = (
         `${configDir}/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro`,
         ...(serviceType === 'agent'
           ? [
-            `./logs/${containerName}:/opt/gluesync/logs`,
-            `./data/${containerName}:/opt/gluesync/data`,
-          ]
+              `./logs/${containerName}:/opt/gluesync/logs`,
+              `./data/${containerName}:/opt/gluesync/data`,
+            ]
           : []),
       ]
     : [
         `${configDir}:/opt/gluesync/shared:ro`,
         ...(serviceType === 'agent'
           ? [
-            `./logs/${containerName}:/opt/gluesync/logs`,
-            `./data/${containerName}:/opt/gluesync/data`,
-          ]
+              `./logs/${containerName}:/opt/gluesync/logs`,
+              `./data/${containerName}:/opt/gluesync/data`,
+            ]
           : []),
       ];
 
