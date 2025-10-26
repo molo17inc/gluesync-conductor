@@ -1,8 +1,4 @@
-import {
-  ComposePort,
-  ComposeVolume,
-  LabelPrefix,
-} from '../../../models/composeFile.model';
+import { ComposePort, ComposeVolume } from '../../../models/composeFile.model';
 import mergeComposeKeyValueField from '../mergeKeyValueStrings/mergeKeyValueStrings';
 import { CreateComposeService } from './createComposeService.model';
 
@@ -107,9 +103,9 @@ const createComposeService: CreateComposeService = (
     `${imageName}${agentType ? `-${agentType}` : ''}-${serviceType}`;
 
   const defaultLabels = {
-    [`${LabelPrefix.CONDUCTOR}.service_id`]: id,
-    [`${LabelPrefix.CONDUCTOR}.versiontag`]: tag || undefined,
-    [`${LabelPrefix.CONDUCTOR}.type`]: serviceType,
+    'com.molo17.conductor.service_id': id,
+    'com.molo17.conductor.versiontag': tag || undefined,
+    'com.molo17.conductor.type': serviceType,
   };
 
   // remove trailing /
@@ -129,19 +125,13 @@ const createComposeService: CreateComposeService = (
         `${configDir}/gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro`,
         `${configDir}/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro`,
         ...(serviceType === 'agent'
-          ? [
-            `./logs/${containerName}:/opt/gluesync/logs`,
-            `./data/${containerName}:/opt/gluesync/data`,
-          ]
+          ? [`./logs/${containerName}:/opt/gluesync/logs`]
           : []),
       ]
     : [
         `${configDir}:/opt/gluesync/shared:ro`,
         ...(serviceType === 'agent'
-          ? [
-            `./logs/${containerName}:/opt/gluesync/logs`,
-            `./data/${containerName}:/opt/gluesync/data`,
-          ]
+          ? [`./logs/${containerName}:/opt/gluesync/logs`]
           : []),
       ];
 
@@ -160,7 +150,6 @@ const createComposeService: CreateComposeService = (
       ...(serviceType === 'agent'
         ? {
             INITIAL_AGENT_ID: id,
-            TAG: containerName,
             LOG_CONFIG_FILE: '/opt/gluesync/shared/logback.xml',
           }
         : {}),

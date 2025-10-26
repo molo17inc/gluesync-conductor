@@ -2,7 +2,7 @@ export const conductorLabels = ['service_id', 'versiontag', 'type'] as const;
 
 export type ConductorLabels = (typeof conductorLabels)[number];
 
-export const conductorServiceTypes = ['agent', 'module', 'core-hub'] as const;
+export const conductorServiceTypes = ['agent', 'module'] as const;
 
 export type ConductorServiceTypes = (typeof conductorServiceTypes)[number];
 

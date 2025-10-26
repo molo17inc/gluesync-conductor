@@ -1,24 +1,5 @@
 import { ParseImage } from './parseImage.model';
 
-/**
- * Parses a Docker image string into its components.
- *
- * Example:
- * ```ts
- * Input
- * parseImage('ghcr.io/org/project/myapp:latest');
- *
- * Output
- * {
- *   registry: 'ghcr.io',
- *   repository: 'org/project/myapp',
- *   tag: 'latest',
- *   fullName: 'ghcr.io/org/project/myapp',
- *   original: 'ghcr.io/org/project/myapp:latest',
- *   imageName: 'myapp'
- * }
- * ```
- */
 const parseImage: ParseImage = imageString => {
   if (!imageString) {
     return {

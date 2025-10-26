@@ -33,7 +33,7 @@ const containerInfoMapper: ContainerInfoMapper = container => {
     versiontag: versionTag,
     type,
   } = getCustomLabels(labels);
-  const parsedImage = parseImage(image);
+  const { tag } = parseImage(image);
 
   return {
     id,
@@ -106,8 +106,7 @@ const containerInfoMapper: ContainerInfoMapper = container => {
         propagation,
       }),
     ),
-    tag: parsedImage.tag,
-    parsedImage: { ...parsedImage },
+    tag,
     versionTag,
     uniqueId,
     type,
