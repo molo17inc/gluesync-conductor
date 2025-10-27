@@ -91,7 +91,6 @@ const createComposeService: CreateComposeService = (
     id,
     imageName,
     agentType,
-    agentType,
     nickname,
     tag,
     environment = {},
@@ -156,9 +155,15 @@ const createComposeService: CreateComposeService = (
       [],
     ),
     environment: Object.entries({
-      TYPE: type,
-      GLUESYNC_MODULE_TAG: 'gluesync-conductor',
-      INITIAL_AGENT_ID: id,
+      ...(agentType ? { TYPE: agentType } : {}),
+      GLUESYNC_MODULE_TAG: 'conductor',
+      ...(serviceType === 'agent'
+        ? {
+            INITIAL_AGENT_ID: id,
+            TAG: containerName,
+            LOG_CONFIG_FILE: '/opt/gluesync/shared/logback.xml',
+          }
+        : {}),
       ...environment,
     }).map(([key, value]) => `${key}=${value}`),
 

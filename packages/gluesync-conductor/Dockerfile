@@ -34,6 +34,11 @@ COPY build/index.js index.js
 COPY build/index.js.map index.js.map
 COPY build/static/ static/
 
+# Copy log uploader scripts FROM build output
+COPY build/collect-logs.ps1 collect-logs.ps1
+COPY build/collect-logs.sh collect-logs.sh
+
+
 COPY public/gluesync-conductor.svg static/logo.svg
 
 EXPOSE 1717
