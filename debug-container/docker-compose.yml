@@ -44,6 +44,8 @@ services:
       - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
       - ./services:/opt/gluesync-conductor/services
       - ./gs-conf/:/opt/gluesync/data:ro
+      - ./data:/opt/gluesync-conductor/data
+      - ./logs:/opt/gluesync-conductor/logs
   gluesync-core-hub:
     image: molo17/gluesync-core-hub:2.1.4.2
     ports:

@@ -38,6 +38,10 @@ COPY build/static/ static/
 COPY build/collect-logs.ps1 collect-logs.ps1
 COPY build/collect-logs.sh collect-logs.sh
 
+# Set executable permission for scripts
+RUN chmod +x collect-logs.ps1
+RUN chmod +x collect-logs.sh
+
 
 COPY public/gluesync-conductor.svg static/logo.svg
 

@@ -20,8 +20,6 @@ const handler: CollectLogsHandler = async (req, reply) => {
       .code(400)
       .send({ success: false, error: 'invalid email format' });
   }
-  console.log('>>>>>>>> EMAIL:', email);
-  console.log('>>>>>>>> TICKET ID:', ticketId);
 
   const scriptPath = './collect-logs.sh';
 
