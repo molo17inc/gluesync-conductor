@@ -6,7 +6,7 @@ stages:
 
 default:
   tags:
-    - gs-runners-hq
+    - hq-linux-docker
 
 
 variables:
