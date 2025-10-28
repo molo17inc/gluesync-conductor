@@ -44,7 +44,6 @@ build_artifacts:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "push"
 
-
 quality:
   stage: quality
   image: node:22.13.1-alpine
@@ -90,10 +89,8 @@ docker_images:
     # Enable Buildx
     - docker buildx version
 
-
     # Register QEMU for multiarch
     - docker run --rm --privileged tonistiigi/binfmt --install all
-
 
     # Create a new builder using docker-container driver
     - docker buildx create --name multiarch-builder --driver docker-container --use
