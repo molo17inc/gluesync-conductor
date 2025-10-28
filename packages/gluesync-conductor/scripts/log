@@ -1,7 +1,0 @@
-{ 'success': false, 'error': 'Script failed with exit code 1', 'details': "  %
-    Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-    Dload  Upload   Total   Spent    Left  Speed
-    \r  0     0    0     0    0     0      0      0 --:--:-- --:--:--
-    --:--:--     0\r  0     0    0     0    0     0      0      0 --:--:--
-    --:--:-- --:--:--     0 curl: (67) Access denied: 530
-    " }
