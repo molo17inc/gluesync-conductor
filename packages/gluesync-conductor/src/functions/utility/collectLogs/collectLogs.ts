@@ -25,7 +25,7 @@ const handler: CollectLogsHandler = async (req, reply) => {
 
   // Check if script exists and is executable
   try {
-    await access(scriptPath, constants.F_OK || constants.X_OK);
+    await access(scriptPath, constants.F_OK | constants.X_OK);
   } catch (err) {
     req.log.error({ err, scriptPath }, 'script not found or not executable');
     return reply.code(500).send({
@@ -77,16 +77,20 @@ const handler: CollectLogsHandler = async (req, reply) => {
     const stdout = stdoutBuf.toString('utf8');
     const stderr = stderrBuf.toString('utf8');
 
+    const extractLastLine = (text: string): string =>
+      text.trim().split(/\r?\n/).filter(Boolean).pop() ?? 'Unknown error';
+
     if (exitCode === 0) {
       return reply.code(200).send({
         success: true,
         output: stdout,
       });
     }
+
     return reply.code(500).send({
       success: false,
       error: `Script failed with exit code ${exitCode}`,
-      details: stderr || stdout,
+      details: extractLastLine(stderr || stdout),
     });
   } catch (err) {
     req.log.error({ err }, 'failed to run script');
