@@ -50,10 +50,20 @@ const build = async (
       plugins: [
         copy({
           resolveFrom: 'cwd',
-          assets: {
-            from: [`${swaggerUiStatic}/**/*`],
-            to: ['build/static'],
-          },
+          assets: [
+            {
+              from: '../gluesync-logs-uploader/collect-logs.ps1',
+              to: 'build/collect-logs.ps1',
+            },
+            {
+              from: '../gluesync-logs-uploader/collect-logs.sh',
+              to: 'build/collect-logs.sh',
+            },
+            {
+              from: `${swaggerUiStatic}/**/*`,
+              to: 'build/static',
+            },
+          ],
         }),
       ],
     });

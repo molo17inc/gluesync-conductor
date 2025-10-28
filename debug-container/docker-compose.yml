@@ -41,12 +41,11 @@ services:
       - 5017:1717
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./data:/opt/gluesync/data
-      - ./gs-conf/gs-license.dat:/opt/gluesync/data/gs-license.dat
       - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
       - ./services:/opt/gluesync-conductor/services
-      - ./gluesync-cert.pem:/opt/gluesync/data/cert.pem
-      - ./gluesync-key.pem:/opt/gluesync/data/key.pem
+      - ./gs-conf/:/opt/gluesync/data:ro
+      - ./data:/opt/gluesync-conductor/data
+      - ./logs:/opt/gluesync-conductor/logs
   gluesync-core-hub:
     image: molo17/gluesync-core-hub:2.1.4.2
     ports:

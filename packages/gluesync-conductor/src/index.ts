@@ -14,6 +14,7 @@ import systemRoutes from './routes/system';
 import containerRoutes from './routes/containers';
 import agentRoutes from './routes/agents';
 import serviceRoutes from './routes/services';
+import supportRoutes from './routes/support';
 
 type FastifyServices = {
   docker: Docker;
@@ -60,6 +61,7 @@ const startServer = async () => {
   await server.register(serviceRoutes);
   await server.register(containerRoutes);
   await server.register(agentRoutes);
+  await server.register(supportRoutes);
 
   await server.ready();
   await server.listen({ host, port });

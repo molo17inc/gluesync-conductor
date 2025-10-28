@@ -1,7 +1,7 @@
 FROM node:22.13.1-alpine
 
 # Install Docker CLI
-RUN apk add --no-cache docker-cli docker-cli-compose curl
+RUN apk add --no-cache docker-cli docker-cli-compose curl bash zip tar
 
 # Create Gluesync data directory structure
 RUN mkdir -p /opt/gluesync/data
@@ -33,6 +33,15 @@ WORKDIR /opt/gluesync-conductor
 COPY build/index.js index.js
 COPY build/index.js.map index.js.map
 COPY build/static/ static/
+
+# Copy log uploader scripts FROM build output
+COPY build/collect-logs.ps1 collect-logs.ps1
+COPY build/collect-logs.sh collect-logs.sh
+
+# Set executable permission for scripts
+RUN chmod +x collect-logs.ps1
+RUN chmod +x collect-logs.sh
+
 
 COPY public/gluesync-conductor.svg static/logo.svg
 
