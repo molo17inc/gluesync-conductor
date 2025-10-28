@@ -3,11 +3,9 @@ stages:
   - quality
   - deploy
 
-
 default:
   tags:
     - hq-linux-docker
-
 
 variables:
   GIT_STRATEGY: fetch
@@ -22,7 +20,6 @@ variables:
   DOCKER_REGISTRY: registry.gitlab.com/molo17-public/gluesync/gluesync-conductor
   CONTAINER_MATE_IMAGE: ${DOCKER_REGISTRY}:${CI_COMMIT_REF_SLUG}
 
-
 build_artifacts:
   stage: build
   image: node:22.13.1-alpine
@@ -32,10 +29,8 @@ build_artifacts:
     - node --version
     - yarn --version
 
-
     - echo "Installing dependencies..."
     - yarn install --immutable --immutable-cache
-
 
     - echo "Building..."
     - yarn build
@@ -62,10 +57,8 @@ quality:
     - node --version
     - yarn --version
 
-
     - echo "Installing dependencies..."
     - yarn install --immutable --immutable-cache
-
 
     - echo "Running linting..."
     - yarn lint
@@ -75,7 +68,6 @@ quality:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "push"
-
 
 docker_images:
   stage: deploy
@@ -90,7 +82,6 @@ docker_images:
     - echo "Running build and push docker images..."
     - apk add --no-cache bash
     - docker version
-
 
     # Login to Docker hub registry as default
     # - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
@@ -108,12 +99,10 @@ docker_images:
     - docker buildx create --name multiarch-builder --driver docker-container --use
     - docker buildx inspect --bootstrap
 
-
     # Decide build strategy
     - |
       set -euo pipefail
       set -x  # Debug: print all commands before execution
-
 
       BRANCH="${CI_COMMIT_BRANCH:-undefined}"
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
@@ -128,31 +117,25 @@ docker_images:
 
       echo "Branch=\"$BRANCH\", Tag=\"$TAG_PART\""
 
-
       if [[ "$BRANCH" == "develop" && -z "$TAG_PART" ]]; then
           echo "[INFO] Develop branch detected → multi-arch build with tag 'develop'"
           /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "develop"
 
-
       elif [[ -n "$TAG_PART" ]]; then
           echo "[INFO] Tag detected: \"$TAG_PART\""
-
 
           if [[ "$CI_COMMIT_TAG" == release-* ]]; then
               echo "[INFO] Release tag detected → using TAG_PART=\"$TAG_PART\""
               /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "$TAG_PART,latest"
 
-
           elif [[ "$CI_COMMIT_TAG" == tag-* ]]; then
               echo "[INFO] Regular tag detected → using TAG_PART=\"$TAG_PART\""
               /bin/bash ./packages/scripts/docker_images.sh --platform linux/amd64 packages/gluesync-conductor gluesync-conductor "$TAG_PART"
-
 
           else
               echo "[ERROR] Unknown tag format: \"$TAG_PART\""
               exit 1
           fi
-
 
       else
           echo "[ERROR] Unknown branch/tag combination: branch=\"$BRANCH\", tag=\"$TAG_PART\""
@@ -161,7 +144,6 @@ docker_images:
   rules:
     - if: '$CI_COMMIT_TAG'
     - if: '$CI_COMMIT_BRANCH == "develop"'
-
 
 update_budibase_version:
   stage: deploy
