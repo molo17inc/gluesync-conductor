@@ -25,7 +25,8 @@ const handler: CollectLogsHandler = async (req, reply) => {
 
   // Check if script exists and is executable
   try {
-    await access(scriptPath, constants.F_OK | constants.X_OK);
+    await access(scriptPath, constants.F_OK);
+    await access(scriptPath, constants.X_OK);
   } catch (err) {
     req.log.error({ err, scriptPath }, 'script not found or not executable');
     return reply.code(500).send({
