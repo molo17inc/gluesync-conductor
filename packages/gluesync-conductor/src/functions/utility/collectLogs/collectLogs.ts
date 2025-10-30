@@ -36,10 +36,15 @@ const handler: CollectLogsHandler = async (req, reply) => {
   }
 
   try {
-    const child = spawn(scriptPath, ['-t', ticketId, '-e', email], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env,
-    });
+    // Add --clean-after-upload so script deletes archive after upload
+    const child = spawn(
+      scriptPath,
+      ['-t', ticketId, '-e', email, '--clean-after-upload'],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: process.env,
+      },
+    );
 
     // Stream per-line logs as chunks arrive
     const logLines = (
