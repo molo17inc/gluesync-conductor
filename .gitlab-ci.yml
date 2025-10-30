@@ -174,7 +174,7 @@ update_budibase_version:
         exit 1
       fi
       
-      BUILD_TAG="gluesync-conductor"
+      BUILD_TAG="conductor"
       
       echo "[INFO] Updating Budibase version: BUILD_TAG=$BUILD_TAG, MODULE_VERSION=$MODULE_VERSION, RELEASE_TYPE=$RELEASE_TYPE"
       
