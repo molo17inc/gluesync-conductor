@@ -5,4 +5,5 @@ export type ParseImage = (imageString?: string) => Readonly<{
   fullName: string;
   original: string;
   imageName: string;
+  shortImageName: string;
 }>;

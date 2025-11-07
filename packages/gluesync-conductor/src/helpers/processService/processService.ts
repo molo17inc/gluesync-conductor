@@ -1,6 +1,6 @@
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
-import extractImageInfo from '../extractImageInfo/extractImageInfo';
+import parseImage from '../parseImage/parseImage';
 import {
   ServiceResultItem,
   CreateServiceError,
@@ -34,9 +34,9 @@ const processServices: ProcessServices = async (
       : composeJson
   ).services?.[process.env.CORE_HUB_NAME || 'gluesync-core-hub'];
 
-  const coreHubTagVersion = extractImageInfo(coreHub?.image || '').tag;
+  const { tag } = parseImage(coreHub?.image);
 
-  if (!coreHubTagVersion) {
+  if (!tag) {
     throw new Error('Core-hub Version Tag not found or empty');
   }
 
@@ -66,7 +66,7 @@ const processServices: ProcessServices = async (
         } else {
           const rawService = createService({
             ...service,
-            tag: coreHubTagVersion,
+            tag,
           });
 
           resolve({
