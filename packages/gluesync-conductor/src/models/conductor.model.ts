@@ -1,4 +1,4 @@
-export const conductorLabels = ['service_id', 'versiontag', 'type'] as const;
+export const conductorLabels = ['service_id', 'type'] as const;
 
 export type ConductorLabels = (typeof conductorLabels)[number];
 

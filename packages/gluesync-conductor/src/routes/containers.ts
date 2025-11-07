@@ -184,7 +184,6 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                               'Deprecated: use parsedImage.tag instead',
                             deprecated: true,
                           },
-                          versionTag: { type: 'string' },
                           command: { type: 'string' },
                           created: { type: 'number' },
                           state: { type: 'string' },

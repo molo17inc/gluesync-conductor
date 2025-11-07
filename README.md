@@ -86,7 +86,6 @@ Returns a list of all containers with detailed information including:
       "name": "gluesync-agent",
       "image": "molo17/gluesync-agent",
       "tag": "latest",
-      "versionTag": "1.2.3",
       "persisted": true,
       "created": "2025-04-10T14:23:45.000Z",
       "running": true,
@@ -115,7 +114,6 @@ Retrieves detailed configuration for a specific container by its ID.
     "type": "target",
     "nickname": "gluesync-agent",
     "tag": "latest",
-    "versionTag": "1.2.3",
     "persisted": true,
     "environment": {
       "GLUESYNC_MODULE_TAG": "conductor",
@@ -272,19 +270,7 @@ labels:
   - "com.molo17.conductor.unique_id=my-agent"
 ```
 
-### 2. Version Tag Label
-
-**Label:** `com.molo17.conductor.versiontag`
-
-This label stores the version tag of the container as specified by the user during container creation or update. It helps track the current version of the container, which may differ from the tag in the image name.
-
-**Example:**
-```yaml
-labels:
-  - "com.molo17.conductor.versiontag=1.2.3"
-```
-
-### 3. Agent Type Label
+### 2. Agent Type Label
 
 **Label:** `com.molo17.conductor.type`
 

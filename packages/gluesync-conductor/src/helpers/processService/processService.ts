@@ -34,9 +34,9 @@ const processServices: ProcessServices = async (
       : composeJson
   ).services?.[process.env.CORE_HUB_NAME || 'gluesync-core-hub'];
 
-  const coreHubVersionTag = extractImageInfo(coreHub?.image || '').tag;
+  const coreHubTagVersion = extractImageInfo(coreHub?.image || '').tag;
 
-  if (!coreHubVersionTag) {
+  if (!coreHubTagVersion) {
     throw new Error('Core-hub Version Tag not found or empty');
   }
 
@@ -66,7 +66,7 @@ const processServices: ProcessServices = async (
         } else {
           const rawService = createService({
             ...service,
-            tag: coreHubVersionTag,
+            tag: coreHubTagVersion,
           });
 
           resolve({
