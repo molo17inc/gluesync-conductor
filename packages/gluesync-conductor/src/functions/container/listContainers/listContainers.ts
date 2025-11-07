@@ -67,14 +67,13 @@ const handler: ListContainersHandler = async (req, reply) => {
         const service = composeJson.services?.[id];
         const info = containerInfoMapper(containerListMap[id]);
 
-        const serviceName = service?.labels?.[`${LabelPrefix.COMPOSE}.service`];
-
+        const serviceName =
+          service?.labels?.[`${LabelPrefix.CONDUCTOR}.service`];
         const persisted = info?.uniqueId === serviceName;
 
-        const serviceType =
-          parseServiceType(
-            service?.labels?.[`${LabelPrefix.CONDUCTOR}.type`],
-          ) || parseServiceType(info?.type);
+        const serviceType = parseServiceType(
+          service?.labels?.[`${LabelPrefix.CONDUCTOR}.type`],
+        );
 
         return {
           id,

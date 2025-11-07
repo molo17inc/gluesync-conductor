@@ -159,7 +159,6 @@ const createComposeService: CreateComposeService = (
       ...(serviceType === 'agent'
         ? {
             INITIAL_AGENT_ID: id,
-            TAG: containerName,
             LOG_CONFIG_FILE: '/opt/gluesync/shared/logback.xml',
           }
         : {}),

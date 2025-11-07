@@ -20,6 +20,7 @@ import { ParseImage } from './parseImage.model';
  * }
  * ```
  */
+
 const parseImage: ParseImage = imageString => {
   if (!imageString) {
     return {
