@@ -63,28 +63,30 @@ const handler: ListContainersHandler = async (req, reply) => {
     ];
 
     const containers: ListContainersSuccessResponse['containers'] =
-      allServicesNames.map(id => {
-        const service = composeJson.services?.[id];
-        const info = containerInfoMapper(containerListMap[id]);
+      allServicesNames
+        .filter(id => !!id)
+        .map(id => {
+          const service = composeJson.services?.[id];
+          const info = containerInfoMapper(containerListMap[id]);
 
-        const serviceName =
-          service?.labels?.[`${LabelPrefix.CONDUCTOR}.service`];
-        const persisted = info?.uniqueId === serviceName;
+          const serviceName =
+            service?.labels?.[`${LabelPrefix.CONDUCTOR}.service`];
+          const persisted = info?.uniqueId === serviceName;
 
-        const serviceType = parseServiceType(
-          service?.labels?.[`${LabelPrefix.CONDUCTOR}.type`],
-        );
+          const serviceType = parseServiceType(
+            service?.labels?.[`${LabelPrefix.CONDUCTOR}.type`],
+          );
 
-        return {
-          id,
-          persisted,
-          type:
-            (persisted ? serviceType : parseServiceType(info?.type)) ||
-            'unknown',
-          service,
-          info,
-        };
-      });
+          return {
+            id,
+            persisted,
+            type:
+              (persisted ? serviceType : parseServiceType(info?.type)) ||
+              'unknown',
+            service,
+            info,
+          };
+        });
 
     const filteredContainers = containers.filter(({ type: currentType }) => {
       if (!type || type === 'all') {
