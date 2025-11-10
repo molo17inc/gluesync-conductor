@@ -63,7 +63,6 @@ export type ContainerInfo = Readonly<{
   imageID: string;
   type?: string;
   tag: string;
-  versionTag?: string;
   uniqueId?: string;
   command: string;
   created: number;
@@ -81,7 +80,6 @@ export type ContainerInfo = Readonly<{
 //   name: string;
 //   image: string;
 //   tag: string;
-//   versionTag: string;
 //   persisted: boolean;
 //   created: string;
 //   running: boolean;

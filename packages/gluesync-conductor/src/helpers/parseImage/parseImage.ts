@@ -1,5 +1,26 @@
 import { ParseImage } from './parseImage.model';
 
+/**
+ * Parses a Docker image string into its components.
+ *
+ * Example:
+ * ```ts
+ * Input
+ * parseImage('ghcr.io/org/project/gluesync-myapp:latest');
+ *
+ * Output
+ * {
+ *   registry: 'ghcr.io',
+ *   repository: 'org/project/gluesync-myapp',
+ *   tag: 'latest',
+ *   fullName: 'ghcr.io/org/project/gluesync-myapp',
+ *   original: 'ghcr.io/org/project/gluesync-myapp:latest',
+ *   imageName: 'gluesync-myapp',
+ *   shortImageName: 'myapp'
+ * }
+ * ```
+ */
+
 const parseImage: ParseImage = imageString => {
   if (!imageString) {
     return {
@@ -9,6 +30,7 @@ const parseImage: ParseImage = imageString => {
       fullName: '',
       original: '',
       imageName: '',
+      shortImageName: '',
     };
   }
 
@@ -33,6 +55,8 @@ const parseImage: ParseImage = imageString => {
   const fullName = registry ? `${registry}/${repository}` : repository;
   const imageName = segments[segments.length - 1];
 
+  const shortImageName = imageName.replace(/^gluesync-/, '');
+
   return {
     registry,
     repository,
@@ -40,6 +64,7 @@ const parseImage: ParseImage = imageString => {
     fullName,
     original: imageString,
     imageName,
+    shortImageName,
   };
 };
 

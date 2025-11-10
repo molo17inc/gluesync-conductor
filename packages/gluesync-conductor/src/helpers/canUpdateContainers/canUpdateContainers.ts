@@ -1,6 +1,6 @@
 import fetchAgentInfo from '../agentInfo/agentInfo';
 import { AgentInfoResponse } from '../agentInfo/agentInfo.model';
-import extractImageInfo from '../extractImageInfo/extractImageInfo';
+import parseImage from '../parseImage/parseImage';
 import { CanUpdateContainers } from './canUpdateContainers.model';
 
 const canUpdateContainers: CanUpdateContainers = async (
@@ -12,8 +12,8 @@ const canUpdateContainers: CanUpdateContainers = async (
     if (!service) {
       return Promise.reject(new Error(`Agent ${id} not found`));
     }
-    const cleanedName = extractImageInfo(service.image).name;
-    return fetchAgentInfo(cleanedName);
+    const { shortImageName } = parseImage(service.image);
+    return fetchAgentInfo(shortImageName);
   });
 
   const settledResults = await Promise.allSettled(agentInfoPromises);

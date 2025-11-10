@@ -79,9 +79,7 @@
     },
     "/health": {
       "get": {
-        "tags": [
-          "system"
-        ],
+        "tags": ["system"],
         "description": "Health check endpoint",
         "responses": {
           "200": {
@@ -125,9 +123,7 @@
     },
     "/compose-to-json": {
       "get": {
-        "tags": [
-          "system"
-        ],
+        "tags": ["system"],
         "description": "Convert compose file to JSON",
         "responses": {
           "200": {
@@ -154,9 +150,7 @@
     },
     "/info": {
       "get": {
-        "tags": [
-          "system"
-        ],
+        "tags": ["system"],
         "description": "Get system information",
         "responses": {
           "200": {
@@ -183,9 +177,7 @@
     },
     "/version": {
       "get": {
-        "tags": [
-          "system"
-        ],
+        "tags": ["system"],
         "description": "Get API version",
         "responses": {
           "200": {
@@ -213,20 +205,13 @@
     "/containers": {
       "get": {
         "summary": "List all Docker containers",
-        "tags": [
-          "containers"
-        ],
+        "tags": ["containers"],
         "description": "Retrieves a comprehensive list of all Docker containers with their current status, configuration, and system information including CPU and memory details.",
         "parameters": [
           {
             "schema": {
               "type": "string",
-              "enum": [
-                "agent",
-                "module",
-                "unknown",
-                "all"
-              ]
+              "enum": ["agent", "module", "unknown", "all"]
             },
             "in": "query",
             "name": "type",
@@ -269,11 +254,7 @@
                               },
                               "type": {
                                 "type": "string",
-                                "enum": [
-                                  "agent",
-                                  "module",
-                                  "unknown"
-                                ]
+                                "enum": ["agent", "module", "unknown"]
                               },
                               "persisted": {
                                 "type": "boolean"
@@ -343,10 +324,7 @@
                                         },
                                         "protocol": {
                                           "type": "string",
-                                          "enum": [
-                                            "tcp",
-                                            "udp"
-                                          ]
+                                          "enum": ["tcp", "udp"]
                                         }
                                       }
                                     }
@@ -364,10 +342,7 @@
                                         },
                                         "opts": {
                                           "type": "string",
-                                          "enum": [
-                                            "rw",
-                                            "ro"
-                                          ]
+                                          "enum": ["rw", "ro"]
                                         }
                                       }
                                     }
@@ -390,9 +365,6 @@
                                     "type": "string"
                                   },
                                   "tag": {
-                                    "type": "string"
-                                  },
-                                  "versionTag": {
                                     "type": "string"
                                   },
                                   "command": {
@@ -506,10 +478,7 @@
                                 }
                               }
                             },
-                            "required": [
-                              "id",
-                              "persisted"
-                            ]
+                            "required": ["id", "persisted"]
                           }
                         }
                       }
@@ -544,19 +513,14 @@
       },
       "post": {
         "summary": "Execute action on containers",
-        "tags": [
-          "containers"
-        ],
+        "tags": ["containers"],
         "description": "Performs the specified action (kill,pull,remove,removeNetwork,restart,start,stop,update,undeploy) on one or more containers",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "action",
-                  "ids"
-                ],
+                "required": ["action", "ids"],
                 "properties": {
                   "action": {
                     "type": "string",
@@ -597,9 +561,7 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        true
-                      ]
+                      "enum": [true]
                     },
                     "data": {
                       "type": "object",
@@ -618,10 +580,7 @@
                               },
                               "status": {
                                 "type": "string",
-                                "enum": [
-                                  "OK",
-                                  "ERROR"
-                                ],
+                                "enum": ["OK", "ERROR"],
                                 "description": "Action execution status"
                               },
                               "message": {
@@ -647,9 +606,7 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "enum": [false]
                     },
                     "error": {
                       "type": "string",
@@ -671,9 +628,7 @@
     "/agents/{id}/version": {
       "get": {
         "summary": "Get agent version information",
-        "tags": [
-          "agents"
-        ],
+        "tags": ["agents"],
         "description": "Calls the service backoffice.molo17 and returns the agent version information",
         "parameters": [
           {
@@ -729,18 +684,13 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "enum": [false]
                     },
                     "error": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "success",
-                    "error"
-                  ],
+                  "required": ["success", "error"],
                   "additionalProperties": false
                 }
               }
@@ -755,9 +705,7 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "enum": [false]
                     },
                     "error": {
                       "type": "string"
@@ -767,10 +715,7 @@
                       "nullable": true
                     }
                   },
-                  "required": [
-                    "success",
-                    "error"
-                  ],
+                  "required": ["success", "error"],
                   "additionalProperties": false
                 }
               }
@@ -785,18 +730,13 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "enum": [false]
                     },
                     "error": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "success",
-                    "error"
-                  ],
+                  "required": ["success", "error"],
                   "additionalProperties": false
                 }
               }
@@ -808,9 +748,7 @@
     "/services": {
       "post": {
         "summary": "Add a list of services",
-        "tags": [
-          "services"
-        ],
+        "tags": ["services"],
         "description": "Services specifications are written in docker compose file",
         "requestBody": {
           "content": {
@@ -828,17 +766,11 @@
                         },
                         "type": {
                           "type": "string",
-                          "enum": [
-                            "agent",
-                            "module"
-                          ]
+                          "enum": ["agent", "module"]
                         },
                         "serviceType": {
                           "type": "string",
-                          "enum": [
-                            "target",
-                            "source"
-                          ]
+                          "enum": ["target", "source"]
                         },
                         "nickname": {
                           "type": "string"
@@ -868,10 +800,7 @@
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "host",
-                                  "container"
-                                ]
+                                "required": ["host", "container"]
                               },
                               {
                                 "type": "string"
@@ -896,10 +825,7 @@
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "host",
-                                  "container"
-                                ]
+                                "required": ["host", "container"]
                               },
                               {
                                 "type": "string"
@@ -920,16 +846,11 @@
                           "type": "object"
                         }
                       },
-                      "required": [
-                        "imageName",
-                        "type"
-                      ]
+                      "required": ["imageName", "type"]
                     }
                   }
                 },
-                "required": [
-                  "services"
-                ]
+                "required": ["services"]
               }
             }
           },
@@ -980,10 +901,7 @@
                       }
                     }
                   },
-                  "required": [
-                    "success",
-                    "results"
-                  ]
+                  "required": ["success", "results"]
                 }
               }
             }
@@ -997,9 +915,7 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "enum": [false]
                     },
                     "error": {
                       "type": "string"
@@ -1009,10 +925,7 @@
                       "nullable": true
                     }
                   },
-                  "required": [
-                    "success",
-                    "error"
-                  ],
+                  "required": ["success", "error"],
                   "additionalProperties": false
                 }
               }
@@ -1027,9 +940,7 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "enum": [false]
                     },
                     "error": {
                       "type": "string"
@@ -1039,10 +950,7 @@
                       "nullable": true
                     }
                   },
-                  "required": [
-                    "success",
-                    "error"
-                  ],
+                  "required": ["success", "error"],
                   "additionalProperties": false
                 }
               }
@@ -1057,9 +965,7 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "enum": [false]
                     },
                     "error": {
                       "type": "string"
@@ -1069,10 +975,7 @@
                       "nullable": true
                     }
                   },
-                  "required": [
-                    "success",
-                    "error"
-                  ],
+                  "required": ["success", "error"],
                   "additionalProperties": false
                 }
               }
@@ -1082,9 +985,7 @@
       },
       "put": {
         "summary": "Edit a list of services",
-        "tags": [
-          "services"
-        ],
+        "tags": ["services"],
         "description": "Services specifications are written in docker compose file",
         "requestBody": {
           "content": {
@@ -1105,10 +1006,7 @@
                         },
                         "serviceType": {
                           "type": "string",
-                          "enum": [
-                            "target",
-                            "source"
-                          ]
+                          "enum": ["target", "source"]
                         },
                         "nickname": {
                           "type": "string"
@@ -1138,10 +1036,7 @@
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "host",
-                                  "container"
-                                ]
+                                "required": ["host", "container"]
                               },
                               {
                                 "type": "string"
@@ -1166,10 +1061,7 @@
                                     "type": "string"
                                   }
                                 },
-                                "required": [
-                                  "host",
-                                  "container"
-                                ]
+                                "required": ["host", "container"]
                               },
                               {
                                 "type": "string"
@@ -1190,16 +1082,11 @@
                           "type": "object"
                         }
                       },
-                      "required": [
-                        "serviceId",
-                        "imageName"
-                      ]
+                      "required": ["serviceId", "imageName"]
                     }
                   }
                 },
-                "required": [
-                  "services"
-                ]
+                "required": ["services"]
               }
             }
           },
@@ -1246,17 +1133,11 @@
                             "additionalProperties": true
                           }
                         },
-                        "required": [
-                          "success",
-                          "serviceId"
-                        ]
+                        "required": ["success", "serviceId"]
                       }
                     }
                   },
-                  "required": [
-                    "success",
-                    "results"
-                  ]
+                  "required": ["success", "results"]
                 }
               }
             }
@@ -1270,18 +1151,13 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "enum": [false]
                     },
                     "error": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "success",
-                    "error"
-                  ],
+                  "required": ["success", "error"],
                   "additionalProperties": false
                 }
               }
@@ -1296,9 +1172,7 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "enum": [false]
                     },
                     "error": {
                       "type": "string"
@@ -1308,10 +1182,7 @@
                       "nullable": true
                     }
                   },
-                  "required": [
-                    "success",
-                    "error"
-                  ],
+                  "required": ["success", "error"],
                   "additionalProperties": false
                 }
               }
@@ -1326,9 +1197,7 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "enum": [false]
                     },
                     "error": {
                       "type": "string"
@@ -1338,10 +1207,7 @@
                       "nullable": true
                     }
                   },
-                  "required": [
-                    "success",
-                    "error"
-                  ],
+                  "required": ["success", "error"],
                   "additionalProperties": false
                 }
               }
@@ -1351,9 +1217,7 @@
       },
       "get": {
         "summary": "Get service docker configuration",
-        "tags": [
-          "services"
-        ],
+        "tags": ["services"],
         "description": "Retrieve the docker compose configuration for a single service by ID",
         "parameters": [
           {
@@ -1367,9 +1231,7 @@
           {
             "schema": {
               "type": "string",
-              "enum": [
-                "string"
-              ]
+              "enum": ["string"]
             },
             "in": "query",
             "name": "format",
@@ -1399,10 +1261,7 @@
                       ]
                     }
                   },
-                  "required": [
-                    "success",
-                    "data"
-                  ]
+                  "required": ["success", "data"]
                 }
               }
             }
@@ -1416,18 +1275,13 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "enum": [false]
                     },
                     "error": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "success",
-                    "error"
-                  ],
+                  "required": ["success", "error"],
                   "additionalProperties": false
                 }
               }
@@ -1442,9 +1296,7 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "enum": [false]
                     },
                     "error": {
                       "type": "string"
@@ -1454,10 +1306,7 @@
                       "nullable": true
                     }
                   },
-                  "required": [
-                    "success",
-                    "error"
-                  ],
+                  "required": ["success", "error"],
                   "additionalProperties": false
                 }
               }
@@ -1469,9 +1318,7 @@
     "/services/{id}": {
       "get": {
         "summary": "Get service docker configuration",
-        "tags": [
-          "services"
-        ],
+        "tags": ["services"],
         "description": "Retrieve the docker compose configuration for a single service by ID",
         "parameters": [
           {
@@ -1485,9 +1332,7 @@
           {
             "schema": {
               "type": "string",
-              "enum": [
-                "string"
-              ]
+              "enum": ["string"]
             },
             "in": "query",
             "name": "format",
@@ -1526,10 +1371,7 @@
                       ]
                     }
                   },
-                  "required": [
-                    "success",
-                    "data"
-                  ]
+                  "required": ["success", "data"]
                 }
               }
             }
@@ -1543,18 +1385,13 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "enum": [false]
                     },
                     "error": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "success",
-                    "error"
-                  ],
+                  "required": ["success", "error"],
                   "additionalProperties": false
                 }
               }
@@ -1569,9 +1406,7 @@
                   "properties": {
                     "success": {
                       "type": "boolean",
-                      "enum": [
-                        false
-                      ]
+                      "enum": [false]
                     },
                     "error": {
                       "type": "string"
@@ -1581,10 +1416,7 @@
                       "nullable": true
                     }
                   },
-                  "required": [
-                    "success",
-                    "error"
-                  ],
+                  "required": ["success", "error"],
                   "additionalProperties": false
                 }
               }

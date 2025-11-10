@@ -18,7 +18,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     }
 
     if (containerAction === 'update') {
-      // added core hub id in case of update because all agents, modules and core hub need to have the same versionTag
+      // added core hub id in case of update because all agents, modules and core hub need to have the same tag version
       const containerIdsUpdate = [
         process.env.CORE_HUB_NAME || 'gluesync-core-hub',
         ...containerIds,

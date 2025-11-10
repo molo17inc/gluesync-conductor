@@ -28,12 +28,8 @@ const containerInfoMapper: ContainerInfoMapper = container => {
     Mounts: mounts,
   } = container;
 
-  const {
-    service_id: uniqueId,
-    versiontag: versionTag,
-    type,
-  } = getCustomLabels(labels);
-  const { tag } = parseImage(image);
+  const { service_id: uniqueId, type } = getCustomLabels(labels);
+  const parsedImage = parseImage(image);
 
   return {
     id,
@@ -106,8 +102,8 @@ const containerInfoMapper: ContainerInfoMapper = container => {
         propagation,
       }),
     ),
-    tag,
-    versionTag,
+    tag: parsedImage.tag,
+    parsedImage: { ...parsedImage },
     uniqueId,
     type,
   };
@@ -130,7 +126,6 @@ export default containerInfoMapper;
 //     // Check if this container is persisted in the compose file
 //     const labels = details.Config?.Labels || {};
 //     const uniqueId = labels['com.molo17.conductor.unique_id'];
-//     const versionTagFromLabel = labels['com.molo17.conductor.versiontag'];
 
 //     const persisted = uniqueId
 //       ? Object.values(composeJson.services || {}).some(
@@ -147,7 +142,6 @@ export default containerInfoMapper;
 //       name: details.Name ? details.Name.replace(/^\//, '') : '',
 //       image: imageString,
 //       tag: tag,
-//       versionTag: versionTagFromLabel || tag || '', // Use label if available, otherwise use parsed tag, ensure string
 //       persisted,
 //       created: details.Created ? details.Created.toString() : '',
 //       // Extract State fields directly
@@ -185,7 +179,6 @@ export default containerInfoMapper;
 //       name: containerInfo.Names?.[0]?.replace(/^\//, '') || '',
 //       image: fallbackImageString,
 //       tag: tag,
-//       versionTag: tag || '', // Use parsed tag since we can't access labels
 //       persisted: false, // Can't check labels if inspect fails
 //       created: containerInfo.Created
 //         ? containerInfo.Created.toString()

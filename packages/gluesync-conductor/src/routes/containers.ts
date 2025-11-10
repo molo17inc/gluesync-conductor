@@ -145,8 +145,11 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                           name: { type: 'string' },
                           image: { type: 'string' },
                           imageID: { type: 'string' },
-                          tag: { type: 'string' },
-                          versionTag: { type: 'string' },
+                          tag: {
+                            description:
+                              'Deprecated: use parsedImage.tag instead',
+                            deprecated: true,
+                          },
                           command: { type: 'string' },
                           created: { type: 'number' },
                           state: { type: 'string' },
@@ -212,7 +215,6 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                         },
                       },
                     },
-                    required: ['id', 'persisted'],
                   },
                 },
               },
