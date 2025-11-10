@@ -215,7 +215,6 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                         },
                       },
                     },
-                    required: ['id', 'persisted'],
                   },
                 },
               },
