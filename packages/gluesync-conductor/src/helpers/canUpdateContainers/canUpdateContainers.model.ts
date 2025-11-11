@@ -1,9 +1,10 @@
 import { RawComposeFile } from '../../models/composeFile.model';
+import { ReleaseChannelTypes } from '../../models/conductor.model';
 
 export type CanUpdateContainers = (
   containerIds: ReadonlyArray<string>,
   composeJson: RawComposeFile,
-  releaseChannel: 'alpha' | 'beta' | 'ga',
+  releaseChannel: ReleaseChannelTypes,
 ) => Promise<{
   success: boolean;
   errors: (string | null)[];

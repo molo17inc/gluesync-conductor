@@ -1,8 +1,9 @@
+import { ReleaseChannelTypes } from '../../models/conductor.model';
 import { AgentInfoResponse } from '../agentInfo/agentInfo.model';
 
 const getVersionByChannel = (
   agentInfo: Readonly<AgentInfoResponse>,
-  channel?: string,
+  channel?: ReleaseChannelTypes,
 ) => {
   if (!agentInfo.AvailableAgents) return null;
 

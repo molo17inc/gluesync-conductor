@@ -1,7 +1,10 @@
 import { RouteHandlerMethod } from 'fastify';
 
 import { ErrorResponse, SuccessResponse } from '../../../models/common.model';
-import { ContainerActions } from '../../../models/conductor.model';
+import {
+  ContainerActions,
+  ReleaseChannelTypes,
+} from '../../../models/conductor.model';
 
 export type DoContainersActionItem = Readonly<{
   id: string;
@@ -17,7 +20,7 @@ export type DoContainersActionSuccessResponse = Readonly<{
 export type DoContainersActionBody = Readonly<{
   action: ContainerActions;
   ids: ReadonlyArray<string>;
-  releaseChannel: 'alpha' | 'beta' | 'ga';
+  releaseChannel: ReleaseChannelTypes;
 }>;
 
 export type DoContainersActionResponse =
