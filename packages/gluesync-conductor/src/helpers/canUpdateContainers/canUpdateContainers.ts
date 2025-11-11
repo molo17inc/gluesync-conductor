@@ -32,11 +32,7 @@ const canUpdateContainers: CanUpdateContainers = async (
   // Explicitly fetch core-hub info
   const coreHubVersionInfo = await fetchAgentInfo(
     parseImage(process.env.CORE_HUB_NAME || 'gluesync-core-hub').shortImageName,
-  ).then(agentInfo => ({
-    id: process.env.CORE_HUB_NAME || 'gluesync-core-hub',
-    agentInfo,
-    type: 'core-hub' as ConductorServiceTypes,
-  }));
+  );
 
   const settledResults = await Promise.allSettled(taggedPromises);
 
@@ -77,8 +73,7 @@ const canUpdateContainers: CanUpdateContainers = async (
   );
 
   // Include core-hub version in the agent consistency
-  const coreHubVersion =
-    coreHubVersionInfo.agentInfo.AvailableAgents?.latestVersionGA;
+  const coreHubVersion = coreHubVersionInfo.AvailableAgents?.latestVersionGA;
   const allAgentVersions = coreHubVersion
     ? [...agentVersions, coreHubVersion]
     : agentVersions;
