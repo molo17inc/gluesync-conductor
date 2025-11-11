@@ -40,5 +40,4 @@ export type AgentInfo = {
 
 export type AgentInfoResponse = {
   AvailableAgents?: AgentInfo;
-  isAgent?: boolean;
 };

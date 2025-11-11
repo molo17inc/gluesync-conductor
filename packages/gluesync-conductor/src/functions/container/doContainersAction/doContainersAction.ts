@@ -18,15 +18,10 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     }
 
     if (containerAction === 'update') {
-      // added core hub id in case of update because all agents and core hub need to have the same tag version
-      const containerIdsUpdate = [
-        // process.env.CORE_HUB_NAME || 'gluesync-core-hub',
-        ...containerIds,
-      ];
       const composeJson = await readComposeFile({ raw: true });
 
       const canUpdateContainersResult = await canUpdateContainers(
-        containerIdsUpdate,
+        containerIds,
         composeJson,
       );
 
@@ -39,13 +34,20 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       }
 
       await editUpdateImagesInComposeFile(
-        containerIdsUpdate,
+        containerIds,
         composeJson,
         canUpdateContainersResult.data,
       );
 
-      // Run update for all including core hub (if present) concurrently
-      const results = await Promise.allSettled(containerIdsUpdate.map(action));
+      // Run update for all including core hub (if present and first of all) concurrently
+      const orderedIds = containerIds.includes('gluesync-core-hub')
+        ? [
+            'gluesync-core-hub',
+            ...containerIds.filter(id => id !== 'gluesync-core-hub'),
+          ]
+        : containerIds;
+
+      const results = await Promise.allSettled(orderedIds.map(action));
 
       req.log.debug(
         `Container action ${containerAction}: ${JSON.stringify(results)}`,
@@ -64,7 +66,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         data: {
           ...(pruneResultText && { pruneResult: pruneResultText }),
           containers: results.map((result, index) => ({
-            id: containerIdsUpdate[index],
+            id: containerIds[index],
             status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
             message:
               result.status === 'fulfilled'

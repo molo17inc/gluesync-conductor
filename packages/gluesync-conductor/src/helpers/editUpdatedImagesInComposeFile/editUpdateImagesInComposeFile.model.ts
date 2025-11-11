@@ -5,6 +5,6 @@ export type EditUpdateImagesInComposeFile = (
   composeJson: RawComposeFile,
   versions: Readonly<{
     agentVersion: string | null;
-    modules: { id: string; version: string | null }[];
+    modules: ReadonlyArray<{ id: string; version: string | null }>;
   }>,
 ) => Promise<void>;

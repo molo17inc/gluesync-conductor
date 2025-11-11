@@ -7,11 +7,11 @@ export type CanUpdateContainers = (
   success: boolean;
   errors: (string | null)[];
   message: string;
-  data?: {
+  data?: Readonly<{
     agentVersion: string | null;
-    modules: {
+    modules: ReadonlyArray<{
       id: string;
       version: string | null;
-    }[];
-  };
+    }>;
+  }>;
 }>;

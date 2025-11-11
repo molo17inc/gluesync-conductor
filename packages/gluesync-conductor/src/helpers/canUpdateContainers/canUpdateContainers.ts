@@ -1,4 +1,5 @@
 import { LabelPrefix } from '../../models/composeFile.model';
+import { ConductorServiceTypes } from '../../models/conductor.model';
 import fetchAgentInfo from '../agentInfo/agentInfo';
 import { AgentInfoResponse } from '../agentInfo/agentInfo.model';
 import parseImage from '../parseImage/parseImage';
@@ -8,7 +9,7 @@ const canUpdateContainers: CanUpdateContainers = async (
   containerIds,
   composeJson,
 ) => {
-  // Build promises tagged with isAgent
+  // Build promises tagged with service type
   const taggedPromises = containerIds.map(id => {
     const service = composeJson.services?.[id];
     if (!service) {
@@ -16,34 +17,28 @@ const canUpdateContainers: CanUpdateContainers = async (
     }
 
     const { shortImageName } = parseImage(service.image);
-    const isAgent = service.labels?.includes(
-      `${LabelPrefix.CONDUCTOR}.type=agent`,
-    );
+
+    const serviceType = service?.labels
+      ?.find(label => label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
+      ?.split('=')[1] as ConductorServiceTypes | undefined;
 
     return fetchAgentInfo(shortImageName).then(agentInfo => ({
       id,
       agentInfo,
-      isAgent,
+      type: serviceType,
     }));
   });
 
-  const coreHubId = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
+  // Explicitly fetch core-hub info
+  const coreHubVersionInfo = await fetchAgentInfo(
+    parseImage(process.env.CORE_HUB_NAME || 'gluesync-core-hub').shortImageName,
+  ).then(agentInfo => ({
+    id: process.env.CORE_HUB_NAME || 'gluesync-core-hub',
+    agentInfo,
+    type: 'core-hub' as ConductorServiceTypes,
+  }));
 
-  const extendedTaggedPromises =
-    taggedPromises.length > 0
-      ? [
-          ...taggedPromises,
-          fetchAgentInfo(parseImage(coreHubId).shortImageName).then(
-            agentInfo => ({
-              id: coreHubId,
-              agentInfo,
-              isAgent: true,
-            }),
-          ),
-        ]
-      : taggedPromises;
-
-  const settledResults = await Promise.allSettled(extendedTaggedPromises);
+  const settledResults = await Promise.allSettled(taggedPromises);
 
   const errors = settledResults.map(result =>
     result.status === 'rejected'
@@ -67,27 +62,37 @@ const canUpdateContainers: CanUpdateContainers = async (
       ): r is PromiseFulfilledResult<{
         id: string;
         agentInfo: AgentInfoResponse;
-        isAgent: boolean;
+        type: ConductorServiceTypes | undefined;
       }> => r.status === 'fulfilled',
     )
     .map(r => r.value);
 
-  const agents = fulfilledInfos.filter(info => info.isAgent);
-  const modules = fulfilledInfos.filter(info => !info.isAgent);
+  // Partition by type
+  const agents = fulfilledInfos.filter(info => info.type === 'agent');
+  const modules = fulfilledInfos.filter(info => info.type === 'module');
 
+  // Collect agent versions
   const agentVersions = agents.map(
     info => info.agentInfo.AvailableAgents?.latestVersionGA,
   );
 
+  // Include core-hub version in the agent consistency
+  const coreHubVersion =
+    coreHubVersionInfo.agentInfo.AvailableAgents?.latestVersionGA;
+  const allAgentVersions = coreHubVersion
+    ? [...agentVersions, coreHubVersion]
+    : agentVersions;
+
+  // Check all agent versions (including core-hub) are equal
   const allEqual =
-    agentVersions.length === 0 ||
-    !agentVersions.some(v => v !== agentVersions[0]);
+    allAgentVersions.length === 0 ||
+    !allAgentVersions.some(v => v !== allAgentVersions[0]);
 
   if (!allEqual) {
     return {
       success: false,
-      errors: ['Agent versions mismatch'],
-      message: 'Agent versions mismatch',
+      errors: ['Agent versions mismatch (including core-hub)'],
+      message: 'Agent versions mismatch (including core-hub)',
     };
   }
 
@@ -96,11 +101,17 @@ const canUpdateContainers: CanUpdateContainers = async (
     errors: [] as (string | null)[],
     message: '',
     data: {
-      agentVersion: agentVersions[0] ?? null,
-      modules: modules.map(info => ({
-        id: info.id,
-        version: info.agentInfo.AvailableAgents?.latestVersionGA ?? null,
-      })),
+      agentVersion: allAgentVersions[0] ?? null,
+      modules: [
+        ...modules.map(info => ({
+          id: info.id,
+          version: info.agentInfo.AvailableAgents?.latestVersionGA ?? null,
+        })),
+        {
+          id: coreHubVersionInfo.id,
+          version: coreHubVersion ?? null,
+        },
+      ],
     },
   };
 };
