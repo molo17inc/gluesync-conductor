@@ -4,6 +4,7 @@ import doContainersAction from '../functions/container/doContainersAction/doCont
 import {
   containerActions,
   conductorServiceTypes,
+  releaseChannelTypes,
 } from '../models/conductor.model';
 
 const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
@@ -292,7 +293,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
           },
           releaseChannel: {
             type: 'string',
-            description: 'alpha, beta or ga',
+            description: `Specify release channel between : (${releaseChannelTypes.map(channel => `${channel}`)})`,
           },
         },
       },
