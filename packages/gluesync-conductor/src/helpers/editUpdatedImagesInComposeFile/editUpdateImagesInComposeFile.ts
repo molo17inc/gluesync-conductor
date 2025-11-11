@@ -19,10 +19,14 @@ const editUpdateImagesInComposeFile: EditUpdateImagesInComposeFile = async (
     const isAgent = service.labels?.includes(
       `${LabelPrefix.CONDUCTOR}.type=agent`,
     );
+    const isCoreHub = service.labels?.includes(
+      `${LabelPrefix.CONDUCTOR}.type=core-hub`,
+    );
 
-    const newVersion = isAgent
-      ? versions.agentVersion
-      : (versions.modules.find(m => m.id === id)?.version ?? null);
+    const newVersion =
+      isAgent || isCoreHub
+        ? versions.agentVersion
+        : (versions.modules.find(m => m.id === id)?.version ?? null);
 
     if (!newVersion) {
       throw new Error(`No version available for service ${id}`);
