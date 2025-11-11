@@ -1,3 +1,4 @@
+import { LabelPrefix } from '../../models/composeFile.model';
 import fetchAgentInfo from '../agentInfo/agentInfo';
 import { AgentInfoResponse } from '../agentInfo/agentInfo.model';
 import parseImage from '../parseImage/parseImage';
@@ -7,27 +8,50 @@ const canUpdateContainers: CanUpdateContainers = async (
   containerIds,
   composeJson,
 ) => {
-  const agentInfoPromises = containerIds.map(async id => {
+  // Build promises tagged with isAgent
+  const taggedPromises = containerIds.map(id => {
     const service = composeJson.services?.[id];
     if (!service) {
-      return Promise.reject(new Error(`Agent ${id} not found`));
+      return Promise.reject(new Error(`Service ${id} not found`));
     }
+
     const { shortImageName } = parseImage(service.image);
-    return fetchAgentInfo(shortImageName);
+    const isAgent = service.labels?.includes(
+      `${LabelPrefix.CONDUCTOR}.type=agent`,
+    );
+
+    return fetchAgentInfo(shortImageName).then(agentInfo => ({
+      id,
+      agentInfo,
+      isAgent,
+    }));
   });
 
-  const settledResults = await Promise.allSettled(agentInfoPromises);
+  const coreHubId = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
 
-  // Collect error messages or null for each container
+  const extendedTaggedPromises =
+    taggedPromises.length > 0
+      ? [
+          ...taggedPromises,
+          fetchAgentInfo(parseImage(coreHubId).shortImageName).then(
+            agentInfo => ({
+              id: coreHubId,
+              agentInfo,
+              isAgent: true,
+            }),
+          ),
+        ]
+      : taggedPromises;
+
+  const settledResults = await Promise.allSettled(extendedTaggedPromises);
+
   const errors = settledResults.map(result =>
     result.status === 'rejected'
       ? result.reason?.message || String(result.reason)
       : null,
   );
 
-  // If any errors exist, aggregate them and return the error object
-  const hasErrors = errors.some(e => e !== null);
-  if (hasErrors) {
+  if (errors.some(e => e !== null)) {
     const errorMessages = errors.filter(Boolean).join('\n');
     return {
       success: false,
@@ -36,20 +60,28 @@ const canUpdateContainers: CanUpdateContainers = async (
     };
   }
 
-  // Extract fulfilled results with agent info
-  const fulfilledAgentInfos = settledResults
+  const fulfilledInfos = settledResults
     .filter(
-      (r): r is PromiseFulfilledResult<AgentInfoResponse> =>
-        r.status === 'fulfilled',
+      (
+        r,
+      ): r is PromiseFulfilledResult<{
+        id: string;
+        agentInfo: AgentInfoResponse;
+        isAgent: boolean;
+      }> => r.status === 'fulfilled',
     )
     .map(r => r.value);
 
-  // Extract latestVersionGA, filtering out falsy values
-  const latestVersions = fulfilledAgentInfos.map(
-    agentInfo => agentInfo.AvailableAgents?.latestVersionGA,
+  const agents = fulfilledInfos.filter(info => info.isAgent);
+  const modules = fulfilledInfos.filter(info => !info.isAgent);
+
+  const agentVersions = agents.map(
+    info => info.agentInfo.AvailableAgents?.latestVersionGA,
   );
 
-  const allEqual = !latestVersions.some(v => v !== latestVersions[0]);
+  const allEqual =
+    agentVersions.length === 0 ||
+    !agentVersions.some(v => v !== agentVersions[0]);
 
   if (!allEqual) {
     return {
@@ -61,9 +93,15 @@ const canUpdateContainers: CanUpdateContainers = async (
 
   return {
     success: true,
-    errors: [],
+    errors: [] as (string | null)[],
     message: '',
-    data: latestVersions[0],
+    data: {
+      agentVersion: agentVersions[0] ?? null,
+      modules: modules.map(info => ({
+        id: info.id,
+        version: info.agentInfo.AvailableAgents?.latestVersionGA ?? null,
+      })),
+    },
   };
 };
 

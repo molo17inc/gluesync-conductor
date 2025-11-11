@@ -18,9 +18,9 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     }
 
     if (containerAction === 'update') {
-      // added core hub id in case of update because all agents, modules and core hub need to have the same tag version
+      // added core hub id in case of update because all agents and core hub need to have the same tag version
       const containerIdsUpdate = [
-        process.env.CORE_HUB_NAME || 'gluesync-core-hub',
+        // process.env.CORE_HUB_NAME || 'gluesync-core-hub',
         ...containerIds,
       ];
       const composeJson = await readComposeFile({ raw: true });
@@ -30,7 +30,10 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         composeJson,
       );
 
-      if (!canUpdateContainersResult.success) {
+      if (
+        !canUpdateContainersResult.success ||
+        !canUpdateContainersResult.data
+      ) {
         reply.code(500);
         throw new Error(canUpdateContainersResult.message);
       }
@@ -38,10 +41,10 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       await editUpdateImagesInComposeFile(
         containerIdsUpdate,
         composeJson,
-        String(canUpdateContainersResult.data),
+        canUpdateContainersResult.data,
       );
 
-      // Run update for all including core hub concurrently
+      // Run update for all including core hub (if present) concurrently
       const results = await Promise.allSettled(containerIdsUpdate.map(action));
 
       req.log.debug(

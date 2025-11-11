@@ -3,5 +3,8 @@ import { RawComposeFile } from '../../models/composeFile.model';
 export type EditUpdateImagesInComposeFile = (
   containerIds: ReadonlyArray<string>,
   composeJson: RawComposeFile,
-  latestVersionGA: string,
+  versions: Readonly<{
+    agentVersion: string | null;
+    modules: { id: string; version: string | null }[];
+  }>,
 ) => Promise<void>;
