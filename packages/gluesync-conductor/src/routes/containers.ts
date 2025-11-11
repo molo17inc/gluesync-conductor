@@ -1,7 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import listContainers from '../functions/container/listContainers/listContainers';
 import doContainersAction from '../functions/container/doContainersAction/doContainersAction';
-import { containerActions } from '../models/conductor.model';
+import {
+  containerActions,
+  conductorServiceTypes,
+} from '../models/conductor.model';
 
 const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
   // Register ComposeFile schema
@@ -40,7 +43,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
         properties: {
           type: {
             type: 'string',
-            enum: ['agent', 'module', 'unknown', 'all'],
+            enum: [...conductorServiceTypes, 'unknown', 'all'],
             description: 'Filter containers by type',
           },
         },

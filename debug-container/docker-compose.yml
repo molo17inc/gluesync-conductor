@@ -16,6 +16,8 @@ services:
     build: ../packages/gluesync-conductor
     container_name: gluesync-conductor
     restart: unless-stopped
+    labels:
+      - com.molo17.conductor.type=module
     environment:
       - NODE_ENV=production
       - LOG_LEVEL=trace
@@ -48,6 +50,8 @@ services:
     image: molo17/gluesync-core-hub:2.1.4.2
     ports:
       - 1717:1717
+    labels:
+      - com.molo17.conductor.type=core-hub
     environment:
       - LOG_CONFIG_FILE=/opt/gluesync/data/logback.xml
     volumes:

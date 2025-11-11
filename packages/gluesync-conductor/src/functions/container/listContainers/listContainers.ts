@@ -70,12 +70,13 @@ const handler: ListContainersHandler = async (req, reply) => {
           const info = containerInfoMapper(containerListMap[id]);
 
           const serviceName =
-            service?.labels?.[`${LabelPrefix.CONDUCTOR}.service`];
+            service?.labels?.[`${LabelPrefix.COMPOSE}.service`];
           const persisted = info?.uniqueId === serviceName;
 
-          const serviceType = parseServiceType(
-            service?.labels?.[`${LabelPrefix.CONDUCTOR}.type`],
-          );
+          const serviceType =
+            parseServiceType(
+              service?.labels?.[`${LabelPrefix.CONDUCTOR}.type`],
+            ) || parseServiceType(info?.type);
 
           return {
             id,
