@@ -102,10 +102,6 @@ const canUpdateContainers: CanUpdateContainers = async (
           id: info.id,
           version: info.agentInfo.AvailableAgents?.latestVersionGA ?? null,
         })),
-        {
-          id: coreHubVersionInfo.id,
-          version: coreHubVersion ?? null,
-        },
       ],
     },
   };
