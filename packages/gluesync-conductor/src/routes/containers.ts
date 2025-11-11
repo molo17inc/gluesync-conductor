@@ -293,6 +293,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
           },
           releaseChannel: {
             type: 'string',
+            enum: releaseChannelTypes,
             description: `Specify release channel between : (${releaseChannelTypes.map(channel => `${channel}`)})`,
           },
         },
