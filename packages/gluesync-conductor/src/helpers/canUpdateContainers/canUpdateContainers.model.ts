@@ -3,6 +3,7 @@ import { RawComposeFile } from '../../models/composeFile.model';
 export type CanUpdateContainers = (
   containerIds: ReadonlyArray<string>,
   composeJson: RawComposeFile,
+  releaseChannel: 'alpha' | 'beta' | 'ga',
 ) => Promise<{
   success: boolean;
   errors: (string | null)[];

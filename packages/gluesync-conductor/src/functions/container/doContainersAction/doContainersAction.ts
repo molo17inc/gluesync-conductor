@@ -8,6 +8,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
   try {
     const containerAction = req.body.action;
     const containerIds = req.body.ids;
+    const releaseChannel = req.body.releaseChannel || 'ga';
 
     const actions = createActions({ docker: req.server.docker });
     const action = actions[containerAction];
@@ -23,6 +24,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       const canUpdateContainersResult = await canUpdateContainers(
         containerIds,
         composeJson,
+        releaseChannel,
       );
 
       if (

@@ -3,11 +3,13 @@ import { ConductorServiceTypes } from '../../models/conductor.model';
 import fetchAgentInfo from '../agentInfo/agentInfo';
 import { AgentInfoResponse } from '../agentInfo/agentInfo.model';
 import parseImage from '../parseImage/parseImage';
+import getVersionByChannel from '../releaseChannel/getVersionByChannel';
 import { CanUpdateContainers } from './canUpdateContainers.model';
 
 const canUpdateContainers: CanUpdateContainers = async (
   containerIds,
   composeJson,
+  releaseChannel,
 ) => {
   // Build promises tagged with service type
   const taggedPromises = containerIds.map(id => {
@@ -64,16 +66,21 @@ const canUpdateContainers: CanUpdateContainers = async (
     .map(r => r.value);
 
   // Partition by type
-  const agents = fulfilledInfos.filter(info => info.type === 'agent');
+  const agentsAndCoreHub = fulfilledInfos.filter(
+    info => info.type === 'agent' || info.type === 'core-hub',
+  );
   const modules = fulfilledInfos.filter(info => info.type === 'module');
 
   // Collect agent versions
-  const agentVersions = agents.map(
-    info => info.agentInfo.AvailableAgents?.latestVersionGA,
+  const agentVersions = agentsAndCoreHub.map(info =>
+    getVersionByChannel(info.agentInfo, releaseChannel),
   );
 
   // Include core-hub version in the agent consistency
-  const coreHubVersion = coreHubVersionInfo.AvailableAgents?.latestVersionGA;
+  const coreHubVersion = getVersionByChannel(
+    coreHubVersionInfo,
+    releaseChannel,
+  );
   const allAgentVersions = coreHubVersion
     ? [...agentVersions, coreHubVersion]
     : agentVersions;

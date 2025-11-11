@@ -17,6 +17,7 @@ export type DoContainersActionSuccessResponse = Readonly<{
 export type DoContainersActionBody = Readonly<{
   action: ContainerActions;
   ids: ReadonlyArray<string>;
+  releaseChannel: 'alpha' | 'beta' | 'ga';
 }>;
 
 export type DoContainersActionResponse =

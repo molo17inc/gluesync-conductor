@@ -290,6 +290,10 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
             minItems: 1,
             description: 'Array of container NAMEs to perform the action on',
           },
+          releaseChannel: {
+            type: 'string',
+            description: 'alpha, beta or ga',
+          },
         },
       },
       response: {
