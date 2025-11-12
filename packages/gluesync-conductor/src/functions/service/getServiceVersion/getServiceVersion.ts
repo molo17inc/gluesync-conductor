@@ -4,7 +4,6 @@ import {
 } from './getServiceVersion.model';
 import { castObject } from '../../../helpers/composeFile/extractKeyValue/extractKeyValue';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
-import { LabelPrefix } from '../../../models/composeFile.model';
 import fetchAgentInfo from '../../../helpers/agentInfo/agentInfo';
 import parseImage from '../../../helpers/parseImage/parseImage';
 
