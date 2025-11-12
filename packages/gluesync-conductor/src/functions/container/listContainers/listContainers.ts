@@ -16,6 +16,7 @@ import {
   ConductorServiceTypes,
   conductorServiceTypes,
 } from '../../../models/conductor.model';
+import { EXCLUDED_SERVICES } from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose.model';
 
 const handler: ListContainersHandler = async (req, reply) => {
   try {
@@ -65,6 +66,7 @@ const handler: ListContainersHandler = async (req, reply) => {
     const containers: ListContainersSuccessResponse['containers'] =
       allServicesNames
         .filter(id => !!id)
+        .filter(id => !EXCLUDED_SERVICES.has(id))
         .map(id => {
           const service = composeJson.services?.[id];
           const info = containerInfoMapper(containerListMap[id]);
