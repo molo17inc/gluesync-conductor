@@ -42,7 +42,6 @@ COPY build/collect-logs.sh collect-logs.sh
 RUN chmod +x collect-logs.ps1
 RUN chmod +x collect-logs.sh
 
-
 COPY public/gluesync-conductor.svg static/logo.svg
 
 EXPOSE 1717

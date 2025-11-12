@@ -15,6 +15,7 @@ import containerRoutes from './routes/containers';
 import agentRoutes from './routes/agents';
 import serviceRoutes from './routes/services';
 import supportRoutes from './routes/support';
+import { getLogger } from './utils/logger';
 
 type FastifyServices = {
   docker: Docker;
@@ -33,6 +34,7 @@ const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
 const host: string = process.env.HOST || '0.0.0.0';
 
 const startServer = async () => {
+  const logger = getLogger();
   const serverOptions = createFastifyHttpsOptions();
   const server = fastify(serverOptions);
 
@@ -67,29 +69,29 @@ const startServer = async () => {
   await server.listen({ host, port });
 
   const protocol = isSslEnabled() ? 'https' : 'http';
-  console.info(
+  logger.info(
     `Swagger UI is available at ${protocol}://${host === '0.0.0.0' ? 'localhost' : host}:${port}/docs`,
   );
-  console.info(
+  logger.info(
     `OpenAPI JSON available at ${protocol}://${host === '0.0.0.0' ? 'localhost' : host}:${port}/openapi.json`,
   );
-  console.info(`Gluesync Conductor server started on port ${port}`);
+  logger.info(`Gluesync Conductor server started on port ${port}`);
 };
 
 // Handle unhandled rejections
 process.on('unhandledRejection', err => {
-  console.error('Unhandled Promise Rejection:', err);
+  getLogger().error({ err }, 'Unhandled Promise Rejection');
   process.exit(1);
 });
 
 // Handle uncaught exceptions
 process.on('uncaughtException', err => {
-  console.error('Uncaught Exception:', err);
+  getLogger().error({ err }, 'Uncaught Exception');
   process.exit(1);
 });
 
 // Start the fastify server
 startServer().catch(err => {
-  console.error('Failed to start server:', err);
+  getLogger().error({ err }, 'Failed to start server');
   process.exit(1);
 });

@@ -2062,6 +2062,15 @@ const RAW_RUNTIME_STATE =
         "linkType": "HARD"\
       }]\
     ]],\
+    ["@pinojs/redact", [\
+      ["npm:0.4.0", {\
+        "packageLocation": "./.yarn/cache/@pinojs-redact-npm-0.4.0-445417bca6-2210ffb6b3.zip/node_modules/@pinojs/redact/",\
+        "packageDependencies": [\
+          ["@pinojs/redact", "npm:0.4.0"]\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
     ["@pkgjs/parseargs", [\
       ["npm:0.11.0", {\
         "packageLocation": "./.yarn/cache/@pkgjs-parseargs-npm-0.11.0-cd2a3fe948-115e8ceeec.zip/node_modules/@pkgjs/parseargs/",\
@@ -5697,7 +5706,9 @@ const RAW_RUNTIME_STATE =
           ["fastify", "npm:5.3.0"],\
           ["fastify-plugin", "npm:5.0.1"],\
           ["gluesync-sdk-client", "workspace:packages/gluesync-sdk-client"],\
+          ["pino", "npm:10.1.0"],\
           ["prettier", "npm:3.5.3"],\
+          ["rotating-file-stream", "npm:3.2.7"],\
           ["ts-node", "virtual:034f9ed205a5f66264fee41c6df436c9dcef3f8116beb72d220f3710a40569698233dbcf841b133703c95cf748137a93ca21390dc36b185b836a4c7aff3d5dc7#npm:10.9.2"],\
           ["tsx", "npm:4.20.4"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"],\
@@ -8080,6 +8091,24 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["pino", [\
+      ["npm:10.1.0", {\
+        "packageLocation": "./.yarn/cache/pino-npm-10.1.0-3dcf993335-6f9c865726.zip/node_modules/pino/",\
+        "packageDependencies": [\
+          ["pino", "npm:10.1.0"],\
+          ["@pinojs/redact", "npm:0.4.0"],\
+          ["atomic-sleep", "npm:1.0.0"],\
+          ["on-exit-leak-free", "npm:2.1.2"],\
+          ["pino-abstract-transport", "npm:2.0.0"],\
+          ["pino-std-serializers", "npm:7.0.0"],\
+          ["process-warning", "npm:5.0.0"],\
+          ["quick-format-unescaped", "npm:4.0.4"],\
+          ["real-require", "npm:0.2.0"],\
+          ["safe-stable-stringify", "npm:2.5.0"],\
+          ["sonic-boom", "npm:4.2.0"],\
+          ["thread-stream", "npm:3.1.0"]\
+        ],\
+        "linkType": "HARD"\
+      }],\
       ["npm:9.6.0", {\
         "packageLocation": "./.yarn/cache/pino-npm-9.6.0-043d7ccc5e-0a36125718.zip/node_modules/pino/",\
         "packageDependencies": [\
@@ -8529,6 +8558,15 @@ const RAW_RUNTIME_STATE =
         "packageDependencies": [\
           ["rimraf", "npm:5.0.10"],\
           ["glob", "npm:10.4.5"]\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
+    ["rotating-file-stream", [\
+      ["npm:3.2.7", {\
+        "packageLocation": "./.yarn/cache/rotating-file-stream-npm-3.2.7-2671ce04b1-9b0bd96a66.zip/node_modules/rotating-file-stream/",\
+        "packageDependencies": [\
+          ["rotating-file-stream", "npm:3.2.7"]\
         ],\
         "linkType": "HARD"\
       }]\

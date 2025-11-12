@@ -1,5 +1,6 @@
 import fs from 'fs';
 import { FastifyServerOptions } from 'fastify';
+import { getLogger } from './logger';
 
 /**
  * Check if SSL is enabled based on environment variables
@@ -40,17 +41,17 @@ export const getSslFilePaths = (): {
  * Create Fastify HTTPS options if SSL is enabled
  */
 export const createFastifyHttpsOptions = (): FastifyServerOptions => {
-  const baseOptions: FastifyServerOptions = {
-    logger: {
-      level: process.env.LOG_LEVEL || 'warn',
-    },
+  const logger = getLogger();
+
+  const baseOptions = {
+    logger,
     ignoreTrailingSlash: true,
     ajv: {
       customOptions: {
         strict: false,
       },
     },
-  };
+  } as unknown as FastifyServerOptions;
 
   if (!isSslEnabled()) return baseOptions;
 

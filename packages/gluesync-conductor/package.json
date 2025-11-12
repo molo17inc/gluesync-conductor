@@ -26,6 +26,8 @@
     "fastify": "^5.2.1",
     "fastify-plugin": "^5.0.1",
     "gluesync-sdk-client": "workspace:*",
+    "pino": "^10.1.0",
+    "rotating-file-stream": "^3.2.7",
     "uuid": "^13.0.0",
     "yaml": "^2.7.0"
   },
