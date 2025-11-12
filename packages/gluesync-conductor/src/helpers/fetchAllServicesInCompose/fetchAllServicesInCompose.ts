@@ -10,7 +10,7 @@ const EXCLUDED_SERVICES = new Set([
 const fetchAllServicesInCompose: FetchAllServicesInCompose = (
   composeJson,
   reorder = false,
-): string[] => {
+) => {
   if (!composeJson.services) return [];
 
   const services = Object.keys(composeJson.services).filter(
