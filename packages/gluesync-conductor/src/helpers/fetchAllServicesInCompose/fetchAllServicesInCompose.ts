@@ -1,11 +1,7 @@
-import { FetchAllServicesInCompose } from './fetchAllServicesInCompose.model';
-
-const EXCLUDED_SERVICES = new Set([
-  'reverse-proxy',
-  'grafana',
-  'prometheus',
-  'portainer',
-]);
+import {
+  EXCLUDED_SERVICES,
+  FetchAllServicesInCompose,
+} from './fetchAllServicesInCompose.model';
 
 const fetchAllServicesInCompose: FetchAllServicesInCompose = (
   composeJson,
