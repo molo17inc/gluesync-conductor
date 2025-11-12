@@ -43,17 +43,31 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         throw new Error(canUpdateContainersResult.message);
       }
 
+      const invalidModuleIds = canUpdateContainersResult.data.modules
+        .filter(m => m.version === null)
+        .map(m => m.id);
+
+      // remove modules with no version (relative to the release channel) to prevent update
+      const effectiveIdsFiltered = effectiveIds.filter(
+        id => !invalidModuleIds.includes(id),
+      );
+
       await editUpdateImagesInComposeFile(
-        effectiveIds,
+        effectiveIdsFiltered,
         composeJson,
         canUpdateContainersResult.data,
       );
 
       const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
 
-      const orderedIds: readonly string[] = effectiveIds.includes(coreHubName)
-        ? [coreHubName, ...effectiveIds.filter(id => id !== coreHubName)]
-        : effectiveIds;
+      const orderedIds: readonly string[] = effectiveIdsFiltered.includes(
+        coreHubName,
+      )
+        ? [
+            coreHubName,
+            ...effectiveIdsFiltered.filter(id => id !== coreHubName),
+          ]
+        : effectiveIdsFiltered;
 
       const results = await Promise.allSettled(orderedIds.map(action));
 
