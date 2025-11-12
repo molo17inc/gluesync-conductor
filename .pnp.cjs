@@ -5206,6 +5206,28 @@ const RAW_RUNTIME_STATE =
           ["toad-cache", "npm:3.7.0"]\
         ],\
         "linkType": "HARD"\
+      }],\
+      ["npm:5.6.2", {\
+        "packageLocation": "./.yarn/cache/fastify-npm-5.6.2-3b56a41287-8c006cd600.zip/node_modules/fastify/",\
+        "packageDependencies": [\
+          ["fastify", "npm:5.6.2"],\
+          ["@fastify/ajv-compiler", "npm:4.0.2"],\
+          ["@fastify/error", "npm:4.1.0"],\
+          ["@fastify/fast-json-stringify-compiler", "npm:5.0.3"],\
+          ["@fastify/proxy-addr", "npm:5.0.0"],\
+          ["abstract-logging", "npm:2.0.1"],\
+          ["avvio", "npm:9.1.0"],\
+          ["fast-json-stringify", "npm:6.0.1"],\
+          ["find-my-way", "npm:9.3.0"],\
+          ["light-my-request", "npm:6.6.0"],\
+          ["pino", "npm:10.1.0"],\
+          ["process-warning", "npm:5.0.0"],\
+          ["rfdc", "npm:1.4.1"],\
+          ["secure-json-parse", "npm:4.0.0"],\
+          ["semver", "npm:7.7.1"],\
+          ["toad-cache", "npm:3.7.0"]\
+        ],\
+        "linkType": "HARD"\
       }]\
     ]],\
     ["fastify-plugin", [\
@@ -5703,7 +5725,7 @@ const RAW_RUNTIME_STATE =
           ["eslint-plugin-functional", "virtual:beb8dda6f7964700067e23ce77cb39672e53232747d9207129ce290669aa7b52a4867d6f76308bd24f79bcd9d13683b90dcd0eadd6b5cdd6c82249bcb0d213d1#npm:6.6.3"],\
           ["eslint-plugin-import", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:2.32.0"],\
           ["eslint-plugin-prettier", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:5.5.3"],\
-          ["fastify", "npm:5.3.0"],\
+          ["fastify", "npm:5.6.2"],\
           ["fastify-plugin", "npm:5.0.1"],\
           ["gluesync-sdk-client", "workspace:packages/gluesync-sdk-client"],\
           ["pino", "npm:10.1.0"],\
@@ -5776,6 +5798,7 @@ const RAW_RUNTIME_STATE =
           ["@types/node", "npm:22.14.1"],\
           ["fastify", "npm:5.3.0"],\
           ["gluesync-sdk", "workspace:packages/gluesync-sdk"],\
+          ["pino", "npm:10.1.0"],\
           ["rimraf", "npm:5.0.10"],\
           ["ts-node", "virtual:034f9ed205a5f66264fee41c6df436c9dcef3f8116beb72d220f3710a40569698233dbcf841b133703c95cf748137a93ca21390dc36b185b836a4c7aff3d5dc7#npm:10.9.2"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"]\

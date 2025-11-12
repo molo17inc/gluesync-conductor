@@ -19,6 +19,7 @@
 import { settings } from 'gluesync-sdk-client';
 
 import { getGluesyncSdkClient } from '../gluesyncSdkClient';
+import { getLogger } from '../utils/logger';
 
 // Define Node.js process variable
 declare const process: {
@@ -51,7 +52,7 @@ async function gluesyncPlugin(
   done: (error?: Readonly<Error>) => void,
 ): Promise<void> {
   // Get the singleton instance of the SDK client
-  const sdkClient = getGluesyncSdkClient();
+  const sdkClient = getGluesyncSdkClient(getLogger());
 
   // Set the module tag from environment variable or use default
   const moduleTag = process.env.GLUESYNC_MODULE_TAG || 'conductor';
