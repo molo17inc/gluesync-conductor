@@ -3,11 +3,12 @@ import createActions from '../../../helpers/dockerode/createActions/createAction
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import canUpdateContainers from '../../../helpers/canUpdateContainers/canUpdateContainers';
 import editUpdateImagesInComposeFile from '../../../helpers/editUpdatedImagesInComposeFile/editUpdateImagesInComposeFile';
+import fetchAllServicesInCompose from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose';
 
 const handler: DoContainersActionHandler = async (req, reply) => {
   try {
     const containerAction = req.body.action;
-    const containerIds = req.body.ids;
+    const requestIds: readonly string[] = req.body.ids ?? [];
     const releaseChannel = req.body.releaseChannel || 'ga';
 
     const actions = createActions({ docker: req.server.docker });
@@ -21,8 +22,13 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     if (containerAction === 'update') {
       const composeJson = await readComposeFile({ raw: true });
 
+      const effectiveIds: readonly string[] =
+        requestIds.length === 0
+          ? fetchAllServicesInCompose(composeJson, true)
+          : requestIds;
+
       const canUpdateContainersResult = await canUpdateContainers(
-        containerIds,
+        effectiveIds,
         composeJson,
         releaseChannel,
       );
@@ -36,18 +42,19 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       }
 
       await editUpdateImagesInComposeFile(
-        containerIds,
+        effectiveIds,
         composeJson,
         canUpdateContainersResult.data,
       );
 
-      // Run update for all including core hub (if present and first of all) concurrently
-      const orderedIds = containerIds.includes('gluesync-core-hub')
+      const orderedIds: readonly string[] = effectiveIds.includes(
+        'gluesync-core-hub',
+      )
         ? [
             'gluesync-core-hub',
-            ...containerIds.filter(id => id !== 'gluesync-core-hub'),
+            ...effectiveIds.filter(id => id !== 'gluesync-core-hub'),
           ]
-        : containerIds;
+        : effectiveIds;
 
       const results = await Promise.allSettled(orderedIds.map(action));
 
@@ -68,7 +75,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         data: {
           ...(pruneResultText && { pruneResult: pruneResultText }),
           containers: results.map((result, index) => ({
-            id: containerIds[index],
+            id: orderedIds[index],
             status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
             message:
               result.status === 'fulfilled'
@@ -78,7 +85,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         },
       });
     } else {
-      const results = await Promise.allSettled(containerIds.map(action));
+      const results = await Promise.allSettled(requestIds.map(action));
 
       req.log.debug(
         `Container action ${containerAction}: ${JSON.stringify(results)}`,
@@ -89,7 +96,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         success: true,
         data: {
           containers: results.map((result, index) => ({
-            id: containerIds[index],
+            id: requestIds[index],
             status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
             message:
               result.status === 'fulfilled'
