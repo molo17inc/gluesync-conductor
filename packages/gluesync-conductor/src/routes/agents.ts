@@ -1,13 +1,14 @@
 import { FastifyInstance } from 'fastify';
-import getAgentVersion from '../functions/agent/getAgentVersion/getAgentVersion';
+import getAgentVersion from '../functions/service/getServiceVersion/getServiceVersion';
 
 const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.get('/agents/:id/version', {
     schema: {
       tags: ['agents'],
-      summary: 'Get agent version information',
+      summary: 'Get agent version information (deprecated)',
       description:
-        'Calls the service backoffice.molo17 and returns the agent version information',
+        '⚠️ This is an old API kept for retro‑compatibility check the new one in services',
+      deprecated: true,
       params: {
         type: 'object',
         required: ['id'],
