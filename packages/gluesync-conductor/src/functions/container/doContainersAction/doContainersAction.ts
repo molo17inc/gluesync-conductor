@@ -47,13 +47,10 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         canUpdateContainersResult.data,
       );
 
-      const orderedIds: readonly string[] = effectiveIds.includes(
-        'gluesync-core-hub',
-      )
-        ? [
-            'gluesync-core-hub',
-            ...effectiveIds.filter(id => id !== 'gluesync-core-hub'),
-          ]
+      const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
+
+      const orderedIds: readonly string[] = effectiveIds.includes(coreHubName)
+        ? [coreHubName, ...effectiveIds.filter(id => id !== coreHubName)]
         : effectiveIds;
 
       const results = await Promise.allSettled(orderedIds.map(action));
