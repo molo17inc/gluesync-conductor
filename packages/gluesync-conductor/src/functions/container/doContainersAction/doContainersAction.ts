@@ -8,7 +8,7 @@ import fetchAllServicesInCompose from '../../../helpers/fetchAllServicesInCompos
 const handler: DoContainersActionHandler = async (req, reply) => {
   try {
     const containerAction = req.body.action;
-    const requestIds: readonly string[] = req.body.ids ?? [];
+    const requestIds: readonly string[] = req.body.ids || [];
     const releaseChannel = req.body.releaseChannel || 'ga';
 
     const actions = createActions({ docker: req.server.docker });
