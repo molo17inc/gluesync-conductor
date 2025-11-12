@@ -3,11 +3,13 @@ import createActions from '../../../helpers/dockerode/createActions/createAction
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import canUpdateContainers from '../../../helpers/canUpdateContainers/canUpdateContainers';
 import editUpdateImagesInComposeFile from '../../../helpers/editUpdatedImagesInComposeFile/editUpdateImagesInComposeFile';
+import fetchAllServicesInCompose from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose';
 
 const handler: DoContainersActionHandler = async (req, reply) => {
   try {
     const containerAction = req.body.action;
-    const containerIds = req.body.ids;
+    const requestIds: readonly string[] = req.body.ids || [];
+    const releaseChannel = req.body.releaseChannel || 'ga';
 
     const actions = createActions({ docker: req.server.docker });
     const action = actions[containerAction];
@@ -18,31 +20,56 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     }
 
     if (containerAction === 'update') {
-      // added core hub id in case of update because all agents, modules and core hub need to have the same tag version
-      const containerIdsUpdate = [
-        process.env.CORE_HUB_NAME || 'gluesync-core-hub',
-        ...containerIds,
-      ];
       const composeJson = await readComposeFile({ raw: true });
 
+      const effectiveIds: readonly string[] =
+        requestIds.length === 0
+          ? fetchAllServicesInCompose(composeJson, true).filter(
+              id => id !== 'gluesync-conductor', // not updating conductor because it has to explicit
+            )
+          : requestIds;
+
       const canUpdateContainersResult = await canUpdateContainers(
-        containerIdsUpdate,
+        effectiveIds,
         composeJson,
+        releaseChannel,
       );
 
-      if (!canUpdateContainersResult.success) {
+      if (
+        !canUpdateContainersResult.success ||
+        !canUpdateContainersResult.data
+      ) {
         reply.code(500);
         throw new Error(canUpdateContainersResult.message);
       }
 
-      await editUpdateImagesInComposeFile(
-        containerIdsUpdate,
-        composeJson,
-        String(canUpdateContainersResult.data),
+      const invalidModuleIds = canUpdateContainersResult.data.modules
+        .filter(m => m.version === null)
+        .map(m => m.id);
+
+      // remove modules with no version (relative to the release channel) to prevent update
+      const effectiveIdsFiltered = effectiveIds.filter(
+        id => !invalidModuleIds.includes(id),
       );
 
-      // Run update for all including core hub concurrently
-      const results = await Promise.allSettled(containerIdsUpdate.map(action));
+      await editUpdateImagesInComposeFile(
+        effectiveIdsFiltered,
+        composeJson,
+        canUpdateContainersResult.data,
+      );
+
+      const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
+
+      const orderedIds: readonly string[] = effectiveIdsFiltered.includes(
+        coreHubName,
+      )
+        ? [
+            coreHubName,
+            ...effectiveIdsFiltered.filter(id => id !== coreHubName),
+          ]
+        : effectiveIdsFiltered;
+
+      const results = await Promise.allSettled(orderedIds.map(action));
 
       req.log.debug(
         `Container action ${containerAction}: ${JSON.stringify(results)}`,
@@ -61,7 +88,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         data: {
           ...(pruneResultText && { pruneResult: pruneResultText }),
           containers: results.map((result, index) => ({
-            id: containerIdsUpdate[index],
+            id: orderedIds[index],
             status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
             message:
               result.status === 'fulfilled'
@@ -71,7 +98,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         },
       });
     } else {
-      const results = await Promise.allSettled(containerIds.map(action));
+      const results = await Promise.allSettled(requestIds.map(action));
 
       req.log.debug(
         `Container action ${containerAction}: ${JSON.stringify(results)}`,
@@ -82,7 +109,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         success: true,
         data: {
           containers: results.map((result, index) => ({
-            id: containerIds[index],
+            id: requestIds[index],
             status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
             message:
               result.status === 'fulfilled'

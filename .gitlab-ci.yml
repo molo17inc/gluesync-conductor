@@ -108,6 +108,10 @@ docker_images:
           TAG_PART=""
       fi
 
+      # Create VERSION file
+      echo "${TAG_PART}" > VERSION
+      echo "VERSION file created with content: $(cat VERSION)"
+
       echo "Branch=\"$BRANCH\", Tag=\"$TAG_PART\""
 
       if [[ "$BRANCH" == "develop" && -z "$TAG_PART" ]]; then

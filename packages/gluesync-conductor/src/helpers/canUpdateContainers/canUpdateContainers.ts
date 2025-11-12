@@ -1,33 +1,50 @@
+import { LabelPrefix } from '../../models/composeFile.model';
+import { ConductorServiceTypes } from '../../models/conductor.model';
 import fetchAgentInfo from '../agentInfo/agentInfo';
 import { AgentInfoResponse } from '../agentInfo/agentInfo.model';
 import parseImage from '../parseImage/parseImage';
+import getVersionByChannel from '../releaseChannel/getVersionByChannel';
 import { CanUpdateContainers } from './canUpdateContainers.model';
 
 const canUpdateContainers: CanUpdateContainers = async (
   containerIds,
   composeJson,
+  releaseChannel,
 ) => {
-  const agentInfoPromises = containerIds.map(async id => {
+  // Build promises tagged with service type
+  const taggedPromises = containerIds.map(id => {
     const service = composeJson.services?.[id];
     if (!service) {
-      return Promise.reject(new Error(`Agent ${id} not found`));
+      return Promise.reject(new Error(`Service ${id} not found`));
     }
+
     const { shortImageName } = parseImage(service.image);
-    return fetchAgentInfo(shortImageName);
+
+    const serviceType = service?.labels
+      ?.find(label => label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
+      ?.split('=')[1] as ConductorServiceTypes | undefined;
+
+    return fetchAgentInfo(shortImageName).then(agentInfo => ({
+      id,
+      agentInfo,
+      type: serviceType,
+    }));
   });
 
-  const settledResults = await Promise.allSettled(agentInfoPromises);
+  // Explicitly fetch core-hub info
+  const coreHubVersionInfo = await fetchAgentInfo(
+    parseImage(process.env.CORE_HUB_NAME || 'gluesync-core-hub').shortImageName,
+  );
 
-  // Collect error messages or null for each container
+  const settledResults = await Promise.allSettled(taggedPromises);
+
   const errors = settledResults.map(result =>
     result.status === 'rejected'
       ? result.reason?.message || String(result.reason)
       : null,
   );
 
-  // If any errors exist, aggregate them and return the error object
-  const hasErrors = errors.some(e => e !== null);
-  if (hasErrors) {
+  if (errors.some(e => e !== null)) {
     const errorMessages = errors.filter(Boolean).join('\n');
     return {
       success: false,
@@ -36,34 +53,64 @@ const canUpdateContainers: CanUpdateContainers = async (
     };
   }
 
-  // Extract fulfilled results with agent info
-  const fulfilledAgentInfos = settledResults
+  const fulfilledInfos = settledResults
     .filter(
-      (r): r is PromiseFulfilledResult<AgentInfoResponse> =>
-        r.status === 'fulfilled',
+      (
+        r,
+      ): r is PromiseFulfilledResult<{
+        id: string;
+        agentInfo: AgentInfoResponse;
+        type: ConductorServiceTypes | undefined;
+      }> => r.status === 'fulfilled',
     )
     .map(r => r.value);
 
-  // Extract latestVersionGA, filtering out falsy values
-  const latestVersions = fulfilledAgentInfos.map(
-    agentInfo => agentInfo.AvailableAgents?.latestVersionGA,
+  // Partition by type
+  const agentsAndCoreHub = fulfilledInfos.filter(
+    info => info.type === 'agent' || info.type === 'core-hub',
+  );
+  const modules = fulfilledInfos.filter(info => info.type === 'module');
+
+  // Collect agent versions
+  const agentVersions = agentsAndCoreHub.map(info =>
+    getVersionByChannel(info.agentInfo, releaseChannel),
   );
 
-  const allEqual = !latestVersions.some(v => v !== latestVersions[0]);
+  // Include core-hub version in the agent consistency
+  const coreHubVersion = getVersionByChannel(
+    coreHubVersionInfo,
+    releaseChannel,
+  );
+  const allAgentVersions = coreHubVersion
+    ? [...agentVersions, coreHubVersion]
+    : agentVersions;
+
+  // Check all agent versions (including core-hub) are equal
+  const allEqual =
+    allAgentVersions.length === 0 ||
+    !allAgentVersions.some(v => v !== allAgentVersions[0]);
 
   if (!allEqual) {
     return {
       success: false,
-      errors: ['Agent versions mismatch'],
-      message: 'Agent versions mismatch',
+      errors: ['Agent versions mismatch (including core-hub)'],
+      message: 'Agent versions mismatch (including core-hub)',
     };
   }
 
   return {
     success: true,
-    errors: [],
+    errors: [] as (string | null)[],
     message: '',
-    data: latestVersions[0],
+    data: {
+      agentVersion: allAgentVersions[0] ?? null,
+      modules: [
+        ...modules.map(info => ({
+          id: info.id,
+          version: getVersionByChannel(info.agentInfo, releaseChannel) ?? null,
+        })),
+      ],
+    },
   };
 };
 
