@@ -24,7 +24,9 @@ const handler: DoContainersActionHandler = async (req, reply) => {
 
       const effectiveIds: readonly string[] =
         requestIds.length === 0
-          ? fetchAllServicesInCompose(composeJson, true)
+          ? fetchAllServicesInCompose(composeJson, true).filter(
+              id => id !== 'gluesync-conductor', // not updating conductor because it has to explicit
+            )
           : requestIds;
 
       const canUpdateContainersResult = await canUpdateContainers(

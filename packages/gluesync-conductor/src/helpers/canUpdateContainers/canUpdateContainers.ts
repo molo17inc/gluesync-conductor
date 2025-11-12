@@ -107,7 +107,7 @@ const canUpdateContainers: CanUpdateContainers = async (
       modules: [
         ...modules.map(info => ({
           id: info.id,
-          version: info.agentInfo.AvailableAgents?.latestVersionGA ?? null,
+          version: getVersionByChannel(info.agentInfo, releaseChannel) ?? null,
         })),
       ],
     },
