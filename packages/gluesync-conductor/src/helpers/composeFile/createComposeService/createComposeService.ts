@@ -154,6 +154,7 @@ const createComposeService: CreateComposeService = (
       [],
     ),
     environment: Object.entries({
+      ...environment,
       ...(agentType ? { TYPE: agentType } : {}),
       GLUESYNC_MODULE_TAG: 'conductor',
       ...(serviceType === 'agent'
@@ -162,7 +163,6 @@ const createComposeService: CreateComposeService = (
             LOG_CONFIG_FILE: '/opt/gluesync/shared/logback.xml',
           }
         : {}),
-      ...environment,
     }).map(([key, value]) => `${key}=${value}`),
 
     ...(ports && ports.length > 0 ? { ports: mapPorts(ports) } : {}),
