@@ -19,6 +19,13 @@ const serviceValidation: ServiceValidation = (
         statusCode: 409,
       };
     }
+    if (!service.id) {
+      return {
+        success: false,
+        errorMessage: 'Service INITIAL_AGENT_ID cannot be null',
+        statusCode: 500,
+      };
+    }
   }
 
   if (validationMode === 'edit') {
