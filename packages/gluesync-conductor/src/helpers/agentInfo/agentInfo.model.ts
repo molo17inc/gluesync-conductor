@@ -38,15 +38,11 @@ export type AgentInfo = {
   type: string;
 };
 
-export type AgentVersionInfo = {
+export type AgentInfoResponse = {
   availableAlpha: boolean;
   availableBeta: boolean;
   availableGA: boolean;
   latestVersionAlpha: string;
   latestVersionBeta: string;
   latestVersionGA: string;
-};
-
-export type AgentInfoResponse = {
-  AvailableAgents?: AgentVersionInfo;
 };
