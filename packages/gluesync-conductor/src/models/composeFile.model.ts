@@ -65,7 +65,16 @@ export type CommonComposeService = Readonly<{
 
 export type RawComposeService = Readonly<
   CommonComposeService &
-    Partial<Record<ComposeServiceFieldName, ReadonlyArray<string>>>
+    Partial<
+      Record<
+        Extract<ComposeServiceFieldName, 'volumes' | 'ports'>,
+        ReadonlyArray<string>
+      > &
+        Record<
+          Extract<ComposeServiceFieldName, 'environment' | 'labels'>,
+          ReadonlyArray<string> | Record<string, any>
+        >
+    >
 >;
 
 export type RawComposeFile = Readonly<
