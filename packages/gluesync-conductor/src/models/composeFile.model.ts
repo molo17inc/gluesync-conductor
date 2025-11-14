@@ -103,6 +103,10 @@ export type ComposeService = Readonly<
       labels?: Record<string, string | number | boolean | null | undefined>;
       volumes?: ReadonlyArray<ComposeVolume>;
       ports?: ReadonlyArray<ComposePort>;
+      environment?: Record<
+        string,
+        string | number | boolean | null | undefined
+      >;
     }>
 >;
 
