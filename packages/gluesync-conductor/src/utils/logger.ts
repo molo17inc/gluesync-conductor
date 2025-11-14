@@ -29,27 +29,30 @@ const resolveLogFilename = (): string =>
 const resolveRotationSize = (): string =>
   process.env.GLUESYNC_LOG_ROTATION_SIZE || DEFAULT_ROTATION_SIZE;
 
-let cachedLogger: Logger | null = null;
+const loggerCache = { current: null as Logger | null };
 
 const ensureLogDirectory = (): string | null => {
   const directories = getCandidateDirectories();
 
-  for (const [index, directory] of directories.entries()) {
-    try {
-      fs.mkdirSync(directory, { recursive: true });
-      fs.accessSync(directory, fs.constants.W_OK);
-      if (index > 0) {
-        console.warn(`Using fallback log directory: ${directory}`);
+  const foundDirectory = directories
+    .map((directory, index) => ({ directory, index }))
+    .find(({ directory, index }) => {
+      try {
+        fs.mkdirSync(directory, { recursive: true });
+        fs.accessSync(directory, fs.constants.W_OK);
+        if (index > 0) {
+          console.warn(`Using fallback log directory: ${directory}`);
+        }
+        return true;
+      } catch (error) {
+        console.error(
+          `Failed to prepare log directory at ${directory}: ${String(error)}`,
+        );
+        return false;
       }
-      return directory;
-    } catch (error) {
-      console.error(
-        `Failed to prepare log directory at ${directory}: ${String(error)}`,
-      );
-    }
-  }
+    });
 
-  return null;
+  return foundDirectory ? foundDirectory.directory : null;
 };
 
 const buildLogger = (): Logger => {
@@ -85,14 +88,13 @@ const buildLogger = (): Logger => {
 };
 
 export const getLogger = (): Logger => {
-  if (!cachedLogger) {
-    cachedLogger = buildLogger();
+  if (!loggerCache.current) {
+    // eslint-disable-next-line functional/immutable-data
+    loggerCache.current = buildLogger();
   }
 
-  return cachedLogger;
+  return loggerCache.current;
 };
-
-export const createLogger = (): Logger => buildLogger();
 
 export const getLoggerOptions = () => {
   const directory = ensureLogDirectory();

@@ -8,12 +8,16 @@ declare global {
   var gluesyncSdkClient: GluesyncSDKClient | undefined;
 }
 
-function createGluesyncSdkClient(logger?: Logger): GluesyncSDKClient {
+function createGluesyncSdkClient(
+  logger: Readonly<Logger> | undefined,
+): GluesyncSDKClient {
   // Get the singleton instance from the SDK
   return GluesyncSDKClient.getInstance(logger);
 }
 
-export function getGluesyncSdkClient(logger?: Logger): GluesyncSDKClient {
+export function getGluesyncSdkClient(
+  logger: Readonly<Logger> | undefined,
+): GluesyncSDKClient {
   if (!global.gluesyncSdkClient) {
     // eslint-disable-next-line functional/immutable-data
     global.gluesyncSdkClient = createGluesyncSdkClient(logger);
