@@ -38,6 +38,15 @@ export type AgentInfo = {
   type: string;
 };
 
+export type AgentVersionInfo = {
+  availableAlpha: boolean;
+  availableBeta: boolean;
+  availableGA: boolean;
+  latestVersionAlpha: string;
+  latestVersionBeta: string;
+  latestVersionGA: string;
+};
+
 export type AgentInfoResponse = {
-  AvailableAgents?: AgentInfo;
+  AvailableAgents?: AgentVersionInfo;
 };
