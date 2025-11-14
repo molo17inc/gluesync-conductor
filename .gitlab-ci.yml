@@ -256,3 +256,26 @@ update_budibase_version:
   rules:
     - if: '$CI_COMMIT_TAG'
     - if: '$CI_COMMIT_BRANCH == "develop"'
+
+build_windows_artifacts:
+  stage: build
+  image: molo17/node:22.13.1-win-nanoserver-ltsc2019-develop
+  script:
+    - echo "Building artifacts..."
+    - corepack enable
+    - node --version
+    - yarn --version
+
+    - echo "Installing dependencies..."
+    - yarn install --immutable --immutable-cache
+
+    - echo "Building..."
+    - yarn build
+  artifacts:
+    paths:
+      - packages/**/build
+      - packages/**/dist
+      - packages/**/lib
+    expire_in: 1h
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "feature/windows-build"'
