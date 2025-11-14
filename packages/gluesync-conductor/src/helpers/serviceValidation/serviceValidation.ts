@@ -37,11 +37,17 @@ const serviceValidation: ServiceValidation = (
       };
     }
 
-    const existingType = existingService?.labels
-      ?.find(label => label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
+    const serviceTypeArray: ReadonlyArray<string> = Array.isArray(
+      service?.labels,
+    )
+      ? service.labels
+      : Object.entries(service?.labels || {});
+
+    const serviceType = serviceTypeArray
+      .find(label => label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
       ?.split('=')[1] as ConductorServiceTypes | undefined;
 
-    if (type !== existingType) {
+    if (type !== serviceType) {
       return {
         success: false,
         errorMessage: 'Service type cannot be changed',
