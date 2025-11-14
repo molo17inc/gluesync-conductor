@@ -31,9 +31,9 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       success: true,
       data: {
         currentVersion: String(tag),
-        latestVersionAlpha: agentInfo.AvailableAgents?.latestVersionAlpha,
-        latestVersionBeta: agentInfo.AvailableAgents?.latestVersionBeta,
-        latestVersionGA: agentInfo.AvailableAgents?.latestVersionGA,
+        latestVersionAlpha: agentInfo?.latestVersionAlpha,
+        latestVersionBeta: agentInfo?.latestVersionBeta,
+        latestVersionGA: agentInfo?.latestVersionGA,
       },
     });
   } catch (error: unknown) {

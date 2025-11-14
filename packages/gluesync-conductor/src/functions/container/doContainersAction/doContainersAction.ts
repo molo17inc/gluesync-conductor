@@ -4,6 +4,7 @@ import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/re
 import canUpdateContainers from '../../../helpers/canUpdateContainers/canUpdateContainers';
 import editUpdateImagesInComposeFile from '../../../helpers/editUpdatedImagesInComposeFile/editUpdateImagesInComposeFile';
 import fetchAllServicesInCompose from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose';
+import { LabelPrefix } from '../../../models/composeFile.model';
 
 const handler: DoContainersActionHandler = async (req, reply) => {
   try {
@@ -24,9 +25,24 @@ const handler: DoContainersActionHandler = async (req, reply) => {
 
       const effectiveIds: readonly string[] =
         requestIds.length === 0
-          ? fetchAllServicesInCompose(composeJson, true).filter(
-              id => id !== 'gluesync-conductor', // not updating conductor because it has to explicit
-            )
+          ? fetchAllServicesInCompose(composeJson, true)
+              .filter(id => id !== 'gluesync-conductor') // not updating conductor because it has to be explicit
+              .filter(id => {
+                const service = composeJson.services?.[id];
+                if (!service) return false;
+
+                const serviceTypeArray: ReadonlyArray<string> = Array.isArray(
+                  service?.labels,
+                )
+                  ? service.labels
+                  : Object.entries(service?.labels || {}).map(
+                      ([k, v]) => `${k}=${v}`,
+                    );
+
+                return serviceTypeArray.some(label =>
+                  label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`),
+                );
+              })
           : requestIds;
 
       const canUpdateContainersResult = await canUpdateContainers(

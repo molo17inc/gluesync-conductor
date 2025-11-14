@@ -20,8 +20,14 @@ const canUpdateContainers: CanUpdateContainers = async (
 
     const { shortImageName } = parseImage(service.image);
 
-    const serviceType = service?.labels
-      ?.find(label => label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
+    const serviceTypeArray: ReadonlyArray<string> = Array.isArray(
+      service?.labels,
+    )
+      ? service.labels
+      : Object.entries(service?.labels || {});
+
+    const serviceType = serviceTypeArray
+      .find(label => label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
       ?.split('=')[1] as ConductorServiceTypes | undefined;
 
     return fetchAgentInfo(shortImageName).then(agentInfo => ({
