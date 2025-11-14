@@ -260,6 +260,8 @@ update_budibase_version:
 build_windows_artifacts:
   stage: build
   image: molo17/node:22.13.1-win-nanoserver-ltsc2019-develop
+  tags:
+    - hq-windows-shell-2019
   script:
     - echo "Building artifacts..."
     - corepack enable
