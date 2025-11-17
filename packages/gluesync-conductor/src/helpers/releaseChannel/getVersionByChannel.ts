@@ -5,16 +5,16 @@ const getVersionByChannel = (
   agentInfo: Readonly<AgentInfoResponse>,
   channel?: ReleaseChannelTypes,
 ) => {
-  if (!agentInfo.AvailableAgents) return null;
+  if (!agentInfo) return null;
 
   switch (channel) {
     case 'alpha':
-      return agentInfo.AvailableAgents.latestVersionAlpha;
+      return agentInfo.latestVersionAlpha;
     case 'beta':
-      return agentInfo.AvailableAgents.latestVersionBeta;
+      return agentInfo.latestVersionBeta;
     case 'ga':
     default:
-      return agentInfo.AvailableAgents.latestVersionGA;
+      return agentInfo.latestVersionGA;
   }
 };
 

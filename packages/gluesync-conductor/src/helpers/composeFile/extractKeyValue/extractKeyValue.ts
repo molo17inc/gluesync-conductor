@@ -37,25 +37,27 @@ export const castObject: CastObject = <T = Record<string, any>>(
     {},
   ) as T;
 
-const extractKeyValue: ExtractKeyValue = (separator, array = []) =>
-  array.reduce((acc, entry) => {
-    const trimmedEntry = entry.trim();
+const extractKeyValue: ExtractKeyValue = (separator, value = []) =>
+  !Array.isArray(value)
+    ? value
+    : value.reduce((acc, entry) => {
+        const trimmedEntry = entry.trim();
 
-    // Find the first separator in the entry
-    const sepIndex = trimmedEntry.indexOf(separator);
+        // Find the first separator in the entry
+        const sepIndex = trimmedEntry.indexOf(separator);
 
-    if (sepIndex === -1) {
-      // If the separator doesn't exist, ignore the entry (or you can throw an error)
-      return acc;
-    }
+        if (sepIndex === -1) {
+          // If the separator doesn't exist, ignore the entry (or you can throw an error)
+          return acc;
+        }
 
-    const key = trimmedEntry.slice(0, sepIndex).trim();
-    const value = castValue(trimmedEntry.slice(sepIndex + 1).trim());
+        const key = trimmedEntry.slice(0, sepIndex).trim();
+        const value = castValue(trimmedEntry.slice(sepIndex + 1).trim());
 
-    return {
-      ...acc,
-      [key]: value,
-    };
-  }, {});
+        return {
+          ...acc,
+          [key]: value,
+        };
+      }, {});
 
 export default extractKeyValue;

@@ -6,7 +6,7 @@ const fetchAgentInfo = async (
 ): Promise<AgentInfoResponse> => {
   try {
     const response = await axios.get(
-      `https://api.backoffice.molo17.com/agent/${imageName}`,
+      `https://api.backoffice.molo17.com/agent/${imageName}/version`,
     );
     return response.data;
   } catch (error) {
