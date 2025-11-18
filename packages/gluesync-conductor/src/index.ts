@@ -79,14 +79,35 @@ const startServer = async () => {
   logger.info(`Gluesync Conductor server started on port ${port}`);
 
   const result = await autoAdoptServices();
+
   if (result.success) {
-    if (result.updatedIds.length > 0) {
+    const { updatedIds, unmatchedIds } = result;
+
+    if (updatedIds.length === 0 && unmatchedIds.length === 0) {
+      // Nothing changed because all services already had a type
       logger.info(
-        `Applied conductor labels to services: ${result.updatedIds.join(', ')}`,
+        'All services already had a Conductor type, no changes applied',
+      );
+    } else if (updatedIds.length > 0) {
+      // Some services adopted (with or without unmatched ones)
+      logger.info(
+        `Applied Conductor labels to services: ${updatedIds.join(', ')}`,
+      );
+
+      if (unmatchedIds.length > 0) {
+        logger.warn(
+          `Some services had no Conductor type and did not match agents.json: ${unmatchedIds.join(', ')}`,
+        );
+      }
+    } else if (updatedIds.length === 0 && unmatchedIds.length > 0) {
+      // Edge case: no adoption, only unmatched
+      logger.warn(
+        `No services adopted. Unmatched services: ${unmatchedIds.join(', ')}`,
       );
     }
   } else {
-    logger.warn('Failed to apply conductor labels at startup');
+    // Nothing adopted because of an error
+    logger.error('Failed to apply Conductor labels at startup');
   }
 };
 

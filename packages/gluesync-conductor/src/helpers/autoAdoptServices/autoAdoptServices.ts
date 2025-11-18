@@ -17,6 +17,7 @@ import extractKeyValue from '../composeFile/extractKeyValue/extractKeyValue';
 const autoAdoptServices = async (): Promise<{
   success: boolean;
   updatedIds: readonly string[];
+  unmatchedIds: readonly string[];
 }> => {
   try {
     const composeJson = await readComposeFile({ raw: true });
@@ -25,9 +26,31 @@ const autoAdoptServices = async (): Promise<{
     const allServiceIds: readonly string[] = fetchAllServicesInCompose(
       composeJson,
       false,
-    );
+    ).filter(id => {
+      const service = composeJson.services?.[id];
+      if (!service) return false;
 
-    const { updatedServices, updatedIds } = allServiceIds.reduce(
+      const initialLabels: readonly string[] = Array.isArray(service.labels)
+        ? service.labels
+        : Object.entries(service.labels || {}).map(([k, v]) => `${k}=${v}`);
+
+      const hasConductorType = initialLabels.some(label =>
+        label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`),
+      );
+
+      return !hasConductorType;
+    });
+
+    // If no services need updating, bail out early
+    if (allServiceIds.length === 0) {
+      return {
+        success: true,
+        updatedIds: [],
+        unmatchedIds: [],
+      };
+    }
+
+    const { updatedServices, updatedIds, unmatchedIds } = allServiceIds.reduce(
       (acc, id) => {
         const service = composeJson.services?.[id];
         if (!service) {
@@ -44,30 +67,49 @@ const autoAdoptServices = async (): Promise<{
           (agent: any) => agent.dockerHubRepoName === imageName,
         );
 
-        const hasConductorType = initialLabels.some(label =>
-          label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`),
-        );
-
-        if (!agentEntry || hasConductorType) {
+        if (!agentEntry) {
+          // No match in agents.json → track as unmatched
           return {
             updatedServices: {
               ...acc.updatedServices,
               [id]: { ...service, labels: initialLabels },
             },
             updatedIds: acc.updatedIds,
+            unmatchedIds: [...acc.unmatchedIds, id],
           };
         }
 
-        // Decide conductor type
-        const conductorType: string = (() => {
+        // Decide conductor type with stricter rules
+        const conductorType: string | null = (() => {
           if (agentEntry.dockerHubRepoName === 'gluesync-core-hub') {
             return 'core-hub';
           }
-          if (agentEntry.isTarget || agentEntry.isSource) {
-            return 'agent';
+
+          const isTargetValid = typeof agentEntry.isTarget === 'boolean';
+          const isSourceValid = typeof agentEntry.isSource === 'boolean';
+
+          if (isTargetValid && isSourceValid) {
+            if (agentEntry.isTarget || agentEntry.isSource) {
+              return 'agent';
+            }
+            return 'module';
           }
-          return 'module';
+
+          // If neither property is a boolean, we consider it unmatched
+          return null;
         })();
+
+        if (!conductorType) {
+          // No valid conductor type → track as unmatched
+          return {
+            updatedServices: {
+              ...acc.updatedServices,
+              [id]: { ...service, labels: initialLabels },
+            },
+            updatedIds: acc.updatedIds,
+            unmatchedIds: [...acc.unmatchedIds, id],
+          };
+        }
 
         // Generate a short UUID only for agent type
         const agentId = conductorType === 'agent' ? uuidv4().split('-')[0] : id;
@@ -81,7 +123,7 @@ const autoAdoptServices = async (): Promise<{
             : []),
         ];
 
-        // Normalize environment using your existing extractKeyValue
+        // Normalize environment
         const normalizedEnv = extractKeyValue(
           composeServiceFieldConfig.environment.separator,
           service.environment,
@@ -92,7 +134,6 @@ const autoAdoptServices = async (): Promise<{
             ? { ...normalizedEnv, INITIAL_AGENT_ID: agentId }
             : normalizedEnv;
 
-        // Convert back to array of strings for docker-compose compatibility
         const envArray = Object.entries(finalEnvironment).map(
           ([key, value]) => `${key}=${value}`,
         );
@@ -103,10 +144,23 @@ const autoAdoptServices = async (): Promise<{
             [id]: { ...service, labels: finalLabels, environment: envArray },
           },
           updatedIds: [...acc.updatedIds, id],
+          unmatchedIds: acc.unmatchedIds,
         };
       },
-      { updatedServices: {}, updatedIds: [] as ReadonlyArray<string> },
+      {
+        updatedServices: {},
+        updatedIds: [] as ReadonlyArray<string>,
+        unmatchedIds: [] as ReadonlyArray<string>,
+      },
     );
+
+    if (updatedIds.length === 0) {
+      return {
+        success: true,
+        updatedIds: [],
+        unmatchedIds,
+      };
+    }
 
     const updatedComposeFile = { ...composeJson, services: updatedServices };
     await writeComposeFile(updatedComposeFile);
@@ -114,6 +168,7 @@ const autoAdoptServices = async (): Promise<{
     return {
       success: true,
       updatedIds,
+      unmatchedIds,
     };
   } catch (error) {
     console.error(
@@ -124,6 +179,7 @@ const autoAdoptServices = async (): Promise<{
     return {
       success: false,
       updatedIds: [],
+      unmatchedIds: [],
     };
   }
 };
