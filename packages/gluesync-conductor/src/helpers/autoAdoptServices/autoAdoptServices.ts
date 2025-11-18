@@ -3,10 +3,10 @@ import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile'
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
 import fetchAllServicesInCompose from '../fetchAllServicesInCompose/fetchAllServicesInCompose';
 import parseImage from '../parseImage/parseImage';
-import agentsJson from '../../../../../agents.json';
+import agentsJson from '../../../agents.json';
 
 /**
- * Function to apply conductor labels to services in docker-compose.yml.
+ * Function to apply Conductor labels to services in docker-compose.yml.
  * Services with type labels will be handled by Conductor
  */
 const autoAdoptServices = async (): Promise<{
@@ -22,9 +22,8 @@ const autoAdoptServices = async (): Promise<{
       false,
     );
 
-    // Build updated services
-    const updatedServices = Object.fromEntries(
-      allServiceIds.map(id => {
+    const { updatedServices, updatedIds } = allServiceIds.reduce(
+      (acc, id) => {
         const service = composeJson.services?.[id];
         if (!service) {
           throw new Error(`Service ${id} not found`);
@@ -44,25 +43,37 @@ const autoAdoptServices = async (): Promise<{
           label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`),
         );
 
-        const finalLabels: readonly string[] =
-          !agentEntry || hasConductorType
-            ? initialLabels
-            : (() => {
-                const conductorLabel: string = (() => {
-                  if (agentEntry.dockerHubRepoName === 'gluesync-core-hub') {
-                    return `${LabelPrefix.CONDUCTOR}.type=core-hub`;
-                  }
-                  if (agentEntry.isTarget || agentEntry.isSource) {
-                    return `${LabelPrefix.CONDUCTOR}.type=agent`;
-                  }
-                  return `${LabelPrefix.CONDUCTOR}.type=module`;
-                })();
+        if (!agentEntry || hasConductorType) {
+          return {
+            updatedServices: {
+              ...acc.updatedServices,
+              [id]: { ...service, labels: initialLabels },
+            },
+            updatedIds: acc.updatedIds,
+          };
+        }
 
-                return [...initialLabels, conductorLabel];
-              })();
+        const conductorLabel: string = (() => {
+          if (agentEntry.dockerHubRepoName === 'gluesync-core-hub') {
+            return `${LabelPrefix.CONDUCTOR}.type=core-hub`;
+          }
+          if (agentEntry.isTarget || agentEntry.isSource) {
+            return `${LabelPrefix.CONDUCTOR}.type=agent`;
+          }
+          return `${LabelPrefix.CONDUCTOR}.type=module`;
+        })();
 
-        return [id, { ...service, labels: finalLabels }];
-      }),
+        const finalLabels = [...initialLabels, conductorLabel];
+
+        return {
+          updatedServices: {
+            ...acc.updatedServices,
+            [id]: { ...service, labels: finalLabels },
+          },
+          updatedIds: [...acc.updatedIds, id],
+        };
+      },
+      { updatedServices: {}, updatedIds: [] as ReadonlyArray<string> },
     );
 
     const updatedComposeFile = { ...composeJson, services: updatedServices };
@@ -70,11 +81,11 @@ const autoAdoptServices = async (): Promise<{
 
     return {
       success: true,
-      updatedIds: allServiceIds,
+      updatedIds,
     };
   } catch (error) {
     console.error(
-      `Failed to apply conductor labels: ${
+      `Failed to apply Conductor labels: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
