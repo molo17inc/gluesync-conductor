@@ -68,40 +68,40 @@ const startServer = async () => {
   await server.listen({ host, port });
 
   const protocol = isSslEnabled() ? 'https' : 'http';
-  console.info(
+  logger.info(
     `Swagger UI is available at ${protocol}://${host === '0.0.0.0' ? 'localhost' : host}:${port}/docs`,
   );
-  console.info(
+  logger.info(
     `OpenAPI JSON available at ${protocol}://${host === '0.0.0.0' ? 'localhost' : host}:${port}/openapi.json`,
   );
-  console.info(`Gluesync Conductor server started on port ${port}`);
+  logger.info(`Gluesync Conductor server started on port ${port}`);
 
   const result = await autoAdoptServices();
   if (result.success) {
     if (result.updatedIds.length > 0) {
-      console.info(
+      logger.info(
         `Applied conductor labels to services: ${result.updatedIds.join(', ')}`,
       );
     }
   } else {
-    console.warn('Failed to apply conductor labels at startup');
+    logger.warn('Failed to apply conductor labels at startup');
   }
 };
 
 // Handle unhandled rejections
 process.on('unhandledRejection', err => {
-  console.error('Unhandled Promise Rejection:', err);
+  logger.error('Unhandled Promise Rejection:', err);
   process.exit(1);
 });
 
 // Handle uncaught exceptions
 process.on('uncaughtException', err => {
-  console.error('Uncaught Exception:', err);
+  logger.error('Uncaught Exception:', err);
   process.exit(1);
 });
 
 // Start the fastify server
 startServer().catch(err => {
-  console.error('Failed to start server:', err);
+  logger.error('Failed to start server:', err);
   process.exit(1);
 });
