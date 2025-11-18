@@ -35,6 +35,8 @@ COPY build/index.js index.js
 COPY build/index.js.map index.js.map
 COPY build/static/ static/
 
+COPY agents.json agents.json
+
 # Copy log uploader scripts FROM build output
 COPY build/collect-logs.ps1 collect-logs.ps1
 COPY build/collect-logs.sh collect-logs.sh

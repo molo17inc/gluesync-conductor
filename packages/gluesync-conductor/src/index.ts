@@ -16,6 +16,7 @@ import agentRoutes from './routes/agents';
 import serviceRoutes from './routes/services';
 import supportRoutes from './routes/support';
 import { getLogger } from './utils/logger';
+import autoAdoptServices from './helpers/autoAdoptServices/autoAdoptServices';
 
 type FastifyServices = {
   docker: Docker;
@@ -76,6 +77,38 @@ const startServer = async () => {
     `OpenAPI JSON available at ${protocol}://${host === '0.0.0.0' ? 'localhost' : host}:${port}/openapi.json`,
   );
   logger.info(`Gluesync Conductor server started on port ${port}`);
+
+  const result = await autoAdoptServices();
+
+  if (result.success) {
+    const { updatedIds, unmatchedIds } = result;
+
+    if (updatedIds.length === 0 && unmatchedIds.length === 0) {
+      // Nothing changed because all services already had a type
+      logger.info(
+        'All services already had a Conductor type, no changes applied',
+      );
+    } else if (updatedIds.length > 0) {
+      // Some services adopted (with or without unmatched ones)
+      logger.info(
+        `Applied Conductor labels to services: ${updatedIds.join(', ')}`,
+      );
+
+      if (unmatchedIds.length > 0) {
+        logger.warn(
+          `Some services had no Conductor type and did not match agents.json: ${unmatchedIds.join(', ')}`,
+        );
+      }
+    } else if (updatedIds.length === 0 && unmatchedIds.length > 0) {
+      // Edge case: no adoption, only unmatched
+      logger.warn(
+        `No services adopted. Unmatched services: ${unmatchedIds.join(', ')}`,
+      );
+    }
+  } else {
+    // Nothing adopted because of an error
+    logger.error('Failed to apply Conductor labels at startup');
+  }
 };
 
 // Handle unhandled rejections
