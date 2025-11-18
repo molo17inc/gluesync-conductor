@@ -1,9 +1,14 @@
-import { LabelPrefix } from '../../models/composeFile.model';
+import { v4 as uuidv4 } from 'uuid';
+import {
+  composeServiceFieldConfig,
+  LabelPrefix,
+} from '../../models/composeFile.model';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
 import fetchAllServicesInCompose from '../fetchAllServicesInCompose/fetchAllServicesInCompose';
 import parseImage from '../parseImage/parseImage';
 import agentsJson from '../../../agents.json';
+import extractKeyValue from '../composeFile/extractKeyValue/extractKeyValue';
 
 /**
  * Function to apply Conductor labels to services in docker-compose.yml.
@@ -53,22 +58,49 @@ const autoAdoptServices = async (): Promise<{
           };
         }
 
-        const conductorLabel: string = (() => {
+        // Decide conductor type
+        const conductorType: string = (() => {
           if (agentEntry.dockerHubRepoName === 'gluesync-core-hub') {
-            return `${LabelPrefix.CONDUCTOR}.type=core-hub`;
+            return 'core-hub';
           }
           if (agentEntry.isTarget || agentEntry.isSource) {
-            return `${LabelPrefix.CONDUCTOR}.type=agent`;
+            return 'agent';
           }
-          return `${LabelPrefix.CONDUCTOR}.type=module`;
+          return 'module';
         })();
 
-        const finalLabels = [...initialLabels, conductorLabel];
+        // Generate a short UUID only for agent type
+        const agentId = conductorType === 'agent' ? uuidv4().split('-')[0] : id;
+
+        // Add conductor type label and service_id label
+        const finalLabels = [
+          ...initialLabels,
+          `${LabelPrefix.CONDUCTOR}.type=${conductorType}`,
+          ...(conductorType === 'agent'
+            ? [`${LabelPrefix.CONDUCTOR}.service_id=${agentId}`]
+            : []),
+        ];
+
+        // Normalize environment using your existing extractKeyValue
+        const normalizedEnv = extractKeyValue(
+          composeServiceFieldConfig.environment.separator,
+          service.environment,
+        );
+
+        const finalEnvironment =
+          conductorType === 'agent'
+            ? { ...normalizedEnv, INITIAL_AGENT_ID: agentId }
+            : normalizedEnv;
+
+        // Convert back to array of strings for docker-compose compatibility
+        const envArray = Object.entries(finalEnvironment).map(
+          ([key, value]) => `${key}=${value}`,
+        );
 
         return {
           updatedServices: {
             ...acc.updatedServices,
-            [id]: { ...service, labels: finalLabels },
+            [id]: { ...service, labels: finalLabels, environment: envArray },
           },
           updatedIds: [...acc.updatedIds, id],
         };
