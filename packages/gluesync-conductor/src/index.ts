@@ -15,6 +15,7 @@ import containerRoutes from './routes/containers';
 import agentRoutes from './routes/agents';
 import serviceRoutes from './routes/services';
 import supportRoutes from './routes/support';
+import autoAdoptServices from './helpers/autoAdoptServices/autoAdoptServices';
 
 type FastifyServices = {
   docker: Docker;
@@ -74,6 +75,17 @@ const startServer = async () => {
     `OpenAPI JSON available at ${protocol}://${host === '0.0.0.0' ? 'localhost' : host}:${port}/openapi.json`,
   );
   console.info(`Gluesync Conductor server started on port ${port}`);
+
+  const result = await autoAdoptServices();
+  if (result.success) {
+    if (result.updatedIds.length > 0) {
+      console.info(
+        `Applied conductor labels to services: ${result.updatedIds.join(', ')}`,
+      );
+    }
+  } else {
+    console.warn('Failed to apply conductor labels at startup');
+  }
 };
 
 // Handle unhandled rejections

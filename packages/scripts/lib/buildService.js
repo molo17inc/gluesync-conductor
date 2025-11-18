@@ -42,6 +42,7 @@ const build = async (
       platform: 'node',
       format: 'cjs',
       target: 'node22.13.1',
+      loader: { '.json': 'json' },
       minify: true,
       sourcemap: true,
       bundle: true,
