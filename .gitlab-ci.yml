@@ -258,26 +258,21 @@ update_budibase_version:
     - if: '$CI_COMMIT_BRANCH == "develop"'
 
 build_windows_artifacts:
-  stage: build
-  image: molo17/node:22.13.1-win-nanoserver-ltsc2019-develop
+  stage: deploy
+  variables:
+    APP_NAME: 'gluesync-conductor'
+    WINDOWS_VERSION: 'servercore'
+  parallel:
+    matrix:
+      - WINDOWS_TAG: "ltsc2019"
+        WINDOWS_RUNNER_VERSION: "2019"
+      - WINDOWS_TAG: "ltsc2022"
+        WINDOWS_RUNNER_VERSION: "2022"
+      # - WINDOWS_TAG: "ltsc2025"
+      #   WINDOWS_RUNNER_VERSION: "2025"
   tags:
-    - hq-windows-shell-2019
-  script:
-    - echo "Building artifacts..."
-    - corepack enable
-    - node --version
-    - yarn --version
-
-    - echo "Installing dependencies..."
-    - yarn install --immutable --immutable-cache
-
-    - echo "Building..."
-    - yarn build
-  artifacts:
-    paths:
-      - packages/**/build
-      - packages/**/dist
-      - packages/**/lib
-    expire_in: 1h
+    - 'hq-windows-shell-${WINDOWS_RUNNER_VERSION}'
   rules:
-    - if: '$CI_COMMIT_BRANCH == "feature/windows-build"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+  script:
+    - ./ci/docker-build-win.ps1 -AppName=$APP_NAME -WindowsTag=$WINDOWS_TAG -WindowsVersion=$WINDOWS_VERSION
