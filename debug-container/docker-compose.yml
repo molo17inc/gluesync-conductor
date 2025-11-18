@@ -1,61 +1,342 @@
-name: debug-container
 services:
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: portainer
+  gluesync-core-hub:
     restart: unless-stopped
-    ports:
-      - 8000:8000
-      - 9443:9443
+    image: molo17/gluesync-core-hub:latest
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.corehub.entrypoints=websecure
+      - traefik.http.routers.corehub.rule=PathPrefix(`/`)
+      - traefik.http.routers.corehub.tls=true
+      - traefik.http.services.corehub.loadbalancer.server.port=1717
+      - traefik.http.services.corehub.loadbalancer.server.scheme=https
+      - traefik.http.routers.corehub.service=corehub
+      - traefik.http.services.corehub.loadbalancer.passhostheader=true
+      - com.molo17.conductor.type=core-hub
+    environment:
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command:
-      - --admin-password
-      - $$2y$$05$$wxahdaIgY6yjxyPjvSqyr.NeLhCOY/pWLXSJykVsfUGaRXnjq3etK
+      - ./bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-core-hub:/opt/gluesync/data
+      - ./logs/gluesync-core-hub-logs:/opt/gluesync/logs
   gluesync-conductor:
+    restart: unless-stopped
     build: ../packages/gluesync-conductor
     container_name: gluesync-conductor
-    restart: unless-stopped
     labels:
       - com.molo17.conductor.type=module
     environment:
-      - NODE_ENV=production
       - LOG_LEVEL=trace
-      - GLUESYNC_LICENSE_FILE=/opt/gluesync/data/gs-license.dat
-      - GLUESYNC_SECURITY_CONFIG=/opt/gluesync/data/security-config.json
-      - HOST=0.0.0.0
-      - PORT=1717
-      - DOCKER_HOST=unix:///var/run/docker.sock
       - BASE_PATH=$PWD
-      - USE_SDK=false
-      - SSL_SKIP_VERIFY=false
       - SSL_ENABLED=false
-      - DKR_COMPOSE_FILE=/opt/gluesync-conductor/services/docker-compose.services.yml
-      - GLUESYNC_CONFIG_DIR=..
-      # - DKR_COMPOSE_FILE_SOURCE=docker-compose.yml
-      - MOUNT_LEGACY_FILE_CONFIG=true
-      # Test-reserved (add only for integration tests):
-      # - JOB_ID=not_set
-      # - TEST_NAME=DRY_RUN
-    ports:
-      - 5017:1717
+      - SSL_SKIP_VERIFY=true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
-      - ./services:/opt/gluesync-conductor/services
-      - ./gs-conf/:/opt/gluesync/data:ro
-      - ./data:/opt/gluesync-conductor/data
-      - ./logs:/opt/gluesync-conductor/logs
-  gluesync-core-hub:
-    image: molo17/gluesync-core-hub:2.1.4.2
     ports:
-      - 1717:1717
-    labels:
-      - com.molo17.conductor.type=core-hub
+      - 5017:1717
+  gluesync-mariadb-cdc-source:
+    restart: unless-stopped
+    image: molo17/gluesync-mariadb-cdc:latest
     environment:
-      - LOG_CONFIG_FILE=/opt/gluesync/data/logback.xml
+      - TYPE=source
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=cdf35604
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
-      - ./gs-conf/gs-license.dat:/opt/gluesync/data/gs-license.dat
-      - ./gs-conf/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json
-      - ./gs-conf/security-config.json:/opt/gluesync/data/security-config.json
-      - ./gs-conf/gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-mariadb-cdc-source:/opt/gluesync/data
+      - ./logs/gluesync-mariadb-source-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=cdf35604
+  gluesync-pgsql-cdc-source:
+    restart: unless-stopped
+    image: molo17/gluesync-postgresql-cdc:latest
+    environment:
+      - TAG=minio-audit
+      - TYPE=source
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=8bcf707c
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-pgsql-cdc-source:/opt/gluesync/data
+      - ./logs/gluesync-pgsql-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=8bcf707c
+  gluesync-mssql-cdc-source:
+    restart: unless-stopped
+    image: molo17/gluesync-mssql-cdc:latest
+    environment:
+      - TAG=license-manager
+      - TYPE=source
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=d791515d
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-mssql-cdc-source:/opt/gluesync/data
+      - ./logs/gluesync-mssqlsource-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=d791515d
+  gluesync-mssql-cdc-source-replica:
+    restart: unless-stopped
+    image: molo17/gluesync-mssql-cdc:latest
+    container_name: license-manager-source-replica
+    environment:
+      - TAG=license-manager-source-replica
+      - TYPE=source
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=963a82b9
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-mssql-cdc-source-replica:/opt/gluesync/data
+      - ./logs/gluesync-mssqlsource-replica-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=963a82b9
+  gluesync-mssql-cdc-target-replica:
+    restart: unless-stopped
+    image: molo17/gluesync-mssql-cdc:latest
+    container_name: license-manager-target-replica
+    environment:
+      - TAG=license-manager-target-replica
+      - TYPE=target
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=2044a9e1
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-mssql-cdc-target-replica:/opt/gluesync/data
+      - ./logs/gluesync-mssql-target-replica-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=2044a9e1
+  gluesync-mssql-cdc-target-master:
+    restart: unless-stopped
+    image: molo17/gluesync-mssql-cdc:latest
+    container_name: license-manager-target-master
+    environment:
+      - TAG=license-manager-target-master
+      - TYPE=target
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=9ecf355e
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-mssql-cdc-target-master:/opt/gluesync/data
+      - ./logs/gluesync-mssql-target-master-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=9ecf355e
+  gluesync-mssql-cdc-source-replica-bi-directional:
+    restart: unless-stopped
+    image: molo17/gluesync-mssql-cdc:latest
+    container_name: license-manager-source-replica-bi-dir
+    environment:
+      - TAG=license-manager-source-replica-bi-dir
+      - TYPE=source
+      - ssl_enabled=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=423e9489
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-mssql-cdc-source-replica-bi-dir:/opt/gluesync/data
+      - ./logs/gluesync-mssql-source-replica-bi-dir-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=423e9489
+  gluesync-mssql-cdc-source-license-manager-local:
+    restart: unless-stopped
+    image: molo17/gluesync-mssql-cdc:latest
+    environment:
+      - TYPE=source
+      - TAG=license-manager-local
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=086a291d
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-mssql-cdc-license-manager-local-source:/opt/gluesync/data
+      - ./logs/gluesync-mssqlsource-license-manager-local-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=086a291d
+  gluesync-couchbase-target:
+    restart: unless-stopped
+    image: molo17/gluesync-couchbase:latest
+    environment:
+      - TAG=couchbase-hq-minio
+      - TYPE=target
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=8a559c17
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-couchbase-target:/opt/gluesync/data
+      - ./logs/gluesync-target-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=8a559c17
+  gluesync-couchbase-target-license-manager:
+    restart: unless-stopped
+    image: molo17/gluesync-couchbase:latest
+    environment:
+      - TAG=couchbase-hq-license-manager
+      - TYPE=target
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=06a5bfd7
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-couchbase-target-license-manager-local:/opt/gluesync/data
+      - ./logs/gluesync-target-license-manager-local-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=06a5bfd7
+  gluesync-couchbase-target-from-mssql:
+    restart: unless-stopped
+    image: molo17/gluesync-couchbase:latest
+    environment:
+      - TYPE=target
+      - TAG=license-manager-capella
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=b1bc0190
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-couchbase-from-mssql-target:/opt/gluesync/data
+      - ./logs/gluesync-target-cb2-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=b1bc0190
+  gluesync-mssql-source-demo:
+    restart: unless-stopped
+    container_name: demo
+    image: molo17/gluesync-mssql-cdc:latest
+    environment:
+      - TYPE=source
+      - TAG=demo
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=09b39020
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-demo-source-to-cb:/opt/gluesync/data
+      - ./logs/gluesync-demo-source-to-cb-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=09b39020
+  gluesync-couchbase-target-demo:
+    restart: unless-stopped
+    container_name: couchbase-demo
+    image: molo17/gluesync-couchbase:latest
+    environment:
+      - TYPE=target
+      - TAG=couchbase-demo
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=ea2af98c
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-cb-target-from-demo:/opt/gluesync/data
+      - ./logs/gluesync-cb-target-from-demo-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=ea2af98c
+  gluesync-as400:
+    restart: unless-stopped
+    container_name: gs-as400
+    image: molo17/gluesync-ibm-iseries:latest
+    environment:
+      - TYPE=source
+      - TAG=gs-as400
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=5b985fa3
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-as400:/opt/gluesync/data
+      - ./logs/gluesync-as400-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=5b985fa3
+  gluesync-couchbase-as400:
+    restart: unless-stopped
+    container_name: cb-as400
+    image: molo17/gluesync-couchbase:latest
+    environment:
+      - TYPE=target
+      - TAG=couchbase-as400
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
+      - INITIAL_AGENT_ID=1300f116
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-couchbase-as400:/opt/gluesync/data
+      - ./logs/gluesync-couchbase-as400-logs:/opt/gluesync/logs
+    labels:
+      - com.molo17.conductor.type=agent
+      - com.molo17.conductor.service_id=1300f116
+  gluesync-chronos:
+    restart: unless-stopped
+    image: molo17/gluesync-chronos:latest
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.chronos.rule=PathPrefix(`/chronos/`) ||
+        PathPrefix(`/api/`) || PathPrefix(`/chronos/api/`)
+      - traefik.http.routers.chronos.entrypoints=websecure
+      - traefik.http.routers.chronos.tls=true
+      - traefik.http.services.chronos.loadbalancer.server.port=1717
+      - traefik.http.services.chronos.loadbalancer.server.scheme=https
+      - traefik.http.routers.chronos.middlewares=chronos@docker
+      - traefik.http.routers.chronos.service=chronos
+      - traefik.http.middlewares.chronos.replacepathregex.regex=^/chronos/api/(.*)
+      - traefik.http.middlewares.chronos.replacepathregex.replacement=/api/$$1
+      - traefik.http.routers.chronos.middlewares=chronos@docker
+      - traefik.http.services.chronos.loadbalancer.passhostheader=true
+      - com.molo17.conductor.type=module
+    environment:
+      - SSL_ENABLED=True
+      - SSL_SKIP_VERIFY=True
+      - TIMEZONE=Europe/Rome
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./shared:/opt/gluesync/shared:ro
+      - ./data/chronos-data:/app/data
+      - ./logs/chronos:/app/logs

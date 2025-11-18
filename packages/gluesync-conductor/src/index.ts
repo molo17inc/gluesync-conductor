@@ -3,7 +3,6 @@ import cors from '@fastify/cors';
 import Docker from 'dockerode';
 import dockerPlugin from './plugins/docker';
 import swaggerPlugin from './plugins/swagger';
-import gluesyncPlugin from './plugins/gluesync';
 import httpsRedirectMiddleware from './middleware/httpsRedirect';
 import {
   createFastifyHttpsOptions,
@@ -57,7 +56,6 @@ const startServer = async () => {
   await server.register(dockerPlugin);
 
   // Register Gluesync plugin
-  await server.register(gluesyncPlugin);
 
   // Register route modules
   await server.register(systemRoutes);

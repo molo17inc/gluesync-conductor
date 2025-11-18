@@ -22,8 +22,9 @@ const handler: DoContainersActionHandler = async (req, reply) => {
 
     if (containerAction === 'update') {
       const composeJson = await readComposeFile({ raw: true });
+      console.log('>>>>>effectiveIds ', requestIds.length);
 
-      const effectiveIds: readonly string[] =
+      const effectiveIds: ReadonlyArray<string> =
         requestIds.length === 0
           ? fetchAllServicesInCompose(composeJson, true)
               .filter(id => id !== 'gluesync-conductor') // not updating conductor because it has to be explicit

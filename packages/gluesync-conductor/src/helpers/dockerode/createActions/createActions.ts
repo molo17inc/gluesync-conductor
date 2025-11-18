@@ -6,6 +6,7 @@ import { readComposeFile } from '../../composeFile/readComposeFile/readComposeFi
 import removeKey from '../../removeKey/removeKey';
 import { RawComposeFile } from '../../../models/composeFile.model';
 import writeComposeFile from '../../composeFile/writeComposeFile/writeComposeFile';
+import { runSelfUpdate } from '../../autoUpdate/autoUpdate';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 
@@ -59,7 +60,16 @@ const createActions: CreateActions = ({
   update: async (id: string) => {
     await runCmd(pullAll, id, filename, ['--include-deps']);
 
-    await runCmd(upAll, id, filename, ['--remove-orphans']);
+    console.log('>>>>>>>> eccomiiii ??', id);
+
+    runSelfUpdate({
+      hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
+      serviceName: 'gluesync-conductor',
+      helperImage: 'docker:cli',
+      log: function (msg: string): void {
+        console.log('>>>>>>>> ERRORE ??', msg);
+      },
+    });
 
     return `Agent ${id} updated and restarted`;
   },
