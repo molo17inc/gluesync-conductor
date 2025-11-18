@@ -39,6 +39,8 @@ declare global {
   }
 }
 
+import { Logger } from 'pino';
+
 /**
  * Singleton class for managing the Gluesync SDK client connection
  */
@@ -48,14 +50,53 @@ export class GluesyncSDKClient {
   private _client: GluesyncClient | null = null;
   private _isInitialized = false;
   private _reconnectTimer: NodeJS.Timeout | null = null;
-  private _logger: Console = console;
+  private _logger: Logger | Console = console;
 
   /**
-   * Get the singleton instance
+   * Constructor - private to enforce singleton pattern
+   * @param logger Optional logger instance (defaults to console)
    */
-  public static getInstance(): GluesyncSDKClient {
+  private constructor(logger?: Logger) {
+    if (logger) {
+      this._logger = logger;
+    }
+  }
+
+  /**
+   * Helper method to log messages compatible with both Console and Pino Logger
+   * @param level Log level ('info', 'error', 'warn')
+   * @param message Log message
+   * @param meta Optional metadata object
+   */
+  private _log(level: 'info' | 'error' | 'warn', message: string, meta?: any): void {
+    if (this._isPinoLogger(this._logger)) {
+      (this._logger as any)[level](meta || {}, message);
+    } else {
+      if (meta) {
+        (this._logger as any)[level](message, meta);
+      } else {
+        (this._logger as any)[level](message);
+      }
+    }
+  }
+
+  /**
+   * Check if the logger is a Pino Logger instance
+   */
+  private _isPinoLogger(logger: Logger | Console): logger is Logger {
+    return typeof logger === 'object' && 'info' in logger && 'child' in logger;
+  }
+
+  /**
+   * Get the singleton instance with optional logger
+   * @param logger Optional logger instance
+   */
+  public static getInstance(logger?: Logger): GluesyncSDKClient {
     if (!GluesyncSDKClient._instance) {
-      GluesyncSDKClient._instance = new GluesyncSDKClient();
+      GluesyncSDKClient._instance = new GluesyncSDKClient(logger);
+    } else if (logger && GluesyncSDKClient._instance._logger === console) {
+      // Update logger if instance exists but is using default console logger
+      GluesyncSDKClient._instance._logger = logger;
     }
     return GluesyncSDKClient._instance;
   }
@@ -131,7 +172,7 @@ export class GluesyncSDKClient {
    */
   public async initialize(): Promise<void> {
     if (this._isInitialized) {
-      this._logger.log('Gluesync SDK client already initialized');
+      this._log('info', 'Gluesync SDK client already initialized');
       return;
     }
 
@@ -146,14 +187,16 @@ export class GluesyncSDKClient {
         host = url.hostname;
         port = parseInt(url.port, 10) || null;
         useSSL = url.protocol === 'https:';
-        this._logger.log(
+        this._log(
+          'info',
           `Using provided CoreHub host: ${host} at port: ${port}`,
         );
       } catch (error) {
-        this._logger.error(`Invalid CORE_HUB_URL: ${process.env.CORE_HUB_URL}`);
+        this._log('error', `Invalid CORE_HUB_URL: ${process.env.CORE_HUB_URL}`);
       }
     } else {
-      this._logger.log(
+      this._log(
+        'info',
         'No CoreHub URL provided, will use UDP discovery instead',
       );
     }
@@ -174,11 +217,11 @@ export class GluesyncSDKClient {
 
     // Create the client
     try {
-      this._logger.log('Creating Gluesync SDK client...');
-      this._logger.log(`Module tag: ${settings.moduleTag}`);
-      this._logger.log(`License file: ${licenseFilePath}`);
-      this._logger.log(`Security config: ${securityConfig}`);
-      this._logger.log(`SSL enabled: ${useSSL}`);
+      this._log('info', 'Creating Gluesync SDK client...');
+      this._log('info', `Module tag: ${settings.moduleTag}`);
+      this._log('info', `License file: ${licenseFilePath}`);
+      this._log('info', `Security config: ${securityConfig}`);
+      this._log('info', `SSL enabled: ${useSSL}`);
 
       this._client = new GluesyncClient({
         host: host || undefined, // undefined will trigger UDP discovery
@@ -205,17 +248,18 @@ export class GluesyncSDKClient {
         // Retry indefinitely
         try {
           if (host && port) {
-            this._logger.log(`Connecting to CoreHub at ${host}:${port}...`);
+            this._log('info', `Connecting to CoreHub at ${host}:${port}...`);
             await this._client.connect();
             break; // Connection successful
           } else {
             // UDP discovery mode
             if (retryCount > 0) {
-              this._logger.log(
+              this._log(
+                'info',
                 `Retry ${retryCount} (cycle ${cycleCount}) for UDP discovery...`,
               );
             } else {
-              this._logger.log('Starting UDP discovery to find CoreHub...');
+              this._log('info', 'Starting UDP discovery to find CoreHub...');
             }
 
             await this._client.connect();
@@ -223,7 +267,8 @@ export class GluesyncSDKClient {
             // After connect, check if we have a host (discovery worked)
             const client = this._client as any;
             if (client.host) {
-              this._logger.log(
+              this._log(
+                'info',
                 `UDP discovery successful! Found CoreHub at ${client.host}:${client.port}`,
               );
               // Update the discovered host/port for future use
@@ -236,12 +281,12 @@ export class GluesyncSDKClient {
                 );
                 if (coreHubUrl) {
                   updateCoreHubUrl(coreHubUrl);
-                  this._logger.log(`Updated CoreHub URL to ${coreHubUrl}`);
+                  this._log('info', `Updated CoreHub URL to ${coreHubUrl}`);
                 }
               }
               break; // Connection successful
             } else {
-              this._logger.warn(
+              this._log('warn',
                 'UDP discovery did not find CoreHub, will retry',
               );
               // Don't throw an error, just let the retry loop continue
@@ -253,7 +298,7 @@ export class GluesyncSDKClient {
         } catch (error) {
           if (host && port) {
             // If we have a specific host/port and can't connect, don't retry
-            this._logger.error(
+            this._log('error',
               `Failed to connect to CoreHub at ${host}:${port}: ${error}`,
             );
             throw error;
@@ -267,13 +312,14 @@ export class GluesyncSDKClient {
             const isPortBindingError = errorMessage.includes('EADDRINUSE');
 
             if (isPortBindingError) {
-              this._logger.warn(`Port binding error detected: ${errorMessage}`);
+              this._log('warn', `Port binding error detected: ${errorMessage}`);
 
               // Recreate the client with different discovery port range
               try {
                 const randomPortOffset =
                   Math.floor(Math.random() * 1000) + 2000; // Use higher port range
-                this._logger.log(
+                this._log(
+                  'info',
                   `Recreating client with discovery port range starting at ${randomPortOffset}`,
                 );
 
@@ -296,24 +342,27 @@ export class GluesyncSDKClient {
                 );
                 this._client.on('error', this._onError.bind(this));
 
-                this._logger.log(
+                this._log(
+                  'info',
                   'Client recreated with new discovery port range',
                 );
 
                 // Use shorter backoff for port binding errors
                 backoffDelay = 1;
               } catch (recreateError) {
-                this._logger.error(
+                this._log(
+                  'error',
                   `Failed to recreate client: ${recreateError}`,
                 );
               }
             } else {
-              this._logger.warn(
+              this._log('warn',
                 `UDP discovery attempt ${retryCount} failed: ${errorMessage}`,
               );
 
               // Calculate backoff with exponential increase
-              this._logger.log(
+              this._log(
+                'info',
                 `Waiting ${backoffDelay} seconds before next retry...`,
               );
               await new Promise(resolve =>
@@ -327,7 +376,8 @@ export class GluesyncSDKClient {
               if (backoffDelay >= maxBackoff) {
                 backoffDelay = 1; // Reset to 1 second
                 cycleCount++; // Increment cycle count
-                this._logger.log(
+                this._log(
+                  'info',
                   `Completed backoff cycle ${cycleCount}, resetting delay to 1 second`,
                 );
               }
@@ -337,9 +387,9 @@ export class GluesyncSDKClient {
       }
 
       this._isInitialized = true;
-      this._logger.log('Gluesync SDK client initialized successfully');
+      this._log('info', 'Gluesync SDK client initialized successfully');
     } catch (error) {
-      this._logger.error(`Failed to initialize Gluesync SDK client: ${error}`);
+      this._log('error', `Failed to initialize Gluesync SDK client: ${error}`);
       throw error;
     }
   }
@@ -349,7 +399,7 @@ export class GluesyncSDKClient {
    */
   public async shutdown(): Promise<void> {
     if (this._client && (this._client as any).isConnected) {
-      this._logger.log('Disconnecting from CoreHub...');
+      this._log('info', 'Disconnecting from CoreHub...');
       await this._client.disconnect();
       this._isInitialized = false;
       this._token = null;
@@ -362,7 +412,7 @@ export class GluesyncSDKClient {
    */
   private _onConnected(token: string): void {
     this._token = token;
-    this._logger.log('Connected to CoreHub successfully! Token received.');
+    this._log('info', 'Connected to CoreHub successfully! Token received.');
   }
 
   /**
@@ -372,7 +422,7 @@ export class GluesyncSDKClient {
   private _onDisconnected(reason: string): void {
     this._token = null;
     this._isInitialized = false;
-    this._logger.log(`Disconnected from CoreHub: ${reason}`);
+    this._log('info', `Disconnected from CoreHub: ${reason}`);
   }
 
   /**

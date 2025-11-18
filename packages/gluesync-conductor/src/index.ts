@@ -15,6 +15,7 @@ import containerRoutes from './routes/containers';
 import agentRoutes from './routes/agents';
 import serviceRoutes from './routes/services';
 import supportRoutes from './routes/support';
+import { getLogger } from './utils/logger';
 import autoAdoptServices from './helpers/autoAdoptServices/autoAdoptServices';
 
 type FastifyServices = {
@@ -34,6 +35,7 @@ const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
 const host: string = process.env.HOST || '0.0.0.0';
 
 const startServer = async () => {
+  const logger = getLogger();
   const serverOptions = createFastifyHttpsOptions();
   const server = fastify(serverOptions);
 
@@ -90,18 +92,18 @@ const startServer = async () => {
 
 // Handle unhandled rejections
 process.on('unhandledRejection', err => {
-  logger.error('Unhandled Promise Rejection:', err);
+  getLogger().error({ err }, 'Unhandled Promise Rejection');
   process.exit(1);
 });
 
 // Handle uncaught exceptions
 process.on('uncaughtException', err => {
-  logger.error('Uncaught Exception:', err);
+  getLogger().error({ err }, 'Uncaught Exception');
   process.exit(1);
 });
 
 // Start the fastify server
 startServer().catch(err => {
-  logger.error('Failed to start server:', err);
+  getLogger().error({ err }, 'Failed to start server');
   process.exit(1);
 });
