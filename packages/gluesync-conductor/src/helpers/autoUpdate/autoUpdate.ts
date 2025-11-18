@@ -1,4 +1,3 @@
-// dockerUpdater.mjs (or .js with "type": "module")
 import { spawn } from 'node:child_process';
 import { RunSelfUpdate } from './autoUpdate.model';
 
@@ -40,62 +39,42 @@ export const spawnAsync = (
   });
 
 /**
- * Runs an ephemeral helper container that performs:
+ * Runs a helper container that performs:
  *   docker compose pull <service>
- *   docker compose up -d <service>
+ *   docker compose up -d --force-recreate <service>
  */
 export const runSelfUpdate: RunSelfUpdate = async ({
   hostProjectDir,
   serviceName = 'gluesync-conductor',
+  helperImage = 'docker:24', // image with docker CLI + compose plugin
   log = msg => console.log(msg),
 }) => {
   if (!hostProjectDir) {
     throw new Error('hostProjectDir is required');
   }
 
-  // log(`[docker-updater] updating ${serviceName} (cwd=${hostProjectDir})`);
+  const innerCmd = [
+    `docker compose pull ${serviceName}`,
+    `docker compose up -d --force-recreate ${serviceName}`,
+  ].join(' && ');
 
-  // console.log('>>>>>>>>>> down');
+  const args = [
+    'run',
+    '--rm',
+    '-v',
+    '/var/run/docker.sock:/var/run/docker.sock',
+    '-v',
+    `${hostProjectDir}:${hostProjectDir}`, // mount at same absolute path
+    '-w',
+    hostProjectDir, // set working dir to same path
+    helperImage,
+    'sh',
+    '-c',
+    innerCmd,
+  ];
 
-  // await spawnAsync('docker', ['compose', 'down', serviceName], {
-  //   cwd: hostProjectDir,
-  // });
-  // console.log('>>>>>>>>>> pull');
+  log(`[docker-updater] docker ${args.join(' ')}`);
 
-  // await spawnAsync('docker', ['compose', 'pull', serviceName], {
-  //   cwd: hostProjectDir,
-  // });
-  // console.log('>>>>>>>>>> up');
-
-  // await spawnAsync(
-  //   'docker',
-  //   ['compose', 'up', '-d', '--force-recreate', serviceName],
-  //   { cwd: hostProjectDir },
-  // );
-
-  log(`[docker-updater] updating ${serviceName} (cwd=${hostProjectDir})`);
-
-  await spawnAsync('docker', ['compose', 'down', serviceName], {
-    cwd: hostProjectDir,
-  });
-  await spawnAsync('docker', ['compose', 'rm', '-f', serviceName], {
-    cwd: hostProjectDir,
-  });
-  await spawnAsync(
-    'docker',
-    ['rmi', `${hostProjectDir.split('/').pop()}-${serviceName}:latest`],
-    { cwd: hostProjectDir },
-  ).catch(() => {
-    log('[docker-updater] no synthetic image to remove');
-  });
-  await spawnAsync('docker', ['compose', 'pull', serviceName], {
-    cwd: hostProjectDir,
-  });
-  await spawnAsync(
-    'docker',
-    ['compose', 'up', '-d', '--force-recreate', serviceName],
-    { cwd: hostProjectDir },
-  );
-
+  await spawnAsync('docker', args);
   return true;
 };
