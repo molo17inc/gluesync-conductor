@@ -24,3 +24,5 @@ declare namespace NodeJS {
     readonly MOUNT_LEGACY_FILE_CONFIG: string;
   }
 }
+
+declare module 'rotating-file-stream';
