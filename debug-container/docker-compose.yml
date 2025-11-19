@@ -1,61 +1,38 @@
-name: debug-container
 services:
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: portainer
+  gluesync-core-hub:
     restart: unless-stopped
-    ports:
-      - 8000:8000
-      - 9443:9443
+    image: molo17/gluesync-core-hub:latest
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.corehub.entrypoints=websecure
+      - traefik.http.routers.corehub.rule=PathPrefix(`/`)
+      - traefik.http.routers.corehub.tls=true
+      - traefik.http.services.corehub.loadbalancer.server.port=1717
+      - traefik.http.services.corehub.loadbalancer.server.scheme=https
+      - traefik.http.routers.corehub.service=corehub
+      - traefik.http.services.corehub.loadbalancer.passhostheader=true
+      - com.molo17.conductor.type=core-hub
+    environment:
+      - SSL_ENABLED=true
+      - LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    command:
-      - --admin-password
-      - $$2y$$05$$wxahdaIgY6yjxyPjvSqyr.NeLhCOY/pWLXSJykVsfUGaRXnjq3etK
+      - ./bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json
+      - ./shared:/opt/gluesync/shared
+      - ./data/gluesync-core-hub:/opt/gluesync/data
+      - ./logs/gluesync-core-hub-logs:/opt/gluesync/logs
   gluesync-conductor:
+    restart: unless-stopped
     build: ../packages/gluesync-conductor
     container_name: gluesync-conductor
-    restart: unless-stopped
     labels:
       - com.molo17.conductor.type=module
     environment:
-      - NODE_ENV=production
       - LOG_LEVEL=trace
-      - GLUESYNC_LICENSE_FILE=/opt/gluesync/data/gs-license.dat
-      - GLUESYNC_SECURITY_CONFIG=/opt/gluesync/data/security-config.json
-      - HOST=0.0.0.0
-      - PORT=1717
-      - DOCKER_HOST=unix:///var/run/docker.sock
       - BASE_PATH=$PWD
-      - USE_SDK=false
-      - SSL_SKIP_VERIFY=false
       - SSL_ENABLED=false
-      - DKR_COMPOSE_FILE=/opt/gluesync-conductor/services/docker-compose.services.yml
-      - GLUESYNC_CONFIG_DIR=..
-      # - DKR_COMPOSE_FILE_SOURCE=docker-compose.yml
-      - MOUNT_LEGACY_FILE_CONFIG=true
-      # Test-reserved (add only for integration tests):
-      # - JOB_ID=not_set
-      # - TEST_NAME=DRY_RUN
-    ports:
-      - 5017:1717
+      - SSL_SKIP_VERIFY=true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
-      - ./services:/opt/gluesync-conductor/services
-      - ./gs-conf/:/opt/gluesync/data:ro
-      - ./data:/opt/gluesync-conductor/data
-      - ./logs:/opt/gluesync-conductor/logs
-  gluesync-core-hub:
-    image: molo17/gluesync-core-hub:2.1.4.2
     ports:
-      - 1717:1717
-    labels:
-      - com.molo17.conductor.type=core-hub
-    environment:
-      - LOG_CONFIG_FILE=/opt/gluesync/data/logback.xml
-    volumes:
-      - ./gs-conf/gs-license.dat:/opt/gluesync/data/gs-license.dat
-      - ./gs-conf/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json
-      - ./gs-conf/security-config.json:/opt/gluesync/data/security-config.json
-      - ./gs-conf/gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks
+      - 5017:1717
