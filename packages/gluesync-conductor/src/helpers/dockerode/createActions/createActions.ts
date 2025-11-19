@@ -71,7 +71,7 @@ const createActions: CreateActions = ({
           '[conductor-updater] running self update for conductor',
         );
 
-        await autoUpdate({
+        autoUpdate({
           hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
           serviceName: CONDUCTOR_SERVICE,
           helperImage: 'docker:cli',
