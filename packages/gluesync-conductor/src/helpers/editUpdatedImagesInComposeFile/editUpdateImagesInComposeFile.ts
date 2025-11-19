@@ -16,21 +16,13 @@ const editUpdateImagesInComposeFile: EditUpdateImagesInComposeFile = async (
 
     const imageParts = parseImage(service.image);
 
-    console.log('>>>>>> labels', service.labels);
-
     const isAgent = service.labels?.includes(
       `${LabelPrefix.CONDUCTOR}.type=agent`,
     );
 
-    console.log('>>>>>>>>>>> isAgent', isAgent);
-
     const isCoreHub = service.labels?.includes(
       `${LabelPrefix.CONDUCTOR}.type=core-hub`,
     );
-
-    console.log('>>>>>>>>>>> isCoreHub', isCoreHub);
-
-    console.log('>>>>>>>>>>> agentVersion', versions.agentVersion);
 
     const newVersion =
       isAgent || isCoreHub
