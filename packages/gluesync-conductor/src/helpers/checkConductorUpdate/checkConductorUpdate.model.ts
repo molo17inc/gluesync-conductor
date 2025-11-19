@@ -3,14 +3,14 @@ import type { AgentInfoResponse } from '../agentInfo/agentInfo.model';
 
 export type CheckConductorUpdateResult = Readonly<{
   needsUpdate: boolean;
-  ids: ReadonlyArray<string>;
+  id: string;
   availableVersion: string | null;
 }>;
 
 export type CheckConductorUpdateParams = Readonly<{
   composeJson: Readonly<Record<string, unknown>>;
   releaseChannel?: ReleaseChannelTypes;
-  conductorServiceName?: string; // defaults to env or 'gluesync-conductor'
+  conductorServiceName?: string;
 }>;
 
 export type { ReleaseChannelTypes, AgentInfoResponse };

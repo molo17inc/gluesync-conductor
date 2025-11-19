@@ -45,7 +45,7 @@ export const spawnAsync = (
 export const autoUpdate: AutoUpdate = async ({
   hostProjectDir,
   serviceName = 'gluesync-conductor',
-  helperImage = 'docker:24', // image with docker CLI + compose plugin
+  helperImage = 'docker:28', // image with docker CLI + compose plugin
   log = msg => console.log(msg),
 }) => {
   if (!hostProjectDir) {

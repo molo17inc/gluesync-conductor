@@ -12,7 +12,6 @@ const checkConductorUpdate = async ({
   releaseChannel,
   conductorServiceName = process.env.CONDUCTOR_NAME || 'gluesync-conductor',
 }: CheckConductorUpdateParams): Promise<CheckConductorUpdateResult | null> => {
-  // composeJson is readonly‑shallow; we only read from it
   const services = (composeJson as any).services as
     | Readonly<Record<string, { image?: string }>>
     | undefined;
@@ -33,7 +32,7 @@ const checkConductorUpdate = async ({
 
   return {
     needsUpdate: !!availableVersion && currentTag !== availableVersion,
-    ids: [conductorServiceName],
+    id: conductorServiceName,
     availableVersion,
   };
 };
