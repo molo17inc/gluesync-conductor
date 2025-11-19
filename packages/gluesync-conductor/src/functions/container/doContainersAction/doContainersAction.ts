@@ -5,6 +5,7 @@ import canUpdateContainers from '../../../helpers/canUpdateContainers/canUpdateC
 import editUpdateImagesInComposeFile from '../../../helpers/editUpdatedImagesInComposeFile/editUpdateImagesInComposeFile';
 import fetchAllServicesInCompose from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose';
 import { LabelPrefix } from '../../../models/composeFile.model';
+import checkConductorUpdate from '../../../helpers/checkConductorUpdate/checkConductorUpdate';
 
 const handler: DoContainersActionHandler = async (req, reply) => {
   try {
@@ -22,12 +23,92 @@ const handler: DoContainersActionHandler = async (req, reply) => {
 
     if (containerAction === 'update') {
       const composeJson = await readComposeFile({ raw: true });
-      console.log('>>>>>effectiveIds ', requestIds.length);
+      req.log.debug(
+        `Checking for conductor update, ids length=${requestIds.length}`,
+      );
 
-      const effectiveIds: ReadonlyArray<string> =
+      const conductorInfo = await checkConductorUpdate({
+        composeJson,
+        releaseChannel,
+      });
+
+      // ----- conductor-only branch -----
+      if (conductorInfo?.needsUpdate) {
+        const { ids, availableVersion } = conductorInfo;
+
+        if (!availableVersion) {
+          reply.code(500);
+          throw new Error('No available version for conductor');
+        }
+
+        const effectiveIds = ids;
+
+        const conductorVersions = {
+          agentVersion: null,
+          modules: [
+            {
+              id: ids[0],
+              version: availableVersion,
+            },
+          ],
+        };
+
+        await editUpdateImagesInComposeFile(
+          effectiveIds,
+          composeJson,
+          conductorVersions,
+        );
+
+        const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
+
+        const orderedIds: readonly string[] = effectiveIds.includes(coreHubName)
+          ? [coreHubName, ...effectiveIds.filter(id => id !== coreHubName)]
+          : effectiveIds;
+
+        const results = await Promise.allSettled(orderedIds.map(action));
+
+        req.log.debug(
+          `Container action ${containerAction} (conductor-only): ${JSON.stringify(
+            results,
+          )}`,
+        );
+
+        const resultPrune = await req.server.docker.pruneImages({
+          force: true,
+        });
+
+        const pruneResultText =
+          resultPrune.ImagesDeleted && resultPrune.ImagesDeleted.length
+            ? `Pruned ${resultPrune.ImagesDeleted.length} images, and reclaimed ${(
+                resultPrune.SpaceReclaimed /
+                (1024 * 1024)
+              ).toFixed(2)} MB disk space successfully`
+            : undefined;
+
+        reply.code(200);
+        reply.send({
+          success: true,
+          data: {
+            ...(pruneResultText && { pruneResult: pruneResultText }),
+            containers: results.map((result, index) => ({
+              id: orderedIds[index],
+              status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
+              message:
+                result.status === 'fulfilled'
+                  ? result.value
+                  : result?.reason?.err,
+            })),
+          },
+        });
+
+        return;
+      }
+
+      // ----- normal bulk-update branch -----
+      const initialEffectiveIds: ReadonlyArray<string> =
         requestIds.length === 0
           ? fetchAllServicesInCompose(composeJson, true)
-              .filter(id => id !== 'gluesync-conductor') // not updating conductor because it has to be explicit
+              .filter(id => id !== 'gluesync-conductor')
               .filter(id => {
                 const service = composeJson.services?.[id];
                 if (!service) return false;
@@ -47,7 +128,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
           : requestIds;
 
       const canUpdateContainersResult = await canUpdateContainers(
-        effectiveIds,
+        initialEffectiveIds,
         composeJson,
         releaseChannel,
       );
@@ -64,27 +145,21 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         .filter(m => m.version === null)
         .map(m => m.id);
 
-      // remove modules with no version (relative to the release channel) to prevent update
-      const effectiveIdsFiltered = effectiveIds.filter(
+      const effectiveIds = initialEffectiveIds.filter(
         id => !invalidModuleIds.includes(id),
       );
 
       await editUpdateImagesInComposeFile(
-        effectiveIdsFiltered,
+        effectiveIds,
         composeJson,
         canUpdateContainersResult.data,
       );
 
       const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
 
-      const orderedIds: readonly string[] = effectiveIdsFiltered.includes(
-        coreHubName,
-      )
-        ? [
-            coreHubName,
-            ...effectiveIdsFiltered.filter(id => id !== coreHubName),
-          ]
-        : effectiveIdsFiltered;
+      const orderedIds: readonly string[] = effectiveIds.includes(coreHubName)
+        ? [coreHubName, ...effectiveIds.filter(id => id !== coreHubName)]
+        : effectiveIds;
 
       const results = await Promise.allSettled(orderedIds.map(action));
 
@@ -96,7 +171,10 @@ const handler: DoContainersActionHandler = async (req, reply) => {
 
       const pruneResultText =
         resultPrune.ImagesDeleted && resultPrune.ImagesDeleted.length
-          ? `Pruned ${resultPrune.ImagesDeleted.length} images, and reclaimed ${(resultPrune.SpaceReclaimed / (1024 * 1024)).toFixed(2)} MB disk space successfully`
+          ? `Pruned ${resultPrune.ImagesDeleted.length} images, and reclaimed ${(
+              resultPrune.SpaceReclaimed /
+              (1024 * 1024)
+            ).toFixed(2)} MB disk space successfully`
           : undefined;
 
       reply.code(200);
@@ -138,7 +216,9 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     }
   } catch (error) {
     req.log.error(
-      `Error do containers action: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
+      `Error do containers action: ${
+        error instanceof Error ? error.message : JSON.stringify(error)
+      }`,
     );
 
     try {
@@ -146,7 +226,9 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       req.log.debug('Docker daemon is responding to ping');
     } catch (pingError) {
       req.log.error(
-        `Docker daemon ping failed: ${pingError instanceof Error ? pingError.message : String(pingError)}`,
+        `Docker daemon ping failed: ${
+          pingError instanceof Error ? pingError.message : String(pingError)
+        }`,
       );
     }
 

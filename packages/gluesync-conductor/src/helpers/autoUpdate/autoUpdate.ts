@@ -1,13 +1,13 @@
 import { spawn } from 'node:child_process';
-import { RunSelfUpdate } from './autoUpdate.model';
+import { AutoUpdate } from './autoUpdate.model';
 
 /**
  * Spawns a process and resolves when it exits.
  */
 export const spawnAsync = (
   cmd: string,
-  args: string[],
-  opts: { cwd?: string } = {},
+  args: ReadonlyArray<string>,
+  opts: Readonly<{ cwd?: string }> = {},
 ): Promise<boolean> =>
   new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
@@ -16,21 +16,21 @@ export const spawnAsync = (
     });
 
     child.stdout.on('data', data => {
-      console.log(`[docker-updater] stdout: ${data.toString().trimEnd()}`);
+      console.log(`[conductor-updater] stdout: ${data.toString().trimEnd()}`);
     });
 
     child.stderr.on('data', data => {
-      console.log(`[docker-updater] stderr: ${data.toString().trimEnd()}`);
+      console.log(`[conductor-updater] stderr: ${data.toString().trimEnd()}`);
     });
 
     child.on('error', err => {
-      console.log(`[docker-updater] error: ${err.message}`);
+      console.log(`[conductor-updater] error: ${err.message}`);
       reject(err);
     });
 
     child.on('close', code => {
       if (code === 0) {
-        console.log('[docker-updater] process completed');
+        console.log('[conductor-updater] process completed');
         resolve(true);
       } else {
         reject(new Error(`process exited with code ${code}`));
@@ -40,10 +40,9 @@ export const spawnAsync = (
 
 /**
  * Runs a helper container that performs:
- *   docker compose pull <service>
  *   docker compose up -d --force-recreate <service>
  */
-export const runSelfUpdate: RunSelfUpdate = async ({
+export const autoUpdate: AutoUpdate = async ({
   hostProjectDir,
   serviceName = 'gluesync-conductor',
   helperImage = 'docker:24', // image with docker CLI + compose plugin
@@ -54,26 +53,25 @@ export const runSelfUpdate: RunSelfUpdate = async ({
   }
 
   const innerCmd = [
-    `docker compose pull ${serviceName}`,
     `docker compose up -d --force-recreate ${serviceName}`,
   ].join(' && ');
 
-  const args = [
+  const args: ReadonlyArray<string> = [
     'run',
     '--rm',
     '-v',
     '/var/run/docker.sock:/var/run/docker.sock',
     '-v',
-    `${hostProjectDir}:${hostProjectDir}`, // mount at same absolute path
+    `${hostProjectDir}:${hostProjectDir}`,
     '-w',
-    hostProjectDir, // set working dir to same path
+    hostProjectDir,
     helperImage,
     'sh',
     '-c',
     innerCmd,
   ];
 
-  log(`[docker-updater] docker ${args.join(' ')}`);
+  log(`[conductor-updater] docker ${args.join(' ')}`);
 
   await spawnAsync('docker', args);
   return true;

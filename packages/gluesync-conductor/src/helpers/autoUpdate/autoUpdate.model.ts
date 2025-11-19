@@ -1,8 +1,8 @@
-export type RunSelfUpdateOptions = {
-  hostProjectDir: string;
-  serviceName: string;
-  helperImage: string;
-  log: (msg: string) => void;
-};
-
-export type RunSelfUpdate = (options: Readonly<RunSelfUpdateOptions>) => void;
+export type AutoUpdate = (
+  options: Readonly<{
+    hostProjectDir: string;
+    serviceName: string;
+    helperImage: string;
+    log: (msg: Readonly<string>) => void;
+  }>,
+) => Promise<boolean>;
