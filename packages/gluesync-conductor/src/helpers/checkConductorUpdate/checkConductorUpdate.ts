@@ -2,7 +2,6 @@ import fetchAgentInfo from '../agentInfo/agentInfo';
 import parseImage from '../parseImage/parseImage';
 import getVersionByChannel from '../releaseChannel/getVersionByChannel';
 import {
-  AgentInfoResponse,
   CheckConductorUpdateParams,
   CheckConductorUpdateResult,
 } from './checkConductorUpdate.model';
@@ -26,7 +25,7 @@ const checkConductorUpdate = async ({
   const currentTag = parsed.tag;
   const { shortImageName } = parsed;
 
-  const info: AgentInfoResponse = await fetchAgentInfo(shortImageName);
+  const info = await fetchAgentInfo(shortImageName);
 
   const availableVersion = getVersionByChannel(info, releaseChannel);
 

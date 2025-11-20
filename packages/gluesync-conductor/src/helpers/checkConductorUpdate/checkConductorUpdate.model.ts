@@ -1,5 +1,4 @@
 import type { ReleaseChannelTypes } from '../../models/conductor.model';
-import type { AgentInfoResponse } from '../agentInfo/agentInfo.model';
 
 export type CheckConductorUpdateResult = Readonly<{
   needsUpdate: boolean;
@@ -12,5 +11,3 @@ export type CheckConductorUpdateParams = Readonly<{
   releaseChannel?: ReleaseChannelTypes;
   conductorServiceName?: string;
 }>;
-
-export type { ReleaseChannelTypes, AgentInfoResponse };
