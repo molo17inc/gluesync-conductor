@@ -30,7 +30,7 @@ const systemRoutes = async (fastify: Readonly<FastifyInstance>) => {
         req.log.debug('Health check OK!');
         reply.send({ success: true, data: 'Health check OK!' });
       } catch (error) {
-        req.log.error('Error:', error);
+        req.log.error(error, 'Error');
         reply
           .status(500)
           .send({ success: false, error: 'Health check failed' });

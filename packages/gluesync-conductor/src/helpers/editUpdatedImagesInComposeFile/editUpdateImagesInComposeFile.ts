@@ -19,6 +19,7 @@ const editUpdateImagesInComposeFile: EditUpdateImagesInComposeFile = async (
     const isAgent = service.labels?.includes(
       `${LabelPrefix.CONDUCTOR}.type=agent`,
     );
+
     const isCoreHub = service.labels?.includes(
       `${LabelPrefix.CONDUCTOR}.type=core-hub`,
     );

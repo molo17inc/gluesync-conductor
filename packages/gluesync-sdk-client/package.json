@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "fastify": "^5.2.1",
-    "gluesync-sdk": "workspace:*"
+    "gluesync-sdk": "workspace:*",
+    "pino": "^10.1.0"
   },
   "devDependencies": {
     "@gluesync/scripts": "workspace:*",

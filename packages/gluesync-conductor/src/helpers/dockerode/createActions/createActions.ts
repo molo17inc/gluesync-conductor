@@ -6,8 +6,11 @@ import { readComposeFile } from '../../composeFile/readComposeFile/readComposeFi
 import removeKey from '../../removeKey/removeKey';
 import { RawComposeFile } from '../../../models/composeFile.model';
 import writeComposeFile from '../../composeFile/writeComposeFile/writeComposeFile';
+import { autoUpdate } from '../../autoUpdate/autoUpdate';
+import { getLogger } from '../../../utils/logger';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
+const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
 
 const runCmd: RunCmd = async (cmdFn, id, filename, extraOptions?) => {
   const result = await cmdFn({
@@ -34,35 +37,56 @@ const runCmd: RunCmd = async (cmdFn, id, filename, extraOptions?) => {
 const createActions: CreateActions = ({
   docker,
   filename = dkrComposeFile,
-}) => ({
-  kill: id => runCmd(kill, id, filename),
-  pull: id => runCmd(pullAll, id, filename, ['--include-deps']),
-  remove: id => runCmd(rm, id, filename, ['-s', '-v']),
-  removeNetwork: id => cleanupOrphanNetworkByName(docker, id),
-  restart: id => runCmd(restartAll, id, filename, ['--no-deps']),
-  start: id => runCmd(upAll, id, filename, ['--no-deps']),
-  stop: id => runCmd(stop, id, filename),
-  undeploy: async (id: string) => {
-    await runCmd(rm, id, filename, ['-s', '-v']);
+}) => {
+  const logger = getLogger();
 
-    const composeJson = await readComposeFile({ raw: true });
-    if (!composeJson.services || !composeJson.services[id]) {
-      return `Agent ${id} not found`;
-    }
-    const composeFile: RawComposeFile = {
-      ...composeJson,
-      services: removeKey(composeJson.services, id),
-    };
-    await writeComposeFile(composeFile);
-    return `Agent ${id} undeployed successfully`;
-  },
-  update: async (id: string) => {
-    await runCmd(pullAll, id, filename, ['--include-deps']);
+  return {
+    kill: id => runCmd(kill, id, filename),
+    pull: id => runCmd(pullAll, id, filename, ['--include-deps']),
+    remove: id => runCmd(rm, id, filename, ['-s', '-v']),
+    removeNetwork: id => cleanupOrphanNetworkByName(docker, id),
+    restart: id => runCmd(restartAll, id, filename, ['--no-deps']),
+    start: id => runCmd(upAll, id, filename, ['--no-deps']),
+    stop: id => runCmd(stop, id, filename),
+    undeploy: async (id: string) => {
+      await runCmd(rm, id, filename, ['-s', '-v']);
 
-    await runCmd(upAll, id, filename, ['--remove-orphans']);
+      const composeJson = await readComposeFile({ raw: true });
+      if (!composeJson.services || !composeJson.services[id]) {
+        return `Agent ${id} not found`;
+      }
+      const composeFile: RawComposeFile = {
+        ...composeJson,
+        services: removeKey(composeJson.services, id),
+      };
+      await writeComposeFile(composeFile);
+      return `Agent ${id} undeployed successfully`;
+    },
+    update: async (id: string) => {
+      await runCmd(pullAll, id, filename, ['--include-deps']);
 
-    return `Agent ${id} updated and restarted`;
-  },
-});
+      if (id === CONDUCTOR_SERVICE) {
+        logger.info(
+          { service: id },
+          '[conductor-updater] running self update for conductor',
+        );
+
+        autoUpdate({
+          hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
+          serviceName: CONDUCTOR_SERVICE,
+          helperImage: 'docker:cli',
+          log: msg =>
+            logger.info({ msg }, '[conductor-updater] self-update log'),
+        });
+
+        return `Conductor ${id} updated and restarted`;
+      }
+
+      await runCmd(upAll, id, filename, ['--remove-orphans']);
+
+      return `Agent ${id} updated and restarted`;
+    },
+  };
+};
 
 export default createActions;
