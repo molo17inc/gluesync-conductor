@@ -33,9 +33,16 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     const needsUpdate = async (serviceId: string): Promise<boolean> => {
       const svc = composeJson.services?.[serviceId];
       if (!svc) return false;
+
       const { shortImageName, tag } = parseImage(svc.image);
       const svcInfo = await fetchAgentInfo(shortImageName);
       const expectedVersion = getVersionByChannel(svcInfo, channel);
+
+      // If we can't determine the expected version, assume no update is needed
+      if (!expectedVersion) {
+        return false;
+      }
+
       return expectedVersion !== tag;
     };
 
