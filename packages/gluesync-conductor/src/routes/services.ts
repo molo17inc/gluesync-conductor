@@ -425,8 +425,7 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
     },
     handler: getServices,
   });
-
-  fastify.get('/services/:id/version', {
+  fastify.get('/services/:id/version/:releaseChannel?', {
     schema: {
       tags: ['services'],
       summary: 'Get service version information',
@@ -437,6 +436,11 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
         required: ['id'],
         properties: {
           id: { type: 'string', description: 'Service ID' },
+          releaseChannel: {
+            type: 'string',
+            enum: ['alpha', 'beta', 'ga'],
+            description: 'Release channel (optional, defaults to "ga")',
+          },
         },
       },
       response: {
@@ -452,6 +456,8 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
                 latestVersionAlpha: { type: 'string' },
                 latestVersionBeta: { type: 'string' },
                 latestVersionGA: { type: 'string' },
+                mandatoryUpdate: { type: 'boolean' },
+                releaseChannel: { type: 'string' },
               },
             },
           },

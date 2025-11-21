@@ -20,7 +20,7 @@ export type DoContainersActionSuccessResponse = Readonly<{
 export type DoContainersActionBody = Readonly<{
   action: ContainerActions;
   ids: ReadonlyArray<string>;
-  releaseChannel: ReleaseChannelTypes;
+  releaseChannel?: ReleaseChannelTypes;
 }>;
 
 export type DoContainersActionResponse =

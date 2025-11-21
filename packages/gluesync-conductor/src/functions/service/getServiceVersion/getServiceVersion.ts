@@ -6,12 +6,20 @@ import { castObject } from '../../../helpers/composeFile/extractKeyValue/extract
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import fetchAgentInfo from '../../../helpers/agentInfo/agentInfo';
 import parseImage from '../../../helpers/parseImage/parseImage';
+import { ReleaseChannelTypes } from '../../../models/conductor.model';
+import getVersionByChannel from '../../../helpers/releaseChannel/getVersionByChannel';
 
 const handler: GetServiceVersionHandler = async (req, reply) => {
   try {
-    const { id } = castObject<GetServiceVersionParams>(req.params);
-    const composeJson = await readComposeFile();
+    const { id, releaseChannel } = castObject<GetServiceVersionParams>(
+      req.params,
+    );
 
+    // Default to "ga" if releaseChannel is not provided
+    const channel: ReleaseChannelTypes =
+      (releaseChannel as ReleaseChannelTypes) || 'ga';
+
+    const composeJson = await readComposeFile();
     const service = composeJson.services?.[id];
 
     if (!service) {
@@ -21,24 +29,62 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       });
     }
 
+    // Helper to check if a service needs update based on release channel
+    const needsUpdate = async (serviceId: string): Promise<boolean> => {
+      const svc = composeJson.services?.[serviceId];
+      if (!svc) return false;
+
+      const { shortImageName, tag } = parseImage(svc.image);
+      const svcInfo = await fetchAgentInfo(shortImageName);
+      const expectedVersion = getVersionByChannel(svcInfo, channel);
+
+      // If we can't determine the expected version, assume no update is needed
+      if (!expectedVersion) {
+        return false;
+      }
+
+      return expectedVersion !== tag;
+    };
+
+    const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
+    const conductorName = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
+    const chronosName = process.env.CHRONOS_NAME || 'gluesync-chronos';
+
+    // Compute mandatoryUpdate without nested ternary
+    const mandatoryUpdate = await (async () => {
+      if (id === coreHubName) {
+        // First check core-hub itself
+        const coreHubNeedsUpdate = await needsUpdate(coreHubName);
+        if (coreHubNeedsUpdate) {
+          return false;
+        }
+        // If core-hub is up-to-date, check conductor and chronos
+        const conductorNeedsUpdate = await needsUpdate(conductorName);
+        const chronosNeedsUpdate = await needsUpdate(chronosName);
+        return conductorNeedsUpdate || chronosNeedsUpdate;
+      }
+      return false;
+    })();
+
+    // Always fetch info for the requested service to return version details
     const { shortImageName, tag } = parseImage(service.image);
+    const serviceInfo = await fetchAgentInfo(shortImageName);
 
-    // Make a request to the backoffice API to get the latest version
-    const agentInfo = await fetchAgentInfo(shortImageName);
-
-    // Return only the version informations
     return reply.send({
       success: true,
       data: {
         currentVersion: String(tag),
-        latestVersionAlpha: agentInfo?.latestVersionAlpha,
-        latestVersionBeta: agentInfo?.latestVersionBeta,
-        latestVersionGA: agentInfo?.latestVersionGA,
+        latestVersionAlpha: serviceInfo?.latestVersionAlpha,
+        latestVersionBeta: serviceInfo?.latestVersionBeta,
+        latestVersionGA: serviceInfo?.latestVersionGA,
+        mandatoryUpdate,
       },
     });
   } catch (error: unknown) {
     req.log.error(
-      `Error getting agent version: ${error instanceof Error ? error.message : String(error)}`,
+      `Error getting agent version: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
 
     if (error instanceof Error && (error as any).statusCode === 404) {
@@ -50,7 +96,9 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
     return reply.code(500).send({
       success: false,
-      error: `Failed to get agent version: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Failed to get agent version: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     });
   }
 };

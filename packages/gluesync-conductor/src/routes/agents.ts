@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import getAgentVersion from '../functions/service/getServiceVersion/getServiceVersion';
 
 const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
-  fastify.get('/agents/:id/version', {
+  fastify.get('/agents/:id/version/:releaseChannel?', {
     schema: {
       tags: ['agents'],
       summary: 'Get agent version information (deprecated)',
@@ -14,6 +14,11 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
         required: ['id'],
         properties: {
           id: { type: 'string', description: 'Service ID' },
+          releaseChannel: {
+            type: 'string',
+            enum: ['alpha', 'beta', 'ga'],
+            description: 'Release channel (optional, defaults to "ga")',
+          },
         },
       },
       response: {
@@ -29,6 +34,8 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
                 latestVersionAlpha: { type: 'string' },
                 latestVersionBeta: { type: 'string' },
                 latestVersionGA: { type: 'string' },
+                mandatoryUpdate: { type: 'boolean' },
+                releaseChannel: { type: 'string' },
               },
             },
           },

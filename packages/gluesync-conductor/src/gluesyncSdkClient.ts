@@ -1,3 +1,4 @@
+import { Logger } from 'pino';
 import { GluesyncSDKClient } from 'gluesync-sdk-client';
 
 // Singleton instance for Gluesync SDK client
@@ -7,15 +8,19 @@ declare global {
   var gluesyncSdkClient: GluesyncSDKClient | undefined;
 }
 
-function createGluesyncSdkClient(): GluesyncSDKClient {
+function createGluesyncSdkClient(
+  logger: Readonly<Logger> | undefined,
+): GluesyncSDKClient {
   // Get the singleton instance from the SDK
-  return GluesyncSDKClient.getInstance();
+  return GluesyncSDKClient.getInstance(logger);
 }
 
-export function getGluesyncSdkClient(): GluesyncSDKClient {
+export function getGluesyncSdkClient(
+  logger: Readonly<Logger> | undefined,
+): GluesyncSDKClient {
   if (!global.gluesyncSdkClient) {
     // eslint-disable-next-line functional/immutable-data
-    global.gluesyncSdkClient = createGluesyncSdkClient();
+    global.gluesyncSdkClient = createGluesyncSdkClient(logger);
   }
   return global.gluesyncSdkClient;
 }
