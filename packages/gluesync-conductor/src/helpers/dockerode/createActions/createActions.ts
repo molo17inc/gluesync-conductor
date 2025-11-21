@@ -6,8 +6,8 @@ import { readComposeFile } from '../../composeFile/readComposeFile/readComposeFi
 import removeKey from '../../removeKey/removeKey';
 import { RawComposeFile } from '../../../models/composeFile.model';
 import writeComposeFile from '../../composeFile/writeComposeFile/writeComposeFile';
-import { autoUpdate } from '../../autoUpdate/autoUpdate';
 import { getLogger } from '../../../utils/logger';
+import { autoReboot } from '../../autoReboot/autoReboot';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
@@ -71,7 +71,7 @@ const createActions: CreateActions = ({
           '[conductor-updater] running self update for conductor',
         );
 
-        autoUpdate({
+        autoReboot({
           hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
           serviceName: CONDUCTOR_SERVICE,
           helperImage: 'docker:cli',
