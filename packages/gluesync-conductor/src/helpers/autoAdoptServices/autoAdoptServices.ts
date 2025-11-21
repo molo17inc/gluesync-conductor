@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   composeServiceFieldConfig,
   LabelPrefix,
+  RawComposeService,
 } from '../../models/composeFile.model';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
@@ -9,6 +10,7 @@ import fetchAllServicesInCompose from '../fetchAllServicesInCompose/fetchAllServ
 import parseImage from '../parseImage/parseImage';
 import agentsJson from '../../../agents.json';
 import extractKeyValue from '../composeFile/extractKeyValue/extractKeyValue';
+import removeDependsOnFromServices from '../removeDependsOnFromServices/removeDependsOnFromServices';
 
 /**
  * Function to apply Conductor labels to services in docker-compose.yml.
@@ -26,7 +28,10 @@ const autoAdoptServices = async (): Promise<{
     const allServiceIds: readonly string[] = fetchAllServicesInCompose(
       composeJson,
       false,
-    ).filter(id => {
+    );
+
+    // Services that ALREADY have a conductor type label
+    const alreadyLabeledIds = allServiceIds.filter(id => {
       const service = composeJson.services?.[id];
       if (!service) return false;
 
@@ -38,21 +43,56 @@ const autoAdoptServices = async (): Promise<{
         label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`),
       );
 
-      return !hasConductorType;
+      return hasConductorType;
     });
 
-    // If no services need updating, bail out early
-    if (allServiceIds.length === 0) {
+    // First pass: remove depends_on from already-labeled services
+    const { cleanedServices: cleanedLabeledServices, removedDependsOnIds } =
+      removeDependsOnFromServices(composeJson, alreadyLabeledIds);
+
+    // If we removed depends_on from some existing labeled services and
+    // there is NOTHING else to adopt, only write those changes and bail out.
+    const unlabeledIds = allServiceIds.filter(
+      id => !alreadyLabeledIds.includes(id),
+    );
+
+    if (unlabeledIds.length === 0) {
+      if (removedDependsOnIds.length === 0) {
+        return {
+          success: true,
+          updatedIds: [],
+          unmatchedIds: [],
+        };
+      }
+
+      const updatedComposeFile = {
+        ...composeJson,
+        services: {
+          ...composeJson.services,
+          ...cleanedLabeledServices,
+        },
+      };
+
+      await writeComposeFile(updatedComposeFile);
+
       return {
         success: true,
-        updatedIds: [],
+        updatedIds: [...removedDependsOnIds],
         unmatchedIds: [],
       };
     }
 
-    const { updatedServices, updatedIds, unmatchedIds } = allServiceIds.reduce(
+    // From this point on, work on a base services object where
+    // already-labeled services are already cleaned from depends_on.
+    const baseServices: Record<string, RawComposeService> = {
+      ...composeJson.services,
+      ...cleanedLabeledServices,
+    };
+
+    // Second pass: adopt UNLABELED services (and ensure depends_on removed via utility)
+    const { updatedServices, updatedIds, unmatchedIds } = unlabeledIds.reduce(
       (acc, id) => {
-        const service = composeJson.services?.[id];
+        const service = baseServices?.[id];
         if (!service) {
           throw new Error(`Service ${id} not found`);
         }
@@ -111,6 +151,14 @@ const autoAdoptServices = async (): Promise<{
           };
         }
 
+        // Use the utility to drop depends_on for this service
+        const { cleanedServices } = removeDependsOnFromServices(
+          { ...composeJson, services: baseServices },
+          [id],
+        );
+
+        const cleanedService = cleanedServices[id] ?? service;
+
         // Generate a short UUID only for agent type
         const agentId = conductorType === 'agent' ? uuidv4().split('-')[0] : id;
 
@@ -126,7 +174,7 @@ const autoAdoptServices = async (): Promise<{
         // Normalize environment
         const normalizedEnv = extractKeyValue(
           composeServiceFieldConfig.environment.separator,
-          service.environment,
+          cleanedService.environment,
         );
 
         const finalEnvironment =
@@ -141,20 +189,25 @@ const autoAdoptServices = async (): Promise<{
         return {
           updatedServices: {
             ...acc.updatedServices,
-            [id]: { ...service, labels: finalLabels, environment: envArray },
+            [id]: {
+              ...cleanedService,
+              labels: finalLabels,
+              environment: envArray,
+            },
           },
           updatedIds: [...acc.updatedIds, id],
           unmatchedIds: acc.unmatchedIds,
         };
       },
       {
-        updatedServices: {},
+        updatedServices: {} as Record<string, RawComposeService>,
         updatedIds: [] as ReadonlyArray<string>,
         unmatchedIds: [] as ReadonlyArray<string>,
       },
     );
 
-    if (updatedIds.length === 0) {
+    // If no newly adopted services and no depends_on was removed, bail out
+    if (updatedIds.length === 0 && removedDependsOnIds.length === 0) {
       return {
         success: true,
         updatedIds: [],
@@ -162,12 +215,19 @@ const autoAdoptServices = async (): Promise<{
       };
     }
 
-    const updatedComposeFile = { ...composeJson, services: updatedServices };
+    const updatedComposeFile = {
+      ...composeJson,
+      services: {
+        ...baseServices,
+        ...updatedServices,
+      },
+    };
+
     await writeComposeFile(updatedComposeFile);
 
     return {
       success: true,
-      updatedIds,
+      updatedIds: [...removedDependsOnIds, ...updatedIds],
       unmatchedIds,
     };
   } catch (error) {
