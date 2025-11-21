@@ -17,6 +17,9 @@ import serviceRoutes from './routes/services';
 import supportRoutes from './routes/support';
 import { getLogger } from './utils/logger';
 import autoAdoptServices from './helpers/autoAdoptServices/autoAdoptServices';
+import { autoReboot } from './helpers/autoReboot/autoReboot';
+import getRootPath from './helpers/getRootPath/getRootPath';
+import healConductorConf from './helpers/healConductorConf/healConductorConf';
 
 type FastifyServices = {
   docker: Docker;
@@ -108,6 +111,17 @@ const startServer = async () => {
   } else {
     // Nothing adopted because of an error
     logger.error('Failed to apply Conductor labels at startup');
+  }
+
+  const rebootNeeded = await healConductorConf('gluesync-conductor');
+
+  if (rebootNeeded) {
+    autoReboot({
+      hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
+      serviceName: 'gluesync-conductor',
+      helperImage: 'docker:cli',
+      log: msg => logger.info({ msg }, '[conductor-updater] self-heal log'),
+    });
   }
 };
 
