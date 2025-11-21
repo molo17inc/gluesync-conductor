@@ -8,7 +8,7 @@ import getVersionByChannel from '../releaseChannel/getVersionByChannel';
 const BAD_VOLUME = './logs/conductor:/opt/gluesync-conductor/logs';
 const GOOD_VOLUME = './logs:/opt/gluesync-conductor/logs';
 
-const healConductorConf = async (releaseChannel: string): Promise<boolean> => {
+const healConductorConf = async (): Promise<boolean> => {
   const conductorServiceName =
     process.env.CONDUCTOR_NAME || 'gluesync-conductor';
 

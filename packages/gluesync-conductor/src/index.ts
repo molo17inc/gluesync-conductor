@@ -113,7 +113,7 @@ const startServer = async () => {
     logger.error('Failed to apply Conductor labels at startup');
   }
 
-  const rebootNeeded = await healConductorConf('gluesync-conductor');
+  const rebootNeeded = await healConductorConf();
 
   if (rebootNeeded) {
     autoReboot({
