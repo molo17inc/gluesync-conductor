@@ -3,7 +3,7 @@
 gs-license.dat
 *.jks
 
-debug-container/data/core-hub
+debug-container/linux/data/core-hub
 
 packages/**/build
 packages/**/lib
