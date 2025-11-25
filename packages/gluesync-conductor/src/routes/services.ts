@@ -3,7 +3,6 @@ import addServices from '../functions/service/addServices/addServices';
 import editServices from '../functions/service/editServices/editServices';
 import getServices from '../functions/service/getServices/getServices';
 import getAgentVersion from '../functions/service/getServiceVersion/getServiceVersion';
-import adoptServices from '../functions/service/adoptServices/adoptServices';
 
 const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.post('/services', {
@@ -426,8 +425,7 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
     },
     handler: getServices,
   });
-
-  fastify.get('/services/:id/version', {
+  fastify.get('/services/:id/version/:releaseChannel?', {
     schema: {
       tags: ['services'],
       summary: 'Get service version information',
@@ -438,6 +436,11 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
         required: ['id'],
         properties: {
           id: { type: 'string', description: 'Service ID' },
+          releaseChannel: {
+            type: 'string',
+            enum: ['alpha', 'beta', 'ga'],
+            description: 'Release channel (optional, defaults to "ga")',
+          },
         },
       },
       response: {
@@ -453,6 +456,8 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
                 latestVersionAlpha: { type: 'string' },
                 latestVersionBeta: { type: 'string' },
                 latestVersionGA: { type: 'string' },
+                mandatoryUpdate: { type: 'boolean' },
+                releaseChannel: { type: 'string' },
               },
             },
           },
@@ -488,36 +493,6 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
       },
     },
     handler: getAgentVersion,
-  });
-
-  fastify.post('/services/adopts', {
-    schema: {
-      tags: ['services'],
-      summary: 'Adopt services',
-      description:
-        'Calls the service backoffice.molo17 and returns the service version information',
-      params: {},
-      response: {
-        200: {
-          type: 'object',
-          properties: {
-            additionalProperties: true,
-            success: { type: 'boolean' },
-            data: {
-              additionalProperties: true,
-              type: 'object',
-              properties: {
-                currentVersion: { type: 'string' },
-                latestVersionAlpha: { type: 'string' },
-                latestVersionBeta: { type: 'string' },
-                latestVersionGA: { type: 'string' },
-              },
-            },
-          },
-        },
-      },
-    },
-    handler: adoptServices,
   });
 };
 

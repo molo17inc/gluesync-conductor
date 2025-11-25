@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { AutoUpdate } from './autoUpdate.model';
+import { AutoReboot } from './autoReboot.model';
 
 /**
  * Spawns a process and resolves when it exits.
@@ -42,7 +42,7 @@ export const spawnAsync = (
  * Runs a helper container that performs:
  *   docker compose up -d --force-recreate <service>
  */
-export const autoUpdate: AutoUpdate = async ({
+export const autoReboot: AutoReboot = async ({
   hostProjectDir,
   serviceName = 'gluesync-conductor',
   helperImage = 'docker:28', // image with docker CLI + compose plugin

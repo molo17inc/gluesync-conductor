@@ -1,4 +1,4 @@
-export type AutoUpdate = (
+export type AutoReboot = (
   options: Readonly<{
     hostProjectDir: string;
     serviceName: string;
