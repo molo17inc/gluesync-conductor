@@ -1,8 +1,5 @@
 #!/usr/bin/env pwsh
 
-# --- Fail immediately on any error ---
-$ErrorActionPreference = "Stop"
-
 # --- Arguments ---
 param (
   [Parameter(Mandatory = $true)]
@@ -16,6 +13,10 @@ param (
 
   [string]$CustomDockerFile
 )
+
+# --- Fail immediately on any error ---
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
 
 # --- Default values ---
 $IMAGE_NAME = "molo17/$AppName"
