@@ -67,7 +67,7 @@ Write-Host "✅ VERSION file created with content: $(Get-Content VERSION)"
 
 # --- Docker login ---
 Write-Host "Logging into Docker registry..."
-$CI_REGISTRY_PASSWORD | docker login -u $env:CI_REGISTRY_USER --password-stdin
+$env:CI_REGISTRY_PASSWORD | docker login -u $env:CI_REGISTRY_USER --password-stdin
 if ($LASTEXITCODE -ne 0) { throw "❌ Docker login failed" }
 Write-Host "✅ Docker login successful"
 
