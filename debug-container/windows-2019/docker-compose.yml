@@ -199,21 +199,21 @@ services:
     networks:
       - gluesync-windows-net
 
-  portainer:
-    # Portainer default credentials: admin | passwordpassword
-    image: portainer/portainer-ce:2.35.0-windows1809-amd64
-    container_name: portainer
-    ports:
-      - 9443:9443
-    volumes:
-      - \\.\pipe\docker_engine:\\.\pipe\docker_engine
-    command:
-      [
-        '--admin-password',
-        '$$2y$$05$$wxahdaIgY6yjxyPjvSqyr.NeLhCOY/pWLXSJykVsfUGaRXnjq3etK',
-      ]
-    networks:
-      - gluesync-windows-net
+  # portainer:
+  #   # Portainer default credentials: admin | passwordpassword
+  #   image: portainer/portainer-ce:2.35.0-windows1809-amd64
+  #   container_name: portainer
+  #   ports:
+  #     - 9443:9443
+  #   volumes:
+  #     - \\.\pipe\docker_engine:\\.\pipe\docker_engine
+  #   command:
+  #     [
+  #       '--admin-password',
+  #       '$$2y$$05$$wxahdaIgY6yjxyPjvSqyr.NeLhCOY/pWLXSJykVsfUGaRXnjq3etK',
+  #     ]
+  #   networks:
+  #     - gluesync-windows-net
 
 networks:
   gluesync-windows-net:

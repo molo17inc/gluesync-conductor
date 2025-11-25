@@ -4,6 +4,10 @@ gs-license.dat
 *.jks
 
 debug-container/linux/data/core-hub
+debug-container/**/data/core-hub/database
+debug-container/**/logs/**
+!debug-container/**/logs/**/
+!debug-container/**/logs/**/.gitkeep
 
 packages/**/build
 packages/**/lib
@@ -200,7 +204,7 @@ Temporary Items
 
 ### Node ###
 # Logs
-logs
+# logs
 *.log
 npm-debug.log*
 yarn-debug.log*
