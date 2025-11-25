@@ -79,6 +79,40 @@ services:
     networks:
       - gluesync-windows-net
 
+  gluesync-conductor:
+    container_name: gluesync-conductor
+    # image: molo17/gluesync-conductor:latest-win-nanoserver-ltsc2019
+    build:
+      context: ../..
+      dockerfile: Dockerfile.windows
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.conductor.rule=PathPrefix(`/conductor/api/`)
+      - traefik.http.routers.conductor.entrypoints=websecure
+      - traefik.http.routers.conductor.tls=true
+      - traefik.http.services.conductor.loadbalancer.server.port=1717
+      - traefik.http.services.conductor.loadbalancer.server.scheme=https
+      - traefik.http.routers.conductor.middlewares=conductor@docker
+      - traefik.http.routers.conductor.service=conductor
+      - traefik.http.middlewares.conductor.replacepathregex.regex=^/conductor/api/(.*)
+      - traefik.http.middlewares.conductor.replacepathregex.replacement=/$$1
+      - traefik.http.services.conductor.loadbalancer.passhostheader=true
+      - com.molo17.conductor.type=module
+    environment:
+      - BASE_PATH=$PWD
+      - LOG_LEVEL=trace
+    volumes:
+      - \\.\pipe\docker_engine:\\.\pipe\docker_engine
+      # - ./shared:C:\opt\gluesync\shared
+      - ./shared:C:\opt\gluesync\data # replace in codebase gluesync/data with gluesync/shared
+      - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
+      - ./data/conductor:C:\opt\gluesync\data
+      - ./logs:/opt/gluesync-conductor/logs
+    ports:
+      - 5017:1717
+    networks:
+      - gluesync-windows-net
+
   gluesync-chronos:
     container_name: gluesync-chronos
     image: molo17/gluesync-chronos:latest-win-nanoserver-ltsc2019
