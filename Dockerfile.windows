@@ -1,0 +1,59 @@
+# escape=`
+
+ARG WINDOWS_TAG=ltsc2019
+ARG WINDOWS_VERSION=nanoserver
+
+FROM molo17/node:22.13.1-win-$WINDOWS_VERSION-$WINDOWS_TAG-develop AS builder
+
+WORKDIR C:\opt\gluesync-conductor
+
+# Switch default shell to PowerShell 7
+SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
+
+COPY . .
+
+RUN yarn install --immutable --immutable-cache
+RUN yarn build
+
+FROM molo17/node:22.13.1-win-$WINDOWS_VERSION-$WINDOWS_TAG-develop
+
+ENV NODE_ENV=production
+ENV DKR_COMPOSE_FILE=docker-compose.yml
+ENV DKR_COMPOSE_FILE_SOURCE=docker-compose.yml
+ENV GLUESYNC_LICENSE_FILE=C:\opt\gluesync\data\gs-license.dat
+ENV GLUESYNC_SECURITY_CONFIG=C:\opt\gluesync\data\security-config.json
+ENV COREHUB_UDP_PORT_RANGE=1717-1727
+ENV HOST=0.0.0.0
+ENV PORT=1717
+ENV DOCKER_HOST=npipe:////./pipe/docker_engine
+ENV CORE_HUB_NAME=gluesync-core-hub
+ENV LOG_LEVEL=INFO
+ENV USE_SDK=true
+ENV SSL_SKIP_VERIFY=true
+ENV SSL_ENABLED=true
+ENV SSL_CERT_FILE=C:\opt\gluesync\data\gluesync-cert.pem
+ENV SSL_KEY_FILE=C:\opt\gluesync\data\gluesync-key.pem
+ENV MOUNT_LEGACY_FILE_CONFIG=false
+ENV GLUESYNC_CONFIG_DIR=.\shared
+
+WORKDIR C:\opt\gluesync-conductor
+
+RUN ls
+
+# Copy only the build
+COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js index.js
+COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js.map index.js.map
+# COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\static\ static
+
+COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\agents.json agents.json
+
+# Copy log uploader scripts FROM build output
+COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\collect-logs.ps1 collect-logs.ps1
+
+COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\public\gluesync-conductor.svg static\logo.svg
+
+EXPOSE 1717
+
+CMD ["node","index.js"]
+
+# CMD ["pwsh", "-Command", "while ($true) { Start-Sleep -Seconds 3600 }"]

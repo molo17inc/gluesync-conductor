@@ -8,6 +8,7 @@ debug-container/**/data/core-hub/database
 debug-container/**/logs/**
 !debug-container/**/logs/**/
 !debug-container/**/logs/**/.gitkeep
+scheduler.db
 
 packages/**/build
 packages/**/lib
