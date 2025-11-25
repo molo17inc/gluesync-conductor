@@ -257,11 +257,11 @@ update_budibase_version:
     - if: '$CI_COMMIT_TAG'
     - if: '$CI_COMMIT_BRANCH == "develop"'
 
-build_windows_artifacts:
+build_windows_nanoserver_artifacts:
   stage: deploy
   variables:
     APP_NAME: 'gluesync-conductor'
-    WINDOWS_VERSION: 'servercore'
+    WINDOWS_VERSION: 'nanoserver'
   parallel:
     matrix:
       - WINDOWS_TAG: "ltsc2019"
