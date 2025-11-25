@@ -18,8 +18,8 @@ RUN yarn build
 FROM molo17/node:22.13.1-win-$WINDOWS_VERSION-$WINDOWS_TAG-develop
 
 ENV NODE_ENV=production
-ENV DKR_COMPOSE_FILE=docker-compose.yml
-ENV DKR_COMPOSE_FILE_SOURCE=docker-compose.yml
+ENV DKR_COMPOSE_FILE=C:\opt\gluesync-conductor\root-folder\docker-compose.yml
+ENV DKR_COMPOSE_FILE_SOURCE=C:\opt\gluesync-conductor\root-folder\docker-compose.yml
 ENV GLUESYNC_LICENSE_FILE=C:\opt\gluesync\data\gs-license.dat
 ENV GLUESYNC_SECURITY_CONFIG=C:\opt\gluesync\data\security-config.json
 ENV COREHUB_UDP_PORT_RANGE=1717-1727

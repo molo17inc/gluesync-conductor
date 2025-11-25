@@ -104,10 +104,8 @@ services:
       - LOG_LEVEL=trace
     volumes:
       - \\.\pipe\docker_engine:\\.\pipe\docker_engine
-      # - ./shared:C:\opt\gluesync\shared
-      - ./shared:C:\opt\gluesync\data # replace in codebase gluesync/data with gluesync/shared
-      # - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
-      # - ./data/conductor:C:\opt\gluesync\data
+      - ./shared:C:\opt\gluesync\data
+      - .:C:\opt\gluesync-conductor\root-folder
       - ./logs:C:\opt\gluesync-conductor\logs
     ports:
       - 5017:1717
