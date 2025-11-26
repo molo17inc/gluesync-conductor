@@ -22,6 +22,8 @@ declare namespace NodeJS {
     readonly SSL_SKIP_VERIFY: string;
     readonly SSL_ENABLED: string;
     readonly MOUNT_LEGACY_FILE_CONFIG: string;
+
+    readonly IS_WINDOWS: string;
   }
 }
 

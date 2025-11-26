@@ -26,6 +26,7 @@ ENV SSL_CERT_FILE=/opt/gluesync/data/gluesync-cert.pem
 ENV SSL_KEY_FILE=/opt/gluesync/data/gluesync-key.pem
 ENV MOUNT_LEGACY_FILE_CONFIG=false
 ENV GLUESYNC_CONFIG_DIR=./shared
+ENV IS_WINDOWS=true
 
 # Setup app directory
 WORKDIR /opt/gluesync-conductor
