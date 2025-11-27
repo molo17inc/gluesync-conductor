@@ -52,7 +52,8 @@ export interface GluesyncConfig {
  */
 const settings: GluesyncConfig = {
   // CoreHub connection settings
-  coreHubUrl: process.env.CORE_HUB_URL,
+  coreHubUrl:
+    process.env.GLUESYNC_HOST || process.env.CORE_HUB_ADDRESS || 'localhost',
 
   // SSL/TLS settings
   useSSL: process.env.SSL_ENABLED?.trim().toLowerCase() === 'true',
@@ -63,8 +64,8 @@ const settings: GluesyncConfig = {
   // License and security settings
   licenseFile:
     process.env.GLUESYNC_LICENSE_FILE || '/opt/gluesync/data/gs-license.dat',
-    moduleTag: process.env.GLUESYNC_MODULE_TAG || 'conductor',
-    securityConfig:
+  moduleTag: process.env.GLUESYNC_MODULE_TAG || 'conductor',
+  securityConfig:
     process.env.GLUESYNC_SECURITY_CONFIG ||
     '/opt/gluesync/data/security-config.json',
 
@@ -81,7 +82,7 @@ const settings: GluesyncConfig = {
  * Update CoreHub URL in settings
  * @param url The CoreHub URL to use
  */
-export function updateCoreHubUrl(url: string | null): void {
+export const updateCoreHubUrl = (url: string | null): void => {
   if (!url) return;
 
   settings.coreHubUrl = url;
@@ -101,13 +102,12 @@ export function updateCoreHubUrl(url: string | null): void {
   } catch (error) {
     console.error(`Invalid CoreHub URL: ${url}`, error);
   }
-}
+};
 
 /**
  * Ensure required directories exist
  */
-export function ensureDirectories(): void {
-  // Create data directory if it doesn't exist
+export const ensureDirectories = (): void => {
   const dataDir = path.dirname(settings.licenseFile);
   if (!fs.existsSync(dataDir)) {
     try {
@@ -117,6 +117,6 @@ export function ensureDirectories(): void {
       console.error(`Failed to create data directory: ${error}`);
     }
   }
-}
+};
 
 export default settings;
