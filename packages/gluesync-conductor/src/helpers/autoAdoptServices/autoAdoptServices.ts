@@ -211,10 +211,6 @@ const autoAdoptServices = async (): Promise<{
 
         // Platform behavior for newly adopted services
         const platformAdjustedService: RawComposeService = (() => {
-          if (!isWindows) {
-            return cleanedServiceBase;
-          }
-
           const singleServiceMap = { [id]: cleanedServiceBase };
 
           const adjustedServices =
@@ -222,7 +218,7 @@ const autoAdoptServices = async (): Promise<{
               ? applyWindowsdjustments(
                   singleServiceMap,
                   [id],
-                  true,
+                  isWindows,
                   gluesyncHostDefault,
                   windowsNetworkName,
                 )
