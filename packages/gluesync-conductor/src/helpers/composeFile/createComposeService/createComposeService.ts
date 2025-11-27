@@ -179,6 +179,7 @@ const createComposeService: CreateComposeService = (
         LOG_CONFIG_FILE: isWindows
           ? `${sharedPath}\\logback.xml`
           : '/opt/gluesync/shared/logback.xml',
+        ...(isWindows && { GLUESYNC_HOST: ['gluesync-core-hub'] }),
       }),
     }).map(([key, value]) => `${key}=${value}`),
 
