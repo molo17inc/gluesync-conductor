@@ -101,28 +101,28 @@ docker push "$VERSION_TAG_WINDOWS"
 if ($LASTEXITCODE -ne 0) { throw "❌ Docker push failed" }
 Write-Host "✅ Pushed $VERSION_TAG_WINDOWS"
 
-# # --- Tag and push latest-windows for release branches ---
-# if ($env:CI_COMMIT_TAG -match '^release-') {
-#   $LATEST_BASE = "$IMAGE_NAME:latest"
-#   $LATEST_TAG = "$LATEST_BASE-win-$($WindowsVersion)-$($WindowsTag)"
+# --- Tag and push latest-windows for release branches ---
+if ($env:CI_COMMIT_TAG -match '^release-') {
+  $LATEST_BASE = "$IMAGE_NAME:latest"
+  $LATEST_TAG = "$LATEST_BASE-win-$($WindowsVersion)-$($WindowsTag)"
 
-#   docker tag "$VERSION_TAG_WINDOWS" "$LATEST_TAG"
-#   if ($LASTEXITCODE -ne 0) { throw "❌ Docker tag failed" }
+  docker tag "$VERSION_TAG_WINDOWS" "$LATEST_TAG"
+  if ($LASTEXITCODE -ne 0) { throw "❌ Docker tag failed" }
 
-#   docker push "$LATEST_TAG"
-#   if ($LASTEXITCODE -ne 0) { throw "❌ Docker push latest-windows failed" }
+  docker push "$LATEST_TAG"
+  if ($LASTEXITCODE -ne 0) { throw "❌ Docker push latest-windows failed" }
 
-#   Write-Host "✅ Pushed $LATEST_TAG"
+  Write-Host "✅ Pushed $LATEST_TAG"
 
-#   # --- Backwards compatibility for ltsc2022 ---
-#   if ($WindowsTag -eq "ltsc2022") {
-#     $LEGACY_TAG = "$LATEST_BASE-windows"
-#     docker tag "$VERSION_TAG_WINDOWS" "$LEGACY_TAG"
-#     if ($LASTEXITCODE -ne 0) { throw "❌ Docker tag legacy failed" }
+  # --- Backwards compatibility for ltsc2022 ---
+  if ($WindowsTag -eq "ltsc2022") {
+    $LEGACY_TAG = "$LATEST_BASE-windows"
+    docker tag "$VERSION_TAG_WINDOWS" "$LEGACY_TAG"
+    if ($LASTEXITCODE -ne 0) { throw "❌ Docker tag legacy failed" }
 
-#     docker push "$LEGACY_TAG"
-#     if ($LASTEXITCODE -ne 0) { throw "❌ Docker push legacy failed" }
+    docker push "$LEGACY_TAG"
+    if ($LASTEXITCODE -ne 0) { throw "❌ Docker push legacy failed" }
 
-#     Write-Host "✅ Pushed legacy tag $LEGACY_TAG (for ltsc2022)"
-#   }
-# }
+    Write-Host "✅ Pushed legacy tag $LEGACY_TAG (for ltsc2022)"
+  }
+}
