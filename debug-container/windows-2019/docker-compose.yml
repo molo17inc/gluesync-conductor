@@ -130,7 +130,7 @@ services:
       - traefik.http.services.chronos.loadbalancer.passhostheader=true
       - com.molo17.conductor.type=module
     environment:
-      - GLUESYNC_HOST=https://gluesync-core-hub:1717
+      - GLUESYNC_HOST=gluesync-core-hub
       - SSL_ENABLED=true
       - SSL_SKIP_VERIFY=true
       - TIMEZONE=UTC # optionally hardcode timezone value in IANA format (es. Europe/Rome, from IANA database)
