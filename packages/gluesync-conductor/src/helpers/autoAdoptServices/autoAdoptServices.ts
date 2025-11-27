@@ -60,9 +60,7 @@ const autoAdoptServices = async (): Promise<{
 
     const windowsNetworkName = 'gluesync-windows-net';
 
-    const isWindows =
-      typeof process.env.IS_WINDOWS === 'string' &&
-      process.env.IS_WINDOWS.toLowerCase() === 'true';
+    const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
     // Extract all service IDs without the EXCLUDED_SERVICES
     const allServiceIds: readonly string[] = fetchAllServicesInCompose(
