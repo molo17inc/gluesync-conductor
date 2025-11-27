@@ -11,6 +11,37 @@ import parseImage from '../parseImage/parseImage';
 import agentsJson from '../../../agents.json';
 import extractKeyValue from '../composeFile/extractKeyValue/extractKeyValue';
 import removeDependsOnFromServices from '../removeDependsOnFromServices/removeDependsOnFromServices';
+import addGluesyncHostToAgents from '../addGluesyncHostToAgents/addGluesyncHostToAgents';
+import addNetworkToServices from '../addNetworkToServices/addNetworkToServices';
+
+/**
+ * Apply platform-specific adjustments (GLUESYNC_HOST + network) to services.
+ * On non-Windows, this is a no-op and returns the original services map.
+ */
+const applyWindowsdjustments = (
+  services: Record<string, RawComposeService>,
+  serviceIds: readonly string[],
+  isWindows: boolean,
+  gluesyncHostDefault: string,
+  windowsNetworkName: string,
+): Record<string, RawComposeService> =>
+  isWindows
+    ? (() => {
+        const { services: withHostServices } = addGluesyncHostToAgents(
+          services,
+          serviceIds,
+          gluesyncHostDefault,
+        );
+
+        const { services: withNetServices } = addNetworkToServices(
+          withHostServices,
+          serviceIds,
+          windowsNetworkName,
+        );
+
+        return withNetServices;
+      })()
+    : services;
 
 /**
  * Function to apply Conductor labels to services in docker-compose.yml.
@@ -23,6 +54,15 @@ const autoAdoptServices = async (): Promise<{
 }> => {
   try {
     const composeJson = await readComposeFile({ raw: true });
+
+    const gluesyncHostDefault =
+      process.env.GLUESYNC_HOST ?? 'gluesync-core-hub';
+
+    const windowsNetworkName = 'gluesync-windows-net';
+
+    const isWindows =
+      typeof process.env.IS_WINDOWS === 'string' &&
+      process.env.IS_WINDOWS.toLowerCase() === 'true';
 
     // Extract all service IDs without the EXCLUDED_SERVICES
     const allServiceIds: readonly string[] = fetchAllServicesInCompose(
@@ -47,8 +87,18 @@ const autoAdoptServices = async (): Promise<{
     });
 
     // First pass: remove depends_on from already-labeled services
-    const { cleanedServices: cleanedLabeledServices, removedDependsOnIds } =
+    const { cleanedServices, removedDependsOnIds } =
       removeDependsOnFromServices(composeJson, alreadyLabeledIds);
+
+    // Platform-specific behavior like GLUESYNC_HOST in environment and network
+    const platformAdjustedLabeledServices: Record<string, RawComposeService> =
+      applyWindowsdjustments(
+        cleanedServices,
+        alreadyLabeledIds,
+        isWindows,
+        gluesyncHostDefault,
+        windowsNetworkName,
+      );
 
     // If we removed depends_on from some existing labeled services and
     // there is NOTHING else to adopt, only write those changes and bail out.
@@ -69,7 +119,7 @@ const autoAdoptServices = async (): Promise<{
         ...composeJson,
         services: {
           ...composeJson.services,
-          ...cleanedLabeledServices,
+          ...platformAdjustedLabeledServices,
         },
       };
 
@@ -86,7 +136,7 @@ const autoAdoptServices = async (): Promise<{
     // already-labeled services are already cleaned from depends_on.
     const baseServices: Record<string, RawComposeService> = {
       ...composeJson.services,
-      ...cleanedLabeledServices,
+      ...platformAdjustedLabeledServices,
     };
 
     // Second pass: adopt UNLABELED services (and ensure depends_on removed via utility)
@@ -152,12 +202,35 @@ const autoAdoptServices = async (): Promise<{
         }
 
         // Use the utility to drop depends_on for this service
-        const { cleanedServices } = removeDependsOnFromServices(
+        const { cleanedServices: cleanedSingle } = removeDependsOnFromServices(
           { ...composeJson, services: baseServices },
           [id],
         );
 
-        const cleanedService = cleanedServices[id] ?? service;
+        const cleanedServiceBase = cleanedSingle[id] ?? service;
+
+        // Platform behavior for newly adopted services
+        const platformAdjustedService: RawComposeService = (() => {
+          if (!isWindows) {
+            return cleanedServiceBase;
+          }
+
+          const singleServiceMap = { [id]: cleanedServiceBase };
+
+          const adjustedServices =
+            conductorType === 'agent'
+              ? applyWindowsdjustments(
+                  singleServiceMap,
+                  [id],
+                  true,
+                  gluesyncHostDefault,
+                  windowsNetworkName,
+                )
+              : addNetworkToServices(singleServiceMap, [id], windowsNetworkName)
+                  .services;
+
+          return adjustedServices[id] ?? cleanedServiceBase;
+        })();
 
         // Generate a short UUID only for agent type
         const agentId = conductorType === 'agent' ? uuidv4().split('-')[0] : id;
@@ -174,7 +247,7 @@ const autoAdoptServices = async (): Promise<{
         // Normalize environment
         const normalizedEnv = extractKeyValue(
           composeServiceFieldConfig.environment.separator,
-          cleanedService.environment,
+          platformAdjustedService.environment,
         );
 
         const finalEnvironment =
@@ -190,7 +263,7 @@ const autoAdoptServices = async (): Promise<{
           updatedServices: {
             ...acc.updatedServices,
             [id]: {
-              ...cleanedService,
+              ...platformAdjustedService,
               labels: finalLabels,
               environment: envArray,
             },
