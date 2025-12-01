@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
-// Internal mutable cell using Map
+// isUpdateMode state
 const cell = new Map<string, boolean>([['value', false]]);
 
 export const enableUpdateMode = (): void => {
