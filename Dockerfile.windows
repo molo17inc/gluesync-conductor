@@ -11,7 +11,8 @@ WORKDIR C:\opt\gluesync-conductor
 SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
 
 # 
-ADD https://download.docker.com/win/static/stable/x86_64/docker.exe C:/Windows/System32/docker.exe
+ADD https://download.docker.com/win/static/stable/x86_64/docker-28.0.0.zip C:/docker.zip
+RUN Expand-Archive -Path C:/docker.zip -DestinationPath C:/Windows/System32
 
 COPY . .
 
