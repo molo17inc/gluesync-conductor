@@ -10,6 +10,9 @@ WORKDIR C:\opt\gluesync-conductor
 # Switch default shell to PowerShell 7
 SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
 
+# 
+ADD https://download.docker.com/win/static/stable/x86_64/docker.exe C:/Windows/System32/docker.exe
+
 COPY . .
 
 RUN yarn install --immutable --immutable-cache
