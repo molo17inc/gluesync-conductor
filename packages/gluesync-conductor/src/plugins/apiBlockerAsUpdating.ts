@@ -34,7 +34,7 @@ const apiBlockerAsUpdatingPlugin = (
     if (isUpdateMode()) {
       reply.header('Retry-After', '60').code(statusCode).send({
         success: false,
-        error: 'Update in progress',
+        error: 'Conductor is updating. Try again later',
         message,
       });
     }

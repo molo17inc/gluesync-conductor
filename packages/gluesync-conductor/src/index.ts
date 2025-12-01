@@ -66,7 +66,7 @@ const startServer = async () => {
   // Register api blocker when updating plugin, routes after this will be blocked when updating
   await server.register(apiBlockerAsUpdatingPlugin, {
     statusCode: 503,
-    message: 'Conductor is updating.',
+    message: 'Conductor is updating. Try again later',
   });
 
   // Register route modules
