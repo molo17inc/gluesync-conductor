@@ -155,7 +155,7 @@ const createComposeService: CreateComposeService = (
     ),
     environment: Object.entries({
       ...environment,
-     ...(agentType && { TYPE: agentType }),
+      ...(agentType && { TYPE: agentType }),
       GLUESYNC_MODULE_TAG: 'conductor',
       ...(serviceType === 'agent'
         ? {
