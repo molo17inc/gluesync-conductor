@@ -32,7 +32,6 @@ type FastifyMethods = {
 };
 
 declare module 'fastify' {
-  // eslint-disable-next-line @typescript-eslint/no-empty-interface
   interface FastifyInstance extends FastifyServices, FastifyMethods {}
 }
 
