@@ -1,4 +1,5 @@
 import editUpdateImagesInComposeFile from '../../../../helpers/editUpdatedImagesInComposeFile/editUpdateImagesInComposeFile';
+import { enableUpdateMode } from '../../../../plugins/apiBlockerAsUpdating';
 import { UpdateConductorOnly } from './updateConductorOnly.model';
 
 const updateConductorOnly: UpdateConductorOnly = async (
@@ -20,6 +21,12 @@ const updateConductorOnly: UpdateConductorOnly = async (
   await editUpdateImagesInComposeFile([id], composeJson, conductorVersions);
 
   const results = await Promise.allSettled([id].map(action));
+
+  const allFulfilled = results.every(r => r.status === 'fulfilled');
+
+  if (allFulfilled) {
+    enableUpdateMode();
+  }
 
   return { id, results };
 };
