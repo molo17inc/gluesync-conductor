@@ -15,34 +15,74 @@ const healConductorConf = async (): Promise<boolean> => {
   const composeJson = await readComposeFile({ raw: true });
 
   const service = composeJson.services?.[conductorServiceName];
-  if (!service || !Array.isArray(service.volumes)) {
+  if (!service) {
     return false;
   }
+
+  // Normalize environment to an array of strings
+  const rawEnvArray: string[] = Array.isArray(service.environment)
+    ? (service.environment as string[])
+    : service.environment && typeof service.environment === 'object'
+      ? Object.entries(service.environment).map(([k, v]) => `${k}=${v}`)
+      : [];
+
+  const hasGluesyncHostInitial = rawEnvArray.some(e =>
+    e.startsWith('GLUESYNC_HOST='),
+  );
+
+  const { healedEnvArray, envChanged } = (() => {
+    const mapped = rawEnvArray.map(e => {
+      if (e.startsWith('CORE_HUB_ADDRESS=')) {
+        const value = e.substring('CORE_HUB_ADDRESS='.length);
+        if (!hasGluesyncHostInitial) {
+          return { value: `GLUESYNC_HOST=${value}`, changed: true };
+        }
+        // GLUESYNC_HOST already present: drop CORE_HUB_ADDRESS
+        return { value: '', changed: true };
+      }
+      return { value: e, changed: false };
+    });
+
+    const filtered = mapped.filter(x => x.value !== '').map(x => x.value);
+
+    const changed = mapped.some(x => x.changed);
+
+    return { healedEnvArray: filtered, envChanged: changed };
+  })();
+
+  const baseService = {
+    ...service,
+    ...(envChanged ? { environment: healedEnvArray } : {}),
+  };
 
   const {
     fullName,
     shortImageName,
     tag: currentTag = 'latest',
-  } = parseImage(service.image);
+  } = parseImage(baseService.image);
 
   // Only retag when current tag is "latest"
   if (currentTag !== 'latest') {
-    const healedVolumesNonLatest = service.volumes.map(vol =>
-      typeof vol === 'string' && vol.trim() === BAD_VOLUME ? GOOD_VOLUME : vol,
-    );
+    const healedVolumesNonLatest = Array.isArray(baseService.volumes)
+      ? baseService.volumes.map(vol =>
+          typeof vol === 'string' && vol.trim() === BAD_VOLUME
+            ? GOOD_VOLUME
+            : vol,
+        )
+      : baseService.volumes;
 
-    const volumesChangedNonLatest = healedVolumesNonLatest.some(
-      (v, i) => v !== service.volumes?.[i],
-    );
+    const volumesChangedNonLatest = Array.isArray(baseService.volumes)
+      ? healedVolumesNonLatest?.some((v, i) => v !== baseService.volumes?.[i])
+      : false;
 
-    if (!volumesChangedNonLatest) {
+    if (!volumesChangedNonLatest && !envChanged) {
       return false;
     }
 
     const updatedServicesNonLatest = {
       ...composeJson.services,
       [conductorServiceName]: {
-        ...service,
+        ...baseService,
         volumes: healedVolumesNonLatest,
       },
     };
@@ -54,35 +94,34 @@ const healConductorConf = async (): Promise<boolean> => {
 
     await writeComposeFile(updatedComposeNonLatest);
 
-    // Volumes fixed, tag unchanged
     return true;
   }
-  // Tag is "latest": fix volumes AND update tag
 
-  const healedVolumes = service.volumes.map(vol =>
-    typeof vol === 'string' && vol.trim() === BAD_VOLUME ? GOOD_VOLUME : vol,
-  );
+  // Tag is "latest": fix volumes AND maybe update tag
+  const healedVolumes = Array.isArray(baseService.volumes)
+    ? baseService.volumes.map(vol =>
+        typeof vol === 'string' && vol.trim() === BAD_VOLUME
+          ? GOOD_VOLUME
+          : vol,
+      )
+    : baseService.volumes;
 
-  const volumesChanged = healedVolumes.some(
-    (v, i) => v !== service.volumes?.[i],
-  );
+  const volumesChanged = Array.isArray(baseService.volumes)
+    ? healedVolumes?.some((v, i) => v !== baseService.volumes?.[i])
+    : false;
 
-  if (!volumesChanged) {
-    // Nothing to heal → don't touch tag
+  if (!volumesChanged && !envChanged) {
     return false;
   }
 
-  // Fetch agent info and compute new tag like in canUpdateContainers
   const agentInfo: AgentInfoResponse = await fetchAgentInfo(shortImageName);
-
-  // Same version resolving logic as canUpdateContainers
   const newTag = getVersionByChannel(agentInfo, 'ga');
+
   if (!newTag) {
-    // cannot determine new tag → still persist fixed volumes, no retag
     const updatedServicesNoTag = {
       ...composeJson.services,
       [conductorServiceName]: {
-        ...service,
+        ...baseService,
         volumes: healedVolumes,
       },
     };
@@ -102,7 +141,7 @@ const healConductorConf = async (): Promise<boolean> => {
   const updatedServices = {
     ...composeJson.services,
     [conductorServiceName]: {
-      ...service,
+      ...baseService,
       volumes: healedVolumes,
       image: newImage,
     },

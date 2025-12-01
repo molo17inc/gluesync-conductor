@@ -99,13 +99,13 @@ services:
       - traefik.http.services.conductor.loadbalancer.passhostheader=true
       - com.molo17.conductor.type=module
     environment:
-      - BASE_PATH=$PWD
+      - BASE_PATH=${PWD}
       - CORE_HUB_ADDRESS=gluesync-core-hub
       - LOG_LEVEL=trace
     volumes:
       - \\.\pipe\docker_engine:\\.\pipe\docker_engine
       - ./shared:C:\opt\gluesync\data
-      - .:C:\opt\gluesync-conductor\root-folder
+      - ./:C:\opt\gluesync-conductor\root-folder
       - ./logs:C:\opt\gluesync-conductor\logs
     ports:
       - 5017:1717
