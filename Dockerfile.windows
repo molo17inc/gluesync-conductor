@@ -24,12 +24,9 @@ SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
 
 # Install Docker CLI into the final image
 ADD https://download.docker.com/win/static/stable/x86_64/docker-28.0.0.zip C:/docker.zip
-RUN pwsh -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; \
-[System.IO.Compression.ZipFile]::ExtractToDirectory('C:/docker.zip','C:/docker'); \
-Copy-Item C:/docker/docker/docker.exe C:/Windows/System32/docker.exe; \
-Copy-Item C:/docker/docker/dockerd.exe C:/Windows/System32/dockerd.exe; \
-Remove-Item C:/docker -Recurse -Force; \
-Remove-Item C:/docker.zip -Force"
+RUN pwsh -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('C:/docker.zip','C:/docker'); Copy-Item 'C:/docker/docker/docker.exe' 'C:/Windows/System32/docker.exe'; Copy-Item 'C:/docker/docker/dockerd.exe' 'C:/Windows/System32/dockerd.exe'; Remove-Item 'C:/docker' -Recurse -Force; Remove-Item 'C:/docker.zip' -Force"
+
+
 
 # Environment variables
 ENV NODE_ENV=production
