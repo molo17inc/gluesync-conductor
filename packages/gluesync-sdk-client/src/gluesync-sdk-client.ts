@@ -15,41 +15,24 @@
  * Copyright (C) 2025 MOLO17. All rights reserved.
  */
 
-import {
-  GluesyncClient,
-  GluesyncConnectionError,
-  GluesyncLicenseError,
-  GluesyncAuthenticationError,
-} from 'gluesync-sdk';
-import settings, { updateCoreHubUrl } from './config';
-
-// Define Node.js types
-declare global {
-  namespace NodeJS {
-    interface ProcessEnv {
-      GLUESYNC_MODULE_TAG?: string;
-      GLUESYNC_LICENSE_FILE?: string;
-      GLUESYNC_SECURITY_CONFIG?: string;
-      CORE_HUB_URL?: string;
-      SSL_ENABLED?: string;
-      SSL_SKIP_VERIFY?: string;
-    }
-
-    interface Timeout {}
-  }
-}
-
+import { GluesyncClient } from 'gluesync-sdk';
 import { Logger } from 'pino';
+import settings, { updateCoreHubUrl } from './config';
 
 /**
  * Singleton class for managing the Gluesync SDK client connection
  */
 export class GluesyncSDKClient {
   private static _instance: GluesyncSDKClient;
+
   private _token: string | null = null;
+
   private _client: GluesyncClient | null = null;
+
   private _isInitialized = false;
-  private _reconnectTimer: NodeJS.Timeout | null = null;
+
+  private readonly _reconnectTimer: NodeJS.Timeout | null = null;
+
   private _logger: Logger | Console = console;
 
   /**
@@ -68,24 +51,27 @@ export class GluesyncSDKClient {
    * @param message Log message
    * @param meta Optional metadata object
    */
-  private _log(level: 'info' | 'error' | 'warn', message: string, meta?: any): void {
+  private readonly _log = (
+    level: 'info' | 'error' | 'warn',
+    message: string,
+    meta?: any,
+  ): void => {
     if (this._isPinoLogger(this._logger)) {
       (this._logger as any)[level](meta || {}, message);
+    } else if (meta) {
+      (this._logger as any)[level](message, meta);
     } else {
-      if (meta) {
-        (this._logger as any)[level](message, meta);
-      } else {
-        (this._logger as any)[level](message);
-      }
+      (this._logger as any)[level](message);
     }
-  }
+  };
 
   /**
    * Check if the logger is a Pino Logger instance
    */
-  private _isPinoLogger(logger: Logger | Console): logger is Logger {
-    return typeof logger === 'object' && 'info' in logger && 'child' in logger;
-  }
+  private readonly _isPinoLogger = (
+    logger: Logger | Console,
+  ): logger is Logger =>
+    typeof logger === 'object' && 'info' in logger && 'child' in logger;
 
   /**
    * Get the singleton instance with optional logger
@@ -133,9 +119,9 @@ export class GluesyncSDKClient {
     // Access properties safely using type assertion and any type
     // This is necessary because the GluesyncClient class has private properties
     const client = this._client as any;
-    const host = client.host;
-    const port = client.port;
-    const useSSL = client.useSSL;
+    const { host } = client;
+    const { port } = client;
+    const { useSSL } = client;
 
     return this._buildCoreHubUrl(host, port, useSSL);
   }
@@ -147,11 +133,11 @@ export class GluesyncSDKClient {
    * @param useSSL Whether to use HTTPS or HTTP
    * @returns The formatted CoreHub URL
    */
-  private _buildCoreHubUrl(
+  private readonly _buildCoreHubUrl = (
     host: string,
     port: number,
     useSSL = false,
-  ): string | null {
+  ): string | null => {
     if (!host) {
       return null;
     }
@@ -163,36 +149,65 @@ export class GluesyncSDKClient {
 
     const scheme = useSSL ? 'https' : 'http';
     return `${scheme}://${host}:${port}`;
-  }
+  };
 
   /**
    * Initialize the Gluesync client with indefinite retries and exponential backoff
    * The method will retry indefinitely with exponential backoff starting at 1 second,
    * doubling each time up to 30 seconds, then resetting back to 1 second.
    */
-  public async initialize(): Promise<void> {
+  public initialize = async (): Promise<void> => {
     if (this._isInitialized) {
       this._log('info', 'Gluesync SDK client already initialized');
       return;
     }
 
-    // Parse host and port from CORE_HUB_URL if provided
+    // Parse host and port from GLUESYNC_HOST if provided
     let host: string | null = null;
     let port: number | null = null;
     let useSSL = false;
 
-    if (process.env.CORE_HUB_URL) {
-      try {
-        const url = new URL(process.env.CORE_HUB_URL);
-        host = url.hostname;
-        port = parseInt(url.port, 10) || null;
-        useSSL = url.protocol === 'https:';
-        this._log(
-          'info',
-          `Using provided CoreHub host: ${host} at port: ${port}`,
-        );
-      } catch (error) {
-        this._log('error', `Invalid CORE_HUB_URL: ${process.env.CORE_HUB_URL}`);
+    const gluesyncHost =
+      process.env.CORE_HUB_ADDRESS || process.env.GLUESYNC_HOST;
+
+    if (gluesyncHost) {
+      const rawHost = gluesyncHost.trim();
+
+      // If it already looks like a URL, keep as-is.
+      // Otherwise, use _buildCoreHubUrl to construct a default URL.
+      const normalized =
+        rawHost.startsWith('http://') || rawHost.startsWith('https://')
+          ? rawHost
+          : this._buildCoreHubUrl(rawHost, 1717, false);
+
+      if (!normalized) {
+        this._log('error', `Invalid GLUESYNC_HOST: ${rawHost} - empty host`);
+      } else {
+        try {
+          const url = new URL(normalized);
+          host = url.hostname;
+          port = url.port ? parseInt(url.port, 10) : 1717;
+          useSSL = url.protocol === 'https:';
+
+          this._log(
+            'info',
+            `Using provided CoreHub host: ${host} at port: ${port} (raw=${rawHost}, normalized=${normalized})`,
+          );
+        } catch (error: unknown) {
+          if (error instanceof Error) {
+            this._log(
+              'error',
+              `Invalid GLUESYNC_HOST: ${rawHost} - ${error.message}`,
+              { stack: error.stack },
+            );
+          } else {
+            this._log(
+              'error',
+              `Invalid GLUESYNC_HOST: ${rawHost} - Unknown error`,
+              { error },
+            );
+          }
+        }
       }
     } else {
       this._log(
@@ -211,7 +226,7 @@ export class GluesyncSDKClient {
     }
 
     // Security configuration
-    let securityConfig =
+    const securityConfig =
       process.env.GLUESYNC_SECURITY_CONFIG ||
       '/opt/gluesync/data/security-config.json';
 
@@ -234,9 +249,12 @@ export class GluesyncSDKClient {
       } as any); // Use type assertion to bypass type checking
 
       // Set up event handlers
-      this._client.on('connected', this._onConnected.bind(this));
-      this._client.on('disconnected', this._onDisconnected.bind(this));
-      this._client.on('error', this._onError.bind(this));
+      this._client.on('connected', this._onConnected);
+      this._client.on('disconnected', this._onDisconnected);
+      this._client.on('error', this._onError);
+      console.log(
+        'Security config file not found, using environment variables',
+      );
 
       // Connect to CoreHub with indefinite retry logic and exponential backoff
       let retryCount = 0;
@@ -286,7 +304,8 @@ export class GluesyncSDKClient {
               }
               break; // Connection successful
             } else {
-              this._log('warn',
+              this._log(
+                'warn',
                 'UDP discovery did not find CoreHub, will retry',
               );
               // Don't throw an error, just let the retry loop continue
@@ -298,7 +317,8 @@ export class GluesyncSDKClient {
         } catch (error) {
           if (host && port) {
             // If we have a specific host/port and can't connect, don't retry
-            this._log('error',
+            this._log(
+              'error',
               `Failed to connect to CoreHub at ${host}:${port}: ${error}`,
             );
             throw error;
@@ -326,21 +346,19 @@ export class GluesyncSDKClient {
                 // Create new client with different discovery port
                 this._client = new GluesyncClient({
                   moduleTag: settings.moduleTag,
-                  licenseFilePath: settings.licenseFile || '/opt/gluesync/data/gs-license.dat',
+                  licenseFilePath:
+                    settings.licenseFile || '/opt/gluesync/data/gs-license.dat',
                   securityConfig: securityConfig || undefined,
                   ssl: useSSL,
-                  verifySsl: process.env.SSL_SKIP_VERIFY?.toLowerCase() !== 'true',
+                  verifySsl:
+                    process.env.SSL_SKIP_VERIFY?.toLowerCase() !== 'true',
                   discoveryPortRange: randomPortOffset,
-                  
                 } as any);
 
                 // Set up event handlers
-                this._client.on('connected', this._onConnected.bind(this));
-                this._client.on(
-                  'disconnected',
-                  this._onDisconnected.bind(this),
-                );
-                this._client.on('error', this._onError.bind(this));
+                this._client.on('connected', this._onConnected);
+                this._client.on('disconnected', this._onDisconnected);
+                this._client.on('error', this._onError);
 
                 this._log(
                   'info',
@@ -356,7 +374,8 @@ export class GluesyncSDKClient {
                 );
               }
             } else {
-              this._log('warn',
+              this._log(
+                'warn',
                 `UDP discovery attempt ${retryCount} failed: ${errorMessage}`,
               );
 
@@ -392,46 +411,46 @@ export class GluesyncSDKClient {
       this._log('error', `Failed to initialize Gluesync SDK client: ${error}`);
       throw error;
     }
-  }
+  };
 
   /**
    * Shutdown the Gluesync client
    */
-  public async shutdown(): Promise<void> {
+  public shutdown = async (): Promise<void> => {
     if (this._client && (this._client as any).isConnected) {
       this._log('info', 'Disconnecting from CoreHub...');
       await this._client.disconnect();
       this._isInitialized = false;
       this._token = null;
     }
-  }
+  };
 
   /**
    * Handle the connected event
    * @param token The JWT token received from the server
    */
-  private _onConnected(token: string): void {
+  private readonly _onConnected = (token: string): void => {
     this._token = token;
     this._log('info', 'Connected to CoreHub successfully! Token received.');
-  }
+  };
 
   /**
    * Handle the disconnected event
    * @param reason The reason for disconnection
    */
-  private _onDisconnected(reason: string): void {
+  private readonly _onDisconnected = (reason: string): void => {
     this._token = null;
     this._isInitialized = false;
     this._log('info', `Disconnected from CoreHub: ${reason}`);
-  }
+  };
 
   /**
    * Handle the error event
    * @param error The exception that occurred
    */
-  private _onError(error: Error): void {
+  private readonly _onError = (error: Error): void => {
     console.error(`Error in connection: ${error.message}`);
-  }
+  };
 }
 
 // Create a global instance for easy import

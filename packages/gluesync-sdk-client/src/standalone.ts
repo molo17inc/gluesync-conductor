@@ -60,13 +60,11 @@ async function main() {
     }
 
     // Register routes
-    app.get('/health', async () => {
-      return {
-        status: 'ok',
-        sdkInitialized: gluesyncSdkClient.isInitialized,
-        coreHubUrl: gluesyncSdkClient.coreHubUrl,
-      };
-    });
+    app.get('/health', async () => ({
+      status: 'ok',
+      sdkInitialized: gluesyncSdkClient.isInitialized,
+      coreHubUrl: gluesyncSdkClient.coreHubUrl,
+    }));
 
     // Initialize the Gluesync SDK client
     await gluesyncSdkClient.initialize();
