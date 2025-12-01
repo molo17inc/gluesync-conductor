@@ -20,11 +20,17 @@ const healConductorConf = async (): Promise<boolean> => {
   }
 
   // Normalize environment to an array of strings
-  const rawEnvArray: string[] = Array.isArray(service.environment)
-    ? (service.environment as string[])
-    : service.environment && typeof service.environment === 'object'
-      ? Object.entries(service.environment).map(([k, v]) => `${k}=${v}`)
-      : [];
+  const rawEnvArray: string[] = (() => {
+    if (Array.isArray(service.environment)) {
+      return service.environment as string[];
+    }
+
+    if (service.environment && typeof service.environment === 'object') {
+      return Object.entries(service.environment).map(([k, v]) => `${k}=${v}`);
+    }
+
+    return [];
+  })();
 
   const hasGluesyncHostInitial = rawEnvArray.some(e =>
     e.startsWith('GLUESYNC_HOST='),
