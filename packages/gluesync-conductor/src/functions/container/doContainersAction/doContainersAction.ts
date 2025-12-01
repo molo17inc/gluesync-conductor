@@ -31,7 +31,9 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       });
 
       const branchResult =
-        conductorInfo?.needsUpdate && requestIds.length === 0
+        conductorInfo?.needsUpdate &&
+        (requestIds.length === 0 ||
+          (requestIds.length === 1 && requestIds[0] === 'gluesync-conductor'))
           ? await updateConductorOnly(action, conductorInfo, composeJson)
           : await updateNormalBulk(
               action,
