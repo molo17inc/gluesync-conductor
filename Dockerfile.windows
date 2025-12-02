@@ -3,15 +3,12 @@
 ARG WINDOWS_TAG=ltsc2019
 ARG WINDOWS_VERSION=nanoserver
 
-# Builder stage: install dependencies and build Node project
+# Builder stage
 FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop AS builder
 
 WORKDIR C:\opt\gluesync-conductor
-
-# Switch default shell to PowerShell 7
 SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
 
-# Copy source and build
 COPY . .
 RUN yarn install --immutable --immutable-cache
 RUN yarn build
@@ -19,10 +16,16 @@ RUN yarn build
 # Final stage: runtime image
 FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop
 
-# Switch default shell to PowerShell 7
-SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
+# Install Docker CLI first (before any SHELL redeclaration)
+ADD https://download.docker.com/win/static/stable/x86_64/docker-28.0.0.zip C:/docker.zip
+RUN pwsh -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; `
+  [System.IO.Compression.ZipFile]::ExtractToDirectory('C:/docker.zip','C:/docker'); `
+  Copy-Item 'C:/docker/docker/docker.exe' 'C:/Windows/System32/docker.exe'; `
+  Copy-Item 'C:/docker/docker/dockerd.exe' 'C:/Windows/System32/dockerd.exe'; `
+  Remove-Item 'C:/docker' -Recurse -Force; `
+  Remove-Item 'C:/docker.zip' -Force"
 
-# Environment variables
+# Environment variables (no SHELL instruction in final stage)
 ENV NODE_ENV=production
 ENV DKR_COMPOSE_FILE=C:\opt\gluesync-conductor\root-folder\docker-compose.yml
 ENV DKR_COMPOSE_FILE_SOURCE=C:\opt\gluesync-conductor\root-folder\docker-compose.yml
@@ -45,18 +48,12 @@ ENV IS_WINDOWS=true
 
 WORKDIR C:\opt\gluesync-conductor
 
-# Copy build artifacts from builder stage
+# Copy build artifacts
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js index.js
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js.map index.js.map
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\agents.json agents.json
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\collect-logs.ps1 collect-logs.ps1
 COPY --from=builder C:\opt\gluesync-conductor\public\gluesync-conductor.svg static\logo.svg
-
-
-# Install Docker CLI into the final image
-ADD https://download.docker.com/win/static/stable/x86_64/docker-28.0.0.zip C:/docker.zip
-RUN pwsh -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('C:/docker.zip','C:/docker'); Copy-Item 'C:/docker/docker/docker.exe' 'C:/Windows/System32/docker.exe'; Copy-Item 'C:/docker/docker/dockerd.exe' 'C:/Windows/System32/dockerd.exe'; Remove-Item 'C:/docker' -Recurse -Force; Remove-Item 'C:/docker.zip' -Force"
-
 
 EXPOSE 1717
 
