@@ -24,6 +24,11 @@ RUN pwsh -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; `
   Remove-Item 'C:/docker' -Recurse -Force; `
   Remove-Item 'C:/docker.zip' -Force"
 
+# Install docker-compose standalone executable
+ADD https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-windows-x86_64.exe C:/docker-compose.exe
+RUN Copy-Item 'C:/docker-compose.exe' 'C:/Windows/System32/docker-compose.exe'; `
+  Remove-Item 'C:/docker-compose.exe'
+
 # Ensure PATH includes System32
 ENV PATH="C:\\Windows\\System32;${PATH}"
 
