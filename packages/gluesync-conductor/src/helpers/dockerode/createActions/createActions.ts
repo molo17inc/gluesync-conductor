@@ -11,9 +11,10 @@ import { autoReboot } from '../../autoReboot/autoReboot';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
+const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
 const runCmd: RunCmd = async (cmdFn, id, filename, extraOptions?) => {
-  const result = await cmdFn({
+  const commonOptions: any = {
     cwd: getRootPath(),
     config: filename,
     log: true,
@@ -23,7 +24,13 @@ const runCmd: RunCmd = async (cmdFn, id, filename, extraOptions?) => {
       getRootPath({ basePath: process.env.BASE_PATH }),
     ],
     commandOptions: [...(extraOptions ?? []), id],
-  });
+  };
+
+  const options = isWindows
+    ? { ...commonOptions, executablePath: 'docker-compose' } // will spawn `docker-compose instead of docker compose`
+    : commonOptions;
+
+  const result = await cmdFn(options);
 
   const message = result.out.trim() || result.err.trim();
 
