@@ -8,6 +8,7 @@ import { RawComposeFile } from '../../../models/composeFile.model';
 import writeComposeFile from '../../composeFile/writeComposeFile/writeComposeFile';
 import { getLogger } from '../../../utils/logger';
 import { autoReboot } from '../../autoReboot/autoReboot';
+import ensureVolumeDirs from '../../ensureVolumeDirs/ensureVolumeDirs';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
@@ -26,8 +27,16 @@ const runCmd: RunCmd = async (cmdFn, id, filename, extraOptions?) => {
     commandOptions: [...(extraOptions ?? []), id],
   };
 
+  // On Windows, force standalone docker-compose (spawns `docker-compose ...`)
   const options = isWindows
-    ? { ...commonOptions, executablePath: 'docker-compose' } // will spawn `docker-compose instead of docker compose`
+    ? {
+        ...commonOptions,
+        executable: {
+          standalone: true,
+          // optional if not in PATH:
+          // executablePath: 'docker-compose',
+        },
+      }
     : commonOptions;
 
   const result = await cmdFn(options);
@@ -53,7 +62,12 @@ const createActions: CreateActions = ({
     remove: id => runCmd(rm, id, filename, ['-s', '-v']),
     removeNetwork: id => cleanupOrphanNetworkByName(docker, id),
     restart: id => runCmd(restartAll, id, filename, ['--no-deps']),
-    start: id => runCmd(upAll, id, filename, ['--no-deps']),
+    start: id => {
+      if (isWindows) {
+        ensureVolumeDirs(id);
+      }
+      return runCmd(upAll, id, filename, ['--no-deps']);
+    },
     stop: id => runCmd(stop, id, filename),
     undeploy: async (id: string) => {
       await runCmd(rm, id, filename, ['-s', '-v']);
