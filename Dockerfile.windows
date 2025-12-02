@@ -9,12 +9,6 @@ FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop AS builde
 WORKDIR C:\opt\gluesync-conductor
 SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
 
-COPY . .
-RUN yarn install --immutable --immutable-cache
-RUN yarn build
-
-# Final stage: runtime image
-FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop
 
 # Install Docker CLI first (before any SHELL redeclaration)
 ADD https://download.docker.com/win/static/stable/x86_64/docker-28.0.0.zip C:/docker.zip
@@ -24,6 +18,13 @@ RUN pwsh -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; `
   Copy-Item 'C:/docker/docker/dockerd.exe' 'C:/Windows/System32/dockerd.exe'; `
   Remove-Item 'C:/docker' -Recurse -Force; `
   Remove-Item 'C:/docker.zip' -Force"
+
+COPY . .
+RUN yarn install --immutable --immutable-cache
+RUN yarn build
+
+# Final stage: runtime image
+FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop
 
 # Environment variables (no SHELL instruction in final stage)
 ENV NODE_ENV=production
