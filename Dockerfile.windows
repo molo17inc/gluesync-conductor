@@ -16,17 +16,18 @@ RUN yarn build
 # Final stage: runtime image
 FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop
 
-
-# Install Docker CLI first (before any SHELL redeclaration)
+# Install Docker CLI (client only)
 ADD https://download.docker.com/win/static/stable/x86_64/docker-28.0.0.zip C:/docker.zip
 RUN pwsh -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; `
   [System.IO.Compression.ZipFile]::ExtractToDirectory('C:/docker.zip','C:/docker'); `
   Copy-Item 'C:/docker/docker/docker.exe' 'C:/Windows/System32/docker.exe'; `
-  Copy-Item 'C:/docker/docker/dockerd.exe' 'C:/Windows/System32/dockerd.exe'; `
   Remove-Item 'C:/docker' -Recurse -Force; `
   Remove-Item 'C:/docker.zip' -Force"
 
-# Environment variables (no SHELL instruction in final stage)
+# Ensure PATH includes System32
+ENV PATH="C:\\Windows\\System32;${PATH}"
+
+# Environment variables
 ENV NODE_ENV=production
 ENV DKR_COMPOSE_FILE=C:\opt\gluesync-conductor\root-folder\docker-compose.yml
 ENV DKR_COMPOSE_FILE_SOURCE=C:\opt\gluesync-conductor\root-folder\docker-compose.yml
@@ -44,7 +45,7 @@ ENV SSL_ENABLED=true
 ENV SSL_CERT_FILE=C:\opt\gluesync\data\gluesync-cert.pem
 ENV SSL_KEY_FILE=C:\opt\gluesync\data\gluesync-key.pem
 ENV MOUNT_LEGACY_FILE_CONFIG=false
-ENV GLUESYNC_CONFIG_DIR=.\shared
+ENV GLUESYNC_CONFIG_DIR=C:\opt\gluesync-conductor\shared
 ENV IS_WINDOWS=true
 
 WORKDIR C:\opt\gluesync-conductor
@@ -54,7 +55,7 @@ COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js.map index.js.map
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\agents.json agents.json
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\collect-logs.ps1 collect-logs.ps1
-COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\public\gluesync-conductor.svg static\logo.svg
+COPY --from=builder C:\opt\gluesync-conductor\public\gluesync-conductor.svg static\logo.svg
 
 EXPOSE 1717
 
