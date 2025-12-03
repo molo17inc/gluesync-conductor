@@ -62,9 +62,9 @@ const createActions: CreateActions = ({
     remove: id => runCmd(rm, id, filename, ['-s', '-v']),
     removeNetwork: id => cleanupOrphanNetworkByName(docker, id),
     restart: id => runCmd(restartAll, id, filename, ['--no-deps']),
-    start: id => {
+    start: async id => {
       if (isWindows) {
-        ensureVolumeDirs(id);
+        await ensureVolumeDirs(id);
       }
       return runCmd(upAll, id, filename, ['--no-deps']);
     },
