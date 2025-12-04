@@ -13,6 +13,7 @@ export const spawnAsync = (
     const child = spawn(cmd, args, {
       cwd: opts.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
+      shell: process.env.IS_WINDOWS?.toLowerCase() === 'true' || false,
     });
 
     child.stdout.on('data', data => {
