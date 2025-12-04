@@ -127,10 +127,13 @@ const startServer = async () => {
   const rebootNeeded = await healConductorConf();
 
   if (rebootNeeded) {
+    const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
     autoReboot({
       hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
       serviceName: 'gluesync-conductor',
-      helperImage: 'docker:cli',
+      helperImage: isWindows
+        ? 'molo17/gluesync-conductor:0.4.2-win-nanoserver-ltsc2019'
+        : 'docker:cli',
       log: msg => logger.info({ msg }, '[conductor-updater] self-heal log'),
     });
   }

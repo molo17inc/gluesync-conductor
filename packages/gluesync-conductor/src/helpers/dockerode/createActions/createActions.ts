@@ -95,7 +95,9 @@ const createActions: CreateActions = ({
         autoReboot({
           hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
           serviceName: CONDUCTOR_SERVICE,
-          helperImage: 'docker:cli',
+          helperImage: isWindows
+            ? 'molo17/gluesync-conductor:0.4.2-win-nanoserver-ltsc2019'
+            : 'docker:cli',
           log: msg =>
             logger.info({ msg }, '[conductor-updater] self-update log'),
         });
