@@ -7,6 +7,8 @@ ARG WINDOWS_VERSION=nanoserver
 FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop AS builder
 
 WORKDIR C:\opt\gluesync-conductor
+
+# Switch default shell to PowerShell 7  
 SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
 
 COPY . .
@@ -58,10 +60,14 @@ WORKDIR C:\opt\gluesync-conductor
 # Copy build artifacts
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js index.js
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js.map index.js.map
+# COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\static\ static
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\agents.json agents.json
+# Copy log uploader scripts FROM build output
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\collect-logs.ps1 collect-logs.ps1
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\public\gluesync-conductor.svg static\logo.svg
 
 EXPOSE 1717
 
 CMD ["node","index.js"]
+
+# CMD ["pwsh", "-Command", "while ($true) { Start-Sleep -Seconds 3600 }"]
