@@ -21,6 +21,7 @@ import autoAdoptServices from './helpers/autoAdoptServices/autoAdoptServices';
 import { autoReboot } from './helpers/autoReboot/autoReboot';
 import getRootPath from './helpers/getRootPath/getRootPath';
 import healConductorConf from './helpers/healConductorConf/healConductorConf';
+import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
 
 type FastifyServices = {
   docker: Docker;
@@ -109,6 +110,9 @@ const startServer = async () => {
           `Some services had no Conductor type and did not match agents.json: ${unmatchedIds.join(', ')}`,
         );
       }
+
+      // Start only the adopted/updated services (Linux + Windows)
+      await upAdoptedServices(server.docker, updatedIds);
     } else if (updatedIds.length === 0 && unmatchedIds.length > 0) {
       // Edge case: no adoption, only unmatched
       logger.warn(

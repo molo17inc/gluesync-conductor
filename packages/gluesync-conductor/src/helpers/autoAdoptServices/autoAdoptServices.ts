@@ -13,35 +13,61 @@ import extractKeyValue from '../composeFile/extractKeyValue/extractKeyValue';
 import removeDependsOnFromServices from '../removeDependsOnFromServices/removeDependsOnFromServices';
 import addGluesyncHostToAgents from '../addGluesyncHostToAgents/addGluesyncHostToAgents';
 import addNetworkToServices from '../addNetworkToServices/addNetworkToServices';
+import addPlatformVolumes from '../addPlatformVolumes/addPlatformVolumes';
 
 /**
- * Apply platform-specific adjustments (GLUESYNC_HOST + network) to services.
- * On non-Windows, this is a no-op and returns the original services map.
+ * Apply platform-specific adjustments (GLUESYNC_HOST + network + volumes).
+ * On non-Windows, only volumes are normalized.
  */
-const applyWindowsdjustments = (
+const applyPlatformAdjustments = (
   services: Record<string, RawComposeService>,
   serviceIds: readonly string[],
   isWindows: boolean,
   gluesyncHostDefault: string,
   windowsNetworkName: string,
-): Record<string, RawComposeService> =>
-  isWindows
-    ? (() => {
-        const { services: withHostServices } = addGluesyncHostToAgents(
-          services,
-          serviceIds,
-          gluesyncHostDefault,
-        );
+): {
+  services: Record<string, RawComposeService>;
+  updatedIds: ReadonlyArray<string>;
+} => {
+  if (isWindows) {
+    const { services: hostServices, updatedIds: hostIds } =
+      addGluesyncHostToAgents(services, serviceIds, gluesyncHostDefault);
 
-        const { services: withNetServices } = addNetworkToServices(
-          withHostServices,
-          serviceIds,
-          windowsNetworkName,
-        );
+    const { services: netServices, updatedIds: netIds } = addNetworkToServices(
+      services,
+      serviceIds,
+      windowsNetworkName,
+    );
 
-        return withNetServices;
-      })()
-    : services;
+    const { services: volServices, updatedIds: volIds } = addPlatformVolumes(
+      services,
+      serviceIds,
+      true,
+    );
+
+    return {
+      services: {
+        ...services,
+        ...hostServices,
+        ...netServices,
+        ...volServices,
+      },
+      updatedIds: [...hostIds, ...netIds, ...volIds],
+    };
+  }
+
+  // Linux: only normalize volumes
+  const { services: volServices, updatedIds: volIds } = addPlatformVolumes(
+    services,
+    serviceIds,
+    false,
+  );
+
+  return {
+    services: { ...services, ...volServices },
+    updatedIds: volIds,
+  };
+};
 
 /**
  * Function to apply Conductor labels to services in docker-compose.yml.
@@ -54,6 +80,14 @@ const autoAdoptServices = async (): Promise<{
 }> => {
   try {
     const composeJson = await readComposeFile({ raw: true });
+
+    if (!composeJson.services) {
+      return {
+        success: true,
+        updatedIds: [],
+        unmatchedIds: [],
+      };
+    }
 
     const gluesyncHostDefault =
       process.env.GLUESYNC_HOST ?? 'gluesync-core-hub';
@@ -88,15 +122,16 @@ const autoAdoptServices = async (): Promise<{
     const { cleanedServices, removedDependsOnIds } =
       removeDependsOnFromServices(composeJson, alreadyLabeledIds);
 
-    // Platform-specific behavior like GLUESYNC_HOST in environment and network
-    const platformAdjustedLabeledServices: Record<string, RawComposeService> =
-      applyWindowsdjustments(
-        cleanedServices,
-        alreadyLabeledIds,
-        isWindows,
-        gluesyncHostDefault,
-        windowsNetworkName,
-      );
+    const {
+      services: platformAdjustedLabeledServices,
+      updatedIds: platformAdjustedIds,
+    } = applyPlatformAdjustments(
+      composeJson.services,
+      alreadyLabeledIds,
+      isWindows,
+      gluesyncHostDefault,
+      windowsNetworkName,
+    );
 
     // If we removed depends_on from some existing labeled services and
     // there is NOTHING else to adopt, only write those changes and bail out.
@@ -105,7 +140,10 @@ const autoAdoptServices = async (): Promise<{
     );
 
     if (unlabeledIds.length === 0) {
-      if (removedDependsOnIds.length === 0) {
+      if (
+        removedDependsOnIds.length === 0 &&
+        platformAdjustedIds.length === 0
+      ) {
         return {
           success: true,
           updatedIds: [],
@@ -117,7 +155,7 @@ const autoAdoptServices = async (): Promise<{
         ...composeJson,
         services: {
           ...composeJson.services,
-          ...platformAdjustedLabeledServices,
+          ...{ ...platformAdjustedLabeledServices, ...cleanedServices },
         },
       };
 
@@ -125,7 +163,7 @@ const autoAdoptServices = async (): Promise<{
 
       return {
         success: true,
-        updatedIds: [...removedDependsOnIds],
+        updatedIds: [...removedDependsOnIds, ...platformAdjustedIds],
         unmatchedIds: [],
       };
     }
@@ -207,19 +245,18 @@ const autoAdoptServices = async (): Promise<{
 
         const cleanedServiceBase = cleanedSingle[id] ?? service;
 
-        // Platform behavior for newly adopted services
         const platformAdjustedService: RawComposeService = (() => {
           const singleServiceMap = { [id]: cleanedServiceBase };
 
-          const adjustedServices =
+          const adjustedServices: Record<string, RawComposeService> =
             conductorType === 'agent'
-              ? applyWindowsdjustments(
+              ? applyPlatformAdjustments(
                   singleServiceMap,
                   [id],
                   isWindows,
                   gluesyncHostDefault,
                   windowsNetworkName,
-                )
+                ).services
               : addNetworkToServices(singleServiceMap, [id], windowsNetworkName)
                   .services;
 
