@@ -3,9 +3,9 @@ import { spawnAsync } from './autoReboot';
 type AutoReboot = (
   options: Readonly<{
     hostProjectDir: string;
-    serviceName: string;
+    serviceName?: string;
     helperImage: string;
-    log: (msg: Readonly<string>) => void;
+    log?: (msg: Readonly<string>) => void;
   }>,
 ) => Promise<boolean>;
 
@@ -19,8 +19,6 @@ const autoRebootWindows: AutoReboot = async ({
     throw new Error('hostProjectDir is required');
   }
 
-  // IMPORTANT: adjust run args to match your desired update strategy.
-  // Example: stop + rm + run with the same config as compose.
   const psScript = [
     // talk to host engine
     `$env:DOCKER_HOST = 'npipe:////./pipe/docker_engine';`,
@@ -29,10 +27,9 @@ const autoRebootWindows: AutoReboot = async ({
     // stop & remove old container (ignore errors)
     `docker stop ${serviceName} 2>$null;`,
     `docker rm ${serviceName} 2>$null;`,
-    // re-run with equivalent options to compose
     `docker run -d --name ${serviceName} ` +
       `-p 5017:1717 ` +
-      `-v \\\\.\pipe\\docker_engine:\\\\.\\pipe\\docker_engine ` +
+      `-v \\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine ` +
       `-e BASE_PATH=${hostProjectDir} ` +
       `-e GLUESYNC_HOST=gluesync-core-hub ` +
       `-e LOG_LEVEL=trace ` +
