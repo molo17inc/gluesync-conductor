@@ -2,7 +2,7 @@ import { spawnAsync } from './autoReboot';
 
 type AutoReboot = (
   options: Readonly<{
-    hostProjectDir: string; // host path to project (as seen by Docker daemon)
+    hostProjectDir: string; // host path to project (as seen by the Docker daemon)
     serviceName: string;
     helperImage: string; // Windows image with pwsh (e.g. mcr.microsoft.com/powershell:lts-nanoserver-ltsc2019)
     log?: (msg: Readonly<string>) => void;
@@ -10,14 +10,18 @@ type AutoReboot = (
 ) => Promise<boolean>;
 
 /**
- * From inside the Windows conductor container, ask the host Docker
- * daemon (via DOCKER_HOST npipe) to run an ephemeral helper container:
+ * Runs a helper Windows container (ephemeral) from inside the current
+ * Windows conductor container.
  *
- *   docker run --rm \
- *     -v \\.\pipe\docker_engine:\\.\pipe\docker_engine \
- *     -v <hostProjectDir>:<hostProjectDir> \
- *     -w <hostProjectDir> \
- *     <helperImage> pwsh -NoLogo -NonInteractive -Command "<innerCmd>"
+ * The flow is:
+ *   1. This code (inside gluesync-conductor) calls `docker run ...`.
+ *   2. `docker.exe` talks to the host Docker Engine via DOCKER_HOST=npipe:////./pipe/docker_engine.
+ *   3. The host engine starts the helper container, mounting:
+ *      - the host Docker pipe
+ *      - the host project directory
+ *   4. Inside the helper, pwsh runs:
+ *        $env:DOCKER_HOST='npipe:////./pipe/docker_engine';
+ *        docker compose up -d --force-recreate <service>
  */
 const autoRebootWindows: AutoReboot = async ({
   hostProjectDir,
@@ -29,37 +33,35 @@ const autoRebootWindows: AutoReboot = async ({
     throw new Error('hostProjectDir is required');
   }
 
-  // Command that will run *inside* the helper container
-  const innerCmd = `
-    $env:DOCKER_HOST = 'npipe:////./pipe/docker_engine';
-    docker compose up -d --force-recreate ${serviceName}
-  `;
+  // Single, explicit command string passed to pwsh -Command
+  const innerCmd =
+    `& { $env:DOCKER_HOST='npipe:////./pipe/docker_engine'; ` +
+    `docker compose up -d --force-recreate ${serviceName} }`;
 
   const args: ReadonlyArray<string> = [
     'run',
     '--rm',
-    // give helper access to host Docker pipe
+    // Give helper access to the host Docker named pipe
     '-v',
     '\\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine',
-    // mount host project dir into helper at the same path
+    // Mount host project directory into helper at the same path
     '-v',
     `${hostProjectDir}:${hostProjectDir}`,
-    // run compose from that directory
+    // Run from that directory so docker compose picks up the right context
     '-w',
     hostProjectDir,
     helperImage,
-    // PowerShell Core inside the helper image
+    // Use PowerShell Core inside the helper image
     'pwsh',
     '-NoLogo',
     '-NonInteractive',
     '-Command',
-    innerCmd,
+    innerCmd, // must be a single, non-empty argument after -Command
   ];
 
   log(`[conductor-updater] docker (windows helper) ${args.join(' ')}`);
 
-  // This docker.exe is the CLI installed in your Windows container image,
-  // which talks to the host Docker Engine via DOCKER_HOST=npipe://...
+  // docker.exe is installed in your Windows container and uses DOCKER_HOST=npipe://...
   await spawnAsync('docker', args);
   return true;
 };
