@@ -3,35 +3,31 @@ import { spawnAsync } from './autoReboot';
 type AutoReboot = (
   options: Readonly<{
     hostProjectDir: string;
-    serviceName?: string;
+    serviceName: string;
     helperImage: string;
     log?: (msg: Readonly<string>) => void;
   }>,
 ) => Promise<boolean>;
 
+/**
+ * Runs a helper container on Windows that performs:
+ *   docker compose up -d --force-recreate <service>
+ */
 const autoRebootWindows: AutoReboot = async ({
   hostProjectDir,
-  helperImage,
+  serviceName = 'gluesync-conductor',
+  helperImage = 'docker:28', // image with Docker CLI + compose plugin
   log = msg => console.log(msg),
 }) => {
   if (!hostProjectDir) {
     throw new Error('hostProjectDir is required');
   }
 
-  const psScript = [
-    // talk to host engine
-    `$env:DOCKER_HOST = 'npipe:////./pipe/docker_engine';`,
-    // pull new image if desired
-    `docker pull molo17/gluesync-conductor:0.4.4-win-nanoserver-ltsc2019;`,
-    // stop & remove old container (ignore errors)
-    `docker run -d ` +
-      `-p 5017:1717 ` +
-      `-v \\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine ` +
-      `-e BASE_PATH=${hostProjectDir} ` +
-      `-e GLUESYNC_HOST=gluesync-core-hub ` +
-      `-e LOG_LEVEL=trace ` +
-      `molo17/gluesync-conductor:0.4.4-win-nanoserver-ltsc2019;`,
-  ].join(' ');
+  // Inner PowerShell command: set DOCKER_HOST to Windows pipe, then run compose
+  const innerCmd = `
+    $env:DOCKER_HOST = 'npipe:////./pipe/docker_engine';
+    docker compose up -d --force-recreate ${serviceName}
+  `;
 
   const args: ReadonlyArray<string> = [
     'run',
@@ -39,12 +35,18 @@ const autoRebootWindows: AutoReboot = async ({
     // mount host Docker engine pipe into helper
     '-v',
     '\\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine',
+    // mount project directory
+    '-v',
+    `${hostProjectDir}:${hostProjectDir}`,
+    // set working directory
+    '-w',
+    hostProjectDir,
     helperImage,
     'powershell',
     '-NoLogo',
     '-NonInteractive',
     '-Command',
-    psScript,
+    innerCmd,
   ];
 
   log(`[conductor-updater] docker (windows helper) ${args.join(' ')}`);
