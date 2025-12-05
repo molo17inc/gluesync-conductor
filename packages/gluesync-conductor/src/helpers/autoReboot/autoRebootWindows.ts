@@ -11,7 +11,6 @@ type AutoReboot = (
 
 const autoRebootWindows: AutoReboot = async ({
   hostProjectDir,
-  serviceName = 'gluesync-conductor',
   helperImage,
   log = msg => console.log(msg),
 }) => {
