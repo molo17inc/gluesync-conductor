@@ -125,6 +125,9 @@ const startServer = async () => {
   }
 
   const rebootNeeded = await healConductorConf();
+  logger.info(
+    `[conductor-updater] ${rebootNeeded ? 'reboot needed' : 'reboot not needed'}`,
+  );
 
   if (rebootNeeded) {
     const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
