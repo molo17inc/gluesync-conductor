@@ -23,17 +23,15 @@ const autoRebootWindows: AutoReboot = async ({
     // talk to host engine
     `$env:DOCKER_HOST = 'npipe:////./pipe/docker_engine';`,
     // pull new image if desired
-    `docker pull molo17/gluesync-conductor:0.4.2-win-nanoserver-ltsc2019;`,
+    `docker pull molo17/gluesync-conductor:0.4.4-win-nanoserver-ltsc2019;`,
     // stop & remove old container (ignore errors)
-    `docker stop ${serviceName} 2>$null;`,
-    `docker rm ${serviceName} 2>$null;`,
-    `docker run -d --name ${serviceName} ` +
+    `docker run -d ` +
       `-p 5017:1717 ` +
       `-v \\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine ` +
       `-e BASE_PATH=${hostProjectDir} ` +
       `-e GLUESYNC_HOST=gluesync-core-hub ` +
       `-e LOG_LEVEL=trace ` +
-      `molo17/gluesync-conductor:0.4.2-win-nanoserver-ltsc2019;`,
+      `molo17/gluesync-conductor:0.4.4-win-nanoserver-ltsc2019;`,
   ].join(' ');
 
   const args: ReadonlyArray<string> = [
