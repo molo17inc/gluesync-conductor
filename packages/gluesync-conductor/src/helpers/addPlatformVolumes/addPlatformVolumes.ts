@@ -1,12 +1,8 @@
-import { RawComposeService } from '../../models/composeFile.model';
 import { AddPlatformVolumes } from './AddPlatformVolumes.model';
 
 /**
  * Normalize volumes for services depending on platform.
- * - Windows: ./shared, ./data/<containerName>, ./logs/<containerName>
- * - Linux:   ./shared, ./data/<containerName>, ./logs/<containerName>
- * Removes legacy mounts like ./data/target and ./logs/target.
- * Returns only changed service IDs.
+ * Removes legacy mounts and only returns changed services.
  */
 const addPlatformVolumes: AddPlatformVolumes = (
   services,
@@ -32,38 +28,31 @@ const addPlatformVolumes: AddPlatformVolumes = (
             `./logs/${containerName}:/opt/gluesync/logs`,
           ];
 
-      // Filter out legacy mounts
       const filteredExisting = (svc.volumes || []).filter(
         v => !v.startsWith('./data/target') && !v.startsWith('./logs/target'),
       );
 
       const nextVolumes = [...filteredExisting, ...normalizedVolumes];
 
-      // If volumes are unchanged, skip
-      const volumesChanged =
-        JSON.stringify(nextVolumes) !== JSON.stringify(svc.volumes);
+      // Compare sets instead of JSON strings (order-insensitive)
+      const sameVolumes =
+        svc.volumes?.length === nextVolumes.length &&
+        svc.volumes.every(v => nextVolumes.includes(v));
 
-      if (!volumesChanged) {
+      if (sameVolumes) {
+        // No change
         return acc;
       }
-
-      const nextService: RawComposeService = {
-        ...svc,
-        volumes: nextVolumes,
-      };
 
       return {
         updatedServices: {
           ...acc.updatedServices,
-          [id]: nextService,
+          [id]: { ...svc, volumes: nextVolumes },
         },
         updatedIds: [...acc.updatedIds, id],
       };
     },
-    {
-      updatedServices: {} as Record<string, RawComposeService>,
-      updatedIds: [] as ReadonlyArray<string>,
-    },
+    { updatedServices: {}, updatedIds: [] as ReadonlyArray<string> },
   );
 
   return {

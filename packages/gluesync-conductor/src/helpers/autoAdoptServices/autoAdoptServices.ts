@@ -98,6 +98,9 @@ const autoAdoptServices = async (): Promise<{
 
     const windowsNetworkName = 'gluesync-windows-net';
 
+    const conductorServiceName =
+      process.env.CONDUCTOR_NAME || 'gluesync-conductor';
+
     const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
     // Extract all service IDs without the EXCLUDED_SERVICES
@@ -122,6 +125,11 @@ const autoAdoptServices = async (): Promise<{
       return hasConductorType;
     });
 
+    // Exclude conductor from platform adjustments
+    const adjustedIds = alreadyLabeledIds.filter(
+      id => id !== conductorServiceName,
+    );
+
     // First pass: remove depends_on from already-labeled services
     const { cleanedServices, removedDependsOnIds } =
       removeDependsOnFromServices(composeJson, alreadyLabeledIds);
@@ -131,7 +139,7 @@ const autoAdoptServices = async (): Promise<{
       updatedIds: platformAdjustedIds,
     } = applyPlatformAdjustments(
       composeJson.services,
-      alreadyLabeledIds,
+      adjustedIds,
       isWindows,
       gluesyncHostDefault,
       windowsNetworkName,
@@ -250,6 +258,11 @@ const autoAdoptServices = async (): Promise<{
         const cleanedServiceBase = cleanedSingle[id] ?? service;
 
         const platformAdjustedService: RawComposeService = (() => {
+          // Skip conductor → return cleaned base unchanged
+          if (id === conductorServiceName) {
+            return cleanedServiceBase;
+          }
+
           const singleServiceMap = { [id]: cleanedServiceBase };
 
           const adjustedServices: Record<string, RawComposeService> =

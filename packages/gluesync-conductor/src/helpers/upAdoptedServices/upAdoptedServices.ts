@@ -23,24 +23,29 @@ const upAdoptedServices: StartUpdatedServicesArgs = async (
     filename: dkrComposeFile,
   });
 
-  // Run all starts in parallel, avoiding loops + await-in-loop
-  const promises = updatedIds.map(id => {
-    const ensureVolumesPromise = isWindows
-      ? ensureVolumeDirs(id)
-      : Promise.resolve();
+  const conductorServiceName =
+    process.env.CONDUCTOR_NAME || 'gluesync-conductor';
 
-    return ensureVolumesPromise
-      .then(() => {
-        logger.info(`Starting adopted service: ${id}`);
-        return actions.start(id);
-      })
-      .then(() => {
-        logger.info(`Service ${id} started`);
-      })
-      .catch(err => {
-        logger.error({ err, service: id }, 'Failed to start adopted service');
-      });
-  });
+  // Run all starts in parallel, but skip conductor cause it's delica and handled by autoHeal
+  const promises = updatedIds
+    .filter(id => id !== conductorServiceName)
+    .map(id => {
+      const ensureVolumesPromise = isWindows
+        ? ensureVolumeDirs(id)
+        : Promise.resolve();
+
+      return ensureVolumesPromise
+        .then(() => {
+          logger.info(`Starting adopted service: ${id}`);
+          return actions.start(id);
+        })
+        .then(() => {
+          logger.info(`Service ${id} started`);
+        })
+        .catch(err => {
+          logger.error({ err, service: id }, 'Failed to start adopted service');
+        });
+    });
 
   await Promise.all(promises);
 };

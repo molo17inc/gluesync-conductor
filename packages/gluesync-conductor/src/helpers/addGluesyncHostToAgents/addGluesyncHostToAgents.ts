@@ -1,7 +1,4 @@
-import {
-  RawComposeService,
-  composeServiceFieldConfig,
-} from '../../models/composeFile.model';
+import { composeServiceFieldConfig } from '../../models/composeFile.model';
 import extractKeyValue from '../composeFile/extractKeyValue/extractKeyValue';
 import { AddGluesyncHostToAgents } from './AddGluesyncHostToAgents.model';
 
@@ -24,56 +21,28 @@ const addGluesyncHostToAgents: AddGluesyncHostToAgents = (
         service.environment,
       );
 
-      const hasGluesyncHost =
-        typeof normalizedEnv.GLUESYNC_HOST !== 'undefined';
-
-      if (hasGluesyncHost) {
-        return {
-          updatedServices: {
-            ...acc.updatedServices,
-            [id]: service,
-          },
-          updatedIds: acc.updatedIds,
-        };
+      if (typeof normalizedEnv.GLUESYNC_HOST !== 'undefined') {
+        // Already has GLUESYNC_HOST → no change
+        return acc;
       }
 
-      const nextEnv = {
-        ...normalizedEnv,
-        GLUESYNC_HOST: gluesyncHost,
-      };
-
-      const envArray = Object.entries(nextEnv).map(
-        ([key, value]) => `${key}=${value}`,
-      );
-
-      const nextService: RawComposeService = {
-        ...service,
-        environment: envArray,
-      };
+      const nextEnv = { ...normalizedEnv, GLUESYNC_HOST: gluesyncHost };
+      const envArray = Object.entries(nextEnv).map(([k, v]) => `${k}=${v}`);
 
       return {
         updatedServices: {
           ...acc.updatedServices,
-          [id]: nextService,
+          [id]: { ...service, environment: envArray },
         },
         updatedIds: [...acc.updatedIds, id],
       };
     },
-    {
-      updatedServices: {} as Record<string, RawComposeService>,
-      updatedIds: [] as ReadonlyArray<string>,
-    },
+    { updatedServices: {}, updatedIds: [] as ReadonlyArray<string> },
   );
 
-  // If nothing changed, return original reference to make no-op explicit
   return {
     services:
-      updatedIds.length === 0
-        ? services
-        : {
-            ...services,
-            ...updatedServices,
-          },
+      updatedIds.length === 0 ? services : { ...services, ...updatedServices },
     updatedIds,
   };
 };

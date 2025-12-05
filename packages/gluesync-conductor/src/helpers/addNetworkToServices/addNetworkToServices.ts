@@ -3,7 +3,7 @@ import { AddNetworkToServices } from './AddNetworkToServices.model';
 
 /**
  * Ensure the given network is present in `networks` for the specified services.
- * Does not modify services where the network is already present.
+ * Only modifies services where the network is missing.
  */
 const addNetworkToServices: AddNetworkToServices = (
   services,
@@ -20,48 +20,28 @@ const addNetworkToServices: AddNetworkToServices = (
 
       if (currentNetworks && currentNetworks.includes(networkName)) {
         // Network already present → no change
-        return {
-          updatedServices: {
-            ...acc.updatedServices,
-            [id]: service,
-          },
-          updatedIds: acc.updatedIds,
-        };
+        return acc;
       }
 
-      const nextService: RawComposeService =
-        !currentNetworks || currentNetworks.length === 0
-          ? ({
-              ...service,
-              networks: [networkName],
-            } as RawComposeService)
-          : ({
-              ...service,
-              networks: [...currentNetworks, networkName],
-            } as RawComposeService);
+      const nextService: RawComposeService = {
+        ...service,
+        networks:
+          currentNetworks && currentNetworks.length > 0
+            ? [...currentNetworks, networkName]
+            : [networkName],
+      };
 
       return {
-        updatedServices: {
-          ...acc.updatedServices,
-          [id]: nextService,
-        },
+        updatedServices: { ...acc.updatedServices, [id]: nextService },
         updatedIds: [...acc.updatedIds, id],
       };
     },
-    {
-      updatedServices: {} as Record<string, RawComposeService>,
-      updatedIds: [] as ReadonlyArray<string>,
-    },
+    { updatedServices: {}, updatedIds: [] as ReadonlyArray<string> },
   );
 
   return {
     services:
-      updatedIds.length === 0
-        ? services
-        : {
-            ...services,
-            ...updatedServices,
-          },
+      updatedIds.length === 0 ? services : { ...services, ...updatedServices },
     updatedIds,
   };
 };
