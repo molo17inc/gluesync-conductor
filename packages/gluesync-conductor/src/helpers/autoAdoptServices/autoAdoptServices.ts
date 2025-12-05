@@ -18,10 +18,11 @@ import addPlatformVolumes from '../addPlatformVolumes/addPlatformVolumes';
 /**
  * Apply platform-specific adjustments (GLUESYNC_HOST + network + volumes).
  * On non-Windows, only volumes are normalized.
+ * Returns only the updated services and their ids.
  */
 const applyPlatformAdjustments = (
-  services: Record<string, RawComposeService>,
-  serviceIds: readonly string[],
+  services: Readonly<Record<string, RawComposeService>>,
+  serviceIds: ReadonlyArray<string>,
   isWindows: boolean,
   gluesyncHostDefault: string,
   windowsNetworkName: string,
@@ -29,43 +30,46 @@ const applyPlatformAdjustments = (
   services: Record<string, RawComposeService>;
   updatedIds: ReadonlyArray<string>;
 } => {
-  if (isWindows) {
-    const { services: hostServices, updatedIds: hostIds } =
-      addGluesyncHostToAgents(services, serviceIds, gluesyncHostDefault);
+  const step1 = isWindows
+    ? addGluesyncHostToAgents(services, serviceIds, gluesyncHostDefault)
+    : addPlatformVolumes(services, serviceIds, false);
 
-    const { services: netServices, updatedIds: netIds } = addNetworkToServices(
-      services,
-      serviceIds,
-      windowsNetworkName,
-    );
+  const afterStep1Services: Readonly<Record<string, RawComposeService>> = {
+    ...services,
+    ...step1.services,
+  };
 
-    const { services: volServices, updatedIds: volIds } = addPlatformVolumes(
-      services,
-      serviceIds,
-      true,
-    );
+  const step2 = isWindows
+    ? addNetworkToServices(afterStep1Services, serviceIds, windowsNetworkName)
+    : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
-    return {
-      services: {
-        ...services,
-        ...hostServices,
-        ...netServices,
-        ...volServices,
-      },
-      updatedIds: [...hostIds, ...netIds, ...volIds],
-    };
-  }
+  const afterStep2Services: Readonly<Record<string, RawComposeService>> = {
+    ...afterStep1Services,
+    ...step2.services,
+  };
 
-  // Linux: only normalize volumes
-  const { services: volServices, updatedIds: volIds } = addPlatformVolumes(
-    services,
-    serviceIds,
-    false,
-  );
+  const step3 = isWindows
+    ? addPlatformVolumes(afterStep2Services, serviceIds, true)
+    : { services: {}, updatedIds: [] as ReadonlyArray<string> };
+
+  const finalServices: Readonly<Record<string, RawComposeService>> = {
+    ...afterStep2Services,
+    ...step3.services,
+  };
+
+  const allUpdatedIds: ReadonlyArray<string> = [
+    ...step1.updatedIds,
+    ...step2.updatedIds,
+    ...step3.updatedIds,
+  ];
+
+  const changedServices = Object.fromEntries(
+    allUpdatedIds.map(id => [id, finalServices[id]]),
+  ) as Record<string, RawComposeService>;
 
   return {
-    services: { ...services, ...volServices },
-    updatedIds: volIds,
+    services: changedServices,
+    updatedIds: allUpdatedIds,
   };
 };
 
@@ -290,6 +294,12 @@ const autoAdoptServices = async (): Promise<{
           ([key, value]) => `${key}=${value}`,
         );
 
+        // Derive container_name for services that don't have one
+        const existingContainerName = service.container_name;
+        const containerName =
+          existingContainerName ??
+          `${imageName}${conductorType === 'agent' ? `-${normalizedEnv.type}` : ''}-${conductorType}`;
+
         return {
           updatedServices: {
             ...acc.updatedServices,
@@ -297,6 +307,7 @@ const autoAdoptServices = async (): Promise<{
               ...platformAdjustedService,
               labels: finalLabels,
               environment: envArray,
+              container_name: containerName,
             },
           },
           updatedIds: [...acc.updatedIds, id],
