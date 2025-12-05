@@ -16,6 +16,8 @@ const upAdoptedServices: StartUpdatedServicesArgs = async (
     return;
   }
 
+  logger.info('Some adopted services needs to be restarted');
+
   const actions = createActions({
     docker,
     filename: dkrComposeFile,

@@ -1,3 +1,4 @@
+import { getLogger } from '../../utils/logger';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
 import fetchAgentInfo from '../agentInfo/agentInfo';
@@ -9,6 +10,7 @@ const BAD_VOLUME = './logs/conductor:/opt/gluesync-conductor/logs';
 const GOOD_VOLUME = './logs:/opt/gluesync-conductor/logs';
 
 const healConductorConf = async (): Promise<boolean> => {
+  const logger = getLogger();
   const conductorServiceName =
     process.env.CONDUCTOR_NAME || 'gluesync-conductor';
 
@@ -16,6 +18,7 @@ const healConductorConf = async (): Promise<boolean> => {
 
   const service = composeJson.services?.[conductorServiceName];
   if (!service) {
+    logger.info('[conductor-updater] nothing to heal (service not found)');
     return false;
   }
 
@@ -82,6 +85,7 @@ const healConductorConf = async (): Promise<boolean> => {
       : false;
 
     if (!volumesChangedNonLatest && !envChanged) {
+      logger.info('[conductor-updater] nothing to heal');
       return false;
     }
 
@@ -100,6 +104,7 @@ const healConductorConf = async (): Promise<boolean> => {
 
     await writeComposeFile(updatedComposeNonLatest);
 
+    logger.info('[conductor-updater] reboot needed to heal');
     return true;
   }
 
@@ -117,6 +122,7 @@ const healConductorConf = async (): Promise<boolean> => {
     : false;
 
   if (!volumesChanged && !envChanged) {
+    logger.info('[conductor-updater] nothing to heal');
     return false;
   }
 
@@ -139,6 +145,7 @@ const healConductorConf = async (): Promise<boolean> => {
 
     await writeComposeFile(updatedComposeNoTag);
 
+    logger.info('[conductor-updater] reboot needed to heal');
     return true;
   }
 
@@ -160,6 +167,7 @@ const healConductorConf = async (): Promise<boolean> => {
 
   await writeComposeFile(updatedCompose);
 
+  logger.info('[conductor-updater] reboot needed to heal');
   return true;
 };
 

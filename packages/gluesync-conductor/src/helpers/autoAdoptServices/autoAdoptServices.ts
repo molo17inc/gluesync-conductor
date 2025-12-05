@@ -298,7 +298,9 @@ const autoAdoptServices = async (): Promise<{
         const existingContainerName = service.container_name;
         const containerName =
           existingContainerName ??
-          `${imageName}${conductorType === 'agent' ? `-${normalizedEnv.type}` : ''}-${conductorType}`;
+          `${imageName}${
+            conductorType === 'agent' ? `-${normalizedEnv.type}` : ''
+          }-${conductorType}`;
 
         return {
           updatedServices: {
@@ -330,6 +332,12 @@ const autoAdoptServices = async (): Promise<{
       };
     }
 
+    // Deduplicate and filter out already-labeled services
+    const uniqueUpdatedIds = [...new Set(updatedIds)];
+    const newlyAdopted = uniqueUpdatedIds.filter(
+      id => !alreadyLabeledIds.includes(id),
+    );
+
     const updatedComposeFile = {
       ...composeJson,
       services: {
@@ -342,7 +350,7 @@ const autoAdoptServices = async (): Promise<{
 
     return {
       success: true,
-      updatedIds: [...removedDependsOnIds, ...updatedIds],
+      updatedIds: [...removedDependsOnIds, ...newlyAdopted],
       unmatchedIds,
     };
   } catch (error) {

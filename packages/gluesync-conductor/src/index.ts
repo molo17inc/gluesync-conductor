@@ -125,8 +125,9 @@ const startServer = async () => {
   }
 
   const rebootNeeded = await healConductorConf();
+
   logger.info(
-    `[conductor-updater] ${rebootNeeded ? 'reboot needed' : 'reboot not needed'}`,
+    `[conductor-updater] ${rebootNeeded ? 'reboot needed to heal' : 'nothing to heal'}`,
   );
 
   if (rebootNeeded) {
