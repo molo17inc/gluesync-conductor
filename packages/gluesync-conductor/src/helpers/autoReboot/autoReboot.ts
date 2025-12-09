@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import autoRebootWindows from './autoRebootWindows';
 import autoRebootLinux from './autorebootLinux';
+import { disableUpdateMode } from '../../plugins/apiBlockerAsUpdating';
+const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
 
 type AutoReboot = (
   options: Readonly<{
@@ -39,14 +41,15 @@ export const spawnAsync = (
     child.on('close', code => {
       if (code === 0) {
         console.log('[conductor-updater] process completed');
+        if (isWindows) {
+          disableUpdateMode();
+        }
         resolve(true);
       } else {
         reject(new Error(`process exited with code ${code}`));
       }
     });
   });
-
-const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
 
 export const autoReboot: AutoReboot = async opts =>
   isWindows ? autoRebootWindows(opts) : autoRebootLinux(opts);
