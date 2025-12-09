@@ -34,9 +34,8 @@ const autoRebootWindows: AutoReboot = async ({
   }
 
   // Single, explicit command string passed to pwsh -Command
-  const innerCmd =
-    `& { $env:DOCKER_HOST='npipe:////./pipe/docker_engine'; ` +
-    `docker compose up -d --force-recreate ${serviceName} }`;
+  // Use a script block to ensure the entire command is treated as one unit
+  const innerCmd = `& { $env:DOCKER_HOST='npipe:////./pipe/docker_engine'; docker compose up -d --force-recreate ${serviceName} }`;
 
   const args: ReadonlyArray<string> = [
     'run',
