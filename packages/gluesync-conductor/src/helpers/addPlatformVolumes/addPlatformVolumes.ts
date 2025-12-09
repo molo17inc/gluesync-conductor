@@ -9,6 +9,9 @@ const addPlatformVolumes: AddPlatformVolumes = (
   serviceIds,
   isWindows,
 ) => {
+  const conductorServiceName =
+    process.env.CONDUCTOR_NAME || 'gluesync-conductor';
+
   console.log('📦 addPlatformVolumes called');
   console.log('   isWindows:', isWindows);
   console.log('   serviceIds:', serviceIds);
@@ -17,6 +20,12 @@ const addPlatformVolumes: AddPlatformVolumes = (
     (acc, id) => {
       const svc = services[id];
       if (!svc) return acc;
+
+      // Skip conductor - autoheal will handle it
+      if (id === conductorServiceName) {
+        console.log(`   ⏭️  Skipping ${id} (conductor)`);
+        return acc;
+      }
 
       const containerName = svc.container_name || id;
 
@@ -37,28 +46,28 @@ const addPlatformVolumes: AddPlatformVolumes = (
       console.log(`   Current volumes:`, svc.volumes);
       console.log(`   Normalized volumes:`, normalizedVolumes);
 
-      const filteredExisting = (svc.volumes || []).filter(
-        v => !v.startsWith('./data/target') && !v.startsWith('./logs/target'),
+      // Remove old data/logs volumes and legacy target volumes
+      const otherVolumes = (svc.volumes || []).filter(
+        v =>
+          !v.startsWith('./data/') &&
+          !v.startsWith('./logs/') &&
+          !v.includes('\\data\\') &&
+          !v.includes('\\logs\\'),
       );
 
-      console.log(`   Filtered existing:`, filteredExisting);
+      console.log(`   Other volumes (non data/logs):`, otherVolumes);
 
-      // Only add normalized volumes that don't already exist
-      const volumesToAdd = normalizedVolumes.filter(
-        nv => !filteredExisting.includes(nv),
-      );
-
-      console.log(`   Volumes to add:`, volumesToAdd);
-
-      const nextVolumes = [...filteredExisting, ...volumesToAdd];
+      // Combine: keep other volumes + add normalized data/logs volumes
+      const nextVolumes = [...otherVolumes, ...normalizedVolumes];
 
       console.log(`   Next volumes:`, nextVolumes);
 
-      // Check if anything actually changed
-      if (
-        volumesToAdd.length === 0 &&
-        filteredExisting.length === (svc.volumes?.length || 0)
-      ) {
+      // Check if volumes actually changed
+      const volumesChanged =
+        svc.volumes?.length !== nextVolumes.length ||
+        !svc.volumes?.every(v => nextVolumes.includes(v));
+
+      if (!volumesChanged) {
         console.log(`   ✅ No change for ${id}`);
         return acc;
       }
