@@ -17,9 +17,7 @@ const addPlatformVolumes: AddPlatformVolumes = (
   console.log('   serviceIds:', serviceIds);
 
   // Helper to normalize volume for comparison (strip mount options like :ro, :rw)
-  const stripMountOptions = (vol: string): string => {
-    return vol.replace(/:r[ow]$/, '');
-  };
+  const stripMountOptions = (vol: string): string => vol.replace(/:r[ow]$/, '');
 
   const { updatedServices, updatedIds } = serviceIds.reduce(
     (acc, id) => {

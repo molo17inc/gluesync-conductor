@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import autoRebootWindows from './autoRebootWindows';
 import autoRebootLinux from './autorebootLinux';
 import { disableUpdateMode } from '../../plugins/apiBlockerAsUpdating';
+
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
 
 type AutoReboot = (
