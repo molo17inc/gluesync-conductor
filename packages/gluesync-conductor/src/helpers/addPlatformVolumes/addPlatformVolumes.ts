@@ -9,21 +9,39 @@ const addPlatformVolumes: AddPlatformVolumes = (
   serviceIds,
   isWindows,
 ) => {
-  const conductorServiceName =
-    process.env.CONDUCTOR_NAME || 'gluesync-conductor';
+  const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
+  const conductorName = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
 
   console.log('📦 addPlatformVolumes called');
   console.log('   isWindows:', isWindows);
   console.log('   serviceIds:', serviceIds);
+
+  // Helper to normalize volume for comparison (strip mount options like :ro, :rw)
+  const stripMountOptions = (vol: string): string => {
+    return vol.replace(/:r[ow]$/, '');
+  };
 
   const { updatedServices, updatedIds } = serviceIds.reduce(
     (acc, id) => {
       const svc = services[id];
       if (!svc) return acc;
 
-      // Skip conductor - autoheal will handle it
-      if (id === conductorServiceName) {
-        console.log(`   ⏭️  Skipping ${id} (conductor)`);
+      // Skip core-hub and conductor - autoheal will handle them
+      if (id === coreHubName || id === conductorName) {
+        console.log(`   ⏭️  Skipping ${id} (core-hub or conductor)`);
+        return acc;
+      }
+
+      // Check if service is an agent (has conductor.type=agent label)
+      const isAgent = Array.isArray(svc.labels)
+        ? svc.labels.some(l => l.includes('com.molo17.conductor.type=agent'))
+        : Object.entries(svc.labels || {}).some(
+            ([k, v]) => k === 'com.molo17.conductor.type' && v === 'agent',
+          );
+
+      // ✅ Only normalize agents - skip modules (they have custom paths)
+      if (!isAgent) {
+        console.log(`   ⏭️  Skipping ${id} (not an agent)`);
         return acc;
       }
 
@@ -31,7 +49,7 @@ const addPlatformVolumes: AddPlatformVolumes = (
 
       const normalizedVolumes = isWindows
         ? [
-            `./shared:C:\\opt\\gluesync\\shared`,
+            `./shared:C:\\opt\\gluesync\\shared:ro`, // ✅ Keep :ro for agents
             `./data/${containerName}:C:\\opt\\gluesync\\data`,
             `./logs/${containerName}:C:\\opt\\gluesync\\logs`,
           ]
@@ -41,31 +59,38 @@ const addPlatformVolumes: AddPlatformVolumes = (
             `./logs/${containerName}:/opt/gluesync/logs`,
           ];
 
-      console.log(`\n   Service: ${id}`);
+      console.log(`\n   Service: ${id} (agent)`);
       console.log(`   Container name: ${containerName}`);
       console.log(`   Current volumes:`, svc.volumes);
       console.log(`   Normalized volumes:`, normalizedVolumes);
 
-      // Remove old data/logs volumes and legacy target volumes
+      // Remove ALL data/logs/shared volumes and keep everything else
       const otherVolumes = (svc.volumes || []).filter(
         v =>
           !v.startsWith('./data/') &&
           !v.startsWith('./logs/') &&
           !v.includes('\\data\\') &&
-          !v.includes('\\logs\\'),
+          !v.includes('\\logs\\') &&
+          !v.startsWith('./shared') &&
+          !v.includes('\\shared'),
       );
 
-      console.log(`   Other volumes (non data/logs):`, otherVolumes);
+      console.log(`   Other volumes (non data/logs/shared):`, otherVolumes);
 
-      // Combine: keep other volumes + add normalized data/logs volumes
+      // Combine: other volumes + all normalized volumes
       const nextVolumes = [...otherVolumes, ...normalizedVolumes];
 
       console.log(`   Next volumes:`, nextVolumes);
 
-      // Check if volumes actually changed
+      // Compare semantically (ignore :ro differences during comparison)
+      const currentNormalized = (svc.volumes || [])
+        .map(stripMountOptions)
+        .sort();
+      const nextNormalized = nextVolumes.map(stripMountOptions).sort();
+
       const volumesChanged =
-        svc.volumes?.length !== nextVolumes.length ||
-        !svc.volumes?.every(v => nextVolumes.includes(v));
+        currentNormalized.length !== nextNormalized.length ||
+        !currentNormalized.every((v, i) => v === nextNormalized[i]);
 
       if (!volumesChanged) {
         console.log(`   ✅ No change for ${id}`);
