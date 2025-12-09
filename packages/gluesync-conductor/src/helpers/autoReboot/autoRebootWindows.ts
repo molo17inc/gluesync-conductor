@@ -21,7 +21,7 @@ type AutoReboot = (
  *      - the host project directory
  *   4. Inside the helper, pwsh runs:
  *        $env:DOCKER_HOST='npipe:////./pipe/docker_engine';
- *        docker compose up -d --force-recreate <service>
+ *        docker compose up -d --force-recreate --pull always <service>
  */
 const autoRebootWindows: AutoReboot = async ({
   hostProjectDir,
@@ -32,10 +32,6 @@ const autoRebootWindows: AutoReboot = async ({
   if (!hostProjectDir) {
     throw new Error('hostProjectDir is required');
   }
-
-  // Single, explicit command string passed to pwsh -Command
-  // Use a script block to ensure the entire command is treated as one unit
-  const innerCmd = `& { $env:DOCKER_HOST='npipe:////./pipe/docker_engine'; docker compose up -d --force-recreate ${serviceName} }`;
 
   const args: ReadonlyArray<string> = [
     'run',
@@ -51,12 +47,20 @@ const autoRebootWindows: AutoReboot = async ({
     '-NoLogo',
     '-NonInteractive',
     '-Command',
-    `"${innerCmd}"`, // <-- wrap in quotes so pwsh sees one argument
+    `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'`,
+    ';',
+    'docker',
+    'compose',
+    'up',
+    '-d',
+    '--force-recreate',
+    '--pull',
+    'always',
+    serviceName,
   ];
 
   log(`[conductor-updater] docker (windows helper) ${args.join(' ')}`);
 
-  // docker.exe is installed in your Windows container and uses DOCKER_HOST=npipe://...
   await spawnAsync('docker', args);
   return true;
 };

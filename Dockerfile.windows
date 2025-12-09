@@ -1,40 +1,51 @@
 # escape=`
 
+
 ARG WINDOWS_TAG=ltsc2019
 ARG WINDOWS_VERSION=nanoserver
+
 
 # Builder stage
 FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop AS builder
 
+
 WORKDIR C:\opt\gluesync-conductor
 
-# Switch default shell to PowerShell 7  
+
+# Switch default shell to PowerShell 7 for builder stage
 SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
+
 
 COPY . .
 RUN yarn install --immutable --immutable-cache
 RUN yarn build
 
+
 # Final stage: runtime image
 FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop
 
-# Install Docker CLI (client only)
-ADD https://download.docker.com/win/static/stable/x86_64/docker-28.0.0.zip C:/docker.zip
-RUN pwsh -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; `
-  [System.IO.Compression.ZipFile]::ExtractToDirectory('C:/docker.zip','C:/docker'); `
+
+WORKDIR C:\opt\gluesync-conductor
+
+
+# Switch default shell to PowerShell 7 for runtime stage
+SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
+
+
+# Install Docker CLI + Compose in one layer
+RUN Invoke-WebRequest -Uri https://download.docker.com/win/static/stable/x86_64/docker-28.0.0.zip -OutFile C:/docker.zip; `
+  Expand-Archive -Path C:/docker.zip -DestinationPath C:/docker; `
   Copy-Item 'C:/docker/docker/docker.exe' 'C:/Windows/System32/docker.exe'; `
   Remove-Item 'C:/docker' -Recurse -Force; `
-  Remove-Item 'C:/docker.zip' -Force"
+  Remove-Item 'C:/docker.zip' -Force; `
+  Invoke-WebRequest -Uri https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-windows-x86_64.exe -OutFile C:/Windows/System32/docker-compose.exe
 
-# Install docker-compose standalone executable
-ADD https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-windows-x86_64.exe C:/docker-compose.exe
-RUN Copy-Item 'C:/docker-compose.exe' 'C:/Windows/System32/docker-compose.exe'; `
-  Remove-Item 'C:/docker-compose.exe'
 
 # Ensure PATH includes System32
 ENV PATH="C:\\Windows\\System32;${PATH}"
 
-# Environment variables
+
+# Environment variables (one per line)
 ENV NODE_ENV=production
 ENV DKR_COMPOSE_FILE=C:\opt\gluesync-conductor\root-folder\docker-compose.yml
 ENV DKR_COMPOSE_FILE_SOURCE=C:\opt\gluesync-conductor\root-folder\docker-compose.yml
@@ -55,19 +66,17 @@ ENV MOUNT_LEGACY_FILE_CONFIG=false
 ENV GLUESYNC_CONFIG_DIR=.\shared
 ENV IS_WINDOWS=true
 
-WORKDIR C:\opt\gluesync-conductor
 
 # Copy build artifacts
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js index.js
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js.map index.js.map
-# COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\static\ static
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\agents.json agents.json
-# Copy log uploader scripts FROM build output
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\collect-logs.ps1 collect-logs.ps1
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\public\gluesync-conductor.svg static\logo.svg
+# COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\static\ static
+
 
 EXPOSE 1717
 
-CMD ["node","index.js"]
 
-# CMD ["pwsh", "-Command", "while ($true) { Start-Sleep -Seconds 3600 }"]
+CMD ["node","index.js"]
