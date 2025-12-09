@@ -40,22 +40,18 @@ const autoRebootWindows: AutoReboot = async ({
   const args: ReadonlyArray<string> = [
     'run',
     '--rm',
-    // Give helper access to the host Docker named pipe
     '-v',
     '\\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine',
-    // Mount host project directory into helper at the same path
     '-v',
     `${hostProjectDir}:${hostProjectDir}`,
-    // Run from that directory so docker compose picks up the right context
     '-w',
     hostProjectDir,
     helperImage,
-    // Use PowerShell Core inside the helper image
     'pwsh',
     '-NoLogo',
     '-NonInteractive',
     '-Command',
-    innerCmd, // must be a single, non-empty argument after -Command
+    `"${innerCmd}"`, // <-- wrap in quotes so pwsh sees one argument
   ];
 
   log(`[conductor-updater] docker (windows helper) ${args.join(' ')}`);
