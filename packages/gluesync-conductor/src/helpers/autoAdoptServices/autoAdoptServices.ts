@@ -150,10 +150,6 @@ const autoAdoptServices = async (): Promise<{
       id => id !== conductorServiceName,
     );
 
-    // First pass: remove depends_on from already-labeled services
-    const { cleanedServices, removedDependsOnIds } =
-      removeDependsOnFromServices(composeJson, alreadyLabeledIds);
-
     // LOG 1: Already labeled services
     console.log('🏷️  Already labeled services:', alreadyLabeledIds);
 
