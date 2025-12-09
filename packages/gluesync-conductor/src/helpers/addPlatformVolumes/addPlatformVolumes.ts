@@ -9,6 +9,10 @@ const addPlatformVolumes: AddPlatformVolumes = (
   serviceIds,
   isWindows,
 ) => {
+  console.log('📦 addPlatformVolumes called');
+  console.log('   isWindows:', isWindows);
+  console.log('   serviceIds:', serviceIds);
+
   const { updatedServices, updatedIds } = serviceIds.reduce(
     (acc, id) => {
       const svc = services[id];
@@ -28,25 +32,38 @@ const addPlatformVolumes: AddPlatformVolumes = (
             `./logs/${containerName}:/opt/gluesync/logs`,
           ];
 
+      console.log(`\n   Service: ${id}`);
+      console.log(`   Container name: ${containerName}`);
+      console.log(`   Current volumes:`, svc.volumes);
+      console.log(`   Normalized volumes:`, normalizedVolumes);
+
       const filteredExisting = (svc.volumes || []).filter(
         v => !v.startsWith('./data/target') && !v.startsWith('./logs/target'),
       );
 
-      // ✅ Only add normalized volumes that don't already exist
+      console.log(`   Filtered existing:`, filteredExisting);
+
+      // Only add normalized volumes that don't already exist
       const volumesToAdd = normalizedVolumes.filter(
         nv => !filteredExisting.includes(nv),
       );
 
+      console.log(`   Volumes to add:`, volumesToAdd);
+
       const nextVolumes = [...filteredExisting, ...volumesToAdd];
 
-      // Now check if anything actually changed
+      console.log(`   Next volumes:`, nextVolumes);
+
+      // Check if anything actually changed
       if (
         volumesToAdd.length === 0 &&
         filteredExisting.length === (svc.volumes?.length || 0)
       ) {
-        // No change
+        console.log(`   ✅ No change for ${id}`);
         return acc;
       }
+
+      console.log(`   ❌ Marking ${id} as updated`);
 
       return {
         updatedServices: {
