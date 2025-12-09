@@ -32,14 +32,18 @@ const addPlatformVolumes: AddPlatformVolumes = (
         v => !v.startsWith('./data/target') && !v.startsWith('./logs/target'),
       );
 
-      const nextVolumes = [...filteredExisting, ...normalizedVolumes];
+      // ✅ Only add normalized volumes that don't already exist
+      const volumesToAdd = normalizedVolumes.filter(
+        nv => !filteredExisting.includes(nv),
+      );
 
-      // Compare sets instead of JSON strings (order-insensitive)
-      const sameVolumes =
-        svc.volumes?.length === nextVolumes.length &&
-        svc.volumes.every(v => nextVolumes.includes(v));
+      const nextVolumes = [...filteredExisting, ...volumesToAdd];
 
-      if (sameVolumes) {
+      // Now check if anything actually changed
+      if (
+        volumesToAdd.length === 0 &&
+        filteredExisting.length === (svc.volumes?.length || 0)
+      ) {
         // No change
         return acc;
       }
