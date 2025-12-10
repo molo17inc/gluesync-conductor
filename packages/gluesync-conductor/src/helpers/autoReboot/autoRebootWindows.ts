@@ -21,21 +21,23 @@ type AutoReboot = (
  *      - the host project directory
  *   4. Inside the helper, pwsh runs:
  *        $env:DOCKER_HOST='npipe:////./pipe/docker_engine';
- *        docker compose up -d --force-recreate --pull always <service>
+ *        docker-compose up -d --force-recreate --pull always <service>
  */
 const autoRebootWindows: AutoReboot = async ({
   hostProjectDir,
   serviceName = 'gluesync-conductor',
-  helperImage = 'molo17/gluesync-conductor:0.4.12-win-nanoserver-ltsc2019',
+  helperImage = 'molo17/docker-helper:28.0.0-win-nanoserver-ltsc2019-develop',
   log = msg => console.log(msg),
 }) => {
   if (!hostProjectDir) {
     throw new Error('hostProjectDir is required');
   }
 
+  // Construct the PowerShell command
+  const psCommand = `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'; docker-compose up -d --force-recreate --pull always ${serviceName}`;
+
   const args: ReadonlyArray<string> = [
     'run',
-    '--rm',
     '-v',
     '\\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine',
     '-v',
@@ -47,7 +49,7 @@ const autoRebootWindows: AutoReboot = async ({
     '-NoLogo',
     '-NonInteractive',
     '-Command',
-    `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'; docker compose up -d --force-recreate --pull always ${serviceName}`,
+    psCommand,
   ];
 
   log(`[conductor-updater] docker (windows helper) ${args.join(' ')}`);

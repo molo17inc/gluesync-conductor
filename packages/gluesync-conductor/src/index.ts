@@ -136,7 +136,7 @@ const startServer = async () => {
       hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
       serviceName: 'gluesync-conductor',
       helperImage: isWindows
-        ? 'molo17/gluesync-conductor:0.4.12-win-nanoserver-ltsc2019'
+        ? 'molo17/docker-helper:28.0.0-win-nanoserver-ltsc2019-develop'
         : 'docker:cli',
       log: msg => logger.info({ msg }, '[conductor-updater] self-heal log'),
     });

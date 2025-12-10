@@ -65,7 +65,7 @@ ENV SSL_KEY_FILE=C:\opt\gluesync\data\gluesync-key.pem
 ENV MOUNT_LEGACY_FILE_CONFIG=false
 ENV GLUESYNC_CONFIG_DIR=.\shared
 ENV IS_WINDOWS=true
-
+ENV WINDOWS_VERSION=2019
 
 # Copy build artifacts
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js index.js
