@@ -34,7 +34,9 @@ const autoRebootWindows: AutoReboot = async ({
   }
 
   // Construct the PowerShell command
-  const psCommand = `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'; docker-compose up -d --force-recreate --pull always ${serviceName}`;
+  const psCommand =
+    `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'; ` +
+    `docker-compose up -d --force-recreate --pull always ${serviceName}`;
 
   const args: ReadonlyArray<string> = [
     'run',
