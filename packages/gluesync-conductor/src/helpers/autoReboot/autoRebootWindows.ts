@@ -1,3 +1,4 @@
+import path from 'path';
 import { spawnAsync } from './autoReboot';
 
 type AutoReboot = (
@@ -33,20 +34,22 @@ const autoRebootWindows: AutoReboot = async ({
     throw new Error('hostProjectDir is required');
   }
 
-  // Construct the PowerShell command
+  // Ensure absolute host path
+  const absHostProjectDir = path.win32.resolve(hostProjectDir);
+
   const psCommand =
     `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'; ` +
     `docker-compose up -d --force-recreate --pull always ${serviceName}`;
 
-  const args: ReadonlyArray<string> = [
+  const args = [
     'run',
     '-v',
     '\\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine',
     '--rm',
     '-v',
-    `${hostProjectDir}:${hostProjectDir}`,
+    `${absHostProjectDir}:${absHostProjectDir}`,
     '-w',
-    hostProjectDir,
+    absHostProjectDir,
     helperImage,
     'pwsh',
     '-NoLogo',
@@ -56,7 +59,6 @@ const autoRebootWindows: AutoReboot = async ({
   ];
 
   log(`[conductor-updater] docker (windows helper) ${args.join(' ')}`);
-
   await spawnAsync('docker', args);
   return true;
 };
