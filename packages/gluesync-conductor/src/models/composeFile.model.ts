@@ -61,6 +61,7 @@ export type CommonComposeService = Readonly<{
   deploy?: ComposeServiceDeploy;
   depends_on?: ComposeDependsOn;
   healthcheck?: ComposeHealthcheck;
+  networks?: ReadonlyArray<string>;
 }>;
 
 export type RawComposeService = Readonly<

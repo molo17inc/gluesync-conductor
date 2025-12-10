@@ -8,12 +8,14 @@ import { RawComposeFile } from '../../../models/composeFile.model';
 import writeComposeFile from '../../composeFile/writeComposeFile/writeComposeFile';
 import { getLogger } from '../../../utils/logger';
 import { autoReboot } from '../../autoReboot/autoReboot';
+import ensureVolumeDirs from '../../ensureVolumeDirs/ensureVolumeDirs';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
+const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
 const runCmd: RunCmd = async (cmdFn, id, filename, extraOptions?) => {
-  const result = await cmdFn({
+  const commonOptions: any = {
     cwd: getRootPath(),
     config: filename,
     log: true,
@@ -23,7 +25,21 @@ const runCmd: RunCmd = async (cmdFn, id, filename, extraOptions?) => {
       getRootPath({ basePath: process.env.BASE_PATH }),
     ],
     commandOptions: [...(extraOptions ?? []), id],
-  });
+  };
+
+  // On Windows, force standalone docker-compose (spawns `docker-compose ...`)
+  const options = isWindows
+    ? {
+        ...commonOptions,
+        executable: {
+          standalone: true,
+          // optional if not in PATH:
+          // executablePath: 'docker-compose',
+        },
+      }
+    : commonOptions;
+
+  const result = await cmdFn(options);
 
   const message = result.out.trim() || result.err.trim();
 
@@ -46,7 +62,12 @@ const createActions: CreateActions = ({
     remove: id => runCmd(rm, id, filename, ['-s', '-v']),
     removeNetwork: id => cleanupOrphanNetworkByName(docker, id),
     restart: id => runCmd(restartAll, id, filename, ['--no-deps']),
-    start: id => runCmd(upAll, id, filename, ['--no-deps']),
+    start: async id => {
+      if (isWindows) {
+        await ensureVolumeDirs(id);
+      }
+      return runCmd(upAll, id, filename, ['--no-deps']);
+    },
     stop: id => runCmd(stop, id, filename),
     undeploy: async (id: string) => {
       await runCmd(rm, id, filename, ['-s', '-v']);
@@ -71,10 +92,13 @@ const createActions: CreateActions = ({
           '[conductor-updater] running self update for conductor',
         );
 
+        const windowsVersion = process.env.WINDOWS_VERSION || '2019';
+        const helperImageWindows = `molo17/docker-helper:28.0.0-win-nanoserver-ltsc${windowsVersion}-develop`;
+
         autoReboot({
           hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
           serviceName: CONDUCTOR_SERVICE,
-          helperImage: 'docker:cli',
+          helperImage: isWindows ? helperImageWindows : 'docker:cli',
           log: msg =>
             logger.info({ msg }, '[conductor-updater] self-update log'),
         });

@@ -21,6 +21,7 @@ const mapPorts = (ports: ReadonlyArray<string> | ReadonlyArray<ComposePort>) =>
 
       return [...acc, `${host}:${container}${protocol ? `/${protocol}` : ''}`];
     }
+
     if (typeof port === 'object' && port !== null) {
       // Handle object format: { host, container, protocol }
       const { host = '', container = '', protocol } = port;
@@ -111,35 +112,51 @@ const createComposeService: CreateComposeService = (
     [`${LabelPrefix.CONDUCTOR}.type`]: serviceType,
   };
 
-  // remove trailing /
+  const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
+
+  const basePath = isWindows ? 'C:\\opt\\gluesync' : '/opt/gluesync';
+  const sharedPath = isWindows ? `${basePath}\\shared` : `${basePath}/shared`;
+  const dataPath = isWindows ? `${basePath}\\data` : `${basePath}/data`;
+  const logsPath = isWindows ? `${basePath}\\logs` : `${basePath}/logs`;
+
   const configDir = (process.env.GLUESYNC_CONFIG_DIR || '.').replace(
     /\/+$/,
     '',
   );
 
   const mountLegacyFileConfig =
-    process.env.MOUNT_LEGACY_FILE_CONFIG.toLowerCase() === 'true';
+    process.env.MOUNT_LEGACY_FILE_CONFIG?.toLowerCase() === 'true';
 
   const defaultVolumes = mountLegacyFileConfig
     ? [
-        `${configDir}/gs-license.dat:/opt/gluesync/data/gs-license.dat:ro`,
-        `${configDir}/logback.xml:/opt/gluesync/data/logback.xml:ro`,
-        `${configDir}/security-config.json:/opt/gluesync/data/security-config.json:ro`,
-        `${configDir}/gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro`,
-        `${configDir}/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro`,
+        `${configDir}/gs-license.dat:${dataPath}${
+          isWindows ? '\\' : '/'
+        }gs-license.dat:ro`,
+        `${configDir}/logback.xml:${dataPath}${
+          isWindows ? '\\' : '/'
+        }logback.xml:ro`,
+        `${configDir}/security-config.json:${dataPath}${
+          isWindows ? '\\' : '/'
+        }security-config.json:ro`,
+        `${configDir}/gluesync.com.jks:${dataPath}${
+          isWindows ? '\\' : '/'
+        }gluesync.com.jks:ro`,
+        `${configDir}/bootstrap-core-hub.json:${dataPath}${
+          isWindows ? '\\' : '/'
+        }bootstrap-core-hub.json:ro`,
         ...(serviceType === 'agent'
           ? [
-              `./logs/${containerName}:/opt/gluesync/logs`,
-              `./data/${containerName}:/opt/gluesync/data`,
+              `./logs/${containerName}:${logsPath}`,
+              `./data/${containerName}:${dataPath}`,
             ]
           : []),
       ]
     : [
-        `${configDir}:/opt/gluesync/shared:ro`,
+        `${configDir}:${sharedPath}:ro`,
         ...(serviceType === 'agent'
           ? [
-              `./logs/${containerName}:/opt/gluesync/logs`,
-              `./data/${containerName}:/opt/gluesync/data`,
+              `./logs/${containerName}:${logsPath}`,
+              `./data/${containerName}:${dataPath}`,
             ]
           : []),
       ];
@@ -157,20 +174,25 @@ const createComposeService: CreateComposeService = (
       ...environment,
       ...(agentType && { TYPE: agentType }),
       GLUESYNC_MODULE_TAG: 'conductor',
-      ...(serviceType === 'agent'
-        ? {
-            INITIAL_AGENT_ID: id,
-            LOG_CONFIG_FILE: '/opt/gluesync/shared/logback.xml',
-          }
-        : {}),
+      ...(serviceType === 'agent' && {
+        INITIAL_AGENT_ID: id,
+        LOG_CONFIG_FILE: isWindows
+          ? `${sharedPath}\\logback.xml`
+          : '/opt/gluesync/shared/logback.xml',
+        ...(isWindows && { GLUESYNC_HOST: ['gluesync-core-hub'] }),
+      }),
     }).map(([key, value]) => `${key}=${value}`),
 
     ...(ports && ports.length > 0 && { ports: mapPorts(ports) }),
+
     volumes: mergeComposeKeyValueField(
       'volumes',
       defaultVolumes,
       mapVolumes(volumes),
     ),
+
+    ...(isWindows && { networks: ['gluesync-windows-net'] }),
+
     healthcheck,
     depends_on: dependsOn,
   };

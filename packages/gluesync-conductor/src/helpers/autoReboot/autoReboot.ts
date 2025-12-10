@@ -1,9 +1,19 @@
 import { spawn } from 'node:child_process';
-import { AutoReboot } from './autoReboot.model';
+import autoRebootWindows from './autoRebootWindows';
+import autoRebootLinux from './autorebootLinux';
+import { disableUpdateMode } from '../../plugins/apiBlockerAsUpdating';
 
-/**
- * Spawns a process and resolves when it exits.
- */
+const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
+
+type AutoReboot = (
+  options: Readonly<{
+    hostProjectDir: string;
+    serviceName: string;
+    helperImage: string;
+    log: (msg: Readonly<string>) => void;
+  }>,
+) => Promise<boolean>;
+
 export const spawnAsync = (
   cmd: string,
   args: ReadonlyArray<string>,
@@ -13,6 +23,7 @@ export const spawnAsync = (
     const child = spawn(cmd, args, {
       cwd: opts.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
+      shell: false,
     });
 
     child.stdout.on('data', data => {
@@ -31,6 +42,9 @@ export const spawnAsync = (
     child.on('close', code => {
       if (code === 0) {
         console.log('[conductor-updater] process completed');
+        if (isWindows) {
+          disableUpdateMode();
+        }
         resolve(true);
       } else {
         reject(new Error(`process exited with code ${code}`));
@@ -38,41 +52,5 @@ export const spawnAsync = (
     });
   });
 
-/**
- * Runs a helper container that performs:
- *   docker compose up -d --force-recreate <service>
- */
-export const autoReboot: AutoReboot = async ({
-  hostProjectDir,
-  serviceName = 'gluesync-conductor',
-  helperImage = 'docker:28', // image with docker CLI + compose plugin
-  log = msg => console.log(msg),
-}) => {
-  if (!hostProjectDir) {
-    throw new Error('hostProjectDir is required');
-  }
-
-  const innerCmd = [
-    `docker compose up -d --force-recreate ${serviceName}`,
-  ].join(' && ');
-
-  const args: ReadonlyArray<string> = [
-    'run',
-    '--rm',
-    '-v',
-    '/var/run/docker.sock:/var/run/docker.sock',
-    '-v',
-    `${hostProjectDir}:${hostProjectDir}`,
-    '-w',
-    hostProjectDir,
-    helperImage,
-    'sh',
-    '-c',
-    innerCmd,
-  ];
-
-  log(`[conductor-updater] docker ${args.join(' ')}`);
-
-  await spawnAsync('docker', args);
-  return true;
-};
+export const autoReboot: AutoReboot = async opts =>
+  isWindows ? autoRebootWindows(opts) : autoRebootLinux(opts);
