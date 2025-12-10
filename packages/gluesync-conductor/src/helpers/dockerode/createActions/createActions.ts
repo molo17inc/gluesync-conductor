@@ -98,9 +98,7 @@ const createActions: CreateActions = ({
         autoReboot({
           hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
           serviceName: CONDUCTOR_SERVICE,
-          helperImage: isWindows
-            ? helperImageWindows
-            : 'docker:cli',
+          helperImage: isWindows ? helperImageWindows : 'docker:cli',
           log: msg =>
             logger.info({ msg }, '[conductor-updater] self-update log'),
         });

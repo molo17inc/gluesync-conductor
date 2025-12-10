@@ -138,9 +138,7 @@ const startServer = async () => {
     autoReboot({
       hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
       serviceName: 'gluesync-conductor',
-      helperImage: isWindows
-        ? helperImageWindows
-        : 'docker:cli',
+      helperImage: isWindows ? helperImageWindows : 'docker:cli',
       log: msg => logger.info({ msg }, '[conductor-updater] self-heal log'),
     });
   }
