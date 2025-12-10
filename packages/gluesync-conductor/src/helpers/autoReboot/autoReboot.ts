@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { AutoReboot } from './autoReboot.model';
+import { AutoReboot } from './AutoReboot.model';
 
 /**
  * Spawns a process and resolves when it exits.
