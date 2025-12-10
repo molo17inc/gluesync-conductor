@@ -53,11 +53,6 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     // Compute mandatoryUpdate without nested ternary
     const mandatoryUpdate = await (async () => {
       if (id === coreHubName) {
-        // First check core-hub itself
-        const coreHubNeedsUpdate = await needsUpdate(coreHubName);
-        if (coreHubNeedsUpdate) {
-          return false;
-        }
         // If core-hub is up-to-date, check conductor and chronos
         const conductorNeedsUpdate = await needsUpdate(conductorName);
         const chronosNeedsUpdate = await needsUpdate(chronosName);

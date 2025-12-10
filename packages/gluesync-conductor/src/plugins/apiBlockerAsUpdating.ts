@@ -26,7 +26,9 @@ const apiBlockerAsUpdatingPlugin = (
   done: (err?: Readonly<Error>) => void,
 ): void => {
   const statusCode = opts.statusCode ?? 503;
-  const message = opts.message ?? 'Conductor is updating.';
+  const message =
+    opts.message ??
+    'Conductor is currently updating and will be back online soon';
 
   fastify.log.info('[CONDUCTOR-UPDATE] blocker plugin registered');
 
@@ -34,7 +36,7 @@ const apiBlockerAsUpdatingPlugin = (
     if (isUpdateMode()) {
       reply.header('Retry-After', '60').code(statusCode).send({
         success: false,
-        error: 'Update in progress',
+        error: 'Conductor update in progress',
         message,
       });
     }
