@@ -72,6 +72,7 @@ services:
       - SSL_ENABLED=true
       - LOG_CONFIG_FILE=C:\\opt\\gluesync\\shared\\logback.xml
       - GRAFANA_REMOTE_ADDRESS=/grafana/d/fecxnzptcq8zkd/core-hub-metrics
+      - WINDOWS_VERSION=2019
     volumes:
       - ./shared:C:\opt\gluesync\shared
       - ./data/core-hub:C:\opt\gluesync\data
