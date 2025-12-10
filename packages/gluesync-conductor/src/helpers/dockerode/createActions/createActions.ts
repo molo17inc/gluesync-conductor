@@ -92,11 +92,14 @@ const createActions: CreateActions = ({
           '[conductor-updater] running self update for conductor',
         );
 
+        const windowsVersion = process.env.WINDOWS_VERSION || '2019';
+        const helperImageWindows = `molo17/docker-helper:28.0.0-win-nanoserver-ltsc${windowsVersion}-develop`;
+
         autoReboot({
           hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
           serviceName: CONDUCTOR_SERVICE,
           helperImage: isWindows
-            ? 'molo17/docker-helper:28.0.0-win-nanoserver-ltsc2019-develop'
+            ? helperImageWindows
             : 'docker:cli',
           log: msg =>
             logger.info({ msg }, '[conductor-updater] self-update log'),
