@@ -42,6 +42,7 @@ const autoRebootWindows: AutoReboot = async ({
     'run',
     '-v',
     '\\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine',
+    '--rm',
     '-v',
     `${hostProjectDir}:${hostProjectDir}`,
     '-w',
