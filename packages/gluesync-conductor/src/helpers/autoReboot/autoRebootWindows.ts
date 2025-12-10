@@ -26,7 +26,7 @@ type AutoReboot = (
 const autoRebootWindows: AutoReboot = async ({
   hostProjectDir,
   serviceName = 'gluesync-conductor',
-  helperImage = 'mcr.microsoft.com/powershell:lts-nanoserver-ltsc2019',
+  helperImage = 'molo17/gluesync-conductor:0.4.12-win-nanoserver-ltsc2019',
   log = msg => console.log(msg),
 }) => {
   if (!hostProjectDir) {
@@ -47,16 +47,7 @@ const autoRebootWindows: AutoReboot = async ({
     '-NoLogo',
     '-NonInteractive',
     '-Command',
-    `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'`,
-    ';',
-    'docker',
-    'compose',
-    'up',
-    '-d',
-    '--force-recreate',
-    '--pull',
-    'always',
-    serviceName,
+    `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'; docker compose up -d --force-recreate --pull always ${serviceName}`,
   ];
 
   log(`[conductor-updater] docker (windows helper) ${args.join(' ')}`);
