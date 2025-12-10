@@ -26,7 +26,9 @@ const apiBlockerAsUpdatingPlugin = (
   done: (err?: Readonly<Error>) => void,
 ): void => {
   const statusCode = opts.statusCode ?? 503;
-  const message = opts.message ?? 'Conductor is currently updating and will be back online soon';
+  const message =
+    opts.message ??
+    'Conductor is currently updating and will be back online soon';
 
   fastify.log.info('[CONDUCTOR-UPDATE] blocker plugin registered');
 
