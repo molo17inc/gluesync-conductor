@@ -126,7 +126,6 @@ const createComposeService: CreateComposeService = (
         `${configDir}/logback.xml:/opt/gluesync/data/logback.xml:ro`,
         `${configDir}/security-config.json:/opt/gluesync/data/security-config.json:ro`,
         `${configDir}/gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro`,
-        `${configDir}/bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro`,
         ...(serviceType === 'agent'
           ? [
               `./logs/${containerName}:/opt/gluesync/logs`,
