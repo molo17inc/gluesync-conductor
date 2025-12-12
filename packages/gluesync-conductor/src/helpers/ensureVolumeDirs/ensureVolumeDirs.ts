@@ -14,7 +14,7 @@ const ensureVolumeDirs: EnsureVolumeDirs = async id => {
 
   if (!service?.container_name) return;
 
-  const baseRoot = getRootPath({ basePath: process.env.BASE_PATH });
+  const baseRoot = getRootPath();
 
   // Ensure all dirs are created under "<rootPath>/root-folder"
   const rootPath = path.join(baseRoot, 'root-folder');
