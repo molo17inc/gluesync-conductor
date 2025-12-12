@@ -43,7 +43,10 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         return false;
       }
 
-      return expectedVersion !== tag;
+      // Strip suffix from current tag before comparing
+      const currentVersion = tag.split('-')[0];
+
+      return expectedVersion !== currentVersion;
     };
 
     const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
