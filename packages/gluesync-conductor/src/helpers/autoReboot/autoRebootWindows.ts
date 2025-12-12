@@ -5,7 +5,7 @@ type AutoReboot = (
   options: Readonly<{
     hostProjectDir: string; // host path to project (as seen by the Docker daemon)
     serviceName: string;
-    helperImage: string; // Windows image with pwsh (e.g. mcr.microsoft.com/powershell:lts-nanoserver-ltsc2019)
+    helperImage: string; // Windows image with pwsh
     log?: (msg: Readonly<string>) => void;
   }>,
 ) => Promise<boolean>;
@@ -21,6 +21,7 @@ type AutoReboot = (
  *      - the host Docker pipe
  *      - the host project directory
  *   4. Inside the helper, pwsh runs:
+ *        $env:PWD='<basePath>';
  *        $env:DOCKER_HOST='npipe:////./pipe/docker_engine';
  *        docker-compose up -d --force-recreate --pull always <service>
  */
@@ -37,7 +38,15 @@ const autoRebootWindows: AutoReboot = async ({
   // Ensure absolute host path
   const absHostProjectDir = path.win32.resolve(hostProjectDir);
 
+  // Grab the env var your compose.yml expects
+  const pwd = process.env.PWD || process.env.BASE_PATH;
+  if (!pwd) {
+    throw new Error('PWD/BASE_PATH env var must be set');
+  }
+
+  // PowerShell command inside helper
   const psCommand =
+    `$env:PWD='${pwd}'; ` +
     `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'; ` +
     `docker-compose up -d --force-recreate --pull always ${serviceName}`;
 
@@ -50,6 +59,8 @@ const autoRebootWindows: AutoReboot = async ({
     `${absHostProjectDir}:${absHostProjectDir}`,
     '-w',
     absHostProjectDir,
+    '-e',
+    `PWD=${pwd}`, // propagate to helper
     helperImage,
     'pwsh',
     '-NoLogo',
