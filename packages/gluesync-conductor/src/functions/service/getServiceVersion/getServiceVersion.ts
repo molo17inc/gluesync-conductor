@@ -65,10 +65,13 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     const { shortImageName, tag } = parseImage(service.image);
     const serviceInfo = await fetchAgentInfo(shortImageName);
 
+    // Strip suffix after first dash
+    const currentVersion = tag.split('-')[0];
+
     return reply.send({
       success: true,
       data: {
-        currentVersion: String(tag),
+        currentVersion,
         latestVersionAlpha: serviceInfo?.latestVersionAlpha,
         latestVersionBeta: serviceInfo?.latestVersionBeta,
         latestVersionGA: serviceInfo?.latestVersionGA,
