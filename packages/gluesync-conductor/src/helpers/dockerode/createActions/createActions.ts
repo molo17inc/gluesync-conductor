@@ -103,12 +103,18 @@ const createActions: CreateActions = ({
             logger.info({ msg }, '[conductor-updater] self-update log'),
         });
 
-        return `Conductor ${id} updated and restarted`;
+        return `Conductor ${id} updated and restarted.`;
       }
 
       await runCmd(upAll, id, filename, ['--remove-orphans']);
 
-      return `Agent ${id} updated and restarted`;
+      const result = await docker.pruneImages({ force: true });
+      const deleted = result.ImagesDeleted?.length || 0;
+      const reclaimed = (result.SpaceReclaimed / (1024 * 1024)).toFixed(2);
+
+      return deleted > 0
+        ? `Agent ${id} updated, restarted, and pruned ${deleted} unused images (≈${reclaimed} MB reclaimed).`
+        : `Agent ${id} updated and restarted. No unused images were found to prune — system is already clean.`;
     },
   };
 };
