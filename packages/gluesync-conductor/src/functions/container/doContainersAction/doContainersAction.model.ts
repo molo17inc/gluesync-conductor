@@ -14,6 +14,7 @@ export type DoContainersActionItem = Readonly<{
 
 export type DoContainersActionSuccessResponse = Readonly<{
   pruneResult?: string;
+  pruneError?: string;
   containers: ReadonlyArray<DoContainersActionItem>;
 }>;
 

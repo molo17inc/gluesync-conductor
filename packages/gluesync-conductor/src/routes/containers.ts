@@ -309,6 +309,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
             data: {
               type: 'object',
               properties: {
+                pruneError: { type: 'string' },
                 pruneResult: {
                   type: 'string',
                 },
