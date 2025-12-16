@@ -50,20 +50,35 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         `Container action ${containerAction}: ${JSON.stringify(results)}`,
       );
 
-      const resultPrune = await req.server.docker.pruneImages({ force: true });
-      const pruneResultText =
-        resultPrune.ImagesDeleted && resultPrune.ImagesDeleted.length
-          ? `Pruned ${resultPrune.ImagesDeleted.length} images, and reclaimed ${(
-              resultPrune.SpaceReclaimed /
-              (1024 * 1024)
-            ).toFixed(2)} MB disk space successfully`
-          : undefined;
+      const pruneOutcome = await req.server.docker
+        .pruneImages({
+          force: true,
+          // Equivalent intent: `docker image prune -a -f`
+          // Remove images not referenced by any container:
+          filters: { dangling: { false: true } },
+        })
+        .then(resultPrune => {
+          const deletedCount = resultPrune.ImagesDeleted?.length ?? 0;
+          const reclaimedMb = (
+            resultPrune.SpaceReclaimed /
+            (1024 * 1024)
+          ).toFixed(2);
+
+          return deletedCount > 0
+            ? {
+                pruneResult: `Pruned ${deletedCount} images, and reclaimed ${reclaimedMb} MB disk space successfully`,
+              }
+            : {};
+        })
+        .catch((err: unknown) => ({
+          pruneError: err instanceof Error ? err.message : String(err),
+        }));
 
       reply.code(200);
       reply.send({
         success: true,
         data: {
-          ...(pruneResultText && { pruneResult: pruneResultText }),
+          ...pruneOutcome,
           containers: results.map((result, index) => ({
             id: ids[index],
             status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
