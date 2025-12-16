@@ -154,7 +154,7 @@ const createComposeService: CreateComposeService = (
     ),
     environment: Object.entries({
       ...environment,
-      ...(agentType ? { TYPE: agentType } : {}),
+      ...(agentType && { TYPE: agentType }),
       GLUESYNC_MODULE_TAG: 'conductor',
       ...(serviceType === 'agent'
         ? {
@@ -164,7 +164,7 @@ const createComposeService: CreateComposeService = (
         : {}),
     }).map(([key, value]) => `${key}=${value}`),
 
-    ...(ports && ports.length > 0 ? { ports: mapPorts(ports) } : {}),
+    ...(ports && ports.length > 0 && { ports: mapPorts(ports) }),
     volumes: mergeComposeKeyValueField(
       'volumes',
       defaultVolumes,

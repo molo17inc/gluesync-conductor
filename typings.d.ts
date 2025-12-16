@@ -11,6 +11,11 @@ declare namespace NodeJS {
     readonly DKR_COMPOSE_FILE_SOURCE: string;
     readonly GLUESYNC_CONFIG_DIR: string;
 
+    readonly GLUESYNC_MODULE_TAG?: string;
+    readonly GLUESYNC_LICENSE_FILE?: string;
+    readonly GLUESYNC_SECURITY_CONFIG?: string;
+    readonly GLUESYNC_HOST?: string;
+
     readonly HOST: string;
     readonly PORT: string;
     readonly DOCKER_HOST: string;

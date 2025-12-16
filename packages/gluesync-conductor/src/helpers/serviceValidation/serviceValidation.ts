@@ -1,5 +1,6 @@
 import { LabelPrefix } from '../../models/composeFile.model';
 import { ConductorServiceTypes } from '../../models/conductor.model';
+import toLabelStrings from '../../utils/toLabelStrings';
 import { ServiceValidation } from './serviceValdiation.model';
 
 const serviceValidation: ServiceValidation = (
@@ -37,14 +38,15 @@ const serviceValidation: ServiceValidation = (
       };
     }
 
-    const serviceTypeArray: ReadonlyArray<string> = Array.isArray(
-      service?.labels,
-    )
-      ? service.labels
-      : Object.entries(service?.labels || {});
+    // Use labels from the existing compose service, not from the request body
+    const labelStrings = toLabelStrings(existingService.labels);
 
-    const serviceType = serviceTypeArray
-      .find(label => label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
+    const serviceType = labelStrings
+      .find(
+        l =>
+          typeof l === 'string' &&
+          l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`),
+      )
       ?.split('=')[1] as ConductorServiceTypes | undefined;
 
     if (type !== serviceType) {
@@ -72,6 +74,7 @@ const serviceValidation: ServiceValidation = (
       statusCode: 409,
     };
   }
+
   if (type === 'module' && agentType) {
     return {
       success: false,
@@ -81,10 +84,10 @@ const serviceValidation: ServiceValidation = (
   }
 
   const nicknameAlreadyExisting = Object.entries(services ?? {}).some(
-    ([serviceId, service]) =>
+    ([serviceId, svc]) =>
       !!nickname &&
       serviceId !== currentServiceId &&
-      nickname === service.container_name,
+      nickname === svc.container_name,
   );
 
   if (nicknameAlreadyExisting) {

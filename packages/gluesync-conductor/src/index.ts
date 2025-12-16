@@ -4,6 +4,7 @@ import Docker from 'dockerode';
 import dockerPlugin from './plugins/docker';
 import swaggerPlugin from './plugins/swagger';
 import gluesyncPlugin from './plugins/gluesync';
+import apiBlockerAsUpdatingPlugin from './plugins/apiBlockerAsUpdating';
 import httpsRedirectMiddleware from './middleware/httpsRedirect';
 import {
   createFastifyHttpsOptions,
@@ -61,6 +62,12 @@ const startServer = async () => {
 
   // Register Gluesync plugin
   await server.register(gluesyncPlugin);
+
+  // Register api blocker when updating plugin, routes after this will be blocked when updating
+  await server.register(apiBlockerAsUpdatingPlugin, {
+    statusCode: 503,
+    message: 'Conductor is updating. Try again later',
+  });
 
   // Register route modules
   await server.register(systemRoutes);

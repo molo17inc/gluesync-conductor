@@ -33,7 +33,14 @@ const editUpdateImagesInComposeFile: EditUpdateImagesInComposeFile = async (
       throw new Error(`No version available for service ${id}`);
     }
 
-    const newImage = `${imageParts.fullName}:${newVersion}`;
+    // Preserve suffix if present
+    const dashIndex = imageParts.tag.indexOf('-');
+    const tagSuffix =
+      dashIndex !== -1 ? imageParts.tag.slice(dashIndex + 1) : '';
+
+    const newImage = `${imageParts.fullName}:${newVersion}${
+      tagSuffix ? `-${tagSuffix}` : ''
+    }`;
 
     return [id, { ...service, image: newImage }] as const;
   });
