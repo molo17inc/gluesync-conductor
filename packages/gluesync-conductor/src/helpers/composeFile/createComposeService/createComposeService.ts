@@ -141,9 +141,6 @@ const createComposeService: CreateComposeService = (
         `${configDir}/gluesync.com.jks:${dataPath}${
           isWindows ? '\\' : '/'
         }gluesync.com.jks:ro`,
-        `${configDir}/bootstrap-core-hub.json:${dataPath}${
-          isWindows ? '\\' : '/'
-        }bootstrap-core-hub.json:ro`,
         ...(serviceType === 'agent'
           ? [
               `./logs/${containerName}:${logsPath}`,
