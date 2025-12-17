@@ -10,6 +10,7 @@ import { getLogger } from '../../../utils/logger';
 import { autoReboot } from '../../autoReboot/autoReboot';
 import ensureVolumeDirs from '../../ensureVolumeDirs/ensureVolumeDirs';
 import waitForContainerReady from '../../waitForContainerReady/waitForContainerReady';
+import { enableUpdateMode } from '../../../plugins/apiBlockerAsUpdating';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
@@ -98,16 +99,29 @@ const createActions: CreateActions = ({
         const windowsVersion = process.env.WINDOWS_VERSION || '2019';
         const helperImageWindows = `molo17/docker-helper:28.0.0-win-nanoserver-ltsc${windowsVersion}-develop`;
 
-        autoReboot({
-          hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
-          serviceName: CONDUCTOR_SERVICE,
-          helperImage: isWindows ? helperImageWindows : 'docker:cli',
-          log: msg =>
-            logger.info({ msg }, '[conductor-updater] self-update log'),
+        // Enable update mode to block incoming requests during conductor restart
+        enableUpdateMode();
+
+        // Wrap in setImmediate to send response before conductor dies
+        setImmediate(() => {
+          autoReboot({
+            hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
+            serviceName: CONDUCTOR_SERVICE,
+            helperImage: isWindows ? helperImageWindows : 'docker:cli',
+            log: msg =>
+              logger.info({ msg }, '[conductor-updater] self-update log'),
+          }).catch(err => {
+            logger.error(
+              { error: err },
+              '[conductor-updater] autoReboot failed',
+            );
+          });
         });
 
         return `Conductor ${id} updated and restarted.`;
       }
+
+      await runCmd(upAll, id, filename, ['--remove-orphans']);
 
       // Special handling for core-hub on Windows only
       // Windows NAT DNS cache requires dependent services to restart for reconnection
@@ -116,9 +130,6 @@ const createActions: CreateActions = ({
           { service: id },
           '[core-hub-updater] updating core-hub (Windows) and restarting dependent services',
         );
-
-        // Update core-hub
-        await runCmd(upAll, id, filename, ['--remove-orphans']);
 
         // Wait for core-hub to be fully ready
         try {
@@ -134,49 +145,63 @@ const createActions: CreateActions = ({
           );
         }
 
-        // Restart chronos and conductor to clear Windows DNS cache and reconnect
-        const dependentServices = [CHRONOS_SERVICE, CONDUCTOR_SERVICE];
-        const restartResults = await Promise.allSettled(
-          dependentServices.map(async serviceId => {
-            try {
-              await runCmd(restartAll, serviceId, filename, ['--no-deps']);
-              logger.info(
-                { service: serviceId },
-                `[core-hub-updater] restarted ${serviceId} to reconnect to updated core-hub`,
-              );
-              return `${serviceId} restarted`;
-            } catch (err) {
-              logger.warn(
-                { service: serviceId, error: err },
-                `[core-hub-updater] failed to restart ${serviceId}`,
-              );
-              return `${serviceId} restart failed`;
-            }
-          }),
+        // Restart chronos and capture result
+        const chronosRestartResult = await runCmd(
+          restartAll,
+          CHRONOS_SERVICE,
+          filename,
+          ['--no-deps'],
+        )
+          .then(() => {
+            logger.info(
+              { service: CHRONOS_SERVICE },
+              `[core-hub-updater] restarted ${CHRONOS_SERVICE} to reconnect to updated core-hub`,
+            );
+            return 'restarted';
+          })
+          .catch(err => {
+            logger.warn(
+              { service: CHRONOS_SERVICE, error: err },
+              `[core-hub-updater] failed to restart ${CHRONOS_SERVICE}`,
+            );
+            return 'restart failed';
+          });
+
+        // Prepare response message
+        const restartSummary = `${CHRONOS_SERVICE} ${chronosRestartResult}, ${CONDUCTOR_SERVICE} restarting`;
+        const responseMessage = `Core-hub ${id} updated and restarted. Dependent services: ${restartSummary}.`;
+
+        // Enable update mode to block incoming requests during conductor restart
+        enableUpdateMode();
+
+        logger.info(
+          { service: CONDUCTOR_SERVICE },
+          `[core-hub-updater] triggering ${CONDUCTOR_SERVICE} restart`,
         );
 
-        const result = await docker.pruneImages({ force: true });
-        const deleted = result.ImagesDeleted?.length || 0;
-        const reclaimed = (result.SpaceReclaimed / (1024 * 1024)).toFixed(2);
+        const windowsVersion = process.env.WINDOWS_VERSION || '2019';
+        const helperImageWindows = `molo17/docker-helper:28.0.0-win-nanoserver-ltsc${windowsVersion}-develop`;
 
-        const restartSummary = restartResults
-          .map(r => (r.status === 'fulfilled' ? r.value : 'failed'))
-          .join(', ');
+        // Wrap in setImmediate to send response before conductor dies
+        setImmediate(() => {
+          autoReboot({
+            hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
+            serviceName: CONDUCTOR_SERVICE,
+            helperImage: isWindows ? helperImageWindows : 'docker:cli',
+            log: msg =>
+              logger.info({ msg }, '[core-hub-updater] conductor restart log'),
+          }).catch(err => {
+            logger.error(
+              { error: err },
+              '[core-hub-updater] autoReboot failed',
+            );
+          });
+        });
 
-        return deleted > 0
-          ? `Core-hub ${id} updated and restarted. Dependent services: ${restartSummary}. Pruned ${deleted} unused images (≈${reclaimed} MB reclaimed).`
-          : `Core-hub ${id} updated and restarted. Dependent services: ${restartSummary}. No unused images to prune.`;
+        return responseMessage;
       }
 
-      await runCmd(upAll, id, filename, ['--remove-orphans']);
-
-      const result = await docker.pruneImages({ force: true });
-      const deleted = result.ImagesDeleted?.length || 0;
-      const reclaimed = (result.SpaceReclaimed / (1024 * 1024)).toFixed(2);
-
-      return deleted > 0
-        ? `Agent ${id} updated, restarted, and pruned ${deleted} unused images (≈${reclaimed} MB reclaimed).`
-        : `Agent ${id} updated and restarted. No unused images were found to prune — system is already clean.`;
+      return `Agent ${id} updated and restarted.`;
     },
   };
 };
