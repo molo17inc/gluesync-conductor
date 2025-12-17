@@ -9,9 +9,12 @@ import writeComposeFile from '../../composeFile/writeComposeFile/writeComposeFil
 import { getLogger } from '../../../utils/logger';
 import { autoReboot } from '../../autoReboot/autoReboot';
 import ensureVolumeDirs from '../../ensureVolumeDirs/ensureVolumeDirs';
+import waitForContainerReady from '../../waitForContainerReady/waitForContainerReady';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
+const CORE_HUB_SERVICE = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
+const CHRONOS_SERVICE = process.env.CHRONOS_NAME || 'gluesync-chronos';
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
 const runCmd: RunCmd = async (cmdFn, id, filename, extraOptions?) => {
@@ -104,6 +107,65 @@ const createActions: CreateActions = ({
         });
 
         return `Conductor ${id} updated and restarted.`;
+      }
+
+      // Special handling for core-hub on Windows only
+      // Windows NAT DNS cache requires dependent services to restart for reconnection
+      if (id === CORE_HUB_SERVICE && isWindows) {
+        logger.info(
+          { service: id },
+          '[core-hub-updater] updating core-hub (Windows) and restarting dependent services',
+        );
+
+        // Update core-hub
+        await runCmd(upAll, id, filename, ['--remove-orphans']);
+
+        // Wait for core-hub to be fully ready
+        try {
+          await waitForContainerReady(docker, CORE_HUB_SERVICE, 10, 1000);
+          logger.info(
+            { service: CORE_HUB_SERVICE },
+            '[core-hub-updater] core-hub is ready',
+          );
+        } catch (err) {
+          logger.warn(
+            { service: CORE_HUB_SERVICE, error: err },
+            '[core-hub-updater] core-hub readiness check failed, proceeding anyway',
+          );
+        }
+
+        // Restart chronos and conductor to clear Windows DNS cache and reconnect
+        const dependentServices = [CHRONOS_SERVICE, CONDUCTOR_SERVICE];
+        const restartResults = await Promise.allSettled(
+          dependentServices.map(async serviceId => {
+            try {
+              await runCmd(restartAll, serviceId, filename, ['--no-deps']);
+              logger.info(
+                { service: serviceId },
+                `[core-hub-updater] restarted ${serviceId} to reconnect to updated core-hub`,
+              );
+              return `${serviceId} restarted`;
+            } catch (err) {
+              logger.warn(
+                { service: serviceId, error: err },
+                `[core-hub-updater] failed to restart ${serviceId}`,
+              );
+              return `${serviceId} restart failed`;
+            }
+          }),
+        );
+
+        const result = await docker.pruneImages({ force: true });
+        const deleted = result.ImagesDeleted?.length || 0;
+        const reclaimed = (result.SpaceReclaimed / (1024 * 1024)).toFixed(2);
+
+        const restartSummary = restartResults
+          .map(r => (r.status === 'fulfilled' ? r.value : 'failed'))
+          .join(', ');
+
+        return deleted > 0
+          ? `Core-hub ${id} updated and restarted. Dependent services: ${restartSummary}. Pruned ${deleted} unused images (≈${reclaimed} MB reclaimed).`
+          : `Core-hub ${id} updated and restarted. Dependent services: ${restartSummary}. No unused images to prune.`;
       }
 
       await runCmd(upAll, id, filename, ['--remove-orphans']);
