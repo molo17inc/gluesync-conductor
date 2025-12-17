@@ -29,13 +29,39 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       });
     }
 
+    // Get actual running version from Docker
+    const getCurrentVersion = async (
+      serviceId: string,
+    ): Promise<string | null> => {
+      try {
+        const container = req.server.docker.getContainer(serviceId);
+        const inspect = await container.inspect();
+        const runningImage = inspect.Config.Image;
+        const { tag } = parseImage(runningImage);
+        // Strip suffix after first dash
+        return tag.split('-')[0];
+      } catch (err) {
+        req.log.warn(
+          { service: serviceId, error: err },
+          `Failed to get running version for ${serviceId}, falling back to compose file`,
+        );
+        return null;
+      }
+    };
+
     // Helper to check if a service needs update based on release channel
     const needsUpdate = async (serviceId: string): Promise<boolean> => {
       const svc = composeJson.services?.[serviceId];
       if (!svc) return false;
 
-      const { shortImageName, tag } = parseImage(svc.image);
-      const svcInfo = await fetchAgentInfo(shortImageName);
+      const { shortImageName, tag: composeTag } = parseImage(svc.image);
+
+      // Parallelize: fetch service info and current version at the same time
+      const [svcInfo, currentVersion] = await Promise.all([
+        fetchAgentInfo(shortImageName),
+        getCurrentVersion(serviceId),
+      ]);
+
       const expectedVersion = getVersionByChannel(svcInfo, channel);
 
       // If we can't determine the expected version, assume no update is needed
@@ -43,32 +69,42 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         return false;
       }
 
-      return expectedVersion !== tag;
+      // Use running version or fallback to compose file version
+      const versionToCheck = currentVersion || composeTag.split('-')[0];
+
+      return expectedVersion !== versionToCheck;
     };
 
     const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
     const conductorName = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
     const chronosName = process.env.CHRONOS_NAME || 'gluesync-chronos';
 
-    // Compute mandatoryUpdate without nested ternary
-    const mandatoryUpdate = await (async () => {
-      if (id === coreHubName) {
-        // If core-hub is up-to-date, check conductor and chronos
-        const conductorNeedsUpdate = await needsUpdate(conductorName);
-        const chronosNeedsUpdate = await needsUpdate(chronosName);
-        return conductorNeedsUpdate || chronosNeedsUpdate;
-      }
-      return false;
-    })();
-
-    // Always fetch info for the requested service to return version details
+    // Parallelize: get current version and check mandatory updates at the same time
     const { shortImageName, tag } = parseImage(service.image);
-    const serviceInfo = await fetchAgentInfo(shortImageName);
+    const fallbackVersion = tag.split('-')[0];
+
+    const [currentVersion, serviceInfo, mandatoryUpdate] = await Promise.all([
+      getCurrentVersion(id),
+      fetchAgentInfo(shortImageName),
+      (async () => {
+        if (id === coreHubName) {
+          // Parallelize: check conductor and chronos updates at the same time
+          const [conductorNeedsUpdate, chronosNeedsUpdate] = await Promise.all([
+            needsUpdate(conductorName),
+            needsUpdate(chronosName),
+          ]);
+          return conductorNeedsUpdate || chronosNeedsUpdate;
+        }
+        return false;
+      })(),
+    ]);
+
+    const actualCurrentVersion = currentVersion || fallbackVersion;
 
     return reply.send({
       success: true,
       data: {
-        currentVersion: String(tag),
+        currentVersion: actualCurrentVersion,
         latestVersionAlpha: serviceInfo?.latestVersionAlpha,
         latestVersionBeta: serviceInfo?.latestVersionBeta,
         latestVersionGA: serviceInfo?.latestVersionGA,
