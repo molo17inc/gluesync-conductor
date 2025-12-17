@@ -14,6 +14,7 @@ import removeDependsOnFromServices from '../removeDependsOnFromServices/removeDe
 import addGluesyncHostToAgents from '../addGluesyncHostToAgents/addGluesyncHostToAgents';
 import addNetworkToServices from '../addNetworkToServices/addNetworkToServices';
 import addPlatformVolumes from '../addPlatformVolumes/addPlatformVolumes';
+import toLabelStrings from '../../utils/toLabelStrings';
 
 /**
  * Apply platform-specific adjustments (GLUESYNC_HOST + network + volumes).
@@ -134,11 +135,10 @@ const autoAdoptServices = async (): Promise<{
       const service = composeJson.services?.[id];
       if (!service) return false;
 
-      const initialLabels: readonly string[] = Array.isArray(service.labels)
-        ? service.labels
-        : Object.entries(service.labels || {}).map(([k, v]) => `${k}=${v}`);
+      // FIX: Use toLabelStrings to handle both array and object formats
+      const labelStrings = toLabelStrings(service.labels);
 
-      const hasConductorType = initialLabels.some(label =>
+      const hasConductorType = labelStrings.some(label =>
         label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`),
       );
 
@@ -237,9 +237,8 @@ const autoAdoptServices = async (): Promise<{
           throw new Error(`Service ${id} not found`);
         }
 
-        const initialLabels: readonly string[] = Array.isArray(service.labels)
-          ? service.labels
-          : Object.entries(service.labels || {}).map(([k, v]) => `${k}=${v}`);
+        // FIX: Use toLabelStrings to handle both array and object formats
+        const initialLabels = toLabelStrings(service.labels);
 
         const { imageName } = parseImage(service.image);
 

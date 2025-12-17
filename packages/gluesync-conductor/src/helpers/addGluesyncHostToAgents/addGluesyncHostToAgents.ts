@@ -5,16 +5,24 @@ import { AddGluesyncHostToAgents } from './AddGluesyncHostToAgents.model';
 /**
  * Add GLUESYNC_HOST in environment for the given agents,
  * but only if GLUESYNC_HOST is not already present.
+ * Skips core-hub since it doesn't need to connect to itself.
  */
 const addGluesyncHostToAgents: AddGluesyncHostToAgents = (
   services,
   serviceIds,
   gluesyncHost,
 ) => {
+  const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
+
   const { updatedServices, updatedIds } = serviceIds.reduce(
     (acc, id) => {
       const service = services[id];
       if (!service) return acc;
+
+      // Skip core-hub - it doesn't need GLUESYNC_HOST
+      if (id === coreHubName) {
+        return acc;
+      }
 
       const normalizedEnv = extractKeyValue(
         composeServiceFieldConfig.environment.separator,
