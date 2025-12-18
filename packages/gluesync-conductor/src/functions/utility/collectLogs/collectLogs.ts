@@ -21,14 +21,21 @@ const handler: CollectLogsHandler = async (req, reply) => {
       .send({ success: false, error: 'invalid email format' });
   }
 
-  const scriptPath = './collect-logs.sh';
+  const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
+  const scriptPath = isWindows ? './collect-logs.ps1' : './collect-logs.sh';
 
-  // Check if script exists and is executable
+  // Check if script exists
   try {
     await access(scriptPath, constants.F_OK);
-    await access(scriptPath, constants.X_OK);
+    // Only check executable permission on Unix-like systems
+    if (!isWindows) {
+      await access(scriptPath, constants.X_OK);
+    }
   } catch (err) {
-    req.log.error({ err, scriptPath }, 'script not found or not executable');
+    req.log.error(
+      { err, scriptPath, isWindows },
+      'script not found or not executable',
+    );
     return reply.code(500).send({
       success: false,
       error: 'log collection script not available',
@@ -36,15 +43,27 @@ const handler: CollectLogsHandler = async (req, reply) => {
   }
 
   try {
-    // Add --clean-after-upload so script deletes archive after upload
-    const child = spawn(
-      scriptPath,
-      ['-t', ticketId, '-e', email, '--clean-after-upload'],
-      {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: process.env,
-      },
-    );
+    // Prepare command based on platform
+    const command = isWindows ? 'pwsh' : scriptPath;
+    const args = isWindows
+      ? [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          scriptPath,
+          '-TicketId',
+          ticketId,
+          '-Email',
+          email,
+          '-CleanAfterUpload',
+        ]
+      : ['-t', ticketId, '-e', email, '--clean-after-upload'];
+
+    const child = spawn(command, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: process.env,
+    });
 
     // Stream per-line logs as chunks arrive
     const logLines = (
