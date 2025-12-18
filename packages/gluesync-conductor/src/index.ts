@@ -21,6 +21,7 @@ import autoAdoptServices from './helpers/autoAdoptServices/autoAdoptServices';
 import { autoReboot } from './helpers/autoReboot/autoReboot';
 import getRootPath from './helpers/getRootPath/getRootPath';
 import healConductorConf from './helpers/healConductorConf/healConductorConf';
+import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
 
 type FastifyServices = {
   docker: Docker;
@@ -109,6 +110,9 @@ const startServer = async () => {
           `Some services had no Conductor type and did not match agents.json: ${unmatchedIds.join(', ')}`,
         );
       }
+
+      // Start only the adopted/updated services (Linux + Windows)
+      await upAdoptedServices(server.docker, updatedIds);
     } else if (updatedIds.length === 0 && unmatchedIds.length > 0) {
       // Edge case: no adoption, only unmatched
       logger.warn(
@@ -122,11 +126,19 @@ const startServer = async () => {
 
   const rebootNeeded = await healConductorConf();
 
+  logger.info(
+    `[conductor-updater] ${rebootNeeded ? 'reboot needed to heal' : 'nothing to heal'}`,
+  );
+
+  const windowsVersion = process.env.WINDOWS_VERSION || '2019';
+  const helperImageWindows = `molo17/docker-helper:28.0.0-win-nanoserver-ltsc${windowsVersion}-develop`;
+
   if (rebootNeeded) {
+    const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
     autoReboot({
       hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
       serviceName: 'gluesync-conductor',
-      helperImage: 'docker:cli',
+      helperImage: isWindows ? helperImageWindows : 'docker:cli',
       log: msg => logger.info({ msg }, '[conductor-updater] self-heal log'),
     });
   }
