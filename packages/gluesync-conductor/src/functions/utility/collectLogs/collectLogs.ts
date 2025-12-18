@@ -52,7 +52,7 @@ const handler: CollectLogsHandler = async (req, reply) => {
           'Bypass',
           '-File',
           scriptPath,
-          '-TicketId',
+          '-Ticket',
           ticketId,
           '-Email',
           email,
