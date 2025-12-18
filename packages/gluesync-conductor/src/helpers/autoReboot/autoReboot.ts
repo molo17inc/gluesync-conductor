@@ -42,9 +42,8 @@ export const spawnAsync = (
     child.on('close', code => {
       if (code === 0) {
         console.log('[conductor-updater] process completed');
-        if (isWindows) {
-          disableUpdateMode();
-        }
+        disableUpdateMode();
+
         resolve(true);
       } else {
         reject(new Error(`process exited with code ${code}`));
