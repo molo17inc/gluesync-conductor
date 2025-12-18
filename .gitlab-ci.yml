@@ -256,3 +256,24 @@ update_budibase_version:
   rules:
     - if: '$CI_COMMIT_TAG'
     - if: '$CI_COMMIT_BRANCH == "develop"'
+
+build_windows_nanoserver_artifacts:
+  stage: deploy
+  variables:
+    APP_NAME: 'gluesync-conductor'
+    WINDOWS_VERSION: 'nanoserver'
+  parallel:
+    matrix:
+      - WINDOWS_TAG: "ltsc2019"
+        WINDOWS_RUNNER_VERSION: "2019"
+      - WINDOWS_TAG: "ltsc2022"
+        WINDOWS_RUNNER_VERSION: "2022"
+      # - WINDOWS_TAG: "ltsc2025"
+      #   WINDOWS_RUNNER_VERSION: "2025"
+  tags:
+    - 'hq-windows-shell-${WINDOWS_RUNNER_VERSION}'
+  rules:
+    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+  script:
+    - pwsh .\ci\docker-build-win.ps1 -AppName "$APP_NAME" -WindowsTag "$WINDOWS_TAG" -WindowsVersion "$WINDOWS_VERSION"

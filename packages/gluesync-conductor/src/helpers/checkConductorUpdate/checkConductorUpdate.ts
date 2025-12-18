@@ -25,12 +25,19 @@ const checkConductorUpdate = async ({
   const currentTag = parsed.tag;
   const { shortImageName } = parsed;
 
-  const info = await fetchAgentInfo(shortImageName);
+  // Separate version and suffix
+  const dashIndex = currentTag.indexOf('-');
+  const currentVersion =
+    dashIndex !== -1 ? currentTag.slice(0, dashIndex) : currentTag;
 
+  const info = await fetchAgentInfo(shortImageName);
   const availableVersion = getVersionByChannel(info, releaseChannel);
 
+  // Only compare version, ignore suffix
+  const needsUpdate = !!availableVersion && currentVersion !== availableVersion;
+
   return {
-    needsUpdate: !!availableVersion && currentTag !== availableVersion,
+    needsUpdate,
     id: conductorServiceName,
     availableVersion,
   };
