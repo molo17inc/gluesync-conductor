@@ -41,7 +41,6 @@ export const spawnAsync = (
 
     child.on('close', code => {
       if (code === 0) {
-        console.log('[conductor-updater] process completed');
         disableUpdateMode();
 
         resolve(true);

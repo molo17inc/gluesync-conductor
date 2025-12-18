@@ -12,10 +12,6 @@ const addPlatformVolumes: AddPlatformVolumes = (
   const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
   const conductorName = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
 
-  console.log('📦 addPlatformVolumes called');
-  console.log('   isWindows:', isWindows);
-  console.log('   serviceIds:', serviceIds);
-
   // Helper to normalize volume for comparison (strip mount options like :ro, :rw)
   const stripMountOptions = (vol: string): string => vol.replace(/:r[ow]$/, '');
 
@@ -26,7 +22,6 @@ const addPlatformVolumes: AddPlatformVolumes = (
 
       // Skip core-hub and conductor - autoheal will handle them
       if (id === coreHubName || id === conductorName) {
-        console.log(`   ⏭️  Skipping ${id} (core-hub or conductor)`);
         return acc;
       }
 
@@ -39,7 +34,6 @@ const addPlatformVolumes: AddPlatformVolumes = (
 
       // ✅ Only normalize agents - skip modules (they have custom paths)
       if (!isAgent) {
-        console.log(`   ⏭️  Skipping ${id} (not an agent)`);
         return acc;
       }
 
@@ -57,11 +51,6 @@ const addPlatformVolumes: AddPlatformVolumes = (
             `./logs/${containerName}:/opt/gluesync/logs`,
           ];
 
-      console.log(`\n   Service: ${id} (agent)`);
-      console.log(`   Container name: ${containerName}`);
-      console.log(`   Current volumes:`, svc.volumes);
-      console.log(`   Normalized volumes:`, normalizedVolumes);
-
       // Remove ALL data/logs/shared volumes and keep everything else
       const otherVolumes = (svc.volumes || []).filter(
         v =>
@@ -73,12 +62,8 @@ const addPlatformVolumes: AddPlatformVolumes = (
           !v.includes('\\shared'),
       );
 
-      console.log(`   Other volumes (non data/logs/shared):`, otherVolumes);
-
       // Combine: other volumes + all normalized volumes
       const nextVolumes = [...otherVolumes, ...normalizedVolumes];
-
-      console.log(`   Next volumes:`, nextVolumes);
 
       // Compare semantically (ignore :ro differences during comparison)
       const currentNormalized = (svc.volumes || [])
@@ -91,11 +76,8 @@ const addPlatformVolumes: AddPlatformVolumes = (
         !currentNormalized.every((v, i) => v === nextNormalized[i]);
 
       if (!volumesChanged) {
-        console.log(`   ✅ No change for ${id}`);
         return acc;
       }
-
-      console.log(`   ❌ Marking ${id} as updated`);
 
       return {
         updatedServices: {

@@ -18,7 +18,7 @@ const healConductorConf = async (): Promise<boolean> => {
 
   const service = composeJson.services?.[conductorServiceName];
   if (!service) {
-    logger.info('[conductor-updater] nothing to heal (service not found)');
+    logger.info('[conductor-healer] nothing to heal (service not found)');
     return false;
   }
 
@@ -85,7 +85,7 @@ const healConductorConf = async (): Promise<boolean> => {
       : false;
 
     if (!volumesChangedNonLatest && !envChanged) {
-      logger.info('[conductor-updater] nothing to heal');
+      logger.info('[conductor-healer] nothing to heal');
       return false;
     }
 
@@ -122,7 +122,7 @@ const healConductorConf = async (): Promise<boolean> => {
     : false;
 
   if (!volumesChanged && !envChanged) {
-    logger.info('[conductor-updater] nothing to heal');
+    logger.info('[conductor-healer] nothing to heal');
     return false;
   }
 

@@ -31,20 +31,9 @@ const applyPlatformAdjustments = (
   services: Record<string, RawComposeService>;
   updatedIds: ReadonlyArray<string>;
 } => {
-  console.log('🔧 applyPlatformAdjustments called with:');
-  console.log('   serviceIds:', serviceIds);
-  console.log('   isWindows:', isWindows);
-  console.log('   gluesyncHostDefault:', gluesyncHostDefault);
-  console.log('   windowsNetworkName:', windowsNetworkName);
-
   const step1 = isWindows
     ? addGluesyncHostToAgents(services, serviceIds, gluesyncHostDefault)
     : addPlatformVolumes(services, serviceIds, false);
-
-  console.log(
-    '   Step1 (addGluesyncHost/volumes) updatedIds:',
-    step1.updatedIds,
-  );
 
   const afterStep1Services: Readonly<Record<string, RawComposeService>> = {
     ...services,
@@ -55,8 +44,6 @@ const applyPlatformAdjustments = (
     ? addNetworkToServices(afterStep1Services, serviceIds, windowsNetworkName)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
-  console.log('   Step2 (addNetwork) updatedIds:', step2.updatedIds);
-
   const afterStep2Services: Readonly<Record<string, RawComposeService>> = {
     ...afterStep1Services,
     ...step2.services,
@@ -65,8 +52,6 @@ const applyPlatformAdjustments = (
   const step3 = isWindows
     ? addPlatformVolumes(afterStep2Services, serviceIds, true)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
-
-  console.log('   Step3 (addPlatformVolumes) updatedIds:', step3.updatedIds);
 
   const finalServices: Readonly<Record<string, RawComposeService>> = {
     ...afterStep2Services,
@@ -79,14 +64,9 @@ const applyPlatformAdjustments = (
     ...step3.updatedIds,
   ];
 
-  console.log('   Combined allUpdatedIds:', allUpdatedIds);
-  console.log('   Unique allUpdatedIds:', [...new Set(allUpdatedIds)]);
-
   const changedServices = Object.fromEntries(
     allUpdatedIds.map(id => [id, finalServices[id]]),
   ) as Record<string, RawComposeService>;
-
-  console.log('   changedServices keys:', Object.keys(changedServices));
 
   return {
     services: changedServices,
@@ -150,18 +130,9 @@ const autoAdoptServices = async (): Promise<{
       id => id !== conductorServiceName,
     );
 
-    // LOG 1: Already labeled services
-    console.log('🏷️  Already labeled services:', alreadyLabeledIds);
-
-    // LOG 2: Services being adjusted (should exclude conductor)
-    console.log('🔧 Services for platform adjustments:', adjustedIds);
-
     // First pass: remove depends_on
     const { cleanedServices, removedDependsOnIds } =
       removeDependsOnFromServices(composeJson, alreadyLabeledIds);
-
-    // LOG 3: Depends_on removed from
-    console.log('🗑️  Removed depends_on from:', removedDependsOnIds);
 
     const {
       services: platformAdjustedLabeledServices,
@@ -174,26 +145,11 @@ const autoAdoptServices = async (): Promise<{
       windowsNetworkName,
     );
 
-    // LOG 4: Platform adjustments applied to
-    console.log('⚙️  Platform adjusted IDs:', platformAdjustedIds);
-    console.log(
-      '⚙️  Platform adjusted services:',
-      Object.keys(platformAdjustedLabeledServices),
-    );
-
     const unlabeledIds = allServiceIds.filter(
       id => !alreadyLabeledIds.includes(id),
     );
 
-    // LOG 5: Unlabeled services
-    console.log('🆕 Unlabeled services to adopt:', unlabeledIds);
-
     if (unlabeledIds.length === 0) {
-      console.log('⏭️  Early return path - no unlabeled services');
-      console.log('   Returning updatedIds:', [
-        ...removedDependsOnIds,
-        ...platformAdjustedIds,
-      ]);
       if (
         removedDependsOnIds.length === 0 &&
         platformAdjustedIds.length === 0
