@@ -127,7 +127,7 @@ const startServer = async () => {
   const rebootNeeded = await healConductorConf();
 
   logger.info(
-    `[conductor-updater] ${rebootNeeded ? 'reboot needed to heal' : 'nothing to heal'}`,
+    `[conductor-healer] ${rebootNeeded ? 'reboot needed to heal' : 'nothing to heal'}`,
   );
 
   const windowsVersion = process.env.WINDOWS_VERSION || '2019';
@@ -139,7 +139,7 @@ const startServer = async () => {
       hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
       serviceName: 'gluesync-conductor',
       helperImage: isWindows ? helperImageWindows : 'docker:cli',
-      log: msg => logger.info({ msg }, '[conductor-updater] self-heal log'),
+      log: msg => logger.info({ msg }, '[conductor-healer] self-heal log'),
     });
   }
 };
