@@ -15,6 +15,7 @@ import addGluesyncHostToAgents from '../addGluesyncHostToAgents/addGluesyncHostT
 import addNetworkToServices from '../addNetworkToServices/addNetworkToServices';
 import addPlatformVolumes from '../addPlatformVolumes/addPlatformVolumes';
 import toLabelStrings from '../../utils/toLabelStrings';
+import addEnvFileToServices from '../addEnvFileToServices/addEnvFileToServices';
 
 /**
  * Apply platform-specific adjustments (GLUESYNC_HOST + network + volumes).
@@ -181,6 +182,12 @@ const autoAdoptServices = async (): Promise<{
       Object.keys(platformAdjustedLabeledServices),
     );
 
+    // Add env_file to ALL services (only if root folder mounted and .env exists)
+    const { services: envFileServices, updatedIds: envFileUpdatedIds } =
+      addEnvFileToServices(composeJson.services, allServiceIds);
+
+    console.log('📋 env_file added to:', envFileUpdatedIds);
+
     const unlabeledIds = allServiceIds.filter(
       id => !alreadyLabeledIds.includes(id),
     );
@@ -193,10 +200,12 @@ const autoAdoptServices = async (): Promise<{
       console.log('   Returning updatedIds:', [
         ...removedDependsOnIds,
         ...platformAdjustedIds,
+        ...envFileUpdatedIds,
       ]);
       if (
         removedDependsOnIds.length === 0 &&
-        platformAdjustedIds.length === 0
+        platformAdjustedIds.length === 0 &&
+        envFileUpdatedIds.length === 0
       ) {
         return {
           success: true,
@@ -209,7 +218,9 @@ const autoAdoptServices = async (): Promise<{
         ...composeJson,
         services: {
           ...composeJson.services,
-          ...{ ...platformAdjustedLabeledServices, ...cleanedServices },
+          ...platformAdjustedLabeledServices,
+          ...cleanedServices,
+          ...envFileServices,
         },
       };
 
@@ -217,16 +228,21 @@ const autoAdoptServices = async (): Promise<{
 
       return {
         success: true,
-        updatedIds: [...removedDependsOnIds, ...platformAdjustedIds],
+        updatedIds: [
+          ...removedDependsOnIds,
+          ...platformAdjustedIds,
+          ...envFileUpdatedIds,
+        ],
         unmatchedIds: [],
       };
     }
 
     // From this point on, work on a base services object where
-    // already-labeled services are already cleaned from depends_on.
+    // already-labeled services are already cleaned from depends_on and have env_file
     const baseServices: Record<string, RawComposeService> = {
       ...composeJson.services,
       ...platformAdjustedLabeledServices,
+      ...envFileServices,
     };
 
     // Second pass: adopt UNLABELED services (and ensure depends_on removed via utility)
@@ -377,8 +393,12 @@ const autoAdoptServices = async (): Promise<{
       },
     );
 
-    // If no newly adopted services and no depends_on was removed, bail out
-    if (updatedIds.length === 0 && removedDependsOnIds.length === 0) {
+    // If no newly adopted services and no depends_on was removed and no env_file added, bail out
+    if (
+      updatedIds.length === 0 &&
+      removedDependsOnIds.length === 0 &&
+      envFileUpdatedIds.length === 0
+    ) {
       return {
         success: true,
         updatedIds: [],
@@ -404,7 +424,11 @@ const autoAdoptServices = async (): Promise<{
 
     return {
       success: true,
-      updatedIds: [...removedDependsOnIds, ...newlyAdopted],
+      updatedIds: [
+        ...removedDependsOnIds,
+        ...newlyAdopted,
+        ...envFileUpdatedIds,
+      ],
       unmatchedIds,
     };
   } catch (error) {
