@@ -31,7 +31,6 @@ WORKDIR C:\opt\gluesync-conductor
 # Switch default shell to PowerShell 7 for runtime stage
 SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
 
-
 # Install Docker CLI + Compose in one layer
 RUN Invoke-WebRequest -Uri https://download.docker.com/win/static/stable/x86_64/docker-28.0.0.zip -OutFile C:/docker.zip; `
   Expand-Archive -Path C:/docker.zip -DestinationPath C:/docker; `
@@ -66,6 +65,7 @@ ENV MOUNT_LEGACY_FILE_CONFIG=false
 ENV GLUESYNC_CONFIG_DIR=.\shared
 ENV IS_WINDOWS=true
 ENV WINDOWS_VERSION=2019
+ENV TZ=UTC
 
 # Copy build artifacts
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js index.js

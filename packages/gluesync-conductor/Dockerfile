@@ -1,71 +1,52 @@
-# escape=`
+FROM node:22.13.1-alpine
 
-ARG WINDOWS_TAG=ltsc2019
-ARG WINDOWS_VERSION=nanoserver
+# Install Docker CLI and tzdata for timezone support
+RUN apk add --no-cache docker-cli docker-cli-compose curl bash zip tar tzdata
 
-# Builder stage
-FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop AS builder
+# Create Gluesync data and logs directory structure with proper permissions
+RUN mkdir -p /opt/gluesync/data /opt/gluesync/logs \
+  && chown -R node:node /opt/gluesync
 
-WORKDIR C:\opt\gluesync-conductor
-
-# Switch default shell to PowerShell 7 for builder stage
-SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
-
-COPY . .
-RUN yarn install --immutable --immutable-cache
-RUN yarn build
-
-# Final stage: runtime image
-FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop
-
-WORKDIR C:\opt\gluesync-conductor
-
-# Switch default shell to PowerShell 7 for runtime stage
-SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
-
-# Install Docker CLI + Compose in one layer
-RUN Invoke-WebRequest -Uri https://download.docker.com/win/static/stable/x86_64/docker-28.0.0.zip -OutFile C:/docker.zip; `
-  Expand-Archive -Path C:/docker.zip -DestinationPath C:/docker; `
-  Copy-Item 'C:/docker/docker/docker.exe' 'C:/Windows/System32/docker.exe'; `
-  Remove-Item 'C:/docker' -Recurse -Force; `
-  Remove-Item 'C:/docker.zip' -Force; `
-  Invoke-WebRequest -Uri https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-windows-x86_64.exe -OutFile C:/Windows/System32/docker-compose.exe
-
-# Ensure PATH includes System32
-ENV PATH="C:\\Windows\\System32;${PATH}"
-
-# Environment variables (one per line)
+# Set environment variables
 ENV NODE_ENV=production
-ENV DKR_COMPOSE_FILE=C:\opt\gluesync-conductor\root-folder\docker-compose.yml
-ENV DKR_COMPOSE_FILE_SOURCE=C:\opt\gluesync-conductor\root-folder\docker-compose.yml
-ENV GLUESYNC_LICENSE_FILE=C:\opt\gluesync\data\gs-license.dat
-ENV GLUESYNC_SECURITY_CONFIG=C:\opt\gluesync\data\security-config.json
+ENV DKR_COMPOSE_FILE=docker-compose.yml
+ENV DKR_COMPOSE_FILE_SOURCE=docker-compose.yml
+ENV GLUESYNC_LICENSE_FILE=/opt/gluesync/data/gs-license.dat
+ENV GLUESYNC_SECURITY_CONFIG=/opt/gluesync/data/security-config.json
 ENV COREHUB_UDP_PORT_RANGE=1717-1727
 ENV HOST=0.0.0.0
 ENV PORT=1717
-ENV DOCKER_HOST=npipe:////./pipe/docker_engine
+ENV DOCKER_HOST=unix:///var/run/docker.sock
 ENV CORE_HUB_NAME=gluesync-core-hub
 ENV LOG_LEVEL=INFO
 ENV USE_SDK=true
 ENV SSL_SKIP_VERIFY=true
 ENV SSL_ENABLED=true
-ENV SSL_CERT_FILE=C:\opt\gluesync\data\gluesync-cert.pem
-ENV SSL_KEY_FILE=C:\opt\gluesync\data\gluesync-key.pem
+ENV SSL_CERT_FILE=/opt/gluesync/data/gluesync-cert.pem
+ENV SSL_KEY_FILE=/opt/gluesync/data/gluesync-key.pem
 ENV MOUNT_LEGACY_FILE_CONFIG=false
-ENV GLUESYNC_CONFIG_DIR=.\shared
-ENV IS_WINDOWS=true
-ENV WINDOWS_VERSION=2019
-
-# Default timezone (can be overridden by .env file at runtime)
+ENV GLUESYNC_CONFIG_DIR=./shared
 ENV TZ=UTC
 
-# Copy build artifacts
-COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js index.js
-COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js.map index.js.map
-COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\agents.json agents.json
-COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\collect-logs.ps1 collect-logs.ps1
-COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\public\gluesync-conductor.svg static\logo.svg
-# COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\static\ static
+# Setup app directory
+WORKDIR /opt/gluesync-conductor
+
+# Copy only the build
+COPY build/index.js index.js
+COPY build/index.js.map index.js.map
+COPY build/static/ static/
+
+COPY agents.json agents.json
+
+# Copy log uploader scripts FROM build output
+COPY build/collect-logs.ps1 collect-logs.ps1
+COPY build/collect-logs.sh collect-logs.sh
+
+# Set executable permission for scripts
+RUN chmod +x collect-logs.ps1
+RUN chmod +x collect-logs.sh
+
+COPY public/gluesync-conductor.svg static/logo.svg
 
 EXPOSE 1717
 
