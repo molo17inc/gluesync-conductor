@@ -9,8 +9,8 @@ import writeComposeFile from '../../composeFile/writeComposeFile/writeComposeFil
 import { getLogger } from '../../../utils/logger';
 import { autoReboot } from '../../autoReboot/autoReboot';
 import ensureVolumeDirs from '../../ensureVolumeDirs/ensureVolumeDirs';
-import waitForContainerReady from '../../waitForContainerReady/waitForContainerReady';
 import { enableUpdateMode } from '../../../plugins/apiBlockerAsUpdating';
+import restartWindowsDependentServices from '../restartWindowsDependentServices/restartWindowsDependentServices';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
@@ -97,7 +97,10 @@ const createActions: CreateActions = ({
         );
 
         const windowsVersion = process.env.WINDOWS_VERSION || '2019';
-        const helperImageWindows = `molo17/docker-helper:28.0.0-win-nanoserver-ltsc${windowsVersion}-develop`;
+        const helperImageBase =
+          process.env.HELPER_IMAGE_BASE ||
+          'molo17/docker-helper:28.0.0-win-nanoserver-ltsc';
+        const helperImageWindows = `${helperImageBase}${windowsVersion}-develop`;
 
         // Enable update mode to block incoming requests during conductor restart
         enableUpdateMode();
@@ -126,79 +129,16 @@ const createActions: CreateActions = ({
       // Special handling for core-hub on Windows only
       // Windows NAT DNS cache requires dependent services to restart for reconnection
       if (id === CORE_HUB_SERVICE && isWindows) {
-        logger.info(
-          { service: id },
-          '[core-hub-updater] updating core-hub (Windows) and restarting dependent services',
-        );
-
-        // Wait for core-hub to be fully ready
-        try {
-          await waitForContainerReady(docker, CORE_HUB_SERVICE, 10, 1000);
-          logger.info(
-            { service: CORE_HUB_SERVICE },
-            '[core-hub-updater] core-hub is ready',
-          );
-        } catch (err) {
-          logger.warn(
-            { service: CORE_HUB_SERVICE, error: err },
-            '[core-hub-updater] core-hub readiness check failed, proceeding anyway',
+        if (id === CORE_HUB_SERVICE && isWindows) {
+          return restartWindowsDependentServices(
+            docker,
+            runCmd,
+            filename,
+            id,
+            CHRONOS_SERVICE,
+            CONDUCTOR_SERVICE,
           );
         }
-
-        // Restart chronos and capture result
-        const chronosRestartResult = await runCmd(
-          restartAll,
-          CHRONOS_SERVICE,
-          filename,
-          ['--no-deps'],
-        )
-          .then(() => {
-            logger.info(
-              { service: CHRONOS_SERVICE },
-              `[core-hub-updater] restarted ${CHRONOS_SERVICE} to reconnect to updated core-hub`,
-            );
-            return 'restarted';
-          })
-          .catch(err => {
-            logger.warn(
-              { service: CHRONOS_SERVICE, error: err },
-              `[core-hub-updater] failed to restart ${CHRONOS_SERVICE}`,
-            );
-            return 'restart failed';
-          });
-
-        // Prepare response message
-        const restartSummary = `${CHRONOS_SERVICE} ${chronosRestartResult}, ${CONDUCTOR_SERVICE} restarting`;
-        const responseMessage = `Core-hub ${id} updated and restarted. Dependent services: ${restartSummary}.`;
-
-        // Enable update mode to block incoming requests during conductor restart
-        enableUpdateMode();
-
-        logger.info(
-          { service: CONDUCTOR_SERVICE },
-          `[core-hub-updater] triggering ${CONDUCTOR_SERVICE} restart`,
-        );
-
-        const windowsVersion = process.env.WINDOWS_VERSION || '2019';
-        const helperImageWindows = `molo17/docker-helper:28.0.0-win-nanoserver-ltsc${windowsVersion}-develop`;
-
-        // Wrap in setImmediate to send response before conductor dies
-        setImmediate(() => {
-          autoReboot({
-            hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
-            serviceName: CONDUCTOR_SERVICE,
-            helperImage: isWindows ? helperImageWindows : 'docker:cli',
-            log: msg =>
-              logger.info({ msg }, '[core-hub-updater] conductor restart log'),
-          }).catch(err => {
-            logger.error(
-              { error: err },
-              '[core-hub-updater] autoReboot failed',
-            );
-          });
-        });
-
-        return responseMessage;
       }
 
       return `Agent ${id} updated and restarted.`;
