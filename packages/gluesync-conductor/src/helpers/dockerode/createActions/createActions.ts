@@ -129,14 +129,16 @@ const createActions: CreateActions = ({
       // Special handling for core-hub on Windows only
       // Windows NAT DNS cache requires dependent services to restart for reconnection
       if (id === CORE_HUB_SERVICE && isWindows) {
-        return restartWindowsDependentServices({
-          docker,
-          runCmd,
-          filename,
-          coreHubServiceId: id,
-          chronosService: CHRONOS_SERVICE,
-          conductorService: CONDUCTOR_SERVICE,
-        });
+        if (id === CORE_HUB_SERVICE && isWindows) {
+          return restartWindowsDependentServices(
+            docker,
+            runCmd,
+            filename,
+            id,
+            CHRONOS_SERVICE,
+            CONDUCTOR_SERVICE,
+          );
+        }
       }
 
       return `Agent ${id} updated and restarted.`;

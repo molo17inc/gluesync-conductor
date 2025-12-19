@@ -10,14 +10,14 @@ import { RestartWindowsDependentServices } from './restartWindowsDependentServic
  * Special handling for core-hub on Windows only.
  * Windows NAT DNS cache requires dependent services to restart for reconnection.
  */
-const restartWindowsDependentServices = async ({
+const restartWindowsDependentServices: RestartWindowsDependentServices = async (
   docker,
   runCmd,
   filename,
   coreHubServiceId,
   chronosService,
   conductorService,
-}: RestartWindowsDependentServices): Promise<string> => {
+) => {
   const logger = getLogger();
 
   logger.info(
