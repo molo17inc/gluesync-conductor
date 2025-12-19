@@ -45,7 +45,7 @@ const autoRebootWindows: AutoReboot = async ({
   }
 
   const networkName =
-    process.env.WINDOWS_NETWORK_NAME || 'gluesync-windows-net';
+    process.env.WINDOWS_NETWORK_NAME || 'gluesync-windows_gluesync-windows-net';
 
   // PowerShell command inside helper
   const psCommand =
