@@ -83,21 +83,6 @@ const serviceValidation: ServiceValidation = (
     };
   }
 
-  const nicknameAlreadyExisting = Object.entries(services ?? {}).some(
-    ([serviceId, svc]) =>
-      !!nickname &&
-      serviceId !== currentServiceId &&
-      nickname === svc.container_name,
-  );
-
-  if (nicknameAlreadyExisting) {
-    return {
-      success: false,
-      errorMessage: 'Nickname already present',
-      statusCode: 500,
-    };
-  }
-
   return {
     success: true,
     errorMessage: '',
