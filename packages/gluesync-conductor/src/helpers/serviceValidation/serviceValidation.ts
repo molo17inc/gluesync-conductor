@@ -9,7 +9,7 @@ const serviceValidation: ServiceValidation = (
   currentServiceId,
   services,
 ) => {
-  const { type, nickname, agentType } = service;
+  const { type, agentType } = service;
   const existingService = services?.[currentServiceId];
 
   if (validationMode === 'add') {
