@@ -11,6 +11,7 @@ import { ConductorServiceTypes } from '../../../models/conductor.model';
 export type CreateComposeServiceOptions = Readonly<
   ComposeServiceDeploy & {
     id: string;
+    serviceId: string;
     imageName: string;
     agentType?: string;
     nickname?: string;

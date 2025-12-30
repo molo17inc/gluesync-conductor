@@ -93,6 +93,7 @@ const createComposeService: CreateComposeService = (
     imageName,
     agentType,
     nickname,
+    serviceId,
     tag,
     environment = {},
     ports,
@@ -103,10 +104,6 @@ const createComposeService: CreateComposeService = (
     dependsOn,
   },
 ) => {
-  const containerName =
-    nickname ??
-    `${imageName}${agentType ? `-${agentType}` : ''}-${serviceType}`;
-
   const defaultLabels = {
     [`${LabelPrefix.CONDUCTOR}.service_id`]: id,
     [`${LabelPrefix.CONDUCTOR}.type`]: serviceType,
@@ -143,8 +140,8 @@ const createComposeService: CreateComposeService = (
         }gluesync.com.jks:ro`,
         ...(serviceType === 'agent'
           ? [
-              `./logs/${containerName}:${logsPath}`,
-              `./data/${containerName}:${dataPath}`,
+              `./logs/${serviceId}:${logsPath}`,
+              `./data/${serviceId}:${dataPath}`,
             ]
           : []),
       ]
@@ -152,15 +149,14 @@ const createComposeService: CreateComposeService = (
         `${configDir}:${sharedPath}:ro`,
         ...(serviceType === 'agent'
           ? [
-              `./logs/${containerName}:${logsPath}`,
-              `./data/${containerName}:${dataPath}`,
+              `./logs/${serviceId}:${logsPath}`,
+              `./data/${serviceId}:${dataPath}`,
             ]
           : []),
       ];
 
   return {
     image: `molo17/${imageName}:${tag || 'latest'}`,
-    container_name: containerName,
     restart: 'unless-stopped',
     deploy: { resources },
     labels: Object.entries({ ...labels, ...defaultLabels }).reduce<string[]>(
@@ -170,7 +166,7 @@ const createComposeService: CreateComposeService = (
     environment: Object.entries({
       ...environment,
       ...(agentType && { TYPE: agentType }),
-      GLUESYNC_MODULE_TAG: 'conductor',
+      GLUESYNC_MODULE_TAG: nickname || serviceId,
       ...(serviceType === 'agent' && {
         INITIAL_AGENT_ID: id,
         LOG_CONFIG_FILE: isWindows
