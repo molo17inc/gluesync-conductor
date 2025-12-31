@@ -9,6 +9,7 @@ export type ListContainerItem = Readonly<{
   id: string;
   type?: ConductorServiceTypes | 'unknown';
   persisted: boolean;
+  agentId?: string;
   service?: ComposeService;
   info?: ContainerInfo;
 }>;

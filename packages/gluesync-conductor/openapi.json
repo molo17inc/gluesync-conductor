@@ -259,6 +259,9 @@
                               "persisted": {
                                 "type": "boolean"
                               },
+                              "agentId": {
+                                "type": "string"
+                              },
                               "service": {
                                 "type": "object",
                                 "properties": {

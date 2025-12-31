@@ -1,3 +1,5 @@
+import { ParseImageResult } from '../helpers/parseImage/parseImage.model';
+
 export type SystemInfo = Readonly<{
   ncpu?: number;
   memTotal?: number;
@@ -73,6 +75,7 @@ export type ContainerInfo = Readonly<{
   hostConfig: HostConfig;
   networkSettings: NetworkSettings;
   mounts: ReadonlyArray<VolumeMount>;
+  parsedImage: ParseImageResult;
 }>;
 
 // export type ContainerListItem = Readonly<{

@@ -91,17 +91,9 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                         type: 'boolean',
                         description: 'Whether container is persisted',
                       },
-                      parsedImage: {
-                        type: 'object',
-                        description: 'Parsed Docker image details',
-                        properties: {
-                          registry: { type: 'string' },
-                          repository: { type: 'string' },
-                          tag: { type: 'string' },
-                          fullName: { type: 'string' },
-                          original: { type: 'string' },
-                          imageName: { type: 'string' },
-                        },
+                      agentId: {
+                        type: 'string',
+                        description: 'Agent ID',
                       },
 
                       service: {
@@ -184,6 +176,18 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                             description:
                               'Deprecated: use parsedImage.tag instead',
                             deprecated: true,
+                          },
+                          parsedImage: {
+                            type: 'object',
+                            description: 'Parsed Docker image details',
+                            properties: {
+                              registry: { type: 'string' },
+                              repository: { type: 'string' },
+                              tag: { type: 'string' },
+                              fullName: { type: 'string' },
+                              original: { type: 'string' },
+                              imageName: { type: 'string' },
+                            },
                           },
                           command: { type: 'string' },
                           created: { type: 'number' },
