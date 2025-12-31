@@ -170,7 +170,7 @@ const createComposeService: CreateComposeService = (
     environment: Object.entries({
       ...environment,
       ...(agentType && { TYPE: agentType }),
-      GLUESYNC_MODULE_TAG: nickname || serviceId,
+      AGENT_TAG: nickname || serviceId,
       ...(serviceType === 'agent' && {
         INITIAL_AGENT_ID: id,
         LOG_CONFIG_FILE: isWindows
