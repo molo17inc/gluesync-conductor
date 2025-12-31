@@ -99,7 +99,7 @@ const createComposeService: CreateComposeService = (
     ports,
     volumes = [],
     labels = {},
-    resources,
+    resources = {},
     healthcheck,
     dependsOn,
   },
@@ -158,7 +158,11 @@ const createComposeService: CreateComposeService = (
   return {
     image: `molo17/${imageName}:${tag || 'latest'}`,
     restart: 'unless-stopped',
-    deploy: { resources },
+    deploy:
+      Object.keys(resources.limits || {}).length > 0 ||
+      Object.keys(resources.reservations || {}).length > 0
+        ? { resources }
+        : undefined,
     labels: Object.entries({ ...labels, ...defaultLabels }).reduce<string[]>(
       (acc, [key, value]) => (value ? [...acc, `${key}=${value}`] : acc),
       [],
