@@ -29,9 +29,6 @@
                 "image": {
                   "type": "string"
                 },
-                "container_name": {
-                  "type": "string"
-                },
                 "restart": {
                   "type": "string"
                 },
@@ -266,9 +263,6 @@
                                 "type": "object",
                                 "properties": {
                                   "image": {
-                                    "type": "string"
-                                  },
-                                  "container_name": {
                                     "type": "string"
                                   },
                                   "restart": {

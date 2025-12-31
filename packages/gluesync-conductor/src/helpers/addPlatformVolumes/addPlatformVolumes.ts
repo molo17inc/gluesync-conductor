@@ -75,8 +75,9 @@ const addPlatformVolumes: AddPlatformVolumes = (
       const nextNormalized = nextVolumes.map(stripMountOptions).sort();
 
       const volumesChanged =
-        currentNormalized.length !== nextNormalized.length ||
-        !currentNormalized.every((v, i) => v === nextNormalized[i]);
+        !!svc.container_name &&
+        (currentNormalized.length !== nextNormalized.length ||
+          !currentNormalized.every((v, i) => v === nextNormalized[i]));
 
       if (!volumesChanged) {
         return acc;

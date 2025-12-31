@@ -21,7 +21,6 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
           type: 'object',
           properties: {
             image: { type: 'string' },
-            container_name: { type: 'string' },
             restart: { type: 'string' },
             environment: { type: 'array', items: { type: 'string' } },
             ports: { type: 'array', items: { type: 'string' } },
@@ -102,7 +101,6 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                           'Service definition (docker-compose style)',
                         properties: {
                           image: { type: 'string' },
-                          container_name: { type: 'string' },
                           restart: { type: 'string' },
                           deploy: {
                             type: 'object',

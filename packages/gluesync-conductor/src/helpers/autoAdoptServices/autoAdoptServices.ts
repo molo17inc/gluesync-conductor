@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
 import {
   composeServiceFieldConfig,
   LabelPrefix,
@@ -277,9 +276,6 @@ const autoAdoptServices = async (): Promise<{
           return adjustedServices[id] ?? cleanedServiceBase;
         })();
 
-        // Generate a short UUID only for agent type
-        const agentId = conductorType === 'agent' ? uuidv4().split('-')[0] : id;
-
         // Add conductor type label and service_id label
         const finalLabels = [
           ...initialLabels,
@@ -295,22 +291,9 @@ const autoAdoptServices = async (): Promise<{
           platformAdjustedService.environment,
         );
 
-        const finalEnvironment =
-          conductorType === 'agent'
-            ? { ...normalizedEnv, INITIAL_AGENT_ID: agentId }
-            : normalizedEnv;
-
-        const envArray = Object.entries(finalEnvironment).map(
+        const envArray = Object.entries(normalizedEnv).map(
           ([key, value]) => `${key}=${value}`,
         );
-
-        // Derive container_name for services that don't have one
-        const existingContainerName = service.container_name;
-        const containerName =
-          existingContainerName ??
-          `${imageName}${
-            conductorType === 'agent' ? `-${normalizedEnv.type}` : ''
-          }-${conductorType}`;
 
         return {
           updatedServices: {
@@ -319,7 +302,6 @@ const autoAdoptServices = async (): Promise<{
               ...platformAdjustedService,
               labels: finalLabels,
               environment: envArray,
-              container_name: containerName,
             },
           },
           updatedIds: [...acc.updatedIds, id],

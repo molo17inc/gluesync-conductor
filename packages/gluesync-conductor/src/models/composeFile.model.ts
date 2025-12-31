@@ -56,7 +56,7 @@ export interface ComposeHealthcheck {
 
 export type CommonComposeService = Readonly<{
   image: string;
-  container_name: string;
+  container_name?: string;
   restart?: string;
   deploy?: ComposeServiceDeploy;
   depends_on?: ComposeDependsOn;
