@@ -1,3 +1,4 @@
+import { LabelPrefix } from '../../models/composeFile.model';
 import { AddPlatformVolumes } from './AddPlatformVolumes.model';
 
 /**
@@ -27,9 +28,11 @@ const addPlatformVolumes: AddPlatformVolumes = (
 
       // Check if service is an agent (has conductor.type=agent label)
       const isAgent = Array.isArray(svc.labels)
-        ? svc.labels.some(l => l.includes('com.molo17.conductor.type=agent'))
+        ? svc.labels.some(l =>
+            l.includes(`${LabelPrefix.CONDUCTOR}.type=agent`),
+          )
         : Object.entries(svc.labels || {}).some(
-            ([k, v]) => k === 'com.molo17.conductor.type' && v === 'agent',
+            ([k, v]) => k === `${LabelPrefix.CONDUCTOR}.type` && v === 'agent',
           );
 
       // ✅ Only normalize agents - skip modules (they have custom paths)

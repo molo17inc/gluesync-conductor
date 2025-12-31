@@ -105,7 +105,7 @@ const createComposeService: CreateComposeService = (
   },
 ) => {
   const defaultLabels = {
-    [`${LabelPrefix.CONDUCTOR}.service_id`]: id,
+    [`${LabelPrefix.CONDUCTOR}.service_id`]: serviceId,
     [`${LabelPrefix.CONDUCTOR}.type`]: serviceType,
   };
 

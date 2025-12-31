@@ -285,7 +285,7 @@ const autoAdoptServices = async (): Promise<{
           ...initialLabels,
           `${LabelPrefix.CONDUCTOR}.type=${conductorType}`,
           ...(conductorType === 'agent'
-            ? [`${LabelPrefix.CONDUCTOR}.service_id=${agentId}`]
+            ? [`${LabelPrefix.CONDUCTOR}.service_id=${id}`]
             : []),
         ];
 
