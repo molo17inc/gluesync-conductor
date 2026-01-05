@@ -1,9 +1,18 @@
-import { DoContainersActionHandler } from './doContainersAction.model';
+import {
+  DoContainersActionHandler,
+  DoContainersActionItem,
+} from './doContainersAction.model';
 import createActions from '../../../helpers/dockerode/createActions/createActions';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import checkConductorUpdate from '../../../helpers/checkConductorUpdate/checkConductorUpdate';
 import updateConductorOnly from './handleUpdate/updateConductorOnly';
 import updateNormalBulk from './handleUpdate/updateNormalBulk';
+import fetchAllServicesInCompose from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose';
+import { enableUpdateMode } from '../../../plugins/apiBlockerAsUpdating';
+import { autoReboot } from '../../../helpers/autoReboot/autoReboot';
+import getRootPath from '../../../helpers/getRootPath/getRootPath';
+
+const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
 const handler: DoContainersActionHandler = async (req, reply) => {
   try {
@@ -89,6 +98,146 @@ const handler: DoContainersActionHandler = async (req, reply) => {
           })),
         },
       });
+    } else if (containerAction === 'restart') {
+      const CONDUCTOR_SERVICE =
+        process.env.CONDUCTOR_NAME || 'gluesync-conductor';
+
+      // Check if only conductor is being restarted
+      if (requestIds.length === 1 && requestIds[0] === CONDUCTOR_SERVICE) {
+        req.log.info(
+          { service: CONDUCTOR_SERVICE },
+          '[conductor-restart] triggering conductor restart',
+        );
+
+        // Enable update mode to block incoming requests during conductor restart
+        enableUpdateMode();
+
+        const windowsVersion = process.env.WINDOWS_VERSION || '2019';
+        const helperImageBase =
+          process.env.HELPER_IMAGE_BASE ||
+          'molo17/docker-helper:28.0.0-win-nanoserver-ltsc';
+        const helperImageWindows = `${helperImageBase}${windowsVersion}-develop`;
+
+        reply.code(200);
+        reply.send({
+          success: true,
+          data: {
+            containers: [
+              {
+                id: CONDUCTOR_SERVICE,
+                status: 'OK',
+                message: `Conductor ${CONDUCTOR_SERVICE} restart initiated.`,
+              },
+            ],
+          },
+        });
+
+        // Wrap in setImmediate to send response before conductor dies
+        setImmediate(() => {
+          autoReboot({
+            hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
+            serviceName: CONDUCTOR_SERVICE,
+            helperImage: isWindows ? helperImageWindows : 'docker:cli',
+            log: msg =>
+              req.log.info({ msg }, '[conductor-restart] restart log'),
+          }).catch(err => {
+            req.log.error(
+              { error: err },
+              '[conductor-restart] autoReboot failed',
+            );
+          });
+        });
+      } else {
+        // If no IDs provided, get all services from compose file
+        const allServiceIds =
+          requestIds.length === 0
+            ? await readComposeFile({ raw: true }).then(composeJson => {
+                const services = fetchAllServicesInCompose(composeJson, true);
+                req.log.debug(
+                  `No IDs provided for restart, restarting all services: ${services.join(', ')}`,
+                );
+                return services;
+              })
+            : requestIds;
+
+        // Separate conductor from other services
+        const hasConductor = allServiceIds.includes(CONDUCTOR_SERVICE);
+        const idsToRestart = allServiceIds.filter(
+          serviceName => serviceName !== CONDUCTOR_SERVICE,
+        );
+
+        // Restart all services except conductor
+        const results = await Promise.allSettled(idsToRestart.map(action));
+
+        req.log.debug(
+          `Container action ${containerAction}: ${JSON.stringify(results)}`,
+        );
+
+        // Build response with all results
+        const serviceContainers: ReadonlyArray<DoContainersActionItem> =
+          results.map((result, index) => ({
+            id: idsToRestart[index],
+            status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
+            message:
+              result.status === 'fulfilled'
+                ? result.value
+                : result?.reason?.err,
+          }));
+
+        // If conductor needs restart, add it to response and trigger restart
+        if (hasConductor) {
+          const containers: ReadonlyArray<DoContainersActionItem> = [
+            ...serviceContainers,
+            {
+              id: CONDUCTOR_SERVICE,
+              status: 'OK',
+              message: `Conductor ${CONDUCTOR_SERVICE} restart initiated.`,
+            },
+          ];
+
+          req.log.info(
+            { service: CONDUCTOR_SERVICE },
+            '[conductor-restart] triggering conductor restart',
+          );
+
+          // Enable update mode to block incoming requests during conductor restart
+          enableUpdateMode();
+
+          const windowsVersion = process.env.WINDOWS_VERSION || '2019';
+          const helperImageBase =
+            process.env.HELPER_IMAGE_BASE ||
+            'molo17/docker-helper:28.0.0-win-nanoserver-ltsc';
+          const helperImageWindows = `${helperImageBase}${windowsVersion}-develop`;
+
+          reply.code(200);
+          reply.send({
+            success: true,
+            data: { containers },
+          });
+
+          // Wrap in setImmediate to send response before conductor dies
+          setImmediate(() => {
+            autoReboot({
+              hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
+              serviceName: CONDUCTOR_SERVICE,
+              helperImage: isWindows ? helperImageWindows : 'docker:cli',
+              log: msg =>
+                req.log.info({ msg }, '[conductor-restart] restart log'),
+            }).catch(err => {
+              req.log.error(
+                { error: err },
+                '[conductor-restart] autoReboot failed',
+              );
+            });
+          });
+        } else {
+          reply.code(200);
+          reply.send({
+            success: true,
+            data: { containers: serviceContainers },
+          });
+        }
+      }
     } else {
       const results = await Promise.allSettled(requestIds.map(action));
 
