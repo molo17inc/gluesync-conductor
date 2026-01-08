@@ -93,22 +93,19 @@ const createComposeService: CreateComposeService = (
     imageName,
     agentType,
     nickname,
+    serviceId,
     tag,
     environment = {},
     ports,
     volumes = [],
     labels = {},
-    resources,
+    resources = {},
     healthcheck,
     dependsOn,
   },
 ) => {
-  const containerName =
-    nickname ??
-    `${imageName}${agentType ? `-${agentType}` : ''}-${serviceType}`;
-
   const defaultLabels = {
-    [`${LabelPrefix.CONDUCTOR}.service_id`]: id,
+    [`${LabelPrefix.CONDUCTOR}.service_id`]: serviceId,
     [`${LabelPrefix.CONDUCTOR}.type`]: serviceType,
   };
 
@@ -143,8 +140,8 @@ const createComposeService: CreateComposeService = (
         }gluesync.com.jks:ro`,
         ...(serviceType === 'agent'
           ? [
-              `./logs/${containerName}:${logsPath}`,
-              `./data/${containerName}:${dataPath}`,
+              `./logs/${serviceId}:${logsPath}`,
+              `./data/${serviceId}:${dataPath}`,
             ]
           : []),
       ]
@@ -152,17 +149,20 @@ const createComposeService: CreateComposeService = (
         `${configDir}:${sharedPath}:ro`,
         ...(serviceType === 'agent'
           ? [
-              `./logs/${containerName}:${logsPath}`,
-              `./data/${containerName}:${dataPath}`,
+              `./logs/${serviceId}:${logsPath}`,
+              `./data/${serviceId}:${dataPath}`,
             ]
           : []),
       ];
 
   return {
     image: `molo17/${imageName}:${tag || 'latest'}`,
-    container_name: containerName,
     restart: 'unless-stopped',
-    deploy: { resources },
+    deploy:
+      Object.keys(resources.limits || {}).length > 0 ||
+      Object.keys(resources.reservations || {}).length > 0
+        ? { resources }
+        : undefined,
     labels: Object.entries({ ...labels, ...defaultLabels }).reduce<string[]>(
       (acc, [key, value]) => (value ? [...acc, `${key}=${value}`] : acc),
       [],
@@ -170,7 +170,7 @@ const createComposeService: CreateComposeService = (
     environment: Object.entries({
       ...environment,
       ...(agentType && { TYPE: agentType }),
-      GLUESYNC_MODULE_TAG: 'conductor',
+      AGENT_TAG: nickname || serviceId,
       ...(serviceType === 'agent' && {
         INITIAL_AGENT_ID: id,
         LOG_CONFIG_FILE: isWindows

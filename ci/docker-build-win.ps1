@@ -103,9 +103,10 @@ Write-Host "✅ Pushed $VERSION_TAG_WINDOWS"
 
 # --- Tag and push latest-windows for release branches ---
 if ($env:CI_COMMIT_TAG -match '^release-') {
-  $LATEST_BASE = "$IMAGE_NAME:latest"
-  $LATEST_TAG = "$LATEST_BASE-win-$($WindowsVersion)-$($WindowsTag)"
+  $LATEST_BASE = "${IMAGE_NAME}:latest"
+  $LATEST_TAG = "${LATEST_BASE}-win-${WindowsVersion}-${WindowsTag}"
 
+  Write-Host "Tagging $VERSION_TAG_WINDOWS as $LATEST_TAG"
   docker tag "$VERSION_TAG_WINDOWS" "$LATEST_TAG"
   if ($LASTEXITCODE -ne 0) { throw "❌ Docker tag failed" }
 
@@ -116,7 +117,9 @@ if ($env:CI_COMMIT_TAG -match '^release-') {
 
   # --- Backwards compatibility for ltsc2022 ---
   if ($WindowsTag -eq "ltsc2022") {
-    $LEGACY_TAG = "$LATEST_BASE-windows"
+    $LEGACY_TAG = "${LATEST_BASE}-windows"
+
+    Write-Host "Tagging $VERSION_TAG_WINDOWS as $LEGACY_TAG"
     docker tag "$VERSION_TAG_WINDOWS" "$LEGACY_TAG"
     if ($LASTEXITCODE -ne 0) { throw "❌ Docker tag legacy failed" }
 

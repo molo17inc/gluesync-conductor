@@ -9,7 +9,7 @@ const serviceValidation: ServiceValidation = (
   currentServiceId,
   services,
 ) => {
-  const { type, nickname, agentType } = service;
+  const { type, agentType } = service;
   const existingService = services?.[currentServiceId];
 
   if (validationMode === 'add') {
@@ -80,21 +80,6 @@ const serviceValidation: ServiceValidation = (
       success: false,
       errorMessage: `Service of type module don't have an agent type (source, target), did you mean to ${validationMode} an agent?`,
       statusCode: 409,
-    };
-  }
-
-  const nicknameAlreadyExisting = Object.entries(services ?? {}).some(
-    ([serviceId, svc]) =>
-      !!nickname &&
-      serviceId !== currentServiceId &&
-      nickname === svc.container_name,
-  );
-
-  if (nicknameAlreadyExisting) {
-    return {
-      success: false,
-      errorMessage: 'Nickname already present',
-      statusCode: 500,
     };
   }
 

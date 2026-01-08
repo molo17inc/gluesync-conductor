@@ -67,6 +67,7 @@ const processServices: ProcessServices = async (
           const rawService = createService({
             ...service,
             tag,
+            serviceId,
           });
 
           resolve({

@@ -169,7 +169,19 @@ const healConductorConf = async (): Promise<boolean> => {
 
   // Only retag when current tag is "latest"
   if (currentTag !== 'latest') {
-    if (!volumesChanged && !envChanged && !envFileChanged) {
+    const healedVolumesNonLatest = Array.isArray(baseService.volumes)
+      ? baseService.volumes.map(vol =>
+          typeof vol === 'string' && vol.trim() === BAD_VOLUME
+            ? GOOD_VOLUME
+            : vol,
+        )
+      : baseService.volumes;
+
+    const volumesChangedNonLatest = Array.isArray(baseService.volumes)
+      ? healedVolumesNonLatest?.some((v, i) => v !== baseService.volumes?.[i])
+      : false;
+
+    if (!volumesChangedNonLatest && !envChanged) {
       logger.info('[conductor-healer] nothing to heal');
       return false;
     }
@@ -194,7 +206,19 @@ const healConductorConf = async (): Promise<boolean> => {
   }
 
   // Tag is "latest": fix volumes AND maybe update tag
-  if (!volumesChanged && !envChanged && !envFileChanged) {
+  const healedVolumes = Array.isArray(baseService.volumes)
+    ? baseService.volumes.map(vol =>
+        typeof vol === 'string' && vol.trim() === BAD_VOLUME
+          ? GOOD_VOLUME
+          : vol,
+      )
+    : baseService.volumes;
+
+  const volumesChanged = Array.isArray(baseService.volumes)
+    ? healedVolumes?.some((v, i) => v !== baseService.volumes?.[i])
+    : false;
+
+  if (!volumesChanged && !envChanged) {
     logger.info('[conductor-healer] nothing to heal');
     return false;
   }

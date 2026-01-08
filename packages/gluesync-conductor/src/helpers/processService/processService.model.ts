@@ -1,3 +1,4 @@
+import { Require } from '../../models/common.model';
 import {
   ComposeDependsOn,
   ComposePort,
@@ -56,7 +57,7 @@ export type ProcessServices = (
     serviceId: string,
     services?: Record<string, any>,
   ) => ValidationResult,
-  createService: (service: Service) => RawComposeService,
+  createService: (service: Require<Service, 'serviceId'>) => RawComposeService,
 ) => Promise<{
   results: ServiceResultItem[];
   updatedComposeJson: RawComposeFile;

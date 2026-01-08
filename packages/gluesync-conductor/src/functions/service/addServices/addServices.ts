@@ -8,7 +8,7 @@ import {
   AddServicesSuccessResponse,
 } from './addServices.model';
 import createService from '../../../helpers/processService/service.factory';
-import agentValidation from '../../../helpers/serviceValidation/serviceValidation';
+import serviceValidation from '../../../helpers/serviceValidation/serviceValidation';
 import { castObject } from '../../../helpers/composeFile/extractKeyValue/extractKeyValue';
 import cleanResults from '../../../helpers/cleanResults/cleanResults';
 
@@ -24,7 +24,12 @@ const handler: AddServicesHandler = async (req, reply) => {
       rawComposeJson,
       servicesWithIds,
       (serviceToValidate, serviceId, servicesInCompose) =>
-        agentValidation('add', serviceToValidate, serviceId, servicesInCompose),
+        serviceValidation(
+          'add',
+          serviceToValidate,
+          serviceId,
+          servicesInCompose,
+        ),
       ({ reservations, limits, ...service }) =>
         createComposeService(service.type, {
           ...service,

@@ -258,16 +258,16 @@ Gracefully restarts a container with a 10-second timeout.
 
 Gluesync Conductor uses Docker labels to identify and track containers. The following labels are used:
 
-### 1. Unique ID Label
+### 1. Service ID Label
 
-**Label:** `com.molo17.conductor.unique_id`
+**Label:** `com.molo17.conductor.service_id`
 
-This label stores the container's nickname, which serves as a unique identifier. It helps Gluesync Conductor identify which containers are persisted in the Docker Compose configuration file.
+This label stores the container's id, which serves as a unique identifier. It helps Gluesync Conductor identify which containers are persisted in the Docker Compose configuration file.
 
 **Example:**
 ```yaml
 labels:
-  - "com.molo17.conductor.unique_id=my-agent"
+  - "com.molo17.conductor.service_id=my-container-id"
 ```
 
 ### 2. Agent Type Label

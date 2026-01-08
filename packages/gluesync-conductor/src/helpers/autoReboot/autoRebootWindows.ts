@@ -44,6 +44,9 @@ const autoRebootWindows: AutoReboot = async ({
     throw new Error('PWD/BASE_PATH env var must be set');
   }
 
+  const networkName =
+    process.env.WINDOWS_NETWORK_NAME || 'gluesync-windows_gluesync-windows-net';
+
   // PowerShell command inside helper
   const psCommand =
     `$env:PWD='${pwd}'; ` +
@@ -52,6 +55,8 @@ const autoRebootWindows: AutoReboot = async ({
 
   const args = [
     'run',
+    '--network',
+    networkName,
     '-v',
     '\\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine',
     '--rm',

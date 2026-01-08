@@ -21,7 +21,6 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
           type: 'object',
           properties: {
             image: { type: 'string' },
-            container_name: { type: 'string' },
             restart: { type: 'string' },
             environment: { type: 'array', items: { type: 'string' } },
             ports: { type: 'array', items: { type: 'string' } },
@@ -91,17 +90,9 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                         type: 'boolean',
                         description: 'Whether container is persisted',
                       },
-                      parsedImage: {
-                        type: 'object',
-                        description: 'Parsed Docker image details',
-                        properties: {
-                          registry: { type: 'string' },
-                          repository: { type: 'string' },
-                          tag: { type: 'string' },
-                          fullName: { type: 'string' },
-                          original: { type: 'string' },
-                          imageName: { type: 'string' },
-                        },
+                      agentId: {
+                        type: 'string',
+                        description: 'Agent ID',
                       },
 
                       service: {
@@ -110,7 +101,6 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                           'Service definition (docker-compose style)',
                         properties: {
                           image: { type: 'string' },
-                          container_name: { type: 'string' },
                           restart: { type: 'string' },
                           deploy: {
                             type: 'object',
@@ -184,6 +174,18 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                             description:
                               'Deprecated: use parsedImage.tag instead',
                             deprecated: true,
+                          },
+                          parsedImage: {
+                            type: 'object',
+                            description: 'Parsed Docker image details',
+                            properties: {
+                              registry: { type: 'string' },
+                              repository: { type: 'string' },
+                              tag: { type: 'string' },
+                              fullName: { type: 'string' },
+                              original: { type: 'string' },
+                              imageName: { type: 'string' },
+                            },
                           },
                           command: { type: 'string' },
                           created: { type: 'number' },

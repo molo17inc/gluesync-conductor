@@ -49,7 +49,6 @@ name: gluesync
 services:
   gluesync-core-hub:
     restart: unless-stopped
-    container_name: gluesync-core-hub
     image: molo17/gluesync-core-hub:latest
     labels:
       - traefik.enable=true
@@ -70,11 +69,37 @@ services:
       - ./bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json
       - ./logs/core-hub:/opt/gluesync/logs
       - ./data/core-hub:/opt/gluesync/data
+
+  gluesync-chronos:
+    restart: unless-stopped
+    image: molo17/gluesync-chronos:latest
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.chronos.rule=PathPrefix(`/chronos/`) ||
+        PathPrefix(`/api/`) || PathPrefix(`/chronos/api/`)
+      - traefik.http.routers.chronos.entrypoints=websecure
+      - traefik.http.routers.chronos.tls=true
+      - traefik.http.services.chronos.loadbalancer.server.port=1717
+      - traefik.http.services.chronos.loadbalancer.server.scheme=https
+      - traefik.http.routers.chronos.middlewares=chronos@docker
+      - traefik.http.routers.chronos.service=chronos
+      - traefik.http.middlewares.chronos.replacepathregex.regex=^/chronos/api/(.*)
+      - traefik.http.middlewares.chronos.replacepathregex.replacement=/api/$$1
+      - traefik.http.services.chronos.loadbalancer.passhostheader=true
+      - com.molo17.conductor.type=module
+    environment:
+      - SSL_ENABLED=true
+      - SSL_SKIP_VERIFY=true
+      - TIMEZONE=UTC
+    volumes:
+      - ./shared:/opt/gluesync/shared:ro
+      - ./data/chronos:/app/data
+      - ./logs/chronos:/app/logs
+
   gluesync-conductor:
     restart: unless-stopped
     # image: molo17/gluesync-conductor:latest
     build: ../../packages/gluesync-conductor
-    container_name: gluesync-conductor
     labels:
       - traefik.enable=true
       - traefik.http.routers.conductor.rule=PathPrefix(`/conductor/api/`)
@@ -103,8 +128,7 @@ services:
 
   reverse-proxy:
     restart: unless-stopped
-    container_name: reverse-proxy
-    image: traefik:v3.3
+    image: traefik:v3.6.2
     ports:
       - 80:80
       - 443:443
@@ -117,7 +141,6 @@ services:
 
   prometheus:
     restart: unless-stopped
-    container_name: prometheus
     image: prom/prometheus
     labels:
       - traefik.enable=true
@@ -139,7 +162,6 @@ services:
   grafana:
     # Grafana default credentials: admin | password
     restart: unless-stopped
-    container_name: grafana
     image: grafana/grafana
     labels:
       - traefik.enable=true
@@ -156,3 +178,14 @@ services:
     volumes:
       - ./grafana:/etc/grafana/provisioning
         # - ./data:/var/lib/grafana
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    restart: unless-stopped
+    ports:
+      - 9443:9443
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:
+      - --admin-password
+      - $$2y$$05$$wxahdaIgY6yjxyPjvSqyr.NeLhCOY/pWLXSJykVsfUGaRXnjq3etK

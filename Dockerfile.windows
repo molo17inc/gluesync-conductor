@@ -1,32 +1,24 @@
 # escape=`
 
-
 ARG WINDOWS_TAG=ltsc2019
 ARG WINDOWS_VERSION=nanoserver
-
 
 # Builder stage
 FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop AS builder
 
-
 WORKDIR C:\opt\gluesync-conductor
-
 
 # Switch default shell to PowerShell 7 for builder stage
 SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
-
 
 COPY . .
 RUN yarn install --immutable --immutable-cache
 RUN yarn build
 
-
 # Final stage: runtime image
 FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop
 
-
 WORKDIR C:\opt\gluesync-conductor
-
 
 # Switch default shell to PowerShell 7 for runtime stage
 SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
@@ -39,10 +31,8 @@ RUN Invoke-WebRequest -Uri https://download.docker.com/win/static/stable/x86_64/
   Remove-Item 'C:/docker.zip' -Force; `
   Invoke-WebRequest -Uri https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-windows-x86_64.exe -OutFile C:/Windows/System32/docker-compose.exe
 
-
 # Ensure PATH includes System32
 ENV PATH="C:\\Windows\\System32;${PATH}"
-
 
 # Environment variables (one per line)
 ENV NODE_ENV=production
@@ -71,12 +61,13 @@ ENV TZ=UTC
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js index.js
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js.map index.js.map
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\agents.json agents.json
+# Copy log collection scripts FROM build output
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\collect-logs.ps1 collect-logs.ps1
+
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\public\gluesync-conductor.svg static\logo.svg
 # COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\static\ static
 
 
 EXPOSE 1717
-
 
 CMD ["node","index.js"]

@@ -39,7 +39,7 @@ const canUpdateContainers: CanUpdateContainers = async (
 
   // Explicitly fetch core-hub info
   const coreHubVersionInfo = await fetchAgentInfo(
-    parseImage(process.env.CORE_HUB_NAME || 'gluesync-core-hub').shortImageName,
+    parseImage('gluesync-core-hub').shortImageName,
   );
 
   const settledResults = await Promise.allSettled(taggedPromises);

@@ -83,6 +83,9 @@ const handler: ListContainersHandler = async (req, reply) => {
           return {
             id,
             persisted,
+            agentId: service?.environment?.INITIAL_AGENT_ID
+              ? String(service?.environment?.INITIAL_AGENT_ID)
+              : undefined,
             type:
               (persisted ? serviceType : parseServiceType(info?.type)) ||
               'unknown',

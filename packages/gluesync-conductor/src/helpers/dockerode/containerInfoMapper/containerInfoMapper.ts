@@ -103,7 +103,7 @@ const containerInfoMapper: ContainerInfoMapper = container => {
       }),
     ),
     tag: parsedImage.tag,
-    parsedImage: { ...parsedImage },
+    parsedImage,
     uniqueId,
     type,
   };

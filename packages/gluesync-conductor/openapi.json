@@ -29,9 +29,6 @@
                 "image": {
                   "type": "string"
                 },
-                "container_name": {
-                  "type": "string"
-                },
                 "restart": {
                   "type": "string"
                 },
@@ -259,13 +256,13 @@
                               "persisted": {
                                 "type": "boolean"
                               },
+                              "agentId": {
+                                "type": "string"
+                              },
                               "service": {
                                 "type": "object",
                                 "properties": {
                                   "image": {
-                                    "type": "string"
-                                  },
-                                  "container_name": {
                                     "type": "string"
                                   },
                                   "restart": {
