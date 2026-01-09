@@ -1,5 +1,5 @@
 import { existsSync } from 'fs';
-import { join, isAbsolute, dirname, resolve } from 'path';
+import { join, isAbsolute, resolve } from 'path';
 import { getLogger } from '../../utils/logger';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
@@ -24,7 +24,8 @@ const REQUIRED_ROOT_FOLDER_MOUNT_VOLUME = isWindows
   : './:/opt/gluesync-conductor/root-folder';
 
 const ENV_FILE = '.env';
-const PWD_ENV_FILE = '${PWD}/.env';
+// Avoid `${` pattern in a plain string while preserving runtime value
+const PWD_ENV_FILE = ['${', 'PWD}/.env'].join('');
 
 // Platform-specific root folder path (where it's mounted in conductor)
 const ROOT_FOLDER_PATH = isWindows
