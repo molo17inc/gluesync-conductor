@@ -1,5 +1,5 @@
 import { existsSync } from 'fs';
-import { join, isAbsolute, resolve } from 'path';
+import { isAbsolute, resolve } from 'path';
 import { getLogger } from '../../utils/logger';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
@@ -7,6 +7,7 @@ import fetchAgentInfo from '../agentInfo/agentInfo';
 import { AgentInfoResponse } from '../agentInfo/agentInfo.model';
 import parseImage from '../parseImage/parseImage';
 import getVersionByChannel from '../releaseChannel/getVersionByChannel';
+import buildEnvFileConf from '../buildEnvFileConf/buildEnvFileConf';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
@@ -24,13 +25,53 @@ const REQUIRED_ROOT_FOLDER_MOUNT_VOLUME = isWindows
   : './:/opt/gluesync-conductor/root-folder';
 
 const ENV_FILE = '.env';
-// Avoid `${` pattern in a plain string while preserving runtime value
-const PWD_ENV_FILE = ['${', 'PWD}/.env'].join('');
 
 // Platform-specific root folder path (where it's mounted in conductor)
 const ROOT_FOLDER_PATH = isWindows
   ? 'C:\\opt\\gluesync-conductor\\root-folder'
   : '/opt/gluesync-conductor/root-folder';
+
+type EnvFileEntry =
+  | string
+  | {
+      path: string;
+      required?: boolean;
+      format?: string;
+    };
+
+const normalizeVolumeStr = (v: string) => v.replace(/\\+/g, '/').trim();
+
+const normalizeEnvFile = (envFile: unknown): EnvFileEntry[] => {
+  if (!envFile) return [];
+
+  const arr = Array.isArray(envFile) ? envFile : [envFile];
+
+  return arr.flatMap<EnvFileEntry>(v => {
+    if (typeof v === 'string') return [v];
+
+    if (
+      v &&
+      typeof v === 'object' &&
+      'path' in v &&
+      typeof (v as any).path === 'string'
+    ) {
+      const o = v as any;
+      return [{ path: o.path, required: o.required, format: o.format }];
+    }
+
+    return [];
+  });
+};
+
+const canonicalizeEnvFileEntry = (e: EnvFileEntry) => {
+  const obj = typeof e === 'string' ? { path: e } : e;
+
+  return {
+    path: (obj.path ?? '').replace(/\\+/g, '/').trim(),
+    required: obj.required ?? true,
+    format: obj.format ?? '',
+  };
+};
 
 const healConductorConf = async (): Promise<boolean> => {
   const logger = getLogger();
@@ -49,9 +90,10 @@ const healConductorConf = async (): Promise<boolean> => {
   const rawEnvArray: string[] = (() => {
     if (Array.isArray(service.environment)) return service.environment;
     if (service.environment && typeof service.environment === 'object') {
-      return Object.entries(service.environment).map(([k, v]) => `${k}=${v}`);
+      return Object.entries(service.environment).map(
+        ([k, v]) => `${k}=${v ?? ''}`,
+      );
     }
-
     return [];
   })();
 
@@ -66,7 +108,6 @@ const healConductorConf = async (): Promise<boolean> => {
         if (!hasGluesyncHostInitial) {
           return { value: `GLUESYNC_HOST=${value}`, changed: true };
         }
-
         // GLUESYNC_HOST already present: drop CORE_HUB_ADDRESS
         return { value: '', changed: true };
       }
@@ -79,55 +120,46 @@ const healConductorConf = async (): Promise<boolean> => {
     };
   })();
 
-  // Check if .env file exists in root folder
+  // ----- ENV_FILE HEALING (object form via buildEnvFileConf) -----
   const basePath = process.env.BASE_PATH
     ? resolve(process.env.BASE_PATH)
     : undefined;
 
-  const envFilePath = join(ROOT_FOLDER_PATH, ENV_FILE);
-  const envFileExists = existsSync(envFilePath);
-
-  logger.info(
-    `[conductor-healer] host .env ${
-      envFileExists ? 'exists' : 'does not exist'
-    } at ${envFilePath}`,
-  );
-
-  // Normalize env_file to array
-  const normalizeEnvFile = (envFile: any): string[] => {
-    if (!envFile) return [];
-    if (Array.isArray(envFile))
-      return envFile.filter(v => typeof v === 'string');
-    if (typeof envFile === 'string') return [envFile];
-    return [];
-  };
-
   const currentEnvFileRaw = normalizeEnvFile(service.env_file);
 
-  const currentEnvFile = currentEnvFileRaw.map(f => {
+  // Optional: if someone wrote an absolute env_file pointing to BASE_PATH/.env, normalize to ".env"
+  const currentEnvFile: EnvFileEntry[] = currentEnvFileRaw.map(e => {
+    const obj = typeof e === 'string' ? { path: e } : e;
+
     try {
       if (
         basePath &&
-        isAbsolute(f) &&
-        resolve(f) === resolve(basePath, ENV_FILE)
+        typeof obj.path === 'string' &&
+        isAbsolute(obj.path) &&
+        resolve(obj.path) === resolve(basePath, ENV_FILE)
       ) {
-        return PWD_ENV_FILE;
+        return { ...obj, path: '.env', required: false };
       }
     } catch {
       /* noop */
     }
-    return f;
+
+    return obj;
   });
 
-  const finalEnvFile: string[] = envFileExists ? [PWD_ENV_FILE] : [];
+  const finalEnvFile: ReadonlyArray<EnvFileEntry> = buildEnvFileConf();
 
-  const normalizeEnvStr = (v: string) => v.trim();
-  const normalizedCurrentEnv = currentEnvFile.map(normalizeEnvStr);
-  const normalizedFinalEnv = finalEnvFile.map(normalizeEnvStr);
+  const normalizedCurrentEnv = currentEnvFile.map(canonicalizeEnvFileEntry);
+  const normalizedFinalEnv = finalEnvFile.map(canonicalizeEnvFileEntry);
 
   const envFileChanged =
     normalizedCurrentEnv.length !== normalizedFinalEnv.length ||
-    normalizedCurrentEnv.some((v, i) => v !== normalizedFinalEnv[i]);
+    normalizedCurrentEnv.some((v, i) => {
+      const f = normalizedFinalEnv[i];
+      return (
+        v.path !== f.path || v.required !== f.required || v.format !== f.format
+      );
+    });
 
   // ----- VOLUMES HEALING -----
   const normalizeVolumes = (volumes: any): string[] =>
@@ -135,13 +167,14 @@ const healConductorConf = async (): Promise<boolean> => {
 
   const currentVolumes = normalizeVolumes(service.volumes);
 
-  const normalizeVolumeStr = (v: string) => v.replace(/\\+/g, '/').trim();
+  const isRootFolderMount = (v: string) => {
+    const vv = normalizeVolumeStr(v);
+    return isWindows
+      ? vv.includes('c:/opt/gluesync-conductor/root-folder')
+      : vv.includes(':/opt/gluesync-conductor/root-folder');
+  };
 
-  const hasRootFolderMount = currentVolumes.some(v =>
-    isWindows
-      ? v.includes('C:/opt/gluesync-conductor/root-folder')
-      : v.includes(':/opt/gluesync-conductor/root-folder'),
-  );
+  const hasRootFolderMount = currentVolumes.some(isRootFolderMount);
 
   const healedVolumes = currentVolumes.map(v =>
     v.trim() === BAD_VOLUME ? GOOD_VOLUME : v,
@@ -162,7 +195,7 @@ const healConductorConf = async (): Promise<boolean> => {
   const baseService: any = {
     ...service,
     ...(envChanged ? { environment: healedEnvArray } : {}),
-    ...(finalEnvFile.length > 0 ? { env_file: finalEnvFile } : {}),
+    ...(envFileChanged ? { env_file: finalEnvFile } : {}),
   };
 
   const {

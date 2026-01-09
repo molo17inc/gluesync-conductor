@@ -22,6 +22,13 @@ export type CreateComposeServiceOptions = Readonly<
     labels?: Record<string, string>;
     healthcheck?: ComposeHealthcheck;
     dependsOn?: ComposeDependsOn;
+    env_file?:
+      | string
+      | {
+          path: string;
+          required?: boolean;
+          format?: string;
+        };
   }
 >;
 

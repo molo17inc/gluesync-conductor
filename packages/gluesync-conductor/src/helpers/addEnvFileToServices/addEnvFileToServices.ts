@@ -1,40 +1,29 @@
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { AddEnvFile } from './AddEnvFileToServices.model';
+import buildEnvFileConf from '../buildEnvFileConf/buildEnvFileConf';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
+
 const ROOT_FOLDER_PATH = isWindows
   ? 'C:\\opt\\gluesync-conductor\\root-folder'
   : '/opt/gluesync-conductor/root-folder';
 
-// Build the literal "${PWD}/.env" without `${` in a single string
-const PWD_ENV_FILE = ['${', 'PWD}/.env'].join('');
+const ENV_FILE_NAME = '.env';
 
 /**
- * Add ${PWD}/.env to services that should have it.
+ * Add env_file to the specified services.
  * Forces it to be the ONLY env_file, overwriting any existing env_file.
+ *
+ * Only applies if the conductor root-folder mount exists.
  */
 const addEnvFileToServices: AddEnvFile = (services, serviceIds) => {
-  const rootFolderExists = existsSync(ROOT_FOLDER_PATH);
+  const rootFolderMounted = existsSync(ROOT_FOLDER_PATH); // directory exists => mount is present [web:104]
 
-  if (!rootFolderExists) {
+  if (!rootFolderMounted) {
     console.log(
-      `📋 addEnvFileToServices: root folder not mounted at ${ROOT_FOLDER_PATH}, skipping`,
+      `📋 addEnvFileToServices: root-folder not mounted at ${ROOT_FOLDER_PATH}, skipping env_file`,
     );
-    return { services: {}, updatedIds: [] };
-  }
-
-  const envFilePath = join(ROOT_FOLDER_PATH, '.env');
-  const envFileExists = existsSync(envFilePath);
-
-  console.log(
-    `📋 addEnvFileToServices: .env file ${
-      envFileExists ? 'exists' : 'does not exist'
-    } at ${envFilePath}`,
-  );
-
-  if (!envFileExists) {
-    console.log('   ⏭️  Skipping - no .env file found');
     return { services: {}, updatedIds: [] };
   }
 
@@ -43,14 +32,20 @@ const addEnvFileToServices: AddEnvFile = (services, serviceIds) => {
       const service = services[id];
       if (!service) return acc;
 
+      // Build a NEW array for each service (avoids YAML anchors if serializer uses aliases)
+      const envFile = buildEnvFileConf();
+
       const newUpdatedServices = {
         ...acc.updatedServices,
-        [id]: { ...service, env_file: [PWD_ENV_FILE] },
+        [id]: { ...service, env_file: envFile },
       };
       const newUpdatedIds = [...acc.updatedIds, id];
 
       console.log(
-        `   ❌ Forcing ${PWD_ENV_FILE} as the ONLY env_file for ${id}`,
+        `📋 addEnvFileToServices: forcing env_file for ${id}: ${ENV_FILE_NAME} + ${join(
+          ROOT_FOLDER_PATH,
+          ENV_FILE_NAME,
+        )}`,
       );
 
       return {

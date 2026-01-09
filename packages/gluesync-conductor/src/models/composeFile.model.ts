@@ -62,7 +62,14 @@ export type CommonComposeService = Readonly<{
   depends_on?: ComposeDependsOn;
   healthcheck?: ComposeHealthcheck;
   networks?: ReadonlyArray<string>;
-  env_file?: ReadonlyArray<string>;
+  env_file?: ReadonlyArray<
+    | string
+    | {
+        path: string;
+        required?: boolean;
+        format?: string;
+      }
+  >;
 }>;
 
 export type RawComposeService = Readonly<
@@ -109,7 +116,14 @@ export type ComposeService = Readonly<
         string,
         string | number | boolean | null | undefined
       >;
-      env_file?: ReadonlyArray<string>;
+      env_file?: ReadonlyArray<
+        | string
+        | {
+            path: string;
+            required?: boolean;
+            format?: string;
+          }
+      >;
     }>
 >;
 
