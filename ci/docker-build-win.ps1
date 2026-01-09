@@ -22,13 +22,6 @@ $CI_COMMIT_TAG = $env:CI_COMMIT_TAG
 $CI_COMMIT_BRANCH = $env:CI_COMMIT_BRANCH
 $CI_COMMIT_SHORT_SHA = $env:CI_COMMIT_SHORT_SHA
 
-if ($CI_COMMIT_TAG -notmatch "^(alpha-|beta-|release-)") {
-    throw "❌ Tag not valid: $CI_COMMIT_TAG. Must start with 'alpha-', 'beta-' or 'release-'."
-    exit 1
-} else {
-    Write-Host "Tag valido: $CI_COMMIT_TAG"
-}
-
 # --- Default values ---
 $IMAGE_NAME = "molo17/$AppName"
 $DEFAULT_DOCKER_FILE = "Dockerfile.windows"
@@ -49,6 +42,11 @@ else {
 
 # --- Extract version from tag or branch ---
 if ($CI_COMMIT_TAG) {
+  if ($CI_COMMIT_TAG -notmatch "^(alpha-|beta-|release-)") {
+    throw "❌ Tag not valid: $CI_COMMIT_TAG. Must start with 'alpha-', 'beta-' or 'release-'."
+    exit 1
+  }
+
   Write-Host "Processing tag: $CI_COMMIT_TAG"
   $TAG_PART = [regex]::Match($CI_COMMIT_TAG, '[0-9]+\.[0-9]+\.[0-9](.*)').Value
   if (-not $TAG_PART) { throw "❌ Could not extract version from tag" }
