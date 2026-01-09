@@ -56,15 +56,12 @@ const ensureLogDirectory = (): string | null => {
 };
 
 /**
- * Format timestamp with timezone awareness.
- * Uses ISO 8601 (UTC with Z) for storage + local time in log message.
+ * Format timestamp using LOCAL system timezone only.
+ * Matches debug-tz output format: DD/MM/YYYY HH:mm:ss TZ
  */
 const buildTimestamp = (): string => {
-  const now = new Date();
-  const iso = now.toISOString(); // Always UTC with Z suffix
-
-  // Local time for readability (respects TZ env var in Docker)
-  const tz = process.env.TZ || 'UTC';
+  const tz =
+    process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   const localTime = new Date().toLocaleString('en-US', {
     timeZone: tz,
     year: 'numeric',
@@ -76,7 +73,7 @@ const buildTimestamp = (): string => {
     hour12: false,
   });
 
-  return `,"time":"${iso}","local":"${localTime} ${tz}"`;
+  return `,"time":"${localTime}"`;
 };
 
 const buildLogger = (): Logger => {
