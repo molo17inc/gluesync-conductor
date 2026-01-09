@@ -1,5 +1,5 @@
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, isAbsolute, dirname, resolve } from 'path';
 import { getLogger } from '../../utils/logger';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
@@ -24,6 +24,7 @@ const REQUIRED_ROOT_FOLDER_MOUNT_VOLUME = isWindows
   : './:/opt/gluesync-conductor/root-folder';
 
 const ENV_FILE = '.env';
+const PWD_ENV_FILE = '${PWD}/.env';
 
 // Platform-specific root folder path (where it's mounted in conductor)
 const ROOT_FOLDER_PATH = isWindows
@@ -45,10 +46,7 @@ const healConductorConf = async (): Promise<boolean> => {
 
   // Normalize environment to an array of strings
   const rawEnvArray: string[] = (() => {
-    if (Array.isArray(service.environment)) {
-      return service.environment as string[];
-    }
-
+    if (Array.isArray(service.environment)) return service.environment;
     if (service.environment && typeof service.environment === 'object') {
       return Object.entries(service.environment).map(([k, v]) => `${k}=${v}`);
     }
@@ -67,66 +65,103 @@ const healConductorConf = async (): Promise<boolean> => {
         if (!hasGluesyncHostInitial) {
           return { value: `GLUESYNC_HOST=${value}`, changed: true };
         }
+
         // GLUESYNC_HOST already present: drop CORE_HUB_ADDRESS
         return { value: '', changed: true };
       }
       return { value: e, changed: false };
     });
 
-    const filtered = mapped.filter(x => x.value !== '').map(x => x.value);
-
-    const changed = mapped.some(x => x.changed);
-
-    return { healedEnvArray: filtered, envChanged: changed };
+    return {
+      healedEnvArray: mapped.filter(x => x.value).map(x => x.value),
+      envChanged: mapped.some(x => x.changed),
+    };
   })();
 
   // Check if .env file exists in root folder
+  const basePath = process.env.BASE_PATH
+    ? resolve(process.env.BASE_PATH)
+    : undefined;
+
   const envFilePath = join(ROOT_FOLDER_PATH, ENV_FILE);
   const envFileExists = existsSync(envFilePath);
 
   logger.info(
-    `[conductor-healer] .env file ${envFileExists ? 'exists' : 'does not exist'} at ${envFilePath}`,
+    `[conductor-healer] host .env ${
+      envFileExists ? 'exists' : 'does not exist'
+    } at ${envFilePath}`,
   );
 
   // Normalize env_file to array
-  const normalizeEnvFile = (envFile: any): ReadonlyArray<string> => {
+  const normalizeEnvFile = (envFile: any): string[] => {
     if (!envFile) return [];
-    if (Array.isArray(envFile)) return envFile;
+    if (Array.isArray(envFile))
+      return envFile.filter(v => typeof v === 'string');
     if (typeof envFile === 'string') return [envFile];
     return [];
   };
 
-  const currentEnvFile = normalizeEnvFile(service.env_file);
-  const hasEnvFile = currentEnvFile.includes(ENV_FILE);
+  const currentEnvFileRaw = normalizeEnvFile(service.env_file);
 
-  // Only add .env if:
-  // 1. File exists in root folder
-  // 2. Not already in env_file array
-  const shouldAddEnvFile = envFileExists && !hasEnvFile;
-  const shouldRemoveEnvFile = !envFileExists && hasEnvFile;
+  const currentEnvFile = currentEnvFileRaw.map(f => {
+    try {
+      if (
+        basePath &&
+        isAbsolute(f) &&
+        resolve(f) === resolve(basePath, ENV_FILE)
+      ) {
+        return PWD_ENV_FILE;
+      }
+    } catch {
+      /* noop */
+    }
+    return f;
+  });
 
-  const finalEnvFile = (() => {
-    if (shouldAddEnvFile) {
-      logger.info('[conductor-healer] adding .env to env_file');
-      return [ENV_FILE, ...currentEnvFile];
-    }
-    if (shouldRemoveEnvFile) {
-      logger.info(
-        '[conductor-healer] removing .env from env_file (file does not exist)',
-      );
-      return currentEnvFile.filter(f => f !== ENV_FILE);
-    }
-    return currentEnvFile;
-  })();
+  const finalEnvFile: string[] = envFileExists ? [PWD_ENV_FILE] : [];
+
+  const normalizeEnvStr = (v: string) => v.trim();
+  const normalizedCurrentEnv = currentEnvFile.map(normalizeEnvStr);
+  const normalizedFinalEnv = finalEnvFile.map(normalizeEnvStr);
 
   const envFileChanged =
-    finalEnvFile.length !== currentEnvFile.length ||
-    !finalEnvFile.every((f, i) => f === currentEnvFile[i]);
+    normalizedCurrentEnv.length !== normalizedFinalEnv.length ||
+    normalizedCurrentEnv.some((v, i) => v !== normalizedFinalEnv[i]);
 
-  const baseService = {
+  // ----- VOLUMES HEALING -----
+  const normalizeVolumes = (volumes: any): string[] =>
+    Array.isArray(volumes) ? volumes.filter(v => typeof v === 'string') : [];
+
+  const currentVolumes = normalizeVolumes(service.volumes);
+
+  const normalizeVolumeStr = (v: string) => v.replace(/\\+/g, '/').trim();
+
+  const hasRootFolderMount = currentVolumes.some(v =>
+    isWindows
+      ? v.includes('C:/opt/gluesync-conductor/root-folder')
+      : v.includes(':/opt/gluesync-conductor/root-folder'),
+  );
+
+  const healedVolumes = currentVolumes.map(v =>
+    v.trim() === BAD_VOLUME ? GOOD_VOLUME : v,
+  );
+
+  const finalVolumes = hasRootFolderMount
+    ? healedVolumes
+    : [...healedVolumes, REQUIRED_ROOT_FOLDER_MOUNT_VOLUME];
+
+  const normalizedCurrentVolumes = currentVolumes.map(normalizeVolumeStr);
+  const normalizedFinalVolumes = finalVolumes.map(normalizeVolumeStr);
+
+  const volumesChanged =
+    normalizedCurrentVolumes.length !== normalizedFinalVolumes.length ||
+    normalizedCurrentVolumes.some((v, i) => v !== normalizedFinalVolumes[i]);
+
+  // ----- BASE SERVICE -----
+  const baseService: any = {
     ...service,
     ...(envChanged ? { environment: healedEnvArray } : {}),
-    ...(envFileChanged ? { env_file: finalEnvFile } : {}),
+    ...(finalEnvFile.length > 0 ? { env_file: finalEnvFile } : {}),
   };
 
   const {
@@ -135,134 +170,60 @@ const healConductorConf = async (): Promise<boolean> => {
     tag: currentTag = 'latest',
   } = parseImage(baseService.image);
 
-  // Normalize volumes to array of strings
-  const normalizeVolumes = (volumes: any): ReadonlyArray<string> => {
-    if (!volumes) return [];
-    if (Array.isArray(volumes)) {
-      return volumes.filter((v): v is string => typeof v === 'string');
-    }
-    return [];
-  };
-
-  const currentVolumes = normalizeVolumes(baseService.volumes);
-
-  // Check if root folder mount exists (platform-aware)
-  const hasRootFolderMount = currentVolumes.some(vol =>
-    isWindows
-      ? vol.includes('C:\\opt\\gluesync-conductor\\root-folder')
-      : vol.includes(':/opt/gluesync-conductor/root-folder'),
-  );
-
-  // Fix bad log volume path
-  const healedVolumes = currentVolumes.map(vol =>
-    vol.trim() === BAD_VOLUME ? GOOD_VOLUME : vol,
-  );
-
-  // Add root folder mount if missing
-  const finalVolumes = hasRootFolderMount
-    ? healedVolumes
-    : [...healedVolumes, REQUIRED_ROOT_FOLDER_MOUNT_VOLUME];
-
-  const volumesChanged =
-    finalVolumes.length !== currentVolumes.length ||
-    finalVolumes.some((v, i) => v !== currentVolumes[i]);
-
-  // Only retag when current tag is "latest"
+  // ----- NON-LATEST: ONLY HEAL CONFIG -----
   if (currentTag !== 'latest') {
-    const healedVolumesNonLatest = Array.isArray(baseService.volumes)
-      ? baseService.volumes.map(vol =>
-          typeof vol === 'string' && vol.trim() === BAD_VOLUME
-            ? GOOD_VOLUME
-            : vol,
-        )
-      : baseService.volumes;
+    const finalServiceNonLatest = {
+      ...baseService,
+      volumes: finalVolumes,
+    };
 
-    const volumesChangedNonLatest = Array.isArray(baseService.volumes)
-      ? healedVolumesNonLatest?.some((v, i) => v !== baseService.volumes?.[i])
-      : false;
+    const changedNonLatest = volumesChanged || envChanged || envFileChanged;
 
-    if (!volumesChangedNonLatest && !envChanged) {
+    if (!changedNonLatest) {
       logger.info('[conductor-healer] nothing to heal');
       return false;
     }
 
-    const updatedServicesNonLatest = {
-      ...composeJson.services,
-      [conductorServiceName]: {
-        ...baseService,
-        volumes: finalVolumes,
-      },
-    };
-
-    const updatedComposeNonLatest = {
+    await writeComposeFile({
       ...composeJson,
-      services: updatedServicesNonLatest,
-    };
-
-    await writeComposeFile(updatedComposeNonLatest);
+      services: {
+        ...composeJson.services,
+        [conductorServiceName]: finalServiceNonLatest,
+      },
+    });
 
     logger.info('[conductor-healer] reboot needed to heal');
     return true;
   }
 
-  // Tag is "latest": fix volumes AND maybe update tag
-  const healedVolumes = Array.isArray(baseService.volumes)
-    ? baseService.volumes.map(vol =>
-        typeof vol === 'string' && vol.trim() === BAD_VOLUME
-          ? GOOD_VOLUME
-          : vol,
-      )
-    : baseService.volumes;
+  // ----- LATEST: HEAL + RETAG VIA AgentInfoResponse -----
+  const agentInfo: AgentInfoResponse = await fetchAgentInfo(shortImageName);
+  const newTag = getVersionByChannel(agentInfo, 'ga') ?? undefined;
 
-  const volumesChanged = Array.isArray(baseService.volumes)
-    ? healedVolumes?.some((v, i) => v !== baseService.volumes?.[i])
-    : false;
+  const finalService: any = {
+    ...baseService,
+    volumes: finalVolumes,
+    ...(newTag ? { image: `${fullName}:${newTag}` } : {}),
+  };
 
-  if (!volumesChanged && !envChanged) {
+  const changed =
+    volumesChanged ||
+    envChanged ||
+    envFileChanged ||
+    (!!newTag && newTag !== currentTag);
+
+  if (!changed) {
     logger.info('[conductor-healer] nothing to heal');
     return false;
   }
 
-  const agentInfo: AgentInfoResponse = await fetchAgentInfo(shortImageName);
-  const newTag = getVersionByChannel(agentInfo, 'ga');
-
-  if (!newTag) {
-    const updatedServicesNoTag = {
-      ...composeJson.services,
-      [conductorServiceName]: {
-        ...baseService,
-        volumes: finalVolumes,
-      },
-    };
-
-    const updatedComposeNoTag = {
-      ...composeJson,
-      services: updatedServicesNoTag,
-    };
-
-    await writeComposeFile(updatedComposeNoTag);
-
-    logger.info('[conductor-healer] reboot needed to heal');
-    return true;
-  }
-
-  const newImage = `${fullName}:${newTag}`;
-
-  const updatedServices = {
-    ...composeJson.services,
-    [conductorServiceName]: {
-      ...baseService,
-      volumes: finalVolumes,
-      image: newImage,
-    },
-  };
-
-  const updatedCompose = {
+  await writeComposeFile({
     ...composeJson,
-    services: updatedServices,
-  };
-
-  await writeComposeFile(updatedCompose);
+    services: {
+      ...composeJson.services,
+      [conductorServiceName]: finalService,
+    },
+  });
 
   logger.info('[conductor-healer] reboot needed to heal');
   return true;

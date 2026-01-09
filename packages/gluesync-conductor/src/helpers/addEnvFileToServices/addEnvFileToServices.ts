@@ -6,25 +6,13 @@ const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const ROOT_FOLDER_PATH = isWindows
   ? 'C:\\opt\\gluesync-conductor\\root-folder'
   : '/opt/gluesync-conductor/root-folder';
-const ENV_FILE = '.env';
+const PWD_ENV_FILE = '${PWD}/.env';
 
 /**
- * Helper to normalize env_file to array
- */
-const normalizeEnvFile = (envFile: any): ReadonlyArray<string> => {
-  if (!envFile) return [];
-  if (Array.isArray(envFile)) return envFile;
-  if (typeof envFile === 'string') return [envFile];
-  return [];
-};
-
-/**
- * Add .env to services that don't have it (if .env file exists).
- * Only runs if root folder is mounted and .env file is present.
- * Returns updated services and IDs that changed.
+ * Add ${PWD}/.env to services that should have it.
+ * Forces it to be the ONLY env_file, overwriting any existing env_file.
  */
 const addEnvFileToServices: AddEnvFile = (services, serviceIds) => {
-  // First check if root folder is mounted
   const rootFolderExists = existsSync(ROOT_FOLDER_PATH);
 
   if (!rootFolderExists) {
@@ -34,8 +22,7 @@ const addEnvFileToServices: AddEnvFile = (services, serviceIds) => {
     return { services: {}, updatedIds: [] };
   }
 
-  // Check if .env file exists in root folder
-  const envFilePath = join(ROOT_FOLDER_PATH, ENV_FILE);
+  const envFilePath = join(ROOT_FOLDER_PATH, '.env');
   const envFileExists = existsSync(envFilePath);
 
   console.log(
@@ -47,37 +34,19 @@ const addEnvFileToServices: AddEnvFile = (services, serviceIds) => {
     return { services: {}, updatedIds: [] };
   }
 
-  const { updatedServices, updatedIds } = serviceIds.reduce(
-    (acc, id) => {
-      const service = services[id];
-      if (!service) return acc;
+  const updatedServices: Record<string, any> = {};
+  const updatedIds: string[] = [];
 
-      const currentEnvFile = normalizeEnvFile(service.env_file);
-      const hasEnvFile = currentEnvFile.includes(ENV_FILE);
+  serviceIds.forEach(id => {
+    const service = services[id];
+    if (!service) return;
 
-      if (hasEnvFile) {
-        console.log(`   ✅ ${id} already has .env file`);
-        return acc;
-      }
+    // Force replacement of env_file
+    updatedServices[id] = { ...service, env_file: [PWD_ENV_FILE] };
+    updatedIds.push(id);
 
-      // Add .env to the beginning (lowest priority)
-      const finalEnvFile = [ENV_FILE, ...currentEnvFile];
-
-      console.log(`   ❌ Adding .env to ${id}`);
-
-      return {
-        updatedServices: {
-          ...acc.updatedServices,
-          [id]: { ...service, env_file: finalEnvFile },
-        },
-        updatedIds: [...acc.updatedIds, id],
-      };
-    },
-    {
-      updatedServices: {} as Record<string, any>,
-      updatedIds: [] as ReadonlyArray<string>,
-    },
-  );
+    console.log(`   ❌ Forcing ${PWD_ENV_FILE} as the ONLY env_file for ${id}`);
+  });
 
   return { services: updatedServices, updatedIds };
 };

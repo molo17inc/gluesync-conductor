@@ -31,6 +31,7 @@ const applyPlatformAdjustments = (
   services: Record<string, RawComposeService>;
   updatedIds: ReadonlyArray<string>;
 } => {
+  // Step 1: Windows → add GLUESYNC_HOST to agents; Non-Windows → normalize volumes
   const step1 = isWindows
     ? addGluesyncHostToAgents(services, serviceIds, gluesyncHostDefault)
     : addPlatformVolumes(services, serviceIds, false);
@@ -40,6 +41,7 @@ const applyPlatformAdjustments = (
     ...step1.services,
   };
 
+  // Step 2: Windows only → add network
   const step2 = isWindows
     ? addNetworkToServices(afterStep1Services, serviceIds, windowsNetworkName)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
@@ -49,10 +51,12 @@ const applyPlatformAdjustments = (
     ...step2.services,
   };
 
+  // Step 3: Windows only → add platform volumes again
   const step3 = isWindows
     ? addPlatformVolumes(afterStep2Services, serviceIds, true)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
+  // ✅ Final merge: ensure env_file is preserved if already set (e.g., ${PWD}/.env)
   const finalServices: Readonly<Record<string, RawComposeService>> = {
     ...afterStep2Services,
     ...step3.services,
@@ -64,6 +68,7 @@ const applyPlatformAdjustments = (
     ...step3.updatedIds,
   ];
 
+  // Only return updated services
   const changedServices = Object.fromEntries(
     allUpdatedIds.map(id => [id, finalServices[id]]),
   ) as Record<string, RawComposeService>;
@@ -108,7 +113,7 @@ const autoAdoptServices = async (): Promise<{
     const allServiceIds: readonly string[] = fetchAllServicesInCompose(
       composeJson,
       false,
-    );
+    ).filter(id => id !== conductorServiceName);
 
     // Services that ALREADY have a conductor type label
     const alreadyLabeledIds = allServiceIds.filter(id => {
@@ -144,6 +149,10 @@ const autoAdoptServices = async (): Promise<{
       gluesyncHostDefault,
       windowsNetworkName,
     );
+
+    // ✅ Add env_file to ALL services (only if root folder mounted and .env exists)
+    const { services: envFileServices, updatedIds: envFileUpdatedIds } =
+      addEnvFileToServices(composeJson.services, allServiceIds);
 
     const unlabeledIds = allServiceIds.filter(
       id => !alreadyLabeledIds.includes(id),
@@ -309,6 +318,7 @@ const autoAdoptServices = async (): Promise<{
             ...acc.updatedServices,
             [id]: {
               ...platformAdjustedService,
+              env_file: service.env_file,
               labels: finalLabels,
               environment: envArray,
             },
