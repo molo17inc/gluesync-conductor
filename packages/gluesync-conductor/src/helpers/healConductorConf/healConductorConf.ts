@@ -1,4 +1,3 @@
-import { existsSync } from 'fs';
 import { isAbsolute, resolve } from 'path';
 import { getLogger } from '../../utils/logger';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
@@ -25,11 +24,6 @@ const REQUIRED_ROOT_FOLDER_MOUNT_VOLUME = isWindows
   : './:/opt/gluesync-conductor/root-folder';
 
 const ENV_FILE = '.env';
-
-// Platform-specific root folder path (where it's mounted in conductor)
-const ROOT_FOLDER_PATH = isWindows
-  ? 'C:\\opt\\gluesync-conductor\\root-folder'
-  : '/opt/gluesync-conductor/root-folder';
 
 type EnvFileEntry =
   | string
@@ -63,7 +57,7 @@ const normalizeEnvFile = (envFile: unknown): EnvFileEntry[] => {
   });
 };
 
-const canonicalizeEnvFileEntry = (e: EnvFileEntry) => {
+const canonicalizeEnvFileEntry = (e: Readonly<EnvFileEntry>) => {
   const obj = typeof e === 'string' ? { path: e } : e;
 
   return {
