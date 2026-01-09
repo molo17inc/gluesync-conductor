@@ -18,6 +18,10 @@ param (
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+$CI_COMMIT_TAG = $env:CI_COMMIT_TAG
+$CI_COMMIT_BRANCH = $env:CI_COMMIT_BRANCH
+$CI_COMMIT_SHORT_SHA = $env:CI_COMMIT_SHORT_SHA
+
 # --- Default values ---
 $IMAGE_NAME = "molo17/$AppName"
 $DEFAULT_DOCKER_FILE = "Dockerfile.windows"
@@ -37,26 +41,46 @@ else {
 }
 
 # --- Extract version from tag or branch ---
-if ($env:CI_COMMIT_TAG) {
-  Write-Host "Processing tag: $env:CI_COMMIT_TAG"
-  $TAG_PART = [regex]::Match($env:CI_COMMIT_TAG, '[0-9]+\.[0-9]+\.[0-9](.*)').Value
+if ($CI_COMMIT_TAG) {
+  if ($CI_COMMIT_TAG -notmatch "^(alpha-|beta-|release-)") {
+    throw "❌ Tag not valid: $CI_COMMIT_TAG. Must start with 'alpha-', 'beta-' or 'release-'."
+    exit 1
+  }
+
+  Write-Host "Processing tag: $CI_COMMIT_TAG"
+  $TAG_PART = [regex]::Match($CI_COMMIT_TAG, '[0-9]+\.[0-9]+\.[0-9](.*)').Value
   if (-not $TAG_PART) { throw "❌ Could not extract version from tag" }
 }
 else {
-  Write-Host "No CI_COMMIT_TAG found, checking branch: $env:CI_COMMIT_BRANCH"
+  Write-Host "No CI_COMMIT_TAG found, checking branch: $CI_COMMIT_BRANCH"
 
   $allowedBranches = @("develop")
 
-  if ($allowedBranches -contains $env:CI_COMMIT_BRANCH) {
-    $TAG_PART = $env:CI_COMMIT_BRANCH
+  if ($allowedBranches -contains $CI_COMMIT_BRANCH) {
+    $TAG_PART = $CI_COMMIT_BRANCH
     Write-Host "Branch '$TAG_PART' is allowed. Using as version part."
   }
   else {
-    throw "❌ Branch '$env:CI_COMMIT_BRANCH' is not allowed and no tag found. Cannot determine version."
+    throw "❌ Branch '$CI_COMMIT_BRANCH' is not allowed and no tag found. Cannot determine version."
   }
 }
 
-Write-Host "Using TAG_PART: $TAG_PART"
+Write-Host "Detected TAG_PART: $TAG_PART"
+$VERSION = "$TAG_PART"
+Write-Host "Default VERSION: $VERSION"
+
+if ($CI_COMMIT_TAG -match '^alpha-') {
+  $TAG_PART = "$TAG_PART.$CI_COMMIT_SHORT_SHA"
+  $VERSION = "$TAG_PART.$CI_COMMIT_SHORT_SHA"
+  Write-Host "Alpha release detected, proceeding with TAG_PART: $TAG_PART and VERSION: $VERSION"
+}
+elseif ($CI_COMMIT_TAG -match '^beta-') {
+  Write-Host "Beta release detected, proceeding with TAG_PART: $TAG_PART"
+}
+elseif ($CI_COMMIT_TAG -match '^release-') {
+  Write-Host "GA release detected, proceeding with TAG_PART: $TAG_PART"
+}
+
 $VERSION_TAG_WINDOWS = "${IMAGE_NAME}:${TAG_PART}-win-${WindowsVersion}-${WindowsTag}"
 Write-Host "Image name: $IMAGE_NAME"
 Write-Host "Version tag: $VERSION_TAG_WINDOWS"
@@ -71,22 +95,7 @@ $env:CI_REGISTRY_PASSWORD | docker login -u $env:CI_REGISTRY_USER --password-std
 if ($LASTEXITCODE -ne 0) { throw "❌ Docker login failed" }
 Write-Host "✅ Docker login successful"
 
-# --- Build Windows Docker image (conditional on WindowsTag) ---
-# if ($WindowsTag -eq "ltsc2019") {
-#   Write-Host "Building Docker image for LTSC2019..."
-#   docker build --file Dockerfile.windows.nanoserver.2019 `
-#     --build-arg WINDOWS_TAG="$($WindowsTag)" `
-#     --build-arg WINDOWS_VERSION="$($WindowsVersion)" `
-#     --tag "$VERSION_TAG_WINDOWS" .
-# }
-# else {
-#   Write-Host "Building Docker image for $($WindowsTag) using default Server Core..."
-#   docker build --file ${DOCKER_FILE} `
-#     --build-arg WINDOWS_TAG="$($WindowsTag)" `
-#     --build-arg WINDOWS_VERSION="$($WindowsVersion)" `
-#     --tag "$VERSION_TAG_WINDOWS" .
-# }
-
+# --- Build Windows Docker image ---
 Write-Host "Building Docker image for $($WindowsTag) using default Server Core..."
 docker build --file ${DOCKER_FILE} `
   --build-arg WINDOWS_TAG="$($WindowsTag)" `
@@ -102,7 +111,7 @@ if ($LASTEXITCODE -ne 0) { throw "❌ Docker push failed" }
 Write-Host "✅ Pushed $VERSION_TAG_WINDOWS"
 
 # --- Tag and push latest-windows for release branches ---
-if ($env:CI_COMMIT_TAG -match '^release-') {
+if ($CI_COMMIT_TAG -match '^release-') {
   $LATEST_BASE = "${IMAGE_NAME}:latest"
   $LATEST_TAG = "${LATEST_BASE}-win-${WindowsVersion}-${WindowsTag}"
 
