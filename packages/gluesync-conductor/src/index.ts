@@ -1,21 +1,28 @@
+// src/index.ts
 import fastify from 'fastify';
 import cors from '@fastify/cors';
 import Docker from 'dockerode';
+
 import dockerPlugin from './plugins/docker';
 import swaggerPlugin from './plugins/swagger';
 import gluesyncPlugin from './plugins/gluesync';
 import apiBlockerAsUpdatingPlugin from './plugins/apiBlockerAsUpdating';
+import tzFix from './plugins/tzFix';
+
 import httpsRedirectMiddleware from './middleware/httpsRedirect';
+
 import {
   createFastifyHttpsOptions,
   isSslEnabled,
   logSslInfo,
 } from './utils/ssl';
+
 import systemRoutes from './routes/system';
 import containerRoutes from './routes/containers';
 import agentRoutes from './routes/agents';
 import serviceRoutes from './routes/services';
 import supportRoutes from './routes/support';
+
 import { getLogger } from './utils/logger';
 import autoAdoptServices from './helpers/autoAdoptServices/autoAdoptServices';
 import { autoReboot } from './helpers/autoReboot/autoReboot';
@@ -39,10 +46,17 @@ declare module 'fastify' {
 const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
 const host: string = process.env.HOST || '0.0.0.0';
 
-const startServer = async () => {
+const startServer = async (): Promise<void> => {
   const logger = getLogger();
   const serverOptions = createFastifyHttpsOptions();
   const server = fastify(serverOptions);
+
+  // Register TZ fix FIRST (so later plugins/routes see the normalized TZ).
+  // Plugin registration order matters in Fastify. [web:118]
+  await server.register(tzFix, {
+    fallbackIana: 'UTC',
+    log: true,
+  });
 
   logSslInfo();
   httpsRedirectMiddleware(server);
@@ -95,12 +109,10 @@ const startServer = async () => {
     const { updatedIds, unmatchedIds } = result;
 
     if (updatedIds.length === 0 && unmatchedIds.length === 0) {
-      // Nothing changed because all services already had a type
       logger.info(
         'All services already had a Conductor type, no changes applied',
       );
     } else if (updatedIds.length > 0) {
-      // Some services adopted (with or without unmatched ones)
       logger.info(
         `Applied Conductor labels to services: ${updatedIds.join(', ')}`,
       );
@@ -114,13 +126,11 @@ const startServer = async () => {
       // Start only the adopted/updated services (Linux + Windows)
       await upAdoptedServices(server.docker, updatedIds);
     } else if (updatedIds.length === 0 && unmatchedIds.length > 0) {
-      // Edge case: no adoption, only unmatched
       logger.warn(
         `No services adopted. Unmatched services: ${unmatchedIds.join(', ')}`,
       );
     }
   } else {
-    // Nothing adopted because of an error
     logger.error('Failed to apply Conductor labels at startup');
   }
 
@@ -138,6 +148,7 @@ const startServer = async () => {
 
   if (rebootNeeded) {
     const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
+
     autoReboot({
       hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
       serviceName: 'gluesync-conductor',
@@ -148,19 +159,19 @@ const startServer = async () => {
 };
 
 // Handle unhandled rejections
-process.on('unhandledRejection', err => {
+process.on('unhandledRejection', (err: unknown) => {
   getLogger().error({ err }, 'Unhandled Promise Rejection');
   process.exit(1);
 });
 
 // Handle uncaught exceptions
-process.on('uncaughtException', err => {
+process.on('uncaughtException', (err: unknown) => {
   getLogger().error({ err }, 'Uncaught Exception');
   process.exit(1);
 });
 
 // Start the fastify server
-startServer().catch(err => {
+startServer().catch((err: unknown) => {
   getLogger().error({ err }, 'Failed to start server');
   process.exit(1);
 });

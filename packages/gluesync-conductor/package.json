@@ -29,6 +29,7 @@
     "pino": "^10.1.0",
     "rotating-file-stream": "^3.2.7",
     "uuid": "^13.0.0",
+    "windows-iana": "^5.1.0",
     "yaml": "^2.7.0"
   },
   "devDependencies": {
