@@ -3,7 +3,6 @@ import { getLogger } from '../../utils/logger';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
 import fetchAgentInfo from '../agentInfo/agentInfo';
-import { AgentInfoResponse } from '../agentInfo/agentInfo.model';
 import parseImage from '../parseImage/parseImage';
 import getVersionByChannel from '../releaseChannel/getVersionByChannel';
 import buildEnvFileConf from '../buildEnvFileConf/buildEnvFileConf';
@@ -32,8 +31,6 @@ type EnvFileEntry =
       required?: boolean;
       format?: string;
     };
-
-const normalizeVolumeStr = (v: string) => v.replace(/\\+/g, '/').trim();
 
 const normalizeEnvFile = (envFile: unknown): EnvFileEntry[] => {
   if (!envFile) return [];
@@ -65,6 +62,30 @@ const canonicalizeEnvFileEntry = (e: Readonly<EnvFileEntry>) => {
     required: obj.required ?? true,
     format: obj.format ?? '',
   };
+};
+
+// --- volumes helpers ---
+const normalizeVolumeStr = (v: string): string =>
+  v
+    .trim()
+    .replace(/^"+|"+$/g, '') // strip quotes if any
+    .replace(/\\+/g, '/') // backslashes -> slashes
+    .replace(/\/+/g, '/') // collapse multiple /
+    .toLowerCase();
+
+const normalizeVolumes = (volumes: unknown): string[] =>
+  Array.isArray(volumes) ? volumes.filter(v => typeof v === 'string') : [];
+
+const isRootFolderMount = (v: string): boolean => {
+  const vv = normalizeVolumeStr(v);
+
+  // Windows containers
+  if (vv.includes('c:/opt/gluesync-conductor/root-folder')) return true;
+
+  // Linux containers (match regardless of host prefix like "./:" or "/abs/path:")
+  if (vv.includes('/opt/gluesync-conductor/root-folder')) return true;
+
+  return false;
 };
 
 const healConductorConf = async (): Promise<boolean> => {
@@ -102,7 +123,6 @@ const healConductorConf = async (): Promise<boolean> => {
         if (!hasGluesyncHostInitial) {
           return { value: `GLUESYNC_HOST=${value}`, changed: true };
         }
-        // GLUESYNC_HOST already present: drop CORE_HUB_ADDRESS
         return { value: '', changed: true };
       }
       return { value: e, changed: false };
@@ -121,7 +141,6 @@ const healConductorConf = async (): Promise<boolean> => {
 
   const currentEnvFileRaw = normalizeEnvFile(service.env_file);
 
-  // Optional: if someone wrote an absolute env_file pointing to BASE_PATH/.env, normalize to ".env"
   const currentEnvFile: EnvFileEntry[] = currentEnvFileRaw.map(e => {
     const obj = typeof e === 'string' ? { path: e } : e;
 
@@ -156,23 +175,13 @@ const healConductorConf = async (): Promise<boolean> => {
     });
 
   // ----- VOLUMES HEALING -----
-  const normalizeVolumes = (volumes: any): string[] =>
-    Array.isArray(volumes) ? volumes.filter(v => typeof v === 'string') : [];
-
   const currentVolumes = normalizeVolumes(service.volumes);
-
-  const isRootFolderMount = (v: string) => {
-    const vv = normalizeVolumeStr(v);
-    return isWindows
-      ? vv.includes('c:/opt/gluesync-conductor/root-folder')
-      : vv.includes(':/opt/gluesync-conductor/root-folder');
-  };
-
-  const hasRootFolderMount = currentVolumes.some(isRootFolderMount);
 
   const healedVolumes = currentVolumes.map(v =>
     v.trim() === BAD_VOLUME ? GOOD_VOLUME : v,
   );
+
+  const hasRootFolderMount = healedVolumes.some(isRootFolderMount);
 
   const finalVolumes = hasRootFolderMount
     ? healedVolumes
@@ -198,49 +207,28 @@ const healConductorConf = async (): Promise<boolean> => {
     tag: currentTag = 'latest',
   } = parseImage(baseService.image);
 
-  // ----- NON-LATEST: ONLY HEAL CONFIG -----
-  if (currentTag !== 'latest') {
-    const finalServiceNonLatest = {
-      ...baseService,
-      volumes: finalVolumes,
-    };
+  // ----- OPTIONAL RETAG (only if currentTag === 'latest') -----
+  const newTag: string | null =
+    currentTag === 'latest'
+      ? (getVersionByChannel(await fetchAgentInfo(shortImageName), 'ga') ??
+        null)
+      : null;
 
-    const changedNonLatest = volumesChanged || envChanged || envFileChanged;
-
-    if (!changedNonLatest) {
-      logger.info('[conductor-healer] nothing to heal');
-      return false;
-    }
-
-    await writeComposeFile({
-      ...composeJson,
-      services: {
-        ...composeJson.services,
-        [conductorServiceName]: finalServiceNonLatest,
-      },
-    });
-
-    logger.info('[conductor-healer] reboot needed to heal');
-    return true;
-  }
-
-  // ----- LATEST: HEAL + RETAG VIA AgentInfoResponse -----
-  const agentInfo: AgentInfoResponse = await fetchAgentInfo(shortImageName);
-  const newTag = getVersionByChannel(agentInfo, 'ga') ?? undefined;
-
+  // ----- FINAL SERVICE -----
   const finalService: any = {
     ...baseService,
     volumes: finalVolumes,
     ...(newTag ? { image: `${fullName}:${newTag}` } : {}),
   };
 
-  const changed =
+  // ----- is changed DETECTION -----
+  const isChanged =
     volumesChanged ||
     envChanged ||
     envFileChanged ||
     (!!newTag && newTag !== currentTag);
 
-  if (!changed) {
+  if (!isChanged) {
     logger.info('[conductor-healer] nothing to heal');
     return false;
   }
