@@ -14,9 +14,7 @@ const tzFixPlugin = async (
   fastify: Readonly<FastifyInstance>,
   opts: TzFixOptions,
 ): Promise<void> => {
-  const envVarName = opts.envVarName ?? 'TZ';
-  const fallbackIana = opts.fallbackIana;
-  const log = opts.log ?? true;
+  const { envVarName = 'TZ', fallbackIana, log = true } = opts;
 
   const tz = process.env[envVarName];
   const isWin = process.platform === 'win32';
@@ -42,7 +40,7 @@ const tzFixPlugin = async (
     const mapped = candidates?.[0];
 
     if (mapped) {
-      // This plugin intentionally mutates process.env (process-level config),
+      // This plugin intentionally mutates process.env (process-level config).
       // eslint-disable-next-line functional/immutable-data
       process.env[envVarName] = mapped;
 
