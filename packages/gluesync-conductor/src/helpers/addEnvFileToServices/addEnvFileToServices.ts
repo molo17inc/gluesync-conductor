@@ -18,11 +18,11 @@ const ENV_FILE_NAME = '.env';
  * Only applies if the conductor root-folder mount exists.
  */
 const addEnvFileToServices: AddEnvFile = (services, serviceIds) => {
-  const rootFolderMounted = existsSync(ROOT_FOLDER_PATH); // directory exists => mount is present [web:104]
+  const rootFolderMounted = existsSync(ROOT_FOLDER_PATH);
 
   if (!rootFolderMounted) {
     console.log(
-      `📋 addEnvFileToServices: root-folder not mounted at ${ROOT_FOLDER_PATH}, skipping env_file`,
+      `addEnvFileToServices: root-folder not mounted at ${ROOT_FOLDER_PATH}, skipping env_file`,
     );
     return { services: {}, updatedIds: [] };
   }
@@ -32,7 +32,14 @@ const addEnvFileToServices: AddEnvFile = (services, serviceIds) => {
       const service = services[id];
       if (!service) return acc;
 
-      // Build a NEW array for each service (avoids YAML anchors if serializer uses aliases)
+      // TODO remove when chronos is fixed: Skip env_file injection for Chronos on Windows
+      if (isWindows && id === 'gluesync-chronos') {
+        console.log(
+          `addEnvFileToServices: skipping env_file for ${id} on Windows`,
+        );
+        return acc;
+      }
+
       const envFile = buildEnvFileConf();
 
       const newUpdatedServices = {
