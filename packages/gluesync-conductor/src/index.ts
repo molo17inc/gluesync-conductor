@@ -47,16 +47,17 @@ const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
 const host: string = process.env.HOST || '0.0.0.0';
 
 const startServer = async (): Promise<void> => {
-  const logger = getLogger();
   const serverOptions = createFastifyHttpsOptions();
+
   const server = fastify(serverOptions);
 
-  // Register TZ fix FIRST (so later plugins/routes see the normalized TZ).
-  // Plugin registration order matters in Fastify. [web:118]
+  // Register TZ fix FIRST (so later plugins/routes see the normalized TZ for windows).
   await server.register(tzFix, {
     fallbackIana: 'UTC',
     log: true,
   });
+
+  const logger = getLogger();
 
   logSslInfo();
   httpsRedirectMiddleware(server);
