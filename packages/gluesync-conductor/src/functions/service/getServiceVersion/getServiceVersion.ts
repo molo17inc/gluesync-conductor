@@ -11,6 +11,9 @@ import getVersionByChannel from '../../../helpers/releaseChannel/getVersionByCha
 
 const handler: GetServiceVersionHandler = async (req, reply) => {
   try {
+    const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project';
+    const COMPOSE_SERVICE_LABEL = 'com.docker.compose.service';
+
     const { id, releaseChannel } = castObject<GetServiceVersionParams>(
       req.params,
     );
@@ -30,22 +33,71 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     }
 
     // Get actual running version from Docker
+    // Get actual running version from Docker, or fallback to compose image tag if no running container
     const getCurrentVersion = async (
       serviceId: string,
     ): Promise<string | null> => {
       try {
-        const container = req.server.docker.getContainer(serviceId);
-        const inspect = await container.inspect();
+        const containers = await req.server.docker.listContainers({
+          all: true,
+          filters: {
+            label: [
+              `${COMPOSE_PROJECT_LABEL}=${'gluesync'}`,
+              `${COMPOSE_SERVICE_LABEL}=${serviceId}`,
+            ],
+          },
+        });
+
+        // No containers at all for this service -> fallback to compose image tag
+        if (!containers || containers.length === 0) {
+          req.log.info(
+            { service: serviceId },
+            'No containers found for service, using compose image tag as fallback',
+          );
+          const svc = composeJson.services?.[serviceId];
+          if (!svc?.image) return null;
+          const { tag: composeTag } = parseImage(svc.image);
+          return composeTag.split('-')[0];
+        }
+
+        // Prefer a running container (normalize State)
+        const running = containers.find(
+          c => (c.State || '').toLowerCase() === 'running',
+        );
+
+        if (!running) {
+          // No running container found -> use compose image tag as requested
+          req.log.info(
+            { service: serviceId },
+            'No running container found, using compose image tag as fallback',
+          );
+          const svc = composeJson.services?.[serviceId];
+          if (!svc?.image) return null;
+          const { tag: composeTag } = parseImage(svc.image);
+          return composeTag.split('-')[0];
+        }
+
+        // Inspect the running container and parse its image tag
+        const inspect = await req.server.docker
+          .getContainer(running.Id)
+          .inspect();
         const runningImage = inspect.Config.Image;
         const { tag } = parseImage(runningImage);
-        // Strip suffix after first dash
         return tag.split('-')[0];
       } catch (err) {
         req.log.warn(
           { service: serviceId, error: err },
           `Failed to get running version for ${serviceId}, falling back to compose file`,
         );
-        return null;
+        // On any unexpected error, fall back to compose file if possible
+        try {
+          const svc = composeJson.services?.[serviceId];
+          if (!svc?.image) return null;
+          const { tag: composeTag } = parseImage(svc.image);
+          return composeTag.split('-')[0];
+        } catch {
+          return null;
+        }
       }
     };
 
