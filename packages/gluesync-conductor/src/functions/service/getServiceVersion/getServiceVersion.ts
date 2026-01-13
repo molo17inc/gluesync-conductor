@@ -11,6 +11,9 @@ import getVersionByChannel from '../../../helpers/releaseChannel/getVersionByCha
 
 const handler: GetServiceVersionHandler = async (req, reply) => {
   try {
+    const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project';
+    const COMPOSE_SERVICE_LABEL = 'com.docker.compose.service';
+
     const { id, releaseChannel } = castObject<GetServiceVersionParams>(
       req.params,
     );
@@ -34,8 +37,23 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       serviceId: string,
     ): Promise<string | null> => {
       try {
-        const container = req.server.docker.getContainer(serviceId);
-        const inspect = await container.inspect();
+        // Find containers by Compose labels instead of assuming container name == service key. [web:17]
+        const containers = await req.server.docker.listContainers({
+          all: true,
+          filters: {
+            label: [
+              `${COMPOSE_PROJECT_LABEL}=${'gluesync'}`,
+              `${COMPOSE_SERVICE_LABEL}=${serviceId}`,
+            ],
+          },
+        });
+
+        const selected =
+          containers.find(c => c.State === 'running') ?? containers[0];
+
+        const inspect = await req.server.docker
+          .getContainer(selected.Id)
+          .inspect();
         const runningImage = inspect.Config.Image;
         const { tag } = parseImage(runningImage);
         // Strip suffix after first dash
