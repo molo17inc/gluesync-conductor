@@ -11,9 +11,48 @@ const ROOT_FOLDER_PATH = isWindows
 
 const ENV_FILE_NAME = '.env';
 
+type EnvFileEntry =
+  | string
+  | Readonly<{
+      path?: string;
+      required?: boolean;
+    }>;
+
+const normalizeEnvFileEntry = (
+  e: EnvFileEntry,
+): { path: string; required: boolean } | null => {
+  if (typeof e === 'string') {
+    const p = e.trim();
+    return p ? { path: p, required: true } : null;
+  }
+  const p = (e.path ?? '').trim();
+  if (!p) return null;
+  return { path: p, required: e.required ?? true };
+};
+
+const hasBothRequiredEnvFiles = (envFile: unknown): boolean => {
+  if (!Array.isArray(envFile)) return false;
+
+  const entries = (envFile as ReadonlyArray<EnvFileEntry>)
+    .map(normalizeEnvFileEntry)
+    .filter((x): x is { path: string; required: boolean } => x !== null);
+
+  const rootEnvPath = join(ROOT_FOLDER_PATH, ENV_FILE_NAME);
+
+  const hasLocal = entries.some(e => e.path === '.env' && e.required === false);
+  const hasRoot = entries.some(
+    e => e.path === rootEnvPath && e.required === false,
+  );
+
+  return hasLocal && hasRoot;
+};
+
+// simple deep clone to avoid shared references -> avoids YAML anchors in most writers [web:151]
+const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
+
 /**
  * Add env_file to the specified services.
- * Forces it to be the ONLY env_file, overwriting any existing env_file.
+ * Only adds it if missing the required two entries (does NOT overwrite).
  *
  * Only applies if the conductor root-folder mount exists.
  */
@@ -40,24 +79,28 @@ const addEnvFileToServices: AddEnvFile = (services, serviceIds) => {
         return acc;
       }
 
-      const envFile = buildEnvFileConf();
+      const currentEnvFile = (service as { env_file?: unknown }).env_file;
 
-      const newUpdatedServices = {
-        ...acc.updatedServices,
-        [id]: { ...service, env_file: envFile },
-      };
-      const newUpdatedIds = [...acc.updatedIds, id];
+      // ✅ already has both required entries -> do nothing
+      if (hasBothRequiredEnvFiles(currentEnvFile)) {
+        return acc;
+      }
+
+      const envFile = clone(buildEnvFileConf());
 
       console.log(
-        `📋 addEnvFileToServices: forcing env_file for ${id}: ${ENV_FILE_NAME} + ${join(
+        `📋 addEnvFileToServices: adding env_file for ${id}: ${ENV_FILE_NAME} + ${join(
           ROOT_FOLDER_PATH,
           ENV_FILE_NAME,
         )}`,
       );
 
       return {
-        updatedServices: newUpdatedServices,
-        updatedIds: newUpdatedIds,
+        updatedServices: {
+          ...acc.updatedServices,
+          [id]: { ...service, env_file: envFile },
+        },
+        updatedIds: [...acc.updatedIds, id],
       };
     },
     { updatedServices: {} as Record<string, any>, updatedIds: [] as string[] },
