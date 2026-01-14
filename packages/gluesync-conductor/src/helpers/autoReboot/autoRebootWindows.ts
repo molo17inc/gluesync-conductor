@@ -21,7 +21,7 @@ type AutoReboot = (
  *      - the host Docker pipe
  *      - the host project directory
  *   4. Inside the helper, pwsh runs:
- *        $env:PWD='<basePath>';
+ *        $env:BASE_PATH='<basePath>';
  *        $env:DOCKER_HOST='npipe:////./pipe/docker_engine';
  *        docker-compose up -d --force-recreate --pull always <service>
  */
@@ -39,7 +39,7 @@ const autoRebootWindows: AutoReboot = async ({
   const absHostProjectDir = path.win32.resolve(hostProjectDir);
 
   // Grab the env var your compose.yml expects
-  const pwd = process.env.PWD || process.env.BASE_PATH;
+  const pwd = process.env.BASE_PATH;
   if (!pwd) {
     throw new Error('PWD/BASE_PATH env var must be set');
   }
@@ -49,7 +49,7 @@ const autoRebootWindows: AutoReboot = async ({
 
   // PowerShell command inside helper
   const psCommand =
-    `$env:PWD='${pwd}'; ` +
+    `$env:BASE_PATH='${pwd}'; ` +
     `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'; ` +
     `docker-compose up -d --force-recreate --pull always ${serviceName}`;
 
@@ -65,7 +65,7 @@ const autoRebootWindows: AutoReboot = async ({
     '-w',
     absHostProjectDir,
     '-e',
-    `PWD=${pwd}`, // propagate to helper
+    `BASE_PATH=${pwd}`, // propagate to helper
     helperImage,
     'pwsh',
     '-NoLogo',

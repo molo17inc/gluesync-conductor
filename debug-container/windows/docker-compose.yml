@@ -98,7 +98,7 @@ services:
       - traefik.http.services.conductor.loadbalancer.passhostheader=true
       - com.molo17.conductor.type=module
     environment:
-      - BASE_PATH=$PWD
+      - BASE_PATH=$BASE_PATH
       - CORE_HUB_ADDRESS=gluesync-core-hub
       - LOG_LEVEL=trace
     volumes:
