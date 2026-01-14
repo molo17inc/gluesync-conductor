@@ -15,33 +15,7 @@ import addNetworkToServices from '../addNetworkToServices/addNetworkToServices';
 import addPlatformVolumes from '../addPlatformVolumes/addPlatformVolumes';
 import toLabelStrings from '../../utils/toLabelStrings';
 import addEnvFileToServices from '../addEnvFileToServices/addEnvFileToServices';
-
-/**
- * Merge "patch" service maps into a base service map, per-service.
- *
- * This avoids brittle "spread order" bugs where whole-service snapshots overwrite
- * each other (e.g., volumes vs env_file). Later patches win only for the keys
- * they actually set.
- */
-const mergeServices = (
-  base: Readonly<Record<string, RawComposeService>>,
-  patches: ReadonlyArray<Readonly<Record<string, RawComposeService>>>,
-): Record<string, RawComposeService> =>
-  patches.reduce<Record<string, RawComposeService>>(
-    (acc, patch) => ({
-      ...acc,
-      ...Object.entries(patch).reduce<Record<string, RawComposeService>>(
-        (acc2, [id, patchSvc]) => ({
-          ...acc2,
-          [id]: acc[id]
-            ? ({ ...acc[id], ...patchSvc } as RawComposeService)
-            : patchSvc,
-        }),
-        {},
-      ),
-    }),
-    { ...base },
-  );
+import { mergeServices } from '../composeFile/mergeComposeFiles/mergeComposeFiles';
 
 /**
  * Ensure the given network exists at the root compose level.
@@ -108,7 +82,7 @@ const applyPlatformAdjustments = (
     : addPlatformVolumes(services, serviceIds, false);
 
   const afterStep1Services: Readonly<Record<string, RawComposeService>> =
-    mergeServices(services, [step1.services]);
+    mergeServices([services, step1.services]);
 
   // Step 2: Windows only → add platform volumes again
   const step2 = isWindows
@@ -116,7 +90,7 @@ const applyPlatformAdjustments = (
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
   const finalServices: Readonly<Record<string, RawComposeService>> =
-    mergeServices(afterStep1Services, [step2.services]);
+    mergeServices([afterStep1Services, step2.services]);
 
   const allUpdatedIds = [
     ...new Set([...step1.updatedIds, ...step2.updatedIds]),
@@ -231,7 +205,8 @@ const autoAdoptServices = async (): Promise<{
       const updatedComposeFile = ensureNetworkDefinition(
         {
           ...composeJson,
-          services: mergeServices(composeJson.services, [
+          services: mergeServices([
+            composeJson.services,
             cleanedServices,
             platformAdjustedLabeledServices,
             envFileServices,
@@ -258,10 +233,12 @@ const autoAdoptServices = async (): Promise<{
 
     // CASE B: there are unlabeled services to adopt.
     // Base includes: platform adjustments for labeled + env_file + global network for all services.
-    const baseServices: Record<string, RawComposeService> = mergeServices(
+    const baseServices: Record<string, RawComposeService> = mergeServices([
       composeJson.services,
-      [platformAdjustedLabeledServices, envFileServices, networkAllServices],
-    );
+      platformAdjustedLabeledServices,
+      envFileServices,
+      networkAllServices,
+    ]);
 
     // Second pass: adopt UNLABELED services
     const { updatedServices, updatedIds, unmatchedIds } = unlabeledIds.reduce(
@@ -403,7 +380,7 @@ const autoAdoptServices = async (): Promise<{
     const updatedComposeFile = ensureNetworkDefinition(
       {
         ...composeJson,
-        services: mergeServices(baseServices, [updatedServices]),
+        services: mergeServices([baseServices, updatedServices]),
       },
       networkName,
       isWindows,
