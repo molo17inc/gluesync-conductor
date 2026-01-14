@@ -42,18 +42,26 @@ const mergeTwoServices: MergeTwoServices = (service1, service2) => {
   return {
     ...service1,
     ...service2,
-    deploy: {
-      resources: {
-        reservations: {
-          ...(resvCpus && { cpus: resvCpus }),
-          ...(resvMemory && { memory: resvMemory }),
-        },
-        limits: {
-          ...(limCpus && { cpus: limCpus }),
-          ...(limMemory && { memory: limMemory }),
-        },
+    ...((resvCpus || resvMemory || limCpus || limMemory) && {
+      deploy: {
+        ...((resvCpus || resvMemory || limCpus || limMemory) && {
+          resources: {
+            ...((resvCpus || resvMemory) && {
+              reservations: {
+                ...(resvCpus && { cpus: resvCpus }),
+                ...(resvMemory && { memory: resvMemory }),
+              },
+            }),
+            ...((limCpus || limMemory) && {
+              limits: {
+                ...(limCpus && { cpus: limCpus }),
+                ...(limMemory && { memory: limMemory }),
+              },
+            }),
+          },
+        }),
       },
-    },
+    }),
     ...(
       Object.keys(
         composeServiceFieldConfig,
