@@ -25,23 +25,23 @@ import addEnvFileToServices from '../addEnvFileToServices/addEnvFileToServices';
  */
 const mergeServices = (
   base: Readonly<Record<string, RawComposeService>>,
-  ...patches: ReadonlyArray<Readonly<Record<string, RawComposeService>>>
-): Record<string, RawComposeService> => {
-  const out: Record<string, RawComposeService> = { ...base };
-
-  for (const patch of patches) {
-    for (const [id, patchSvc] of Object.entries(patch)) {
-      const prev = out[id];
-      if (!prev) {
-        out[id] = patchSvc;
-        continue;
-      }
-      out[id] = { ...prev, ...patchSvc };
-    }
-  }
-
-  return out;
-};
+  patches: ReadonlyArray<Readonly<Record<string, RawComposeService>>>,
+): Record<string, RawComposeService> =>
+  patches.reduce<Record<string, RawComposeService>>(
+    (acc, patch) => ({
+      ...acc,
+      ...Object.entries(patch).reduce<Record<string, RawComposeService>>(
+        (acc2, [id, patchSvc]) => ({
+          ...acc2,
+          [id]: acc[id]
+            ? ({ ...acc[id], ...patchSvc } as RawComposeService)
+            : patchSvc,
+        }),
+        {},
+      ),
+    }),
+    { ...base },
+  );
 
 /**
  * Apply platform-specific adjustments (GLUESYNC_HOST + network + volumes).
