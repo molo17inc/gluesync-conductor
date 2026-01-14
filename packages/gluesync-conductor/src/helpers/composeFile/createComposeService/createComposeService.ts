@@ -170,7 +170,7 @@ const createComposeService: CreateComposeService = (
     environment: Object.entries({
       ...environment,
       ...(agentType && { TYPE: agentType }),
-      TAG: nickname || serviceId,
+      TAG: nickname || tag || serviceId,
       ...(serviceType === 'agent' && {
         INITIAL_AGENT_ID: id,
         LOG_CONFIG_FILE: isWindows

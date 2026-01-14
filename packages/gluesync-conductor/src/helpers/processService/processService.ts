@@ -6,6 +6,7 @@ import {
   CreateServiceError,
   ProcessServices,
 } from './processService.model';
+import { mergeServices } from '../composeFile/mergeComposeFiles/mergeComposeFiles';
 
 const createServiceError: CreateServiceError = (message, status, serviceId) => {
   const error = new Error(message);
@@ -91,10 +92,7 @@ const processServices: ProcessServices = async (
 
   const updatedComposeJson = {
     ...composeJson,
-    services: {
-      ...composeJson.services,
-      ...updatedServices,
-    },
+    services: mergeServices([composeJson.services ?? {}, updatedServices]),
   };
 
   await writeComposeFile(updatedComposeJson);
