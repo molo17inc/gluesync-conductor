@@ -17,6 +17,33 @@ import toLabelStrings from '../../utils/toLabelStrings';
 import addEnvFileToServices from '../addEnvFileToServices/addEnvFileToServices';
 
 /**
+ * Merge "patch" service maps into a base service map, per-service.
+ *
+ * This avoids brittle "spread order" bugs where whole-service snapshots overwrite
+ * each other (e.g., volumes vs env_file). Later patches win only for the keys
+ * they actually set.
+ */
+const mergeServices = (
+  base: Readonly<Record<string, RawComposeService>>,
+  ...patches: ReadonlyArray<Readonly<Record<string, RawComposeService>>>
+): Record<string, RawComposeService> => {
+  const out: Record<string, RawComposeService> = { ...base };
+
+  for (const patch of patches) {
+    for (const [id, patchSvc] of Object.entries(patch)) {
+      const prev = out[id];
+      if (!prev) {
+        out[id] = patchSvc;
+        continue;
+      }
+      out[id] = { ...prev, ...patchSvc };
+    }
+  }
+
+  return out;
+};
+
+/**
  * Apply platform-specific adjustments (GLUESYNC_HOST + network + volumes).
  * On non-Windows, only volumes are normalized.
  * Returns only the updated services and their ids.
@@ -36,52 +63,38 @@ const applyPlatformAdjustments = (
     ? addGluesyncHostToAgents(services, serviceIds, gluesyncHostDefault)
     : addPlatformVolumes(services, serviceIds, false);
 
-  const afterStep1Services: Readonly<Record<string, RawComposeService>> = {
-    ...services,
-    ...step1.services,
-  };
+  const afterStep1Services: Readonly<Record<string, RawComposeService>> =
+    mergeServices(services, step1.services);
 
   // Step 2: Windows only → add network
   const step2 = isWindows
     ? addNetworkToServices(afterStep1Services, serviceIds, windowsNetworkName)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
-  const afterStep2Services: Readonly<Record<string, RawComposeService>> = {
-    ...afterStep1Services,
-    ...step2.services,
-  };
+  const afterStep2Services: Readonly<Record<string, RawComposeService>> =
+    mergeServices(afterStep1Services, step2.services);
 
   // Step 3: Windows only → add platform volumes again
   const step3 = isWindows
     ? addPlatformVolumes(afterStep2Services, serviceIds, true)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
-  // ✅ Final merge: ensure env_file is preserved if already set (e.g., ${PWD}/.env)
-  const finalServices: Readonly<Record<string, RawComposeService>> = {
-    ...afterStep2Services,
-    ...step3.services,
-  };
+  const finalServices: Readonly<Record<string, RawComposeService>> =
+    mergeServices(afterStep2Services, step3.services);
 
-  const allUpdatedIds: ReadonlyArray<string> = [
-    ...step1.updatedIds,
-    ...step2.updatedIds,
-    ...step3.updatedIds,
-  ];
-
-  // Only return updated services
-  const changedServices = Object.fromEntries(
-    allUpdatedIds.map(id => [id, finalServices[id]]),
-  ) as Record<string, RawComposeService>;
+  const allUpdatedIds = [
+    ...new Set([...step1.updatedIds, ...step2.updatedIds, ...step3.updatedIds]),
+  ] as ReadonlyArray<string>;
 
   return {
-    services: changedServices,
+    services: finalServices,
     updatedIds: allUpdatedIds,
   };
 };
 
 /**
  * Function to apply Conductor labels to services in docker-compose.yml.
- * Services with type labels will be handled by Conductor
+ * Services with type labels will be handled by Conductor.
  */
 const autoAdoptServices = async (): Promise<{
   success: boolean;
@@ -101,12 +114,9 @@ const autoAdoptServices = async (): Promise<{
 
     const gluesyncHostDefault =
       process.env.GLUESYNC_HOST ?? 'gluesync-core-hub';
-
     const windowsNetworkName = 'gluesync-windows-net';
-
     const conductorServiceName =
       process.env.CONDUCTOR_NAME || 'gluesync-conductor';
-
     const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
     // Extract all service IDs without the EXCLUDED_SERVICES
@@ -120,14 +130,10 @@ const autoAdoptServices = async (): Promise<{
       const service = composeJson.services?.[id];
       if (!service) return false;
 
-      // FIX: Use toLabelStrings to handle both array and object formats
       const labelStrings = toLabelStrings(service.labels);
-
-      const hasConductorType = labelStrings.some(label =>
+      return labelStrings.some(label =>
         label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`),
       );
-
-      return hasConductorType;
     });
 
     // Exclude conductor from platform adjustments
@@ -135,7 +141,7 @@ const autoAdoptServices = async (): Promise<{
       id => id !== conductorServiceName,
     );
 
-    // First pass: remove depends_on
+    // First pass: remove depends_on for already-labeled services
     const { cleanedServices, removedDependsOnIds } =
       removeDependsOnFromServices(composeJson, alreadyLabeledIds);
 
@@ -150,7 +156,7 @@ const autoAdoptServices = async (): Promise<{
       windowsNetworkName,
     );
 
-    // ✅ Add env_file to ALL services (only if root folder mounted and .env exists)
+    // Add env_file to ALL services (only if root folder mounted and .env exists)
     const { services: envFileServices, updatedIds: envFileUpdatedIds } =
       addEnvFileToServices(composeJson.services, allServiceIds);
 
@@ -158,6 +164,7 @@ const autoAdoptServices = async (): Promise<{
       id => !alreadyLabeledIds.includes(id),
     );
 
+    // CASE A: nothing to adopt; only fix already-labeled services (depends_on/network/volumes/env_file)
     if (unlabeledIds.length === 0) {
       if (
         removedDependsOnIds.length === 0 &&
@@ -171,14 +178,15 @@ const autoAdoptServices = async (): Promise<{
         };
       }
 
+      // IMPORTANT: merge per-service patches, not whole-service snapshots. [web:38]
       const updatedComposeFile = {
         ...composeJson,
-        services: {
-          ...composeJson.services,
-          ...platformAdjustedLabeledServices,
-          ...cleanedServices,
-          ...envFileServices,
-        },
+        services: mergeServices(
+          composeJson.services,
+          cleanedServices,
+          platformAdjustedLabeledServices,
+          envFileServices,
+        ),
       };
 
       await writeComposeFile(updatedComposeFile);
@@ -194,25 +202,21 @@ const autoAdoptServices = async (): Promise<{
       };
     }
 
-    // From this point on, work on a base services object where
-    // already-labeled services are already cleaned from depends_on and have env_file
-    const baseServices: Record<string, RawComposeService> = {
-      ...composeJson.services,
-      ...platformAdjustedLabeledServices,
-      ...envFileServices,
-    };
+    // CASE B: there are unlabeled services to adopt.
+    // Base services = original + (labeled platform adjustments) + (env_file injections) [web:38]
+    const baseServices: Record<string, RawComposeService> = mergeServices(
+      composeJson.services,
+      platformAdjustedLabeledServices,
+      envFileServices,
+    );
 
-    // Second pass: adopt UNLABELED services (and ensure depends_on removed via utility)
+    // Second pass: adopt UNLABELED services
     const { updatedServices, updatedIds, unmatchedIds } = unlabeledIds.reduce(
       (acc, id) => {
         const service = baseServices?.[id];
-        if (!service) {
-          throw new Error(`Service ${id} not found`);
-        }
+        if (!service) throw new Error(`Service ${id} not found`);
 
-        // FIX: Use toLabelStrings to handle both array and object formats
         const initialLabels = toLabelStrings(service.labels);
-
         const { imageName } = parseImage(service.image);
 
         const agentEntry = (agentsJson.data || []).find(
@@ -220,7 +224,6 @@ const autoAdoptServices = async (): Promise<{
         );
 
         if (!agentEntry) {
-          // No match in agents.json → track as unmatched
           return {
             updatedServices: {
               ...acc.updatedServices,
@@ -231,28 +234,22 @@ const autoAdoptServices = async (): Promise<{
           };
         }
 
-        // Decide conductor type with stricter rules
         const conductorType: string | null = (() => {
-          if (agentEntry.dockerHubRepoName === 'gluesync-core-hub') {
+          if (agentEntry.dockerHubRepoName === 'gluesync-core-hub')
             return 'core-hub';
-          }
 
           const isTargetValid = typeof agentEntry.isTarget === 'boolean';
           const isSourceValid = typeof agentEntry.isSource === 'boolean';
 
           if (isTargetValid && isSourceValid) {
-            if (agentEntry.isTarget || agentEntry.isSource) {
-              return 'agent';
-            }
+            if (agentEntry.isTarget || agentEntry.isSource) return 'agent';
             return 'module';
           }
 
-          // If neither property is a boolean, we consider it unmatched
           return null;
         })();
 
         if (!conductorType) {
-          // No valid conductor type → track as unmatched
           return {
             updatedServices: {
               ...acc.updatedServices,
@@ -263,7 +260,7 @@ const autoAdoptServices = async (): Promise<{
           };
         }
 
-        // Use the utility to drop depends_on for this service
+        // Drop depends_on for this service
         const { cleanedServices: cleanedSingle } = removeDependsOnFromServices(
           { ...composeJson, services: baseServices },
           [id],
@@ -272,10 +269,7 @@ const autoAdoptServices = async (): Promise<{
         const cleanedServiceBase = cleanedSingle[id] ?? service;
 
         const platformAdjustedService: RawComposeService = (() => {
-          // Skip conductor → return cleaned base unchanged
-          if (id === conductorServiceName) {
-            return cleanedServiceBase;
-          }
+          if (id === conductorServiceName) return cleanedServiceBase;
 
           const singleServiceMap = { [id]: cleanedServiceBase };
 
@@ -294,7 +288,6 @@ const autoAdoptServices = async (): Promise<{
           return adjustedServices[id] ?? cleanedServiceBase;
         })();
 
-        // Add conductor type label and service_id label
         const finalLabels = [
           ...initialLabels,
           `${LabelPrefix.CONDUCTOR}.type=${conductorType}`,
@@ -303,7 +296,6 @@ const autoAdoptServices = async (): Promise<{
             : []),
         ];
 
-        // Normalize environment
         const normalizedEnv = extractKeyValue(
           composeServiceFieldConfig.environment.separator,
           platformAdjustedService.environment,
@@ -318,6 +310,7 @@ const autoAdoptServices = async (): Promise<{
             ...acc.updatedServices,
             [id]: {
               ...platformAdjustedService,
+              // Preserve env_file already injected into baseServices for this service (if any)
               env_file: service.env_file,
               labels: finalLabels,
               environment: envArray,
@@ -355,10 +348,7 @@ const autoAdoptServices = async (): Promise<{
 
     const updatedComposeFile = {
       ...composeJson,
-      services: {
-        ...baseServices,
-        ...updatedServices,
-      },
+      services: mergeServices(baseServices, updatedServices),
     };
 
     await writeComposeFile(updatedComposeFile);

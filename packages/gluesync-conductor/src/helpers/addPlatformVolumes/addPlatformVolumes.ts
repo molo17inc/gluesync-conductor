@@ -2,8 +2,12 @@ import { LabelPrefix } from '../../models/composeFile.model';
 import { AddPlatformVolumes } from './AddPlatformVolumes.model';
 
 /**
- * Normalize volumes for services depending on platform.
- * Removes legacy mounts and only returns changed services.
+ * Ensure agent services have required platform volumes.
+ * - Preserves existing volumes (short syntax strings)
+ * - Adds missing shared/logs/data mounts (platform-specific)
+ * - Returns ONLY changed services
+ *
+ * Compose short syntax: [SOURCE:]TARGET[:MODE]. [web:19]
  */
 const addPlatformVolumes: AddPlatformVolumes = (
   services,
@@ -13,20 +17,38 @@ const addPlatformVolumes: AddPlatformVolumes = (
   const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
   const conductorName = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
 
-  // Helper to normalize volume for comparison (strip mount options like :ro, :rw)
-  const stripMountOptions = (vol: string): string => vol.replace(/:r[ow]$/, '');
+  const parseVolumeTarget = (vol: string): string | null => {
+    const s = vol.trim();
+    if (!s) return null;
+
+    // No ":" => anonymous volume with TARGET only
+    if (!s.includes(':')) return s;
+
+    // Right-biased parsing to support Windows "C:\..." in SOURCE
+    const parts = s.split(':');
+    const last = parts[parts.length - 1];
+    const isMode = last === 'ro' || last === 'rw';
+
+    return isMode ? parts[parts.length - 2] : parts[parts.length - 1];
+  };
+
+  const toStringVolumes = (vols: unknown): string[] => {
+    if (!Array.isArray(vols)) return [];
+    // You said you'll always have short syntax like "./x:/y[:ro]"
+    // so enforce strings and ignore anything else defensively.
+    return vols.filter((v): v is string => typeof v === 'string');
+  };
+
+  const hasTarget = (volumes: ReadonlyArray<string>, target: string): boolean =>
+    volumes.some(v => parseVolumeTarget(v) === target);
 
   const { updatedServices, updatedIds } = serviceIds.reduce(
     (acc, id) => {
       const svc = services[id];
       if (!svc) return acc;
 
-      // Skip core-hub and conductor - autoheal will handle them
-      if (id === coreHubName || id === conductorName) {
-        return acc;
-      }
+      if (id === coreHubName || id === conductorName) return acc;
 
-      // Check if service is an agent (has conductor.type=agent label)
       const isAgent = Array.isArray(svc.labels)
         ? svc.labels.some(l =>
             l.includes(`${LabelPrefix.CONDUCTOR}.type=agent`),
@@ -35,70 +57,61 @@ const addPlatformVolumes: AddPlatformVolumes = (
             ([k, v]) => k === `${LabelPrefix.CONDUCTOR}.type` && v === 'agent',
           );
 
-      // ✅ Only normalize agents - skip modules (they have custom paths)
-      if (!isAgent) {
-        return acc;
-      }
+      if (!isAgent) return acc;
 
-      const containerName = svc.container_name || id;
+      const required = isWindows
+        ? {
+            sharedTarget: `C:\\opt\\gluesync\\shared`,
+            logsTarget: `C:\\opt\\gluesync\\logs`,
+            dataTarget: `C:\\opt\\gluesync\\data`,
+            shared: `./shared:C:\\opt\\gluesync\\shared:ro`,
+            logs: `./logs/${id}:C:\\opt\\gluesync\\logs`,
+            data: `./data/${id}:C:\\opt\\gluesync\\data`,
+          }
+        : {
+            sharedTarget: `/opt/gluesync/shared`,
+            logsTarget: `/opt/gluesync/logs`,
+            dataTarget: `/opt/gluesync/data`,
+            shared: `./shared:/opt/gluesync/shared:ro`,
+            logs: `./logs/${id}:/opt/gluesync/logs`,
+            data: `./data/${id}:/opt/gluesync/data`,
+          };
 
-      const normalizedVolumes = isWindows
-        ? [
-            `./shared:C:\\opt\\gluesync\\shared:ro`, // ✅ Keep :ro for agents
-            `./data/${containerName}:C:\\opt\\gluesync\\data`,
-            `./logs/${containerName}:C:\\opt\\gluesync\\logs`,
-          ]
-        : [
-            `./shared:/opt/gluesync/shared:ro`,
-            `./data/${containerName}:/opt/gluesync/data`,
-            `./logs/${containerName}:/opt/gluesync/logs`,
-          ];
+      const currentVolumes = toStringVolumes(svc.volumes);
 
-      // Remove ALL data/logs/shared volumes and keep everything else
-      const otherVolumes = (svc.volumes || []).filter(
-        v =>
-          !v.startsWith('./data/') &&
-          !v.startsWith('./logs/') &&
-          !v.includes('\\data\\') &&
-          !v.includes('\\logs\\') &&
-          !v.startsWith('./shared') &&
-          !v.includes('\\shared'),
-      );
+      const additions = [
+        ...(!hasTarget(currentVolumes, required.sharedTarget)
+          ? [required.shared]
+          : []),
+        ...(!hasTarget(currentVolumes, required.logsTarget)
+          ? [required.logs]
+          : []),
+        ...(!hasTarget(currentVolumes, required.dataTarget)
+          ? [required.data]
+          : []),
+      ];
 
-      // Combine: other volumes + all normalized volumes
-      const nextVolumes = [...otherVolumes, ...normalizedVolumes];
-
-      // Compare semantically (ignore :ro differences during comparison)
-      const currentNormalized = (svc.volumes || [])
-        .map(stripMountOptions)
-        .sort();
-      const nextNormalized = nextVolumes.map(stripMountOptions).sort();
-
-      const volumesChanged =
-        !!svc.container_name &&
-        (currentNormalized.length !== nextNormalized.length ||
-          !currentNormalized.every((v, i) => v === nextNormalized[i]));
-
-      if (!volumesChanged) {
-        return acc;
-      }
+      if (additions.length === 0) return acc;
 
       return {
         updatedServices: {
           ...acc.updatedServices,
-          [id]: { ...svc, volumes: nextVolumes },
+          [id]: {
+            ...svc,
+            // Ensure we write back short-syntax string[] only
+            volumes: [...currentVolumes, ...additions],
+          },
         },
         updatedIds: [...acc.updatedIds, id],
       };
     },
-    { updatedServices: {}, updatedIds: [] as ReadonlyArray<string> },
+    {
+      updatedServices: {} as Record<string, any>,
+      updatedIds: [] as ReadonlyArray<string>,
+    },
   );
 
-  return {
-    services:
-      updatedIds.length === 0 ? services : { ...services, ...updatedServices },
-    updatedIds,
-  };
+  return { services: updatedServices, updatedIds };
 };
 
 export default addPlatformVolumes;
