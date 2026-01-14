@@ -64,7 +64,7 @@ const applyPlatformAdjustments = (
     : addPlatformVolumes(services, serviceIds, false);
 
   const afterStep1Services: Readonly<Record<string, RawComposeService>> =
-    mergeServices(services, step1.services);
+    mergeServices(services, [step1.services]);
 
   // Step 2: Windows only → add network
   const step2 = isWindows
@@ -72,7 +72,7 @@ const applyPlatformAdjustments = (
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
   const afterStep2Services: Readonly<Record<string, RawComposeService>> =
-    mergeServices(afterStep1Services, step2.services);
+    mergeServices(afterStep1Services, [step2.services]);
 
   // Step 3: Windows only → add platform volumes again
   const step3 = isWindows
@@ -80,7 +80,7 @@ const applyPlatformAdjustments = (
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
   const finalServices: Readonly<Record<string, RawComposeService>> =
-    mergeServices(afterStep2Services, step3.services);
+    mergeServices(afterStep2Services, [step3.services]);
 
   const allUpdatedIds = [
     ...new Set([...step1.updatedIds, ...step2.updatedIds, ...step3.updatedIds]),
@@ -94,7 +94,7 @@ const applyPlatformAdjustments = (
 
 /**
  * Function to apply Conductor labels to services in docker-compose.yml.
- * Services with type labels will be handled by Conductor.
+ * Services with type labels will be handled by Conductor
  */
 const autoAdoptServices = async (): Promise<{
   success: boolean;
@@ -178,15 +178,13 @@ const autoAdoptServices = async (): Promise<{
         };
       }
 
-      // IMPORTANT: merge per-service patches, not whole-service snapshots. [web:38]
       const updatedComposeFile = {
         ...composeJson,
-        services: mergeServices(
-          composeJson.services,
+        services: mergeServices(composeJson.services, [
           cleanedServices,
           platformAdjustedLabeledServices,
           envFileServices,
-        ),
+        ]),
       };
 
       await writeComposeFile(updatedComposeFile);
@@ -203,11 +201,9 @@ const autoAdoptServices = async (): Promise<{
     }
 
     // CASE B: there are unlabeled services to adopt.
-    // Base services = original + (labeled platform adjustments) + (env_file injections) [web:38]
     const baseServices: Record<string, RawComposeService> = mergeServices(
       composeJson.services,
-      platformAdjustedLabeledServices,
-      envFileServices,
+      [platformAdjustedLabeledServices, envFileServices],
     );
 
     // Second pass: adopt UNLABELED services
@@ -348,7 +344,7 @@ const autoAdoptServices = async (): Promise<{
 
     const updatedComposeFile = {
       ...composeJson,
-      services: mergeServices(baseServices, updatedServices),
+      services: mergeServices(baseServices, [updatedServices]),
     };
 
     await writeComposeFile(updatedComposeFile);
