@@ -44,21 +44,65 @@ const mergeServices = (
   );
 
 /**
- * Apply platform-specific adjustments (GLUESYNC_HOST + network + volumes).
- * On non-Windows, only volumes are normalized.
- * Returns only the updated services and their ids.
+ * Ensure the given network exists at the root compose level.
+ * To use a named network across services, it must be declared under top-level
+ * `networks`, and services must reference it via `services.<svc>.networks`. [web:11][web:64]
+ */
+const ensureNetworkDefinition = (
+  composeJson: any,
+  networkName: string,
+  isWindows: boolean,
+) => {
+  if (composeJson.networks?.[networkName]) return composeJson;
+
+  return {
+    ...composeJson,
+    networks: {
+      ...composeJson.networks,
+      [networkName]: {
+        name: networkName,
+        driver: isWindows ? 'nat' : 'bridge',
+      },
+    },
+  };
+};
+
+/**
+ * Add a network to ALL services in the compose, excluding the conductor.
+ * This avoids repeating per-service "addNetworkToServices" calls all over the flow. [web:64]
+ */
+const addNetworkToAllServicesExceptConductor = (
+  services: Readonly<Record<string, RawComposeService>>,
+  networkName: string,
+  conductorServiceName: string,
+): {
+  services: Record<string, RawComposeService>;
+  updatedIds: ReadonlyArray<string>;
+} => {
+  const allIdsExceptConductor = Object.keys(services ?? {}).filter(
+    id => id !== conductorServiceName,
+  );
+
+  return addNetworkToServices(services, allIdsExceptConductor, networkName);
+};
+
+/**
+ * Apply platform-specific adjustments:
+ * - Windows: add GLUESYNC_HOST to agents + normalize Windows volumes
+ * - Non-Windows: normalize volumes
+ *
+ * Networking is handled once globally via addNetworkToAllServicesExceptConductor.
  */
 const applyPlatformAdjustments = (
   services: Readonly<Record<string, RawComposeService>>,
   serviceIds: ReadonlyArray<string>,
   isWindows: boolean,
   gluesyncHostDefault: string,
-  windowsNetworkName: string,
 ): {
   services: Record<string, RawComposeService>;
   updatedIds: ReadonlyArray<string>;
 } => {
-  // Step 1: Windows → add GLUESYNC_HOST to agents; Non-Windows → normalize volumes
+  // Step 1: Windows → add GLUESYNC_HOST; Non-Windows → normalize volumes
   const step1 = isWindows
     ? addGluesyncHostToAgents(services, serviceIds, gluesyncHostDefault)
     : addPlatformVolumes(services, serviceIds, false);
@@ -66,24 +110,16 @@ const applyPlatformAdjustments = (
   const afterStep1Services: Readonly<Record<string, RawComposeService>> =
     mergeServices(services, [step1.services]);
 
-  // Step 2: Windows only → add network
+  // Step 2: Windows only → add platform volumes again
   const step2 = isWindows
-    ? addNetworkToServices(afterStep1Services, serviceIds, windowsNetworkName)
-    : { services: {}, updatedIds: [] as ReadonlyArray<string> };
-
-  const afterStep2Services: Readonly<Record<string, RawComposeService>> =
-    mergeServices(afterStep1Services, [step2.services]);
-
-  // Step 3: Windows only → add platform volumes again
-  const step3 = isWindows
-    ? addPlatformVolumes(afterStep2Services, serviceIds, true)
+    ? addPlatformVolumes(afterStep1Services, serviceIds, true)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
   const finalServices: Readonly<Record<string, RawComposeService>> =
-    mergeServices(afterStep2Services, [step3.services]);
+    mergeServices(afterStep1Services, [step2.services]);
 
   const allUpdatedIds = [
-    ...new Set([...step1.updatedIds, ...step2.updatedIds, ...step3.updatedIds]),
+    ...new Set([...step1.updatedIds, ...step2.updatedIds]),
   ] as ReadonlyArray<string>;
 
   return {
@@ -114,19 +150,24 @@ const autoAdoptServices = async (): Promise<{
 
     const gluesyncHostDefault =
       process.env.GLUESYNC_HOST ?? 'gluesync-core-hub';
-    const windowsNetworkName = 'gluesync-windows-net';
+
     const conductorServiceName =
       process.env.CONDUCTOR_NAME || 'gluesync-conductor';
+
     const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
-    // Extract all service IDs without the EXCLUDED_SERVICES
-    const allServiceIds: readonly string[] = fetchAllServicesInCompose(
+    const windowsNetworkName = 'gluesync-windows-net';
+    const linuxNetworkName = 'gluesync-net';
+    const networkName = isWindows ? windowsNetworkName : linuxNetworkName;
+
+    // Adoption scope (respects EXCLUDED_SERVICES), but excludes conductor.
+    const adoptionServiceIds: readonly string[] = fetchAllServicesInCompose(
       composeJson,
       false,
     ).filter(id => id !== conductorServiceName);
 
     // Services that ALREADY have a conductor type label
-    const alreadyLabeledIds = allServiceIds.filter(id => {
+    const alreadyLabeledIds = adoptionServiceIds.filter(id => {
       const service = composeJson.services?.[id];
       if (!service) return false;
 
@@ -145,6 +186,7 @@ const autoAdoptServices = async (): Promise<{
     const { cleanedServices, removedDependsOnIds } =
       removeDependsOnFromServices(composeJson, alreadyLabeledIds);
 
+    // Apply platform adjustments to already-labeled services (no networking here)
     const {
       services: platformAdjustedLabeledServices,
       updatedIds: platformAdjustedIds,
@@ -153,23 +195,31 @@ const autoAdoptServices = async (): Promise<{
       adjustedIds,
       isWindows,
       gluesyncHostDefault,
-      windowsNetworkName,
     );
 
-    // Add env_file to ALL services (only if root folder mounted and .env exists)
+    // Add env_file to ALL adoption services (only if root folder mounted and .env exists)
     const { services: envFileServices, updatedIds: envFileUpdatedIds } =
-      addEnvFileToServices(composeJson.services, allServiceIds);
+      addEnvFileToServices(composeJson.services, adoptionServiceIds);
 
-    const unlabeledIds = allServiceIds.filter(
+    // Add network to ALL services present in compose (except conductor)
+    const { services: networkAllServices, updatedIds: networkAllUpdatedIds } =
+      addNetworkToAllServicesExceptConductor(
+        composeJson.services,
+        networkName,
+        conductorServiceName,
+      );
+
+    const unlabeledIds = adoptionServiceIds.filter(
       id => !alreadyLabeledIds.includes(id),
     );
 
-    // CASE A: nothing to adopt; only fix already-labeled services (depends_on/network/volumes/env_file)
+    // CASE A: nothing to adopt; only fix already-labeled services (depends_on/platform/env_file/network)
     if (unlabeledIds.length === 0) {
       if (
         removedDependsOnIds.length === 0 &&
         platformAdjustedIds.length === 0 &&
-        envFileUpdatedIds.length === 0
+        envFileUpdatedIds.length === 0 &&
+        networkAllUpdatedIds.length === 0
       ) {
         return {
           success: true,
@@ -178,14 +228,19 @@ const autoAdoptServices = async (): Promise<{
         };
       }
 
-      const updatedComposeFile = {
-        ...composeJson,
-        services: mergeServices(composeJson.services, [
-          cleanedServices,
-          platformAdjustedLabeledServices,
-          envFileServices,
-        ]),
-      };
+      const updatedComposeFile = ensureNetworkDefinition(
+        {
+          ...composeJson,
+          services: mergeServices(composeJson.services, [
+            cleanedServices,
+            platformAdjustedLabeledServices,
+            envFileServices,
+            networkAllServices,
+          ]),
+        },
+        networkName,
+        isWindows,
+      );
 
       await writeComposeFile(updatedComposeFile);
 
@@ -195,15 +250,17 @@ const autoAdoptServices = async (): Promise<{
           ...removedDependsOnIds,
           ...platformAdjustedIds,
           ...envFileUpdatedIds,
+          ...networkAllUpdatedIds,
         ],
         unmatchedIds: [],
       };
     }
 
     // CASE B: there are unlabeled services to adopt.
+    // Base includes: platform adjustments for labeled + env_file + global network for all services.
     const baseServices: Record<string, RawComposeService> = mergeServices(
       composeJson.services,
-      [platformAdjustedLabeledServices, envFileServices],
+      [platformAdjustedLabeledServices, envFileServices, networkAllServices],
     );
 
     // Second pass: adopt UNLABELED services
@@ -265,23 +322,23 @@ const autoAdoptServices = async (): Promise<{
         const cleanedServiceBase = cleanedSingle[id] ?? service;
 
         const platformAdjustedService: RawComposeService = (() => {
+          // Conductor excluded from health/network adjustments; keep as-is
           if (id === conductorServiceName) return cleanedServiceBase;
+
+          // Networking is already applied globally in baseServices.
+          // Only agents need platform adjustments (GLUESYNC_HOST + volumes).
+          if (conductorType !== 'agent') return cleanedServiceBase;
 
           const singleServiceMap = { [id]: cleanedServiceBase };
 
-          const adjustedServices: Record<string, RawComposeService> =
-            conductorType === 'agent'
-              ? applyPlatformAdjustments(
-                  singleServiceMap,
-                  [id],
-                  isWindows,
-                  gluesyncHostDefault,
-                  windowsNetworkName,
-                ).services
-              : addNetworkToServices(singleServiceMap, [id], windowsNetworkName)
-                  .services;
+          const adjusted = applyPlatformAdjustments(
+            singleServiceMap,
+            [id],
+            isWindows,
+            gluesyncHostDefault,
+          ).services;
 
-          return adjustedServices[id] ?? cleanedServiceBase;
+          return adjusted[id] ?? cleanedServiceBase;
         })();
 
         const finalLabels = [
@@ -323,11 +380,12 @@ const autoAdoptServices = async (): Promise<{
       },
     );
 
-    // If no newly adopted services and no depends_on was removed and no env_file added, bail out
+    // If no newly adopted services and no depends_on was removed and no env_file added and no networks added, bail out
     if (
       updatedIds.length === 0 &&
       removedDependsOnIds.length === 0 &&
-      envFileUpdatedIds.length === 0
+      envFileUpdatedIds.length === 0 &&
+      networkAllUpdatedIds.length === 0
     ) {
       return {
         success: true,
@@ -342,10 +400,14 @@ const autoAdoptServices = async (): Promise<{
       id => !alreadyLabeledIds.includes(id),
     );
 
-    const updatedComposeFile = {
-      ...composeJson,
-      services: mergeServices(baseServices, [updatedServices]),
-    };
+    const updatedComposeFile = ensureNetworkDefinition(
+      {
+        ...composeJson,
+        services: mergeServices(baseServices, [updatedServices]),
+      },
+      networkName,
+      isWindows,
+    );
 
     await writeComposeFile(updatedComposeFile);
 
@@ -355,6 +417,7 @@ const autoAdoptServices = async (): Promise<{
         ...removedDependsOnIds,
         ...newlyAdopted,
         ...envFileUpdatedIds,
+        ...networkAllUpdatedIds,
       ],
       unmatchedIds,
     };
