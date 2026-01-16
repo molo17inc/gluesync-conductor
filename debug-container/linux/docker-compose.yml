@@ -69,7 +69,11 @@ services:
       - ./bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json
       - ./logs/core-hub:/opt/gluesync/logs
       - ./data/core-hub:/opt/gluesync/data
-
+    env_file:
+      - path: .env
+        required: false
+      - path: /opt/gluesync-conductor/root-folder/.env
+        required: false
   gluesync-chronos:
     restart: unless-stopped
     image: molo17/gluesync-chronos:latest
@@ -95,7 +99,11 @@ services:
       - ./shared:/opt/gluesync/shared:ro
       - ./data/chronos:/app/data
       - ./logs/chronos:/app/logs
-
+    env_file:
+      - path: .env
+        required: false
+      - path: /opt/gluesync-conductor/root-folder/.env
+        required: false
   gluesync-conductor:
     restart: unless-stopped
     # image: molo17/gluesync-conductor:latest
@@ -123,9 +131,14 @@ services:
       - ./shared:/opt/gluesync/data # replace in codebase gluesync/data with gluesync/shared
       - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
       - ./logs:/opt/gluesync-conductor/logs
+      - ./:/opt/gluesync-conductor/root-folder
     ports:
       - 5017:1717
-
+    env_file:
+      - path: .env
+        required: false
+      - path: /opt/gluesync-conductor/root-folder/.env
+        required: false
   reverse-proxy:
     restart: unless-stopped
     image: traefik:v3.6.2
