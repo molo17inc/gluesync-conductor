@@ -6,6 +6,7 @@ import fetchAgentInfo from '../agentInfo/agentInfo';
 import parseImage from '../parseImage/parseImage';
 import getVersionByChannel from '../releaseChannel/getVersionByChannel';
 import buildEnvFileConf from '../buildEnvFileConf/buildEnvFileConf';
+import { EnvFile, EnvFileElement } from '../../models/composeFile.model';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
@@ -24,43 +25,18 @@ const REQUIRED_ROOT_FOLDER_MOUNT_VOLUME = isWindows
 
 const ENV_FILE = '.env';
 
-type EnvFileEntry =
-  | string
-  | {
-      path: string;
-      required?: boolean;
-      format?: string;
-    };
+const normalizeEnvFile = (envFile?: EnvFile): EnvFile => envFile ?? [];
 
-const normalizeEnvFile = (envFile: unknown): EnvFileEntry[] => {
-  if (!envFile) return [];
-
-  const arr = Array.isArray(envFile) ? envFile : [envFile];
-
-  return arr.flatMap<EnvFileEntry>(v => {
-    if (typeof v === 'string') return [v];
-
-    if (
-      v &&
-      typeof v === 'object' &&
-      'path' in v &&
-      typeof (v as any).path === 'string'
-    ) {
-      const o = v as any;
-      return [{ path: o.path, required: o.required, format: o.format }];
-    }
-
-    return [];
-  });
-};
-
-const canonicalizeEnvFileEntry = (e: Readonly<EnvFileEntry>) => {
-  const obj = typeof e === 'string' ? { path: e } : e;
+const canonicalizeEnvFileElement = (
+  e: Readonly<EnvFileElement>,
+): { path: string; required: boolean } => {
+  if (typeof e === 'string') {
+    return { path: e.replace(/\\+/g, '/').trim(), required: true };
+  }
 
   return {
-    path: (obj.path ?? '').replace(/\\+/g, '/').trim(),
-    required: obj.required ?? true,
-    format: obj.format ?? '',
+    path: (e.path ?? '').replace(/\\+/g, '/').trim(),
+    required: e.required ?? true,
   };
 };
 
@@ -134,14 +110,14 @@ const healConductorConf = async (): Promise<boolean> => {
     };
   })();
 
-  // ----- ENV_FILE HEALING (object form via buildEnvFileConf) -----
+  // ----- ENV_FILE HEALING -----
   const basePath = process.env.BASE_PATH
     ? resolve(process.env.BASE_PATH)
     : undefined;
 
   const currentEnvFileRaw = normalizeEnvFile(service.env_file);
 
-  const currentEnvFile: EnvFileEntry[] = currentEnvFileRaw.map(e => {
+  const currentEnvFile: EnvFile = currentEnvFileRaw.map(e => {
     const obj = typeof e === 'string' ? { path: e } : e;
 
     try {
@@ -160,18 +136,17 @@ const healConductorConf = async (): Promise<boolean> => {
     return obj;
   });
 
-  const finalEnvFile: ReadonlyArray<EnvFileEntry> = buildEnvFileConf();
+  const finalEnvFile: EnvFile = buildEnvFileConf();
 
-  const normalizedCurrentEnv = currentEnvFile.map(canonicalizeEnvFileEntry);
-  const normalizedFinalEnv = finalEnvFile.map(canonicalizeEnvFileEntry);
+  const normalizedCurrentEnv = currentEnvFile.map(canonicalizeEnvFileElement);
+  const normalizedFinalEnv = finalEnvFile.map(canonicalizeEnvFileElement);
 
   const envFileChanged =
     normalizedCurrentEnv.length !== normalizedFinalEnv.length ||
     normalizedCurrentEnv.some((v, i) => {
       const f = normalizedFinalEnv[i];
-      return (
-        v.path !== f.path || v.required !== f.required || v.format !== f.format
-      );
+
+      return v.path !== f.path || v.required !== f.required;
     });
 
   // ----- VOLUMES HEALING -----
