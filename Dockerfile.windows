@@ -16,7 +16,7 @@ RUN yarn install --immutable --immutable-cache
 RUN yarn build
 
 # Final stage: runtime image
-FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop
+FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}
 
 WORKDIR C:\opt\gluesync-conductor
 
@@ -56,7 +56,7 @@ ENV GLUESYNC_CONFIG_DIR=.\shared
 ENV IS_WINDOWS=true
 ENV WINDOWS_VERSION=2019
 ENV WINDOWS_NETWORK_NAME=gluesync-windows_gluesync-windows-net
-ENV HELPER_IMAGE_BASE=molo17/docker-helper:28.0.0-win-nanoserver-ltsc
+ENV HELPER_IMAGE_BASE=molo17/docker:28.0.0-win-nanoserver-ltsc
 
 # Copy build artifacts
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js index.js
