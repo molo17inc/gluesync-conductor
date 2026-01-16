@@ -25,7 +25,18 @@ const REQUIRED_ROOT_FOLDER_MOUNT_VOLUME = isWindows
 
 const ENV_FILE = '.env';
 
-const normalizeEnvFile = (envFile?: EnvFile): EnvFile => envFile ?? [];
+// --- always return an array ---
+const normalizeEnvFile = (
+  envFile?: Readonly<EnvFile>,
+): ReadonlyArray<EnvFileElement> => {
+  if (!envFile) return [];
+
+  // if envFile is already an array
+  if (Array.isArray(envFile)) return envFile;
+
+  // if envFile is a single string or object element
+  return [envFile as EnvFileElement];
+};
 
 const canonicalizeEnvFileElement = (
   e: Readonly<EnvFileElement>,
@@ -139,13 +150,14 @@ const healConductorConf = async (): Promise<boolean> => {
   const finalEnvFile: EnvFile = buildEnvFileConf();
 
   const normalizedCurrentEnv = currentEnvFile.map(canonicalizeEnvFileElement);
-  const normalizedFinalEnv = finalEnvFile.map(canonicalizeEnvFileElement);
+  const normalizedFinalEnv = normalizeEnvFile(finalEnvFile).map(
+    canonicalizeEnvFileElement,
+  );
 
   const envFileChanged =
     normalizedCurrentEnv.length !== normalizedFinalEnv.length ||
     normalizedCurrentEnv.some((v, i) => {
       const f = normalizedFinalEnv[i];
-
       return v.path !== f.path || v.required !== f.required;
     });
 

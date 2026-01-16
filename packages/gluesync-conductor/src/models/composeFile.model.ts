@@ -56,7 +56,7 @@ export interface ComposeHealthcheck {
 
 export type EnvFileElement = string | { path: string; required?: boolean };
 
-export type EnvFile = ReadonlyArray<EnvFileElement>;
+export type EnvFile = EnvFileElement | ReadonlyArray<EnvFileElement>;
 
 // Common service: allow string or list (raw shape)
 export type CommonComposeService = Readonly<{
