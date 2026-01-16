@@ -22,9 +22,6 @@ import retagThirdPartyImageToMolo17GA from '../retagThirdPartyImageToMolo17/reta
  * - Network is always applied (Linux + Windows).
  * - On non-Windows, volumes are still normalized (existing behavior).
  * Returns only the updated services and their ids.
- *
- * Note: Third-party services must be excluded by the caller.
- * Compose allows services to connect to named networks via the `networks` key. [web:45]
  */
 const applyPlatformAdjustments = (
   services: Readonly<Record<string, RawComposeService>>,
@@ -91,7 +88,6 @@ const buildFinalLabels = (
   conductorType: ConductorType,
   serviceId: string,
 ): ReadonlyArray<string> => {
-  // Label keys should be unique; newer values overwrite older ones, so keep this deterministic. [web:32]
   const base = initialLabels
     .filter(l => !l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
     .filter(l => !l.startsWith(`${LabelPrefix.CONDUCTOR}.service_id=`));
@@ -131,13 +127,12 @@ const autoAdoptServices = async (): Promise<{
     const gluesyncHostDefault =
       process.env.GLUESYNC_HOST ?? 'gluesync-core-hub';
 
-    // Naming note: now used on Linux too, but keeping the existing name for compatibility.
-    const networkName = 'gluesync-windows-net';
-
     const conductorServiceName =
       process.env.CONDUCTOR_NAME || 'gluesync-conductor';
 
     const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
+
+    const networkName = isWindows ? 'gluesync-windows-net' : 'gluesync-net';
 
     // Always include third-party in the scan.
     const allServiceIds: readonly string[] = fetchAllServicesInCompose(
@@ -240,6 +235,8 @@ const autoAdoptServices = async (): Promise<{
       if (isThirdParty) {
         const maybeNewImage = await retagThirdPartyImageToMolo17GA(
           service.image,
+          isWindows,
+          process.env.WINDOWS_VERSION || '2019',
         );
 
         updatedServices[id] = {

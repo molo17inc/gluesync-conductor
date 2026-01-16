@@ -30,6 +30,8 @@ export const isMolo17Image = (image: string, repo: ThirdPartyRepo): boolean => {
 
 export const retagThirdPartyImageToMolo17GA = async (
   image: string,
+  isWindows: boolean,
+  windowsVersion: string,
 ): Promise<string | null> => {
   const repo = toThirdPartyRepo(image);
   if (!repo) return null;
@@ -37,14 +39,21 @@ export const retagThirdPartyImageToMolo17GA = async (
   // already molo17/<repo>:<tag> -> do nothing
   if (isMolo17Image(image, repo)) return null;
 
+  const imageNameToFetch = isWindows ? `${repo}-win` : repo;
+
   // fetch GA version from backoffice using the repo name as imageName
-  const info = await fetchAgentInfo(repo);
+  const info = await fetchAgentInfo(imageNameToFetch);
   const ga = getVersionByChannel(info, 'ga');
 
-  // If version is null/undefined/empty -> simply exit (no changes). [web:169]
+  // If version is null/undefined/empty -> simply exit (no changes).
   if (ga == null || ga === '') return null;
 
-  return `molo17/${repo}:${ga}`;
+  // Windows images: append "-win-nanoserver-ltsc<version>" suffix
+  const finalTag = isWindows
+    ? `${ga}-win-nanoserver-ltsc${windowsVersion}`
+    : ga;
+
+  return `molo17/${repo}:${finalTag}`;
 };
 
 export default retagThirdPartyImageToMolo17GA;
