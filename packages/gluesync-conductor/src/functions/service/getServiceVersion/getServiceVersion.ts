@@ -8,6 +8,10 @@ import fetchAgentInfo from '../../../helpers/agentInfo/agentInfo';
 import parseImage from '../../../helpers/parseImage/parseImage';
 import { ReleaseChannelTypes } from '../../../models/conductor.model';
 import getVersionByChannel from '../../../helpers/releaseChannel/getVersionByChannel';
+import {
+  isTransientDockerConnError,
+  waitForDockerDaemon,
+} from '../../../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
 
 const handler: GetServiceVersionHandler = async (req, reply) => {
   try {
@@ -30,6 +34,12 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     }
 
     // Get actual running version from Docker
+    // Ensure Docker is reachable before doing any inspect/list calls
+    await waitForDockerDaemon(req.server.docker, req.log, {
+      totalTimeoutMs: 5000,
+      perAttemptTimeoutMs: 800,
+    });
+
     const getCurrentVersion = async (
       serviceId: string,
     ): Promise<string | null> => {
@@ -41,6 +51,11 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         // Strip suffix after first dash
         return tag.split('-')[0];
       } catch (err) {
+        // If Docker isn't ready / pipe not available, bubble up to return 503
+        if (isTransientDockerConnError(err)) {
+          throw err;
+        }
+
         req.log.warn(
           { service: serviceId, error: err },
           `Failed to get running version for ${serviceId}, falling back to compose file`,
@@ -63,7 +78,6 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       ]);
 
       const expectedVersion = getVersionByChannel(svcInfo, channel);
-
       // If we can't determine the expected version, assume no update is needed
       if (!expectedVersion) {
         return false;
@@ -117,6 +131,16 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         error instanceof Error ? error.message : String(error)
       }`,
     );
+
+    // Docker not ready -> 503 (same pattern as listContainers)
+    const transient = isTransientDockerConnError(error);
+    if (transient) {
+      return reply.code(503).send({
+        success: false,
+        error: 'Docker daemon not ready yet',
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     if (error instanceof Error && (error as any).statusCode === 404) {
       return reply.code(404).send({
