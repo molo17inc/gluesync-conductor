@@ -9,6 +9,8 @@ import parseImage from '../../../helpers/parseImage/parseImage';
 import { ReleaseChannelTypes } from '../../../models/conductor.model';
 import getVersionByChannel from '../../../helpers/releaseChannel/getVersionByChannel';
 
+import { LabelPrefix } from '../../../models/composeFile.model';
+
 const handler: GetServiceVersionHandler = async (req, reply) => {
   try {
     const { id, releaseChannel } = castObject<GetServiceVersionParams>(
@@ -34,10 +36,27 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       serviceId: string,
     ): Promise<string | null> => {
       try {
-        const container = req.server.docker.getContainer(serviceId);
-        const inspect = await container.inspect();
+        // Find containers by Compose labels instead of assuming container name == service key. [web:17]
+        const containers = await req.server.docker.listContainers({
+          all: true,
+          filters: {
+            label: [
+              `${LabelPrefix.COMPOSE}.project=${'gluesync'}`,
+              `${LabelPrefix.COMPOSE}.service=${serviceId}`,
+            ],
+          },
+        });
+
+        const selected =
+          containers.find(c => c.State === 'running') ?? containers[0];
+
+        const inspect = await req.server.docker
+          .getContainer(selected.Id)
+          .inspect();
+
         const runningImage = inspect.Config.Image;
         const { tag } = parseImage(runningImage);
+
         // Strip suffix after first dash
         return tag.split('-')[0];
       } catch (err) {
