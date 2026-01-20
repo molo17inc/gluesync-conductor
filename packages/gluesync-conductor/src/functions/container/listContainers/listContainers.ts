@@ -22,6 +22,9 @@ import {
   waitForDockerDaemon,
 } from '../../../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
 
+const isNonEmptyString = (v: unknown): v is string =>
+  typeof v === 'string' && v.length > 0;
+
 const handler: ListContainersHandler = async (req, reply) => {
   try {
     const { type } = castObject<ListContainersParams>(req.query);
@@ -51,9 +54,8 @@ const handler: ListContainersHandler = async (req, reply) => {
       Record<string, ContainerInfo>
     >((acc, container) => {
       const serviceName = container.Labels?.[`${LabelPrefix.COMPOSE}.service`];
-      if (!serviceName) return acc;
-      acc[serviceName] = container;
-      return acc;
+
+      return serviceName ? { ...acc, [serviceName]: container } : acc;
     }, {});
 
     const allServicesNames = [
@@ -61,7 +63,7 @@ const handler: ListContainersHandler = async (req, reply) => {
         ...dockerComposeServicesNames,
         ...containerList
           .map(c => c.Labels?.[`${LabelPrefix.COMPOSE}.service`])
-          .filter((v): v is string => Boolean(v)),
+          .filter(isNonEmptyString),
       ]),
     ];
 
