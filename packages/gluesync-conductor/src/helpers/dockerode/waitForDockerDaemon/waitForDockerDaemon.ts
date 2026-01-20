@@ -4,15 +4,26 @@ export type LoggerLike = {
   warn: (obj: any, msg?: string) => void;
 };
 
-const sleep = (ms: number) =>
-  new Promise<void>(resolve => setTimeout(resolve, ms));
+export type WaitForDockerDaemonOptions = Readonly<{
+  totalTimeoutMs?: number; // overall budget (default 5000)
+  perAttemptTimeoutMs?: number; // cap for each ping attempt (default 800)
+  baseDelayMs?: number; // backoff base (default 200)
+  maxDelayMs?: number; // backoff cap (default 1000)
+}>;
 
-const withTimeout = async <T,>(p: Promise<T>, ms: number): Promise<T> =>
+const sleep = (ms: number) =>
+  new Promise<void>(resolve => {
+    setTimeout(resolve, ms);
+  });
+
+const withTimeout = async <T>(p: Promise<T>, ms: number): Promise<T> =>
   Promise.race([
     p,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms),
-    ),
+    new Promise<T>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Timeout after ${ms}ms`));
+      }, ms);
+    }),
   ]);
 
 export const isTransientDockerConnError = (err: unknown): boolean => {
@@ -48,14 +59,9 @@ export const isTransientDockerConnError = (err: unknown): boolean => {
  * but never longer than totalTimeoutMs.
  */
 export const waitForDockerDaemon = async (
-  docker: Dockerode,
-  log: LoggerLike,
-  opts?: {
-    totalTimeoutMs?: number; // overall budget (default 5000)
-    perAttemptTimeoutMs?: number; // cap for each ping attempt (default 800)
-    baseDelayMs?: number; // backoff base (default 200)
-    maxDelayMs?: number; // backoff cap (default 1000)
-  },
+  docker: Readonly<Pick<Dockerode, 'ping'>>,
+  log: Readonly<LoggerLike>,
+  opts?: WaitForDockerDaemonOptions,
 ): Promise<void> => {
   const totalTimeoutMs = opts?.totalTimeoutMs ?? 5000;
   const perAttemptTimeoutMs = opts?.perAttemptTimeoutMs ?? 800;
@@ -63,9 +69,8 @@ export const waitForDockerDaemon = async (
   const maxDelayMs = opts?.maxDelayMs ?? 1000;
 
   const deadline = Date.now() + totalTimeoutMs;
-  let attempt = 0;
 
-  while (true) {
+  const attemptPing = async (attempt: number): Promise<void> => {
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
       throw new Error(`Docker daemon not ready within ${totalTimeoutMs}ms`);
@@ -76,11 +81,10 @@ export const waitForDockerDaemon = async (
         docker.ping(),
         Math.min(perAttemptTimeoutMs, remaining),
       );
-      return;
     } catch (err) {
       if (!isTransientDockerConnError(err)) throw err;
 
-      const delay = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt));
+      const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** attempt);
       const cappedDelay = Math.min(delay, Math.max(0, deadline - Date.now()));
 
       log.warn(
@@ -100,7 +104,9 @@ export const waitForDockerDaemon = async (
       }
 
       await sleep(cappedDelay);
-      attempt++;
+      await attemptPing(attempt + 1);
     }
-  }
+  };
+
+  return attemptPing(0);
 };
