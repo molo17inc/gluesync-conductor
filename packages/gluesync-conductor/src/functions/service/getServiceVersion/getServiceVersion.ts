@@ -9,11 +9,10 @@ import parseImage from '../../../helpers/parseImage/parseImage';
 import { ReleaseChannelTypes } from '../../../models/conductor.model';
 import getVersionByChannel from '../../../helpers/releaseChannel/getVersionByChannel';
 
+import { LabelPrefix } from '../../../models/composeFile.model';
+
 const handler: GetServiceVersionHandler = async (req, reply) => {
   try {
-    const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project';
-    const COMPOSE_SERVICE_LABEL = 'com.docker.compose.service';
-
     const { id, releaseChannel } = castObject<GetServiceVersionParams>(
       req.params,
     );
@@ -42,8 +41,8 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
           all: true,
           filters: {
             label: [
-              `${COMPOSE_PROJECT_LABEL}=${'gluesync'}`,
-              `${COMPOSE_SERVICE_LABEL}=${serviceId}`,
+              `${LabelPrefix.COMPOSE}.project=${'gluesync'}`,
+              `${LabelPrefix.COMPOSE}.service=${serviceId}`,
             ],
           },
         });
@@ -54,8 +53,10 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         const inspect = await req.server.docker
           .getContainer(selected.Id)
           .inspect();
+
         const runningImage = inspect.Config.Image;
         const { tag } = parseImage(runningImage);
+
         // Strip suffix after first dash
         return tag.split('-')[0];
       } catch (err) {
