@@ -54,6 +54,11 @@ export interface ComposeHealthcheck {
   disable?: boolean; // If true, disables healthcheck
 }
 
+export type EnvFileElement = string | { path: string; required?: boolean };
+
+export type EnvFile = EnvFileElement | ReadonlyArray<EnvFileElement>;
+
+// Common service: allow string or list (raw shape)
 export type CommonComposeService = Readonly<{
   image: string;
   container_name?: string;
@@ -62,14 +67,7 @@ export type CommonComposeService = Readonly<{
   depends_on?: ComposeDependsOn;
   healthcheck?: ComposeHealthcheck;
   networks?: ReadonlyArray<string>;
-  env_file?: ReadonlyArray<
-    | string
-    | {
-        path: string;
-        required?: boolean;
-        format?: string;
-      }
-  >;
+  env_file?: EnvFile; // <-- changed (remove Readonly<EnvFile>)
 }>;
 
 export type RawComposeService = Readonly<
@@ -116,14 +114,7 @@ export type ComposeService = Readonly<
         string,
         string | number | boolean | null | undefined
       >;
-      env_file?: ReadonlyArray<
-        | string
-        | {
-            path: string;
-            required?: boolean;
-            format?: string;
-          }
-      >;
+      env_file?: EnvFile;
     }>
 >;
 

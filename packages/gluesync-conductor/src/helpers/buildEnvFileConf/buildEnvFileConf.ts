@@ -1,11 +1,6 @@
-const buildEnvFileConf = (): ReadonlyArray<
-  | string
-  | {
-      path: string;
-      required?: boolean;
-      format?: string;
-    }
-> => {
+import { EnvFile } from '../../models/composeFile.model';
+
+const buildEnvFileConf = (): Readonly<EnvFile> => {
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
   const fallbackAbsEnvPath = isWindows

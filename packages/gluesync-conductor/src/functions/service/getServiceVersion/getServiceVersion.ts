@@ -8,12 +8,10 @@ import fetchAgentInfo from '../../../helpers/agentInfo/agentInfo';
 import parseImage from '../../../helpers/parseImage/parseImage';
 import { ReleaseChannelTypes } from '../../../models/conductor.model';
 import getVersionByChannel from '../../../helpers/releaseChannel/getVersionByChannel';
+import { LabelPrefix } from '../../../models/composeFile.model';
 
 const handler: GetServiceVersionHandler = async (req, reply) => {
   try {
-    const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project';
-    const COMPOSE_SERVICE_LABEL = 'com.docker.compose.service';
-
     const { id, releaseChannel } = castObject<GetServiceVersionParams>(
       req.params,
     );
@@ -41,10 +39,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         const containers = await req.server.docker.listContainers({
           all: true,
           filters: {
-            label: [
-              `${COMPOSE_PROJECT_LABEL}=${'gluesync'}`,
-              `${COMPOSE_SERVICE_LABEL}=${serviceId}`,
-            ],
+            label: [`${LabelPrefix.COMPOSE}.service=${serviceId}`],
           },
         });
 
