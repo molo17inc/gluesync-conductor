@@ -16,7 +16,7 @@ RUN yarn install --immutable --immutable-cache
 RUN yarn build
 
 # Final stage: runtime image
-FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop
+FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}
 
 WORKDIR C:\opt\gluesync-conductor
 

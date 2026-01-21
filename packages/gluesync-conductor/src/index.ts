@@ -143,9 +143,8 @@ const startServer = async (): Promise<void> => {
 
   const windowsVersion = process.env.WINDOWS_VERSION || '2019';
   const helperImageBase =
-    process.env.HELPER_IMAGE_BASE ||
-    'molo17/docker-helper:28.0.0-win-nanoserver-ltsc';
-  const helperImageWindows = `${helperImageBase}${windowsVersion}-develop`;
+    process.env.HELPER_IMAGE_BASE || 'molo17/docker:28.0.0-win-nanoserver-ltsc';
+  const helperImageWindows = `${helperImageBase}${windowsVersion}`;
 
   if (rebootNeeded) {
     const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
