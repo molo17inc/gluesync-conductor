@@ -55,6 +55,27 @@ const ensureLogDirectory = (): string | null => {
   return foundDirectory ? foundDirectory.directory : null;
 };
 
+/**
+ * Format timestamp using LOCAL system timezone only.
+ * Matches debug-tz output format: DD/MM/YYYY HH:mm:ss TZ
+ */
+const buildTimestamp = (): string => {
+  const tz =
+    process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const localTime = new Date().toLocaleString('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+
+  return `,"time":"${localTime}"`;
+};
+
 const buildLogger = (): Logger => {
   const directory = ensureLogDirectory();
   const filename = resolveLogFilename();
@@ -62,6 +83,7 @@ const buildLogger = (): Logger => {
 
   const options: LoggerOptions = {
     level: (process.env.LOG_LEVEL || 'info').toLowerCase(),
+    timestamp: buildTimestamp,
   };
 
   if (!directory) {

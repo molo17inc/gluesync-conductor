@@ -60,6 +60,7 @@ const applyPlatformAdjustments = (
     ? addPlatformVolumes(afterStep2Services, serviceIds, true)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
+  // ✅ Final merge: ensure env_file is preserved if already set (e.g., ${PWD}/.env)
   const finalServices: Readonly<Record<string, RawComposeService>> = {
     ...afterStep2Services,
     ...step3.services,
@@ -71,6 +72,7 @@ const applyPlatformAdjustments = (
     ...step3.updatedIds,
   ];
 
+  // Only return updated services
   const changedServices = Object.fromEntries(
     allUpdatedIds.map(id => [id, finalServices[id]]),
   ) as Record<string, RawComposeService>;
@@ -171,6 +173,10 @@ const autoAdoptServices = async (): Promise<{
       networkName,
     );
 
+    // ✅ Add env_file to ALL services (only if root folder mounted and .env exists)
+    const { services: envFileServices, updatedIds: envFileUpdatedIds } =
+      addEnvFileToServices(composeJson.services, allServiceIds);
+
     const unlabeledIds = allServiceIds.filter(
       id => !alreadyLabeledIds.includes(id),
     );
@@ -179,7 +185,8 @@ const autoAdoptServices = async (): Promise<{
     if (unlabeledIds.length === 0) {
       if (
         removedDependsOnIds.length === 0 &&
-        platformAdjustedIds.length === 0
+        platformAdjustedIds.length === 0 &&
+        envFileUpdatedIds.length === 0
       ) {
         return {
           success: true,
@@ -201,7 +208,11 @@ const autoAdoptServices = async (): Promise<{
 
       return {
         success: true,
-        updatedIds: [...removedDependsOnIds, ...platformAdjustedIds],
+        updatedIds: [
+          ...removedDependsOnIds,
+          ...platformAdjustedIds,
+          ...envFileUpdatedIds,
+        ],
         unmatchedIds: [],
       };
     }
@@ -211,6 +222,7 @@ const autoAdoptServices = async (): Promise<{
       ...composeJson.services,
       ...cleanedServices,
       ...platformAdjustedLabeledServices,
+      ...envFileServices,
     };
 
     type AdoptResult = Readonly<{
@@ -390,7 +402,11 @@ const autoAdoptServices = async (): Promise<{
 
     return {
       success: true,
-      updatedIds: [...removedDependsOnIds, ...newlyAdopted],
+      updatedIds: [
+        ...removedDependsOnIds,
+        ...newlyAdopted,
+        ...envFileUpdatedIds,
+      ],
       unmatchedIds,
     };
   } catch (error) {

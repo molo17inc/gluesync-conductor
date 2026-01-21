@@ -3,6 +3,7 @@ import {
   ComposeVolume,
   LabelPrefix,
 } from '../../../models/composeFile.model';
+import buildEnvFileConf from '../../buildEnvFileConf/buildEnvFileConf';
 import mergeComposeKeyValueField from '../mergeKeyValueStrings/mergeKeyValueStrings';
 import { CreateComposeService } from './createComposeService.model';
 
@@ -179,9 +180,7 @@ const createComposeService: CreateComposeService = (
         ...(isWindows && { GLUESYNC_HOST: ['gluesync-core-hub'] }),
       }),
     }).map(([key, value]) => `${key}=${value}`),
-
     ...(ports && ports.length > 0 && { ports: mapPorts(ports) }),
-
     volumes: mergeComposeKeyValueField(
       'volumes',
       defaultVolumes,
@@ -189,9 +188,9 @@ const createComposeService: CreateComposeService = (
     ),
 
     ...(isWindows && { networks: ['gluesync-windows-net'] }),
-
     healthcheck,
     depends_on: dependsOn,
+    env_file: buildEnvFileConf(),
   };
 };
 

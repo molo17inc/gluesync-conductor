@@ -57,6 +57,7 @@ ENV IS_WINDOWS=true
 ENV WINDOWS_VERSION=2019
 ENV WINDOWS_NETWORK_NAME=gluesync-windows_gluesync-windows-net
 ENV HELPER_IMAGE_BASE=molo17/docker-helper:28.0.0-win-nanoserver-ltsc
+ENV TZ=UTC
 
 # Copy build artifacts
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\index.js index.js

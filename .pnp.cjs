@@ -5735,6 +5735,7 @@ const RAW_RUNTIME_STATE =
           ["tsx", "npm:4.20.4"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"],\
           ["uuid", "npm:13.0.0"],\
+          ["windows-iana", "npm:5.1.0"],\
           ["yaml", "npm:2.7.1"]\
         ],\
         "linkType": "SOFT"\
@@ -9936,6 +9937,15 @@ const RAW_RUNTIME_STATE =
           ["get-proto", "npm:1.0.1"],\
           ["gopd", "npm:1.2.0"],\
           ["has-tostringtag", "npm:1.0.2"]\
+        ],\
+        "linkType": "HARD"\
+      }]\
+    ]],\
+    ["windows-iana", [\
+      ["npm:5.1.0", {\
+        "packageLocation": "./.yarn/cache/windows-iana-npm-5.1.0-f6060bc490-501a8c1b7e.zip/node_modules/windows-iana/",\
+        "packageDependencies": [\
+          ["windows-iana", "npm:5.1.0"]\
         ],\
         "linkType": "HARD"\
       }]\
