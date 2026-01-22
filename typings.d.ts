@@ -37,5 +37,3 @@ declare namespace NodeJS {
     readonly HELPER_IMAGE_BASE: string;
   }
 }
-
-declare module 'rotating-file-stream';
