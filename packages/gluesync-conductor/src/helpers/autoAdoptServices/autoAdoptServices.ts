@@ -17,6 +17,7 @@ import addPlatformVolumes from '../addPlatformVolumes/addPlatformVolumes';
 import toLabelStrings from '../../utils/toLabelStrings';
 import retagThirdPartyImageToMolo17GA from '../retagThirdPartyImageToMolo17/retagThirdPartyImageToMolo17';
 import addEnvFileToServices from '../addEnvFileToServices/addEnvFileToServices';
+import { ConductorServiceTypes } from '../../models/conductor.model';
 
 /**
  * Apply platform-specific adjustments (GLUESYNC_HOST + network + volumes).
@@ -82,11 +83,9 @@ const applyPlatformAdjustments = (
   };
 };
 
-type ConductorType = 'core-hub' | 'agent' | 'module' | 'third-party';
-
 const buildFinalLabels = (
   initialLabels: ReadonlyArray<string>,
-  conductorType: ConductorType,
+  conductorType: ConductorServiceTypes,
   serviceId: string,
 ): ReadonlyArray<string> => {
   const base = initialLabels
@@ -282,7 +281,7 @@ const autoAdoptServices = async (): Promise<{
         }
 
         // Decide conductor type
-        const conductorType: ConductorType | null = (() => {
+        const conductorType: ConductorServiceTypes | null = (() => {
           if (agentEntry.dockerHubRepoName === 'gluesync-core-hub')
             return 'core-hub';
 
