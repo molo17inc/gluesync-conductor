@@ -14,6 +14,7 @@ import addGluesyncHostToAgents from '../addGluesyncHostToAgents/addGluesyncHostT
 import addNetworkToServices from '../addNetworkToServices/addNetworkToServices';
 import addPlatformVolumes from '../addPlatformVolumes/addPlatformVolumes';
 import toLabelStrings from '../../utils/toLabelStrings';
+import addEnvFileToServices from '../addEnvFileToServices/addEnvFileToServices';
 
 /**
  * Apply platform-specific adjustments (GLUESYNC_HOST + network + volumes).
@@ -30,6 +31,7 @@ const applyPlatformAdjustments = (
   services: Record<string, RawComposeService>;
   updatedIds: ReadonlyArray<string>;
 } => {
+  // Step 1: Windows → add GLUESYNC_HOST to agents; Non-Windows → normalize volumes
   const step1 = isWindows
     ? addGluesyncHostToAgents(services, serviceIds, gluesyncHostDefault)
     : addPlatformVolumes(services, serviceIds, false);
@@ -39,6 +41,7 @@ const applyPlatformAdjustments = (
     ...step1.services,
   };
 
+  // Step 2: Windows only → add network
   const step2 = isWindows
     ? addNetworkToServices(afterStep1Services, serviceIds, windowsNetworkName)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
@@ -48,10 +51,12 @@ const applyPlatformAdjustments = (
     ...step2.services,
   };
 
+  // Step 3: Windows only → add platform volumes again
   const step3 = isWindows
     ? addPlatformVolumes(afterStep2Services, serviceIds, true)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
+  // ✅ Final merge: ensure env_file is preserved if already set (e.g., ${PWD}/.env)
   const finalServices: Readonly<Record<string, RawComposeService>> = {
     ...afterStep2Services,
     ...step3.services,
@@ -63,6 +68,7 @@ const applyPlatformAdjustments = (
     ...step3.updatedIds,
   ];
 
+  // Only return updated services
   const changedServices = Object.fromEntries(
     allUpdatedIds.map(id => [id, finalServices[id]]),
   ) as Record<string, RawComposeService>;
@@ -107,7 +113,7 @@ const autoAdoptServices = async (): Promise<{
     const allServiceIds: readonly string[] = fetchAllServicesInCompose(
       composeJson,
       false,
-    );
+    ).filter(id => id !== conductorServiceName);
 
     // Services that ALREADY have a conductor type label
     const alreadyLabeledIds = allServiceIds.filter(id => {
@@ -144,6 +150,10 @@ const autoAdoptServices = async (): Promise<{
       windowsNetworkName,
     );
 
+    // ✅ Add env_file to ALL services (only if root folder mounted and .env exists)
+    const { services: envFileServices, updatedIds: envFileUpdatedIds } =
+      addEnvFileToServices(composeJson.services, allServiceIds);
+
     const unlabeledIds = allServiceIds.filter(
       id => !alreadyLabeledIds.includes(id),
     );
@@ -151,7 +161,8 @@ const autoAdoptServices = async (): Promise<{
     if (unlabeledIds.length === 0) {
       if (
         removedDependsOnIds.length === 0 &&
-        platformAdjustedIds.length === 0
+        platformAdjustedIds.length === 0 &&
+        envFileUpdatedIds.length === 0
       ) {
         return {
           success: true,
@@ -164,7 +175,9 @@ const autoAdoptServices = async (): Promise<{
         ...composeJson,
         services: {
           ...composeJson.services,
-          ...{ ...platformAdjustedLabeledServices, ...cleanedServices },
+          ...platformAdjustedLabeledServices,
+          ...cleanedServices,
+          ...envFileServices,
         },
       };
 
@@ -172,16 +185,21 @@ const autoAdoptServices = async (): Promise<{
 
       return {
         success: true,
-        updatedIds: [...removedDependsOnIds, ...platformAdjustedIds],
+        updatedIds: [
+          ...removedDependsOnIds,
+          ...platformAdjustedIds,
+          ...envFileUpdatedIds,
+        ],
         unmatchedIds: [],
       };
     }
 
     // From this point on, work on a base services object where
-    // already-labeled services are already cleaned from depends_on.
+    // already-labeled services are already cleaned from depends_on and have env_file
     const baseServices: Record<string, RawComposeService> = {
       ...composeJson.services,
       ...platformAdjustedLabeledServices,
+      ...envFileServices,
     };
 
     // Second pass: adopt UNLABELED services (and ensure depends_on removed via utility)
@@ -300,6 +318,7 @@ const autoAdoptServices = async (): Promise<{
             ...acc.updatedServices,
             [id]: {
               ...platformAdjustedService,
+              env_file: service.env_file,
               labels: finalLabels,
               environment: envArray,
             },
@@ -315,8 +334,12 @@ const autoAdoptServices = async (): Promise<{
       },
     );
 
-    // If no newly adopted services and no depends_on was removed, bail out
-    if (updatedIds.length === 0 && removedDependsOnIds.length === 0) {
+    // If no newly adopted services and no depends_on was removed and no env_file added, bail out
+    if (
+      updatedIds.length === 0 &&
+      removedDependsOnIds.length === 0 &&
+      envFileUpdatedIds.length === 0
+    ) {
       return {
         success: true,
         updatedIds: [],
@@ -342,7 +365,11 @@ const autoAdoptServices = async (): Promise<{
 
     return {
       success: true,
-      updatedIds: [...removedDependsOnIds, ...newlyAdopted],
+      updatedIds: [
+        ...removedDependsOnIds,
+        ...newlyAdopted,
+        ...envFileUpdatedIds,
+      ],
       unmatchedIds,
     };
   } catch (error) {

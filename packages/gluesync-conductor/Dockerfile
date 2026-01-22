@@ -1,7 +1,7 @@
 FROM node:22.13.1-alpine
 
-# Install Docker CLI
-RUN apk add --no-cache docker-cli docker-cli-compose curl bash zip tar
+# Install Docker CLI and tzdata for timezone support
+RUN apk add --no-cache docker-cli docker-cli-compose curl bash zip tar tzdata
 
 # Create Gluesync data and logs directory structure with proper permissions
 RUN mkdir -p /opt/gluesync/data /opt/gluesync/logs \
@@ -26,6 +26,7 @@ ENV SSL_CERT_FILE=/opt/gluesync/data/gluesync-cert.pem
 ENV SSL_KEY_FILE=/opt/gluesync/data/gluesync-key.pem
 ENV MOUNT_LEGACY_FILE_CONFIG=false
 ENV GLUESYNC_CONFIG_DIR=./shared
+ENV TZ=UTC
 
 # Setup app directory
 WORKDIR /opt/gluesync-conductor

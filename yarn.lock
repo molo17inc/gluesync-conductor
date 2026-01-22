@@ -4382,6 +4382,7 @@ __metadata:
     tsx: "npm:^4.20.4"
     typescript: "npm:5.8.3"
     uuid: "npm:^13.0.0"
+    windows-iana: "npm:^5.1.0"
     yaml: "npm:^2.7.0"
   languageName: unknown
   linkType: soft
@@ -8037,6 +8038,13 @@ __metadata:
   bin:
     node-which: bin/which.js
   checksum: 10/6ec99e89ba32c7e748b8a3144e64bfc74aa63e2b2eacbb61a0060ad0b961eb1a632b08fb1de067ed59b002cec3e21de18299216ebf2325ef0f78e0f121e14e90
+  languageName: node
+  linkType: hard
+
+"windows-iana@npm:^5.1.0":
+  version: 5.1.0
+  resolution: "windows-iana@npm:5.1.0"
+  checksum: 10/501a8c1b7e8b13aa8646fc5971b4b9a9d0cdc24401000b516177b28be1395fb56425d356ba37a71280a6be376b41b04464dbcfdf9220c88ff38935cee3f87ac4
   languageName: node
   linkType: hard
 
