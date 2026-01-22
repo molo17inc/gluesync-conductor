@@ -247,7 +247,7 @@ const autoAdoptServices = async (): Promise<{
         // THIRD-PARTY: adopt by id only; do not modify env/networks/volumes/depends_on.
         // Only allowed change: optional retag to molo17/<repo>:<latestGA> if helper resolves a version.
         if (isThirdParty) {
-          const maybeNewImage = await retagThirdPartyImageToMolo17GA(
+          const retaggedImage = await retagThirdPartyImageToMolo17GA(
             service.image,
             isWindows,
             process.env.WINDOWS_YEAR,
@@ -259,8 +259,10 @@ const autoAdoptServices = async (): Promise<{
             unmatched: false,
             service: {
               ...service,
-              ...(maybeNewImage && { image: maybeNewImage }),
-              labels: buildFinalLabels(initialLabels, 'third-party', id),
+              ...(retaggedImage && {
+                image: retaggedImage,
+                labels: buildFinalLabels(initialLabels, 'third-party', id),
+              }),
             },
           };
         }
@@ -289,7 +291,9 @@ const autoAdoptServices = async (): Promise<{
           const isSourceValid = typeof agentEntry.isSource === 'boolean';
 
           if (isTargetValid && isSourceValid) {
-            if (agentEntry.isTarget || agentEntry.isSource) return 'agent';
+            if (agentEntry.isTarget || agentEntry.isSource) {
+              return 'agent';
+            }
             return 'module';
           }
 
@@ -316,7 +320,9 @@ const autoAdoptServices = async (): Promise<{
 
         const platformAdjustedService: RawComposeService = (() => {
           // Skip conductor service itself
-          if (id === conductorServiceName) return cleanedServiceBase;
+          if (id === conductorServiceName) {
+            return cleanedServiceBase;
+          }
 
           const singleServiceMap: Record<string, RawComposeService> = {
             [id]: cleanedServiceBase,

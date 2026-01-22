@@ -92,7 +92,11 @@ const processServices: ProcessServices = async (
 
   const updatedComposeJson = {
     ...composeJson,
-    services: mergeServices([composeJson.services ?? {}, updatedServices]),
+    services: mergeServices(
+      composeJson.services
+        ? [composeJson.services, updatedServices]
+        : [updatedServices],
+    ),
   };
 
   await writeComposeFile(updatedComposeJson);

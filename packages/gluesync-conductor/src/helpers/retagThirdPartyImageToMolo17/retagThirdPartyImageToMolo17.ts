@@ -1,31 +1,23 @@
 import fetchAgentInfo from '../agentInfo/agentInfo';
+import parseImage from '../parseImage/parseImage';
 import getVersionByChannel from '../releaseChannel/getVersionByChannel';
 
-export type ThirdPartyRepo = 'traefik' | 'prometheus' | 'grafana' | 'portainer';
-
-export const THIRD_PARTY_REPOS: ReadonlyArray<ThirdPartyRepo> = [
-  'traefik',
-  'prometheus',
-  'grafana',
-  'portainer',
-];
-
-export const toThirdPartyRepo = (image: string): ThirdPartyRepo | null => {
+export const toThirdPartyRepo = (image: string): string | null => {
   const lower = (image || '').toLowerCase();
 
   // use substring match exactly as requested
-  if (lower.includes('traefik')) return 'traefik';
-  if (lower.includes('prometheus')) return 'prometheus';
-  if (lower.includes('grafana')) return 'grafana';
-  if (lower.includes('portainer')) return 'portainer';
+  if (lower === 'traefik') return 'traefik';
+  if (lower === 'prom/prometheus') return 'prometheus';
+  if (lower === 'grafana/grafana') return 'grafana';
+  if (lower === 'portainer/portainer-ce') return 'portainer';
 
   return null;
 };
 
-export const isMolo17Image = (image: string, repo: ThirdPartyRepo): boolean => {
-  // accept both "molo17/repo" and "docker.io/molo17/repo"
+export const isMolo17Image = (image: string, repo: string): boolean => {
+  // accept "molo17/image"
   const lower = (image || '').toLowerCase();
-  return lower.includes(`molo17/${repo}`);
+  return lower.startsWith(`molo17/${repo}`);
 };
 
 export const retagThirdPartyImageToMolo17GA = async (
@@ -33,13 +25,15 @@ export const retagThirdPartyImageToMolo17GA = async (
   isWindows: boolean,
   windowsYear?: string,
 ): Promise<string | null> => {
-  const repo = toThirdPartyRepo(image);
-  if (!repo || (isWindows && !windowsYear)) return null;
+  const parsedImage = parseImage(image);
 
   // already molo17/<repo>:<tag> -> do nothing
-  if (isMolo17Image(image, repo)) return null;
+  if (isMolo17Image(image, parsedImage.fullName)) return null;
 
-  const imageNameToFetch = isWindows ? `${repo}-win` : repo;
+  const repo = toThirdPartyRepo(parsedImage.fullName);
+  if (!repo || (isWindows && !windowsYear)) return null;
+
+  const imageNameToFetch = isWindows ? `${repo}-win-${windowsYear}` : repo;
 
   // fetch GA version from backoffice using the repo name as imageName
   const info = await fetchAgentInfo(imageNameToFetch);
