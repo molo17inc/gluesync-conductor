@@ -6,6 +6,8 @@ import { enableUpdateMode } from '../../../plugins/apiBlockerAsUpdating';
 import { autoReboot } from '../../autoReboot/autoReboot';
 import { RestartWindowsDependentServices } from './restartWindowsDependentServices.models';
 
+const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
+
 /**
  * Special handling for core-hub on Windows only.
  * Windows NAT DNS cache requires dependent services to restart for reconnection.
@@ -72,8 +74,6 @@ const restartWindowsDependentServices: RestartWindowsDependentServices = async (
     { service: conductorService },
     `[core-hub-updater] triggering ${conductorService} restart`,
   );
-
-  const helperImageWindows = process.env.HELPER_IMAGE_BASE;
 
   // Wrap in setImmediate to send response before conductor dies
   setImmediate(() => {

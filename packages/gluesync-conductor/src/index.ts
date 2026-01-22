@@ -141,7 +141,7 @@ const startServer = async (): Promise<void> => {
     `[conductor-healer] ${rebootNeeded ? 'reboot needed to heal' : 'nothing to heal'}`,
   );
 
-  const helperImageWindows = process.env.HELPER_IMAGE_BASE;
+  const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
 
   if (rebootNeeded) {
     const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;

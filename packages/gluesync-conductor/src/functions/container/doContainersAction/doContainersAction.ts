@@ -13,6 +13,7 @@ import { autoReboot } from '../../../helpers/autoReboot/autoReboot';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
+const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
 
 const handler: DoContainersActionHandler = async (req, reply) => {
   try {
@@ -112,8 +113,6 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         // Enable update mode to block incoming requests during conductor restart
         enableUpdateMode();
 
-        const helperImageWindows = process.env.HELPER_IMAGE_BASE;
-
         reply.code(200);
         reply.send({
           success: true,
@@ -198,8 +197,6 @@ const handler: DoContainersActionHandler = async (req, reply) => {
 
           // Enable update mode to block incoming requests during conductor restart
           enableUpdateMode();
-
-          const helperImageWindows = process.env.HELPER_IMAGE_BASE;
 
           reply.code(200);
           reply.send({
