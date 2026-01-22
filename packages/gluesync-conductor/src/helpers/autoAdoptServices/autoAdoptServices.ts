@@ -250,7 +250,7 @@ const autoAdoptServices = async (): Promise<{
           const maybeNewImage = await retagThirdPartyImageToMolo17GA(
             service.image,
             isWindows,
-            process.env.WINDOWS_VERSION || '2019',
+            process.env.WINDOWS_YEAR,
           );
 
           return {
@@ -259,7 +259,7 @@ const autoAdoptServices = async (): Promise<{
             unmatched: false,
             service: {
               ...service,
-              ...(maybeNewImage ? { image: maybeNewImage } : {}),
+              ...(maybeNewImage && { image: maybeNewImage }),
               labels: buildFinalLabels(initialLabels, 'third-party', id),
             },
           };

@@ -31,10 +31,10 @@ export const isMolo17Image = (image: string, repo: ThirdPartyRepo): boolean => {
 export const retagThirdPartyImageToMolo17GA = async (
   image: string,
   isWindows: boolean,
-  windowsVersion: string,
+  windowsYear?: string,
 ): Promise<string | null> => {
   const repo = toThirdPartyRepo(image);
-  if (!repo) return null;
+  if (!repo || (isWindows && !windowsYear)) return null;
 
   // already molo17/<repo>:<tag> -> do nothing
   if (isMolo17Image(image, repo)) return null;
@@ -49,9 +49,7 @@ export const retagThirdPartyImageToMolo17GA = async (
   if (ga == null || ga === '') return null;
 
   // Windows images: append "-win-nanoserver-ltsc<version>" suffix
-  const finalTag = isWindows
-    ? `${ga}-win-nanoserver-ltsc${windowsVersion}`
-    : ga;
+  const finalTag = isWindows ? `${ga}-win-nanoserver-ltsc${windowsYear}` : ga;
 
   return `molo17/${repo}:${finalTag}`;
 };
