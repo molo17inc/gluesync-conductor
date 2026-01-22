@@ -1,3 +1,5 @@
+import { deprecate } from 'node:util';
+
 declare namespace NodeJS {
   interface ProcessEnv {
     readonly NODE_ENV: string;
@@ -14,6 +16,7 @@ declare namespace NodeJS {
     readonly TAG?: string;
     readonly GLUESYNC_LICENSE_FILE?: string;
     readonly GLUESYNC_SECURITY_CONFIG?: string;
+    readonly CORE_HUB_ADDRESS?: string; // deprecated
     readonly GLUESYNC_HOST?: string;
 
     readonly HOST: string;
@@ -29,6 +32,9 @@ declare namespace NodeJS {
     readonly MOUNT_LEGACY_FILE_CONFIG: string;
 
     readonly IS_WINDOWS: string;
+    readonly WINDOWS_NETWORK_NAME?: string;
+    readonly WINDOWS_YEAR: string;
+    readonly HELPER_IMAGE_BASE: string;
   }
 }
 

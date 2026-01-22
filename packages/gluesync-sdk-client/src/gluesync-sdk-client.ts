@@ -168,7 +168,7 @@ export class GluesyncSDKClient {
     let useSSL = false;
 
     const gluesyncHost =
-      process.env.CORE_HUB_ADDRESS || process.env.GLUESYNC_HOST;
+      process.env.GLUESYNC_HOST || process.env.CORE_HUB_ADDRESS;
 
     if (gluesyncHost) {
       const rawHost = gluesyncHost.trim();

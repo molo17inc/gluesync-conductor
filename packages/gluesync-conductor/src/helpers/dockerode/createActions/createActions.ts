@@ -96,11 +96,7 @@ const createActions: CreateActions = ({
           '[conductor-updater] running self update for conductor',
         );
 
-        const windowsVersion = process.env.WINDOWS_VERSION || '2019';
-        const helperImageBase =
-          process.env.HELPER_IMAGE_BASE ||
-          'molo17/docker:28.0.0-win-nanoserver-ltsc';
-        const helperImageWindows = `${helperImageBase}${windowsVersion}`;
+        const helperImageWindows = process.env.HELPER_IMAGE_BASE;
 
         // Enable update mode to block incoming requests during conductor restart
         enableUpdateMode();

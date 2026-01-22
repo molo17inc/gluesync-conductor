@@ -71,7 +71,6 @@ services:
       - SSL_ENABLED=true
       - LOG_CONFIG_FILE=C:\\opt\\gluesync\\shared\\logback.xml
       - GRAFANA_REMOTE_ADDRESS=/grafana/d/fecxnzptcq8zkd/core-hub-metrics
-      - WINDOWS_VERSION=2019
     volumes:
       - ./shared:C:\opt\gluesync\shared
       - ./data/core-hub:C:\opt\gluesync\data
@@ -98,8 +97,8 @@ services:
       - traefik.http.services.conductor.loadbalancer.passhostheader=true
       - com.molo17.conductor.type=module
     environment:
-      - BASE_PATH=${PWD:-.}
-      - CORE_HUB_ADDRESS=gluesync-core-hub
+      - BASE_PATH=$BASE_PATH
+      - GLUESYNC_HOST=gluesync-core-hub
       - LOG_LEVEL=trace
     volumes:
       - \\.\pipe\docker_engine:\\.\pipe\docker_engine
@@ -128,7 +127,7 @@ services:
       - traefik.http.services.chronos.loadbalancer.passhostheader=true
       - com.molo17.conductor.type=module
     environment:
-      - GLUESYNC_HOST=gluesync-core-hub
+      - GLUESYNC_HOST=https://gluesync-core-hub:1717
       - SSL_ENABLED=true
       - SSL_SKIP_VERIFY=true
       - TIMEZONE=UTC # optionally hardcode timezone value in IANA format (es. Europe/Rome, from IANA database)
@@ -140,7 +139,7 @@ services:
       - gluesync-windows-net
 
   reverse-proxy:
-    image: traefik:windowsservercore-1809
+    image: molo17/traefik:3.4.1-win-nanoserver-ltsc2019
     user: ContainerAdministrator
     ports:
       - 80:80
@@ -195,7 +194,7 @@ services:
 
   # portainer:
   #   # Portainer default credentials: admin | passwordpassword
-  #   image: portainer/portainer-ce:2.35.0-windows1809-amd64
+  #   image: molo17/portainer:2.35.0-win-nanoserver-ltsc2019
   #   ports:
   #     - 9443:9443
   #   volumes:

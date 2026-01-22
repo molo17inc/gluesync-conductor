@@ -73,10 +73,7 @@ const restartWindowsDependentServices: RestartWindowsDependentServices = async (
     `[core-hub-updater] triggering ${conductorService} restart`,
   );
 
-  const windowsVersion = process.env.WINDOWS_VERSION || '2019';
-  const helperImageBase =
-    process.env.HELPER_IMAGE_BASE || 'molo17/docker:28.0.0-win-nanoserver-ltsc';
-  const helperImageWindows = `${helperImageBase}${windowsVersion}`;
+  const helperImageWindows = process.env.HELPER_IMAGE_BASE;
 
   // Wrap in setImmediate to send response before conductor dies
   setImmediate(() => {
