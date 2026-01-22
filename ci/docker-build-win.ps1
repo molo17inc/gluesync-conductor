@@ -11,6 +11,9 @@ param (
   [Parameter(Mandatory = $true)]
   [string]$WindowsVersion,
 
+  [Parameter(Mandatory = $true)]
+  [string]$WindowsYear,
+
   [string]$CustomDockerFile
 )
 
@@ -100,6 +103,7 @@ Write-Host "Building Docker image for $($WindowsTag) using default Server Core..
 docker build --file ${DOCKER_FILE} `
   --build-arg WINDOWS_TAG="$($WindowsTag)" `
   --build-arg WINDOWS_VERSION="$($WindowsVersion)" `
+  --build-arg WINDOWS_YEAR="$($WindowsYear)" `
   --tag "$VERSION_TAG_WINDOWS" .
 
 if ($LASTEXITCODE -ne 0) { throw "❌ Docker build failed" }

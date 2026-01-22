@@ -17,6 +17,7 @@ const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
 const CORE_HUB_SERVICE = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
 const CHRONOS_SERVICE = process.env.CHRONOS_NAME || 'gluesync-chronos';
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
+const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
 
 const runCmd: RunCmd = async (cmdFn, id, filename, extraOptions?) => {
   const commonOptions: any = {
@@ -95,12 +96,6 @@ const createActions: CreateActions = ({
           { service: id },
           '[conductor-updater] running self update for conductor',
         );
-
-        const windowsVersion = process.env.WINDOWS_VERSION || '2019';
-        const helperImageBase =
-          process.env.HELPER_IMAGE_BASE ||
-          'molo17/docker:28.0.0-win-nanoserver-ltsc';
-        const helperImageWindows = `${helperImageBase}${windowsVersion}`;
 
         // Enable update mode to block incoming requests during conductor restart
         enableUpdateMode();

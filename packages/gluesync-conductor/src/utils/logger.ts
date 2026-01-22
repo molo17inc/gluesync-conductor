@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import pino, { Logger, LoggerOptions } from 'pino';
-import { createStream } from 'rotating-file-stream';
+import { createStream, FileSize } from 'rotating-file-stream';
 
 const DEFAULT_LOG_DIR = '/opt/gluesync/logs';
 const DEFAULT_LOG_FILENAME = 'gluesync-conductor.log';
@@ -26,8 +26,8 @@ const getCandidateDirectories = (): string[] => {
 const resolveLogFilename = (): string =>
   process.env.GLUESYNC_LOG_FILE || DEFAULT_LOG_FILENAME;
 
-const resolveRotationSize = (): string =>
-  process.env.GLUESYNC_LOG_ROTATION_SIZE || DEFAULT_ROTATION_SIZE;
+const resolveRotationSize = (): FileSize =>
+  (process.env.GLUESYNC_LOG_ROTATION_SIZE || DEFAULT_ROTATION_SIZE) as FileSize;
 
 const loggerCache = { current: null as Logger | null };
 
