@@ -14,34 +14,52 @@ const ROOT_FOLDER_PATH = isWindows
 const ENV_FILE_NAME = '.env';
 
 const normalizeEnvFileEntry = (
-  e: EnvFileElement,
+  envFileEntry: Readonly<EnvFileElement>,
 ): { path: string; required: boolean } | null => {
-  if (typeof e === 'string') {
-    const p = e.trim();
-    return p ? { path: p, required: true } : null;
+  if (typeof envFileEntry === 'string') {
+    const path = envFileEntry.trim();
+    if (!path) {
+      return null;
+    }
+    return { path, required: true };
   }
 
-  const p = (e.path ?? '').trim();
-  if (!p) return null;
+  const path = (envFileEntry.path ?? '').trim();
+  if (!path) {
+    return null;
+  }
 
-  return { path: p, required: e.required ?? true };
+  return { path, required: envFileEntry.required ?? true };
 };
 
 const hasBothRequiredEnvFiles = (envFile: unknown): boolean => {
-  if (!Array.isArray(envFile)) return false;
-
-  const entries = (envFile as ReadonlyArray<EnvFileElement>)
-    .map(normalizeEnvFileEntry)
-    .filter((x): x is { path: string; required: boolean } => x !== null);
+  if (!Array.isArray(envFile)) {
+    return false;
+  }
 
   const rootEnvPath = join(ROOT_FOLDER_PATH, ENV_FILE_NAME);
 
-  const hasLocal = entries.some(e => e.path === '.env' && e.required === false);
-  const hasRoot = entries.some(
-    e => e.path === rootEnvPath && e.required === false,
+  const state = (envFile as ReadonlyArray<EnvFileElement>).reduce(
+    (acc, entry) => {
+      const normalized = normalizeEnvFileEntry(entry);
+      if (!normalized) {
+        return acc;
+      }
+
+      const hasLocal =
+        acc.hasLocal ||
+        (normalized.path === '.env' && normalized.required === false);
+
+      const hasRoot =
+        acc.hasRoot ||
+        (normalized.path === rootEnvPath && normalized.required === false);
+
+      return { hasLocal, hasRoot };
+    },
+    { hasLocal: false, hasRoot: false },
   );
 
-  return hasLocal && hasRoot;
+  return state.hasLocal && state.hasRoot;
 };
 
 // simple deep clone to avoid shared references -> avoids YAML anchors in most writers
@@ -66,7 +84,9 @@ const addEnvFileToServices: AddEnvFile = (services, serviceIds) => {
   const result = serviceIds.reduce(
     (acc, id) => {
       const service = services[id];
-      if (!service) return acc;
+      if (!service) {
+        return acc;
+      }
 
       // TODO remove when chronos is fixed: Skip env_file injection for Chronos on Windows
       if (isWindows && id === 'gluesync-chronos') {
