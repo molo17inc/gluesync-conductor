@@ -5,7 +5,7 @@ ARG WINDOWS_VERSION=nanoserver
 ARG WINDOWS_YEAR=2019
 
 # Builder stage
-FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop AS builder
+FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG} AS builder
 
 WORKDIR C:\opt\gluesync-conductor
 
