@@ -15,6 +15,7 @@ import addNetworkToServices from '../addNetworkToServices/addNetworkToServices';
 import addPlatformVolumes from '../addPlatformVolumes/addPlatformVolumes';
 import toLabelStrings from '../../utils/toLabelStrings';
 import addEnvFileToServices from '../addEnvFileToServices/addEnvFileToServices';
+import { mergeServices } from '../composeFile/mergeComposeFiles/mergeComposeFiles';
 
 /**
  * Apply platform-specific adjustments (GLUESYNC_HOST + network + volumes).
@@ -31,50 +32,37 @@ const applyPlatformAdjustments = (
   services: Record<string, RawComposeService>;
   updatedIds: ReadonlyArray<string>;
 } => {
-  // Step 1: Windows → add GLUESYNC_HOST to agents; Non-Windows → normalize volumes
+  // Step 1
   const step1 = isWindows
     ? addGluesyncHostToAgents(services, serviceIds, gluesyncHostDefault)
     : addPlatformVolumes(services, serviceIds, false);
 
-  const afterStep1Services: Readonly<Record<string, RawComposeService>> = {
-    ...services,
-    ...step1.services,
-  };
+  const afterStep1Services: Readonly<Record<string, RawComposeService>> =
+    mergeServices([services, step1.services]);
 
-  // Step 2: Windows only → add network
+  // Step 2: keep existing behavior (network added here on Windows)
   const step2 = isWindows
     ? addNetworkToServices(afterStep1Services, serviceIds, windowsNetworkName)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
-  const afterStep2Services: Readonly<Record<string, RawComposeService>> = {
-    ...afterStep1Services,
-    ...step2.services,
-  };
+  const afterStep2Services: Readonly<Record<string, RawComposeService>> =
+    mergeServices([afterStep1Services, step2.services]);
 
-  // Step 3: Windows only → add platform volumes again
+  // Step 3
   const step3 = isWindows
     ? addPlatformVolumes(afterStep2Services, serviceIds, true)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
-  // ✅ Final merge: ensure env_file is preserved if already set (e.g., ${PWD}/.env)
-  const finalServices: Readonly<Record<string, RawComposeService>> = {
-    ...afterStep2Services,
-    ...step3.services,
-  };
+  const finalServices: Readonly<Record<string, RawComposeService>> =
+    mergeServices([afterStep2Services, step3.services]);
 
-  const allUpdatedIds: ReadonlyArray<string> = [
-    ...step1.updatedIds,
-    ...step2.updatedIds,
-    ...step3.updatedIds,
-  ];
-
-  // Only return updated services
-  const changedServices = Object.fromEntries(
-    allUpdatedIds.map(id => [id, finalServices[id]]),
-  ) as Record<string, RawComposeService>;
+  const allUpdatedIds = [
+    ...new Set([...step1.updatedIds, ...step2.updatedIds, ...step3.updatedIds]),
+  ] as ReadonlyArray<string>;
 
   return {
-    services: changedServices,
+    // return the merged map (call sites already overlay this into composeJson.services)
+    services: finalServices as Record<string, RawComposeService>,
     updatedIds: allUpdatedIds,
   };
 };
