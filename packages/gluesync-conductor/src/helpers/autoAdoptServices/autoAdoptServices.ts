@@ -17,6 +17,7 @@ import addPlatformVolumes from '../addPlatformVolumes/addPlatformVolumes';
 import toLabelStrings from '../../utils/toLabelStrings';
 import retagThirdPartyImageToMolo17GA from '../retagThirdPartyImageToMolo17/retagThirdPartyImageToMolo17';
 import addEnvFileToServices from '../addEnvFileToServices/addEnvFileToServices';
+import { mergeServices } from '../composeFile/mergeComposeFiles/mergeComposeFiles';
 import { ConductorServiceTypes } from '../../models/conductor.model';
 
 /**
@@ -40,20 +41,16 @@ const applyPlatformAdjustments = (
     ? addGluesyncHostToAgents(services, serviceIds, gluesyncHostDefault)
     : addPlatformVolumes(services, serviceIds, false);
 
-  const afterStep1Services: Readonly<Record<string, RawComposeService>> = {
-    ...services,
-    ...step1.services,
-  };
+  const afterStep1Services: Readonly<Record<string, RawComposeService>> =
+    mergeServices([services, step1.services]);
 
   // Step 2: Network only on Windows
   const step2 = isWindows
     ? addNetworkToServices(afterStep1Services, serviceIds, networkName)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
-  const afterStep2Services: Readonly<Record<string, RawComposeService>> = {
-    ...afterStep1Services,
-    ...step2.services,
-  };
+  const afterStep2Services: Readonly<Record<string, RawComposeService>> =
+    mergeServices([afterStep1Services, step2.services]);
 
   // Step 3: Windows only -> add platform volumes again
   const step3 = isWindows
@@ -66,19 +63,13 @@ const applyPlatformAdjustments = (
     ...step3.services,
   };
 
-  const allUpdatedIds: ReadonlyArray<string> = [
-    ...step1.updatedIds,
-    ...step2.updatedIds,
-    ...step3.updatedIds,
-  ];
-
-  // Only return updated services
-  const changedServices = Object.fromEntries(
-    allUpdatedIds.map(id => [id, finalServices[id]]),
-  ) as Record<string, RawComposeService>;
+  const allUpdatedIds = [
+    ...new Set([...step1.updatedIds, ...step2.updatedIds, ...step3.updatedIds]),
+  ] as ReadonlyArray<string>;
 
   return {
-    services: changedServices,
+    // return the merged map (call sites already overlay this into composeJson.services)
+    services: finalServices as Record<string, RawComposeService>,
     updatedIds: allUpdatedIds,
   };
 };
