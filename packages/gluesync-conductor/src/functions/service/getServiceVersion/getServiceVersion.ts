@@ -9,6 +9,7 @@ import parseImage from '../../../helpers/parseImage/parseImage';
 import { ReleaseChannelTypes } from '../../../models/conductor.model';
 import getVersionByChannel from '../../../helpers/releaseChannel/getVersionByChannel';
 import { LabelPrefix } from '../../../models/composeFile.model';
+import { THIRD_PARTY_SERVICES } from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose.model';
 
 const handler: GetServiceVersionHandler = async (req, reply) => {
   try {
@@ -135,12 +136,25 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       fetchAgentInfo(shortImageName),
       (async () => {
         if (id === coreHubName) {
-          // Parallelize: check conductor and chronos updates at the same time
-          const [conductorNeedsUpdate, chronosNeedsUpdate] = await Promise.all([
+          const thirdPartyServices = Array.from(THIRD_PARTY_SERVICES);
+
+          const results = await Promise.all([
             needsUpdate(conductorName),
             needsUpdate(chronosName),
+            ...thirdPartyServices.map(needsUpdate),
           ]);
-          return conductorNeedsUpdate || chronosNeedsUpdate;
+
+          const [
+            conductorNeedsUpdate,
+            chronosNeedsUpdate,
+            ...thirdPartyResults
+          ] = results;
+
+          const thirdPartyNeedsUpdate = thirdPartyResults.some(x => x === true);
+
+          return (
+            conductorNeedsUpdate || chronosNeedsUpdate || thirdPartyNeedsUpdate
+          );
         }
         return false;
       })(),
