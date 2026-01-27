@@ -19,6 +19,9 @@ RUN yarn build
 # Final stage: runtime image
 FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}
 
+ARG WINDOWS_TAG
+ARG WINDOWS_YEAR
+
 WORKDIR C:\opt\gluesync-conductor
 
 # Switch default shell to PowerShell 7 for runtime stage
