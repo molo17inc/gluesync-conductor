@@ -131,10 +131,14 @@ const autoAdoptServices = async (): Promise<{
       true,
     );
 
-    // Add env_file to ALL services (helper decides applicability).
-    // Compose supports env_file as a string/list/objects; preserve existing values if present. [web:28]
+    // Add env_file to ALL services if not windows.
     const { services: envFileServices, updatedIds: envFileUpdatedIds } =
-      addEnvFileToServices(composeJson.services, allServiceIds);
+      isWindows
+        ? {
+            services: {} as Record<string, RawComposeService>,
+            updatedIds: [] as string[],
+          }
+        : addEnvFileToServices(composeJson.services, allServiceIds);
 
     // Services that ALREADY have a conductor type label
     const alreadyLabeledIds = allServiceIds.filter(id => {
