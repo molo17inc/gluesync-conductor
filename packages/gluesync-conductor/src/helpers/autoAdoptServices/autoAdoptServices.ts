@@ -13,7 +13,6 @@ import extractKeyValue from '../composeFile/extractKeyValue/extractKeyValue';
 import removeDependsOnFromServices from '../removeDependsOnFromServices/removeDependsOnFromServices';
 import addGluesyncHostToAgents from '../addGluesyncHostToAgents/addGluesyncHostToAgents';
 import addNetworkToServices from '../addNetworkToServices/addNetworkToServices';
-import addPlatformVolumes from '../addPlatformVolumes/addPlatformVolumes';
 import toLabelStrings from '../../utils/toLabelStrings';
 import retagThirdPartyImageToMolo17GA from '../retagThirdPartyImageToMolo17/retagThirdPartyImageToMolo17';
 import addEnvFileToServices from '../addEnvFileToServices/addEnvFileToServices';
@@ -39,7 +38,7 @@ const applyPlatformAdjustments = (
   // Step 1: Windows -> add GLUESYNC_HOST to agents; Non-Windows -> normalize volumes
   const step1 = isWindows
     ? addGluesyncHostToAgents(services, serviceIds, gluesyncHostDefault)
-    : addPlatformVolumes(services, serviceIds, false);
+    : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
   const afterStep1Services: Readonly<Record<string, RawComposeService>> =
     mergeServices([services, step1.services]);
@@ -49,22 +48,11 @@ const applyPlatformAdjustments = (
     ? addNetworkToServices(afterStep1Services, serviceIds, networkName)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
-  const afterStep2Services: Readonly<Record<string, RawComposeService>> =
+  const finalServices: Readonly<Record<string, RawComposeService>> =
     mergeServices([afterStep1Services, step2.services]);
 
-  // Step 3: Windows only -> add platform volumes again
-  const step3 = isWindows
-    ? addPlatformVolumes(afterStep2Services, serviceIds, true)
-    : { services: {}, updatedIds: [] as ReadonlyArray<string> };
-
-  // Final merge
-  const finalServices: Readonly<Record<string, RawComposeService>> = {
-    ...afterStep2Services,
-    ...step3.services,
-  };
-
   const allUpdatedIds = [
-    ...new Set([...step1.updatedIds, ...step2.updatedIds, ...step3.updatedIds]),
+    ...new Set([...step1.updatedIds, ...step2.updatedIds]),
   ] as ReadonlyArray<string>;
 
   return {
