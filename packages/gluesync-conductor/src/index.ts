@@ -53,11 +53,12 @@ const startServer = async (): Promise<void> => {
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
 
   // Register TZ fix FIRST (so later plugins/routes see the normalized TZ for windows).
-  if (isWindows)
+  if (isWindows) {
     await server.register(tzFix, {
       fallbackIana: undefined,
       log: true,
     });
+  }
 
   const logger = getLogger();
 
