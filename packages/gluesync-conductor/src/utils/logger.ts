@@ -60,8 +60,7 @@ const ensureLogDirectory = (): string | null => {
  * Matches debug-tz output format: DD/MM/YYYY HH:mm:ss TZ
  */
 const buildTimestamp = (): string => {
-  const tz =
-    process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const tz = process.env.TZ || undefined;
   const localTime = new Date().toLocaleString('en-US', {
     timeZone: tz,
     year: 'numeric',
