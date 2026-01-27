@@ -138,26 +138,29 @@ const healConductorConf = async (): Promise<boolean> => {
 
   const currentEnvFileRaw = normalizeEnvFile(service.env_file);
 
-  const currentEnvFile: EnvFile = currentEnvFileRaw.map(e => {
-    const obj = typeof e === 'string' ? { path: e } : e;
+  // Only heal/add ENV_FILE on non-Windows
+  const currentEnvFile: EnvFile = isWindows
+    ? currentEnvFileRaw.map(e => (typeof e === 'string' ? { path: e } : e))
+    : currentEnvFileRaw.map(e => {
+        const obj = typeof e === 'string' ? { path: e } : e;
 
-    try {
-      if (
-        basePath &&
-        typeof obj.path === 'string' &&
-        isAbsolute(obj.path) &&
-        resolve(obj.path) === resolve(basePath, ENV_FILE)
-      ) {
-        return { ...obj, path: '.env', required: false };
-      }
-    } catch {
-      /* noop */
-    }
+        try {
+          if (
+            basePath &&
+            typeof obj.path === 'string' &&
+            isAbsolute(obj.path) &&
+            resolve(obj.path) === resolve(basePath, ENV_FILE)
+          ) {
+            return { ...obj, path: '.env', required: false };
+          }
+        } catch {
+          /* noop */
+        }
 
-    return obj;
-  });
+        return obj;
+      });
 
-  const finalEnvFile: EnvFile = buildEnvFileConf();
+  const finalEnvFile: EnvFile = isWindows ? currentEnvFile : buildEnvFileConf();
 
   const normalizedCurrentEnv = currentEnvFile.map(canonicalizeEnvFileElement);
   const normalizedFinalEnv = normalizeEnvFile(finalEnvFile).map(
