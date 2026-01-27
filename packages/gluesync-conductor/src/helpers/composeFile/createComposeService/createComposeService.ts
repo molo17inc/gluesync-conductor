@@ -193,7 +193,7 @@ const createComposeService: CreateComposeService = (
       mapVolumes(volumes),
     ),
 
-    ...(isWindows && { networks: ['gluesync-windows-net'] }),
+    networks: [isWindows ? 'gluesync-windows-net' : 'gluesync-net'],
     healthcheck,
     depends_on: dependsOn,
     env_file: buildEnvFileConf(),
