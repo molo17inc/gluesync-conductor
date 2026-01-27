@@ -27,7 +27,7 @@ const tzFixPlugin = async (
   const { envVarName = 'TZ', fallbackIana, log = true } = opts;
 
   const tz = process.env[envVarName];
-  const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
+  const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
 
   if (!isWindows) {
     if (log) fastify.log.debug({ tz }, '[tz-fix] non-windows: no action');
