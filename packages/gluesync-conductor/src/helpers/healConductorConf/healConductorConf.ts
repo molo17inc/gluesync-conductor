@@ -207,12 +207,15 @@ const healConductorConf = async (): Promise<boolean> => {
 
   const networkChanged = !currentNetworks?.includes(networkName);
 
-  const healedNetworks: ReadonlyArray<string> =
-    currentNetworks && currentNetworks.length > 0
-      ? currentNetworks.includes(networkName)
-        ? currentNetworks
-        : [...currentNetworks, networkName]
-      : [networkName];
+  const healedNetworks: ReadonlyArray<string> = (() => {
+    if (currentNetworks && currentNetworks.length > 0) {
+      if (currentNetworks.includes(networkName)) {
+        return currentNetworks;
+      }
+      return [...currentNetworks, networkName];
+    }
+    return [networkName];
+  })();
 
   // ----- CONTAINER_NAME HEALING -----
   const { container_name: containerName, ...serviceWithNoContainerName } =

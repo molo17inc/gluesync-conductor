@@ -23,7 +23,7 @@ import removeContainerNameFromServices from '../removeContainerNameFromServices/
 /**
  * Ensure the given network exists at the root compose level.
  * To use a named network across services, it must be declared under top-level
- * `networks`, and services must reference it via `services.<svc>.networks`. [web:11][web:64]
+ * `networks`, and services must reference it via `services.<svc>.networks`.
  */
 const ensureNetworkDefinition = (
   composeJson: any,
@@ -48,7 +48,7 @@ const ensureNetworkDefinition = (
 
 /**
  * Add a network to ALL services in the compose, excluding the conductor.
- * This avoids repeating per-service "addNetworkToServices" calls all over the flow. [web:64]
+ * This avoids repeating per-service "addNetworkToServices" calls all over the flow.
  */
 const addNetworkToAllServicesExceptConductor = (
   services: Readonly<Record<string, RawComposeService>>,
@@ -102,7 +102,6 @@ const applyPlatformAdjustments = (
   ] as ReadonlyArray<string>;
 
   return {
-    // return the merged map (call sites already overlay this into composeJson.services)
     services: finalServices as Record<string, RawComposeService>,
     updatedIds: allUpdatedIds,
   };
@@ -165,6 +164,32 @@ const autoAdoptServices = async (): Promise<{
       true,
     );
 
+    // Remove depends_on + container_name for ALL services except conductor
+    const idsToClean = allServiceIds.filter(id => id !== conductorServiceName);
+
+    // First pass: remove depends_on from already-labeled services
+    const { cleanedServices: cleanedServicesDependsOn, removedDependsOnIds } =
+      removeDependsOnFromServices(composeJson, idsToClean);
+
+    // Second pass: remove container_name from already-labeled services
+    // IMPORTANT: this helper expects an object with `.services`, so thread the previous cleaned map as `.services`.
+    const {
+      cleanedServices: cleanedServicesContainerName,
+      removedContainerNameIds,
+    } = removeContainerNameFromServices(
+      { ...composeJson, services: cleanedServicesDependsOn },
+      idsToClean,
+    );
+
+    // ComposeJson with both cleaners applied (used as the base for everything below)
+    const cleanedComposeJson = {
+      ...composeJson,
+      services: {
+        ...composeJson.services,
+        ...cleanedServicesContainerName,
+      },
+    };
+
     // Add env_file to ALL services if not windows.
     const { services: envFileServices, updatedIds: envFileUpdatedIds } =
       isWindows
@@ -172,11 +197,11 @@ const autoAdoptServices = async (): Promise<{
             services: {} as Record<string, RawComposeService>,
             updatedIds: [] as string[],
           }
-        : addEnvFileToServices(composeJson.services, allServiceIds);
+        : addEnvFileToServices(cleanedComposeJson.services, allServiceIds);
 
     // Services that ALREADY have a conductor type label
     const alreadyLabeledIds = allServiceIds.filter(id => {
-      const service = composeJson.services?.[id];
+      const service = cleanedComposeJson.services?.[id];
       if (!service) {
         return false;
       }
@@ -192,29 +217,6 @@ const autoAdoptServices = async (): Promise<{
     const adjustedIds = alreadyLabeledIds.filter(
       id => id !== conductorServiceName && !THIRD_PARTY_SERVICES.has(id),
     );
-
-    // First pass: remove depends_on from already-labeled services
-    const { cleanedServices: cleanedServicesDependsOn, removedDependsOnIds } =
-      removeDependsOnFromServices(composeJson, alreadyLabeledIds);
-
-    // Second pass: remove container_name from already-labeled services
-    // IMPORTANT: this helper expects an object with `.services`, so thread the previous cleaned map as `.services`.
-    const {
-      cleanedServices: cleanedServicesContainerName,
-      removedContainerNameIds,
-    } = removeContainerNameFromServices(
-      { ...composeJson, services: cleanedServicesDependsOn },
-      alreadyLabeledIds,
-    );
-
-    // ComposeJson with both cleaners applied (used as the base for everything below)
-    const cleanedComposeJson = {
-      ...composeJson,
-      services: {
-        ...composeJson.services,
-        ...cleanedServicesContainerName,
-      },
-    };
 
     // Apply platform adjustments to already-labeled services (except third-party)
     const {
@@ -234,7 +236,7 @@ const autoAdoptServices = async (): Promise<{
     // - merge it into baseServices in the unlabeledIds>0 branch
     const { services: networkAllServices, updatedIds: networkAllUpdatedIds } =
       addNetworkToAllServicesExceptConductor(
-        composeJson.services,
+        cleanedComposeJson.services,
         networkName,
         conductorServiceName,
       );
@@ -263,8 +265,7 @@ const autoAdoptServices = async (): Promise<{
         {
           ...composeJson,
           services: mergeServices([
-            composeJson.services,
-            cleanedServicesContainerName,
+            cleanedComposeJson.services,
             platformAdjustedLabeledServices,
             envFileServices,
             networkAllServices,
@@ -292,8 +293,7 @@ const autoAdoptServices = async (): Promise<{
     // Base services: already-labeled services are cleaned + platform-adjusted (except third-party) + env_file
     // IMPORTANT: include networkAllServices here too, otherwise the network changes are dropped on write.
     const baseServices: Record<string, RawComposeService> = mergeServices([
-      composeJson.services,
-      cleanedServicesContainerName,
+      cleanedComposeJson.services,
       platformAdjustedLabeledServices,
       envFileServices,
       networkAllServices,
