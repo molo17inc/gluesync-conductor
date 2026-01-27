@@ -10,16 +10,16 @@ type TzFixOptions = Readonly<{
 
 const looksLikeIana = (tz: string): boolean => tz.includes('/');
 
-const isValidTz = (tz?: string): tz is string => {
-  if (!tz) return false;
+const isValidTz = (tz: unknown): tz is string => {
+  if (typeof tz !== 'string') return false;
 
   const v = tz.trim();
-  if (!v) return false;
+  if (v === '') return false;
 
   const lower = v.toLowerCase();
   if (lower === 'undefined' || lower === 'null') return false;
 
-  if (Number.isFinite(Number(lower))) return false;
+  if (!Number.isNaN(Number(lower))) return false;
 
   return true;
 };
