@@ -45,7 +45,9 @@ const mapVolumes = (
     // String input: "host:container[:mode]"
     if (typeof vol === 'string') {
       const raw = vol.trim();
-      if (!raw) return acc;
+      if (!raw) {
+        return acc;
+      }
 
       // Split into host, container, mode (mode is optional)
       const [host = '', container = '', mode] = raw.split(':');
@@ -54,7 +56,9 @@ const mapVolumes = (
       const containerT = container.trim();
       const modeT = mode?.trim();
 
-      if (!hostT || !containerT) return acc;
+      if (!hostT || !containerT) {
+        return acc;
+      }
 
       // Normalize mode to only 'rw' or 'ro' if present; ignore others
       const normalizedMode =
@@ -72,7 +76,9 @@ const mapVolumes = (
       const containerT = String(vol.container ?? '').trim();
       const modeT = vol.mode?.toString().trim();
 
-      if (!hostT || !containerT) return acc;
+      if (!hostT || !containerT) {
+        return acc;
+      }
 
       const normalizedMode =
         modeT === 'rw' || modeT === 'ro' ? modeT : undefined;

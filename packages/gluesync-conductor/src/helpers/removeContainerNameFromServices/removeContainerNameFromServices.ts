@@ -12,7 +12,9 @@ const removeContainerNameFromServices: RemoveContainerNameFromServices = (
   serviceIds.reduce(
     (acc, id) => {
       const service = composeJson.services?.[id];
-      if (!service) return acc;
+      if (!service) {
+        return acc;
+      }
 
       const { container_name: containerName, ...serviceWithNoContainerName } =
         service as RawComposeService & { container_name?: string };

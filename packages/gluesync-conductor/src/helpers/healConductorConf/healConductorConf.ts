@@ -29,10 +29,14 @@ const ENV_FILE = '.env';
 const normalizeEnvFile = (
   envFile?: Readonly<EnvFile>,
 ): ReadonlyArray<EnvFileElement> => {
-  if (!envFile) return [];
+  if (!envFile) {
+    return [];
+  }
 
   // if envFile is already an array
-  if (Array.isArray(envFile)) return envFile;
+  if (Array.isArray(envFile)) {
+    return envFile;
+  }
 
   // if envFile is a single string or object element
   return [envFile as EnvFileElement];
@@ -67,10 +71,14 @@ const isRootFolderMount = (v: string): boolean => {
   const vv = normalizeVolumeStr(v);
 
   // Windows containers
-  if (vv.includes('c:/opt/gluesync-conductor/root-folder')) return true;
+  if (vv.includes('c:/opt/gluesync-conductor/root-folder')) {
+    return true;
+  }
 
   // Linux containers (match regardless of host prefix like "./:" or "/abs/path:")
-  if (vv.includes('/opt/gluesync-conductor/root-folder')) return true;
+  if (vv.includes('/opt/gluesync-conductor/root-folder')) {
+    return true;
+  }
 
   return false;
 };
@@ -90,7 +98,9 @@ const healConductorConf = async (): Promise<boolean> => {
 
   // Normalize environment to an array of strings
   const rawEnvArray: string[] = (() => {
-    if (Array.isArray(service.environment)) return service.environment;
+    if (Array.isArray(service.environment)) {
+      return service.environment;
+    }
     if (service.environment && typeof service.environment === 'object') {
       return Object.entries(service.environment).map(
         ([k, v]) => `${k}=${v ?? ''}`,

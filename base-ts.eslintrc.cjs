@@ -31,6 +31,7 @@ module.exports = {
 
   rules: {
     'arrow-body-style': [1, 'as-needed'],
+    curly: ['error', 'all'],
     'no-case-declarations': 0,
     'no-console': 0,
     'no-unused-expressions': [

@@ -13,7 +13,9 @@ const addNetworkToServices: AddNetworkToServices = (
   const { updatedServices, updatedIds } = serviceIds.reduce(
     (acc, id) => {
       const service = services[id];
-      if (!service) return acc;
+      if (!service) {
+        return acc;
+      }
 
       const currentNetworks = (service as { networks?: ReadonlyArray<string> })
         .networks;

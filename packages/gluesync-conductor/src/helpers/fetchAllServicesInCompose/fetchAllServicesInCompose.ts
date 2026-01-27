@@ -8,10 +8,14 @@ const fetchAllServicesInCompose: FetchAllServicesInCompose = (
   reorder = false,
   includeThirdParty = false,
 ) => {
-  if (!composeJson.services) return [];
+  if (!composeJson.services) {
+    return [];
+  }
 
   const services = Object.keys(composeJson.services).filter(id => {
-    if (includeThirdParty) return true;
+    if (includeThirdParty) {
+      return true;
+    }
     return !THIRD_PARTY_SERVICES.has(id);
   });
 

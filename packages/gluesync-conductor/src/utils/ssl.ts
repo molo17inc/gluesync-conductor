@@ -55,7 +55,9 @@ export const createFastifyHttpsOptions = (): FastifyServerOptions => {
     },
   };
 
-  if (!isSslEnabled()) return baseOptions;
+  if (!isSslEnabled()) {
+    return baseOptions;
+  }
 
   const { certFile, keyFile } = getSslFilePaths();
 
@@ -90,7 +92,9 @@ export const createFastifyHttpsOptions = (): FastifyServerOptions => {
  * Log helpful SSL information
  */
 export const logSslInfo = (): void => {
-  if (!isSslEnabled()) return;
+  if (!isSslEnabled()) {
+    return;
+  }
 
   const { certFile, keyFile } = getSslFilePaths();
 

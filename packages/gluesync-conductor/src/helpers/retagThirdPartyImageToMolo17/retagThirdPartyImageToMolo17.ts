@@ -6,10 +6,18 @@ export const toThirdPartyRepo = (image: string): string | null => {
   const lower = (image || '').toLowerCase();
 
   // use substring match exactly as requested
-  if (lower === 'traefik') return 'traefik';
-  if (lower === 'prom/prometheus') return 'prometheus';
-  if (lower === 'grafana/grafana') return 'grafana';
-  if (lower === 'portainer/portainer-ce') return 'portainer';
+  if (lower === 'traefik') {
+    return 'traefik';
+  }
+  if (lower === 'prom/prometheus') {
+    return 'prometheus';
+  }
+  if (lower === 'grafana/grafana') {
+    return 'grafana';
+  }
+  if (lower === 'portainer/portainer-ce') {
+    return 'portainer';
+  }
 
   return null;
 };
@@ -28,10 +36,14 @@ export const retagThirdPartyImageToMolo17GA = async (
   const parsedImage = parseImage(image);
 
   // already molo17/<repo>:<tag> -> do nothing
-  if (isMolo17Image(image, parsedImage.fullName)) return null;
+  if (isMolo17Image(image, parsedImage.fullName)) {
+    return null;
+  }
 
   const repo = toThirdPartyRepo(parsedImage.fullName);
-  if (!repo || (isWindows && !windowsYear)) return null;
+  if (!repo || (isWindows && !windowsYear)) {
+    return null;
+  }
 
   const imageNameToFetch = isWindows ? `${repo}-win-${windowsYear}` : repo;
 
@@ -40,7 +52,9 @@ export const retagThirdPartyImageToMolo17GA = async (
   const ga = getVersionByChannel(info, 'ga');
 
   // If version is null/undefined/empty -> simply exit (no changes).
-  if (ga == null || ga === '') return null;
+  if (ga == null || ga === '') {
+    return null;
+  }
 
   // Windows images: append "-win-nanoserver-ltsc<version>" suffix
   const finalTag = isWindows ? `${ga}-win-nanoserver-ltsc${windowsYear}` : ga;

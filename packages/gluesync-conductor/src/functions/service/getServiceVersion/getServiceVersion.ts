@@ -51,7 +51,9 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
             'No containers found for service, using compose image tag as fallback',
           );
           const svc = composeJson.services?.[serviceId];
-          if (!svc?.image) return null;
+          if (!svc?.image) {
+            return null;
+          }
           const { tag: composeTag } = parseImage(svc.image);
           return composeTag.split('-')[0];
         }
@@ -68,7 +70,9 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
             'No running container found, using compose image tag as fallback',
           );
           const svc = composeJson.services?.[serviceId];
-          if (!svc?.image) return null;
+          if (!svc?.image) {
+            return null;
+          }
           const { tag: composeTag } = parseImage(svc.image);
           return composeTag.split('-')[0];
         }
@@ -88,7 +92,9 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         // On any unexpected error, fall back to compose file if possible
         try {
           const svc = composeJson.services?.[serviceId];
-          if (!svc?.image) return null;
+          if (!svc?.image) {
+            return null;
+          }
           const { tag: composeTag } = parseImage(svc.image);
           return composeTag.split('-')[0];
         } catch {
@@ -100,7 +106,9 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     // Helper to check if a service needs update based on release channel
     const needsUpdate = async (serviceId: string): Promise<boolean> => {
       const svc = composeJson.services?.[serviceId];
-      if (!svc) return false;
+      if (!svc) {
+        return false;
+      }
 
       const { shortImageName, tag: composeTag } = parseImage(svc.image);
 

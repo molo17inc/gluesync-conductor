@@ -72,7 +72,9 @@ const handler: CollectLogsHandler = async (req, reply) => {
     ) => {
       const str = chunk.toString('utf8');
       str.split(/\r?\n/).forEach(line => {
-        if (line) req.log.debug({ line }, label);
+        if (line) {
+          req.log.debug({ line }, label);
+        }
       });
     };
 

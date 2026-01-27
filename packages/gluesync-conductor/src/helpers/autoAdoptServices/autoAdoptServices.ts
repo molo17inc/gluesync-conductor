@@ -30,7 +30,9 @@ const ensureNetworkDefinition = (
   networkName: string,
   isWindows: boolean,
 ) => {
-  if (composeJson.networks?.[networkName]) return composeJson;
+  if (composeJson.networks?.[networkName]) {
+    return composeJson;
+  }
 
   return {
     ...composeJson,
@@ -175,7 +177,9 @@ const autoAdoptServices = async (): Promise<{
     // Services that ALREADY have a conductor type label
     const alreadyLabeledIds = allServiceIds.filter(id => {
       const service = composeJson.services?.[id];
-      if (!service) return false;
+      if (!service) {
+        return false;
+      }
 
       const labelStrings = toLabelStrings(service.labels);
 
@@ -305,7 +309,9 @@ const autoAdoptServices = async (): Promise<{
     const adoptionResults: ReadonlyArray<AdoptResult> = await Promise.all(
       unlabeledIds.map(async (id): Promise<AdoptResult> => {
         const service = baseServices?.[id];
-        if (!service) throw new Error(`Service ${id} not found`);
+        if (!service) {
+          throw new Error(`Service ${id} not found`);
+        }
 
         const isThirdParty = THIRD_PARTY_SERVICES.has(id);
 
@@ -352,8 +358,9 @@ const autoAdoptServices = async (): Promise<{
 
         // Decide conductor type
         const conductorType: ConductorServiceTypes | null = (() => {
-          if (agentEntry.dockerHubRepoName === 'gluesync-core-hub')
+          if (agentEntry.dockerHubRepoName === 'gluesync-core-hub') {
             return 'core-hub';
+          }
 
           const isTargetValid = typeof agentEntry.isTarget === 'boolean';
           const isSourceValid = typeof agentEntry.isSource === 'boolean';

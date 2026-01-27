@@ -17,7 +17,9 @@ const addGluesyncHostToAgents: AddGluesyncHostToAgents = (
   const { updatedServices, updatedIds } = serviceIds.reduce(
     (acc, id) => {
       const service = services[id];
-      if (!service) return acc;
+      if (!service) {
+        return acc;
+      }
 
       // Skip core-hub - it doesn't need GLUESYNC_HOST
       if (id === coreHubName) {
