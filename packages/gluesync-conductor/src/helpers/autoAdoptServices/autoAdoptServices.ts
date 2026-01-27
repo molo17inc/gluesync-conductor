@@ -260,7 +260,7 @@ const autoAdoptServices = async (): Promise<{
           ...composeJson,
           services: mergeServices([
             composeJson.services,
-            cleanedServices,
+            cleanedServicesContainerName,
             platformAdjustedLabeledServices,
             envFileServices,
             networkAllServices,
@@ -289,7 +289,7 @@ const autoAdoptServices = async (): Promise<{
     // IMPORTANT: include networkAllServices here too, otherwise the network changes are dropped on write.
     const baseServices: Record<string, RawComposeService> = mergeServices([
       composeJson.services,
-      cleanedServices,
+      cleanedServicesContainerName,
       platformAdjustedLabeledServices,
       envFileServices,
       networkAllServices,
@@ -475,8 +475,8 @@ const autoAdoptServices = async (): Promise<{
       updatedIds.length === 0 &&
       removedDependsOnIds.length === 0 &&
       envFileUpdatedIds.length === 0 &&
-      networkAllUpdatedIds.length === 0
-      removedContainerNameIds.length === 0 &&
+      networkAllUpdatedIds.length === 0 &&
+      removedContainerNameIds.length === 0
     ) {
       return {
         success: true,
