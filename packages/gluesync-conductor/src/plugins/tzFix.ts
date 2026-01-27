@@ -10,6 +10,16 @@ type TzFixOptions = Readonly<{
 
 const looksLikeIana = (tz: string): boolean => tz.includes('/');
 
+const isValidTz = (tz: unknown): tz is string => {
+  if (typeof tz !== 'string') return false;
+
+  const tzTrimmed = tz.trim();
+  if (!tzTrimmed) return false;
+
+  const tzToLower = tzTrimmed.toLowerCase();
+  return tzToLower !== 'undefined' && tzToLower !== 'null';
+};
+
 const tzFixPlugin = async (
   fastify: Readonly<FastifyInstance>,
   opts: TzFixOptions,
@@ -17,15 +27,16 @@ const tzFixPlugin = async (
   const { envVarName = 'TZ', fallbackIana, log = true } = opts;
 
   const tz = process.env[envVarName];
-  const isWin = process.platform === 'win32';
+  const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
-  if (!isWin) {
+  if (!isWindows) {
     if (log) fastify.log.debug({ tz }, '[tz-fix] non-windows: no action');
     return;
   }
 
-  if (!tz) {
-    if (log) fastify.log.debug('[tz-fix] windows: TZ not set, no action');
+  if (!isValidTz(tz)) {
+    if (log)
+      fastify.log.debug({ tz }, '[tz-fix] windows: TZ not set, no action');
     return;
   }
 

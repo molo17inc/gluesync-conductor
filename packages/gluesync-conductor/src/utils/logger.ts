@@ -61,7 +61,9 @@ const ensureLogDirectory = (): string | null => {
  */
 const buildTimestamp = (): string => {
   const tz =
-    process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    process.env.TZ ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone ||
+    undefined;
   const localTime = new Date().toLocaleString('en-US', {
     timeZone: tz,
     year: 'numeric',

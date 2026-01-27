@@ -53,7 +53,7 @@ const startServer = async (): Promise<void> => {
 
   // Register TZ fix FIRST (so later plugins/routes see the normalized TZ for windows).
   await server.register(tzFix, {
-    fallbackIana: 'UTC',
+    fallbackIana: undefined,
     log: true,
   });
 
