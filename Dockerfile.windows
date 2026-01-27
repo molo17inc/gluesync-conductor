@@ -2,9 +2,10 @@
 
 ARG WINDOWS_TAG=ltsc2019
 ARG WINDOWS_VERSION=nanoserver
+ARG WINDOWS_YEAR=2019
 
 # Builder stage
-FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop AS builder
+FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG} AS builder
 
 WORKDIR C:\opt\gluesync-conductor
 
@@ -16,7 +17,7 @@ RUN yarn install --immutable --immutable-cache
 RUN yarn build
 
 # Final stage: runtime image
-FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}-develop
+FROM molo17/node:22.13.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}
 
 WORKDIR C:\opt\gluesync-conductor
 
@@ -30,9 +31,6 @@ RUN Invoke-WebRequest -Uri https://download.docker.com/win/static/stable/x86_64/
   Remove-Item 'C:/docker' -Recurse -Force; `
   Remove-Item 'C:/docker.zip' -Force; `
   Invoke-WebRequest -Uri https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-windows-x86_64.exe -OutFile C:/Windows/System32/docker-compose.exe
-
-# Ensure PATH includes System32
-ENV PATH="C:\\Windows\\System32;${PATH}"
 
 # Environment variables (one per line)
 ENV NODE_ENV=production
@@ -54,9 +52,9 @@ ENV SSL_KEY_FILE=C:\opt\gluesync\data\gluesync-key.pem
 ENV MOUNT_LEGACY_FILE_CONFIG=false
 ENV GLUESYNC_CONFIG_DIR=.\shared
 ENV IS_WINDOWS=true
-ENV WINDOWS_VERSION=2019
+ENV WINDOWS_YEAR=${WINDOWS_YEAR}
 ENV WINDOWS_NETWORK_NAME=gluesync-windows_gluesync-windows-net
-ENV HELPER_IMAGE_BASE=molo17/docker-helper:28.0.0-win-nanoserver-ltsc
+ENV HELPER_IMAGE_BASE=molo17/docker:28.0.0-win-nanoserver-${WINDOWS_TAG}
 ENV TZ=UTC
 
 # Copy build artifacts

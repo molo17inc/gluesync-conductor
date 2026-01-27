@@ -6,6 +6,8 @@ import { enableUpdateMode } from '../../../plugins/apiBlockerAsUpdating';
 import { autoReboot } from '../../autoReboot/autoReboot';
 import { RestartWindowsDependentServices } from './restartWindowsDependentServices.models';
 
+const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
+
 /**
  * Special handling for core-hub on Windows only.
  * Windows NAT DNS cache requires dependent services to restart for reconnection.
@@ -72,12 +74,6 @@ const restartWindowsDependentServices: RestartWindowsDependentServices = async (
     { service: conductorService },
     `[core-hub-updater] triggering ${conductorService} restart`,
   );
-
-  const windowsVersion = process.env.WINDOWS_VERSION || '2019';
-  const helperImageBase =
-    process.env.HELPER_IMAGE_BASE ||
-    'molo17/docker-helper:28.0.0-win-nanoserver-ltsc';
-  const helperImageWindows = `${helperImageBase}${windowsVersion}-develop`;
 
   // Wrap in setImmediate to send response before conductor dies
   setImmediate(() => {

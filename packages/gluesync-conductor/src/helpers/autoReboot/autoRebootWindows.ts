@@ -28,7 +28,7 @@ type AutoReboot = (
 const autoRebootWindows: AutoReboot = async ({
   hostProjectDir,
   serviceName = 'gluesync-conductor',
-  helperImage = 'molo17/docker-helper:28.0.0-win-nanoserver-ltsc2019-develop',
+  helperImage,
   log = msg => console.log(msg),
 }) => {
   if (!hostProjectDir) {

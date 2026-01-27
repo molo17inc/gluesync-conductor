@@ -75,7 +75,9 @@ const canUpdateContainers: CanUpdateContainers = async (
   const agentsAndCoreHub = fulfilledInfos.filter(
     info => info.type === 'agent' || info.type === 'core-hub',
   );
-  const modules = fulfilledInfos.filter(info => info.type === 'module');
+  const modules = fulfilledInfos.filter(
+    info => info.type === 'module' || 'third-party',
+  );
 
   // Collect agent versions
   const agentVersions = agentsAndCoreHub.map(info =>

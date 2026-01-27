@@ -53,7 +53,7 @@ export interface GluesyncConfig {
 const settings: GluesyncConfig = {
   // CoreHub connection settings
   coreHubUrl:
-    process.env.CORE_HUB_ADDRESS || process.env.GLUESYNC_HOST || 'localhost',
+    process.env.GLUESYNC_HOST || process.env.CORE_HUB_ADDRESS || 'localhost',
 
   // SSL/TLS settings
   useSSL: process.env.SSL_ENABLED?.trim().toLowerCase() === 'true',
