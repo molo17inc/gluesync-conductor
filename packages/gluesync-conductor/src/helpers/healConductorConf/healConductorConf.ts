@@ -181,11 +181,26 @@ const healConductorConf = async (): Promise<boolean> => {
     normalizedCurrentVolumes.length !== normalizedFinalVolumes.length ||
     normalizedCurrentVolumes.some((v, i) => v !== normalizedFinalVolumes[i]);
 
+  // ----- NETWORK HEALING -----
+  const networkName = isWindows ? 'gluesync-windows-net' : 'gluesync-net';
+
+  const currentNetworks: ReadonlyArray<string> | undefined = (
+    service as { networks?: ReadonlyArray<string> }
+  ).networks;
+
+  const networkChanged = !currentNetworks?.includes(networkName);
+
+  const healedNetworks: ReadonlyArray<string> =
+    currentNetworks && currentNetworks.length > 0
+      ? [...currentNetworks, networkName]
+      : [networkName];
+
   // ----- BASE SERVICE -----
   const baseService: any = {
     ...service,
     ...(envChanged ? { environment: healedEnvArray } : {}),
     ...(envFileChanged ? { env_file: finalEnvFile } : {}),
+    ...(networkChanged ? { networks: healedNetworks } : {}),
   };
 
   const {
@@ -213,6 +228,7 @@ const healConductorConf = async (): Promise<boolean> => {
     volumesChanged ||
     envChanged ||
     envFileChanged ||
+    networkChanged ||
     (!!newTag && newTag !== currentTag);
 
   if (!isChanged) {

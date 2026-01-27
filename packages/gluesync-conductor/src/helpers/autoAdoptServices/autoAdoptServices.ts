@@ -21,6 +21,49 @@ import { ConductorServiceTypes } from '../../models/conductor.model';
 import removeContainerNameFromServices from '../removeContainerNameFromServices/removeContainerNameFromServices';
 
 /**
+ * Ensure the given network exists at the root compose level.
+ * To use a named network across services, it must be declared under top-level
+ * `networks`, and services must reference it via `services.<svc>.networks`. [web:11][web:64]
+ */
+const ensureNetworkDefinition = (
+  composeJson: any,
+  networkName: string,
+  isWindows: boolean,
+) => {
+  if (composeJson.networks?.[networkName]) return composeJson;
+
+  return {
+    ...composeJson,
+    networks: {
+      ...composeJson.networks,
+      [networkName]: {
+        name: networkName,
+        driver: isWindows ? 'nat' : 'bridge',
+      },
+    },
+  };
+};
+
+/**
+ * Add a network to ALL services in the compose, excluding the conductor.
+ * This avoids repeating per-service "addNetworkToServices" calls all over the flow. [web:64]
+ */
+const addNetworkToAllServicesExceptConductor = (
+  services: Readonly<Record<string, RawComposeService>>,
+  networkName: string,
+  conductorServiceName: string,
+): {
+  services: Record<string, RawComposeService>;
+  updatedIds: ReadonlyArray<string>;
+} => {
+  const allIdsExceptConductor = Object.keys(services ?? {}).filter(
+    id => id !== conductorServiceName,
+  );
+
+  return addNetworkToServices(services, allIdsExceptConductor, networkName);
+};
+
+/**
  * Apply platform-specific adjustments (GLUESYNC_HOST + network + volumes).
  * - Network is applied only on Windows.
  * - On non-Windows, volumes are still normalized.
@@ -181,6 +224,17 @@ const autoAdoptServices = async (): Promise<{
       networkName,
     );
 
+    // Add network to ALL services present in compose (except conductor)
+    // NOTE: compute this early so we can:
+    // - include it in the early-exit guard
+    // - merge it into baseServices in the unlabeledIds>0 branch
+    const { services: networkAllServices, updatedIds: networkAllUpdatedIds } =
+      addNetworkToAllServicesExceptConductor(
+        composeJson.services,
+        networkName,
+        conductorServiceName,
+      );
+
     const unlabeledIds = allServiceIds.filter(
       id => !alreadyLabeledIds.includes(id),
     );
@@ -191,7 +245,8 @@ const autoAdoptServices = async (): Promise<{
         removedDependsOnIds.length === 0 &&
         removedContainerNameIds.length === 0 &&
         platformAdjustedIds.length === 0 &&
-        envFileUpdatedIds.length === 0
+        envFileUpdatedIds.length === 0 &&
+        networkAllUpdatedIds.length === 0
       ) {
         return {
           success: true,
@@ -200,14 +255,20 @@ const autoAdoptServices = async (): Promise<{
         };
       }
 
-      const updatedComposeFile = {
-        ...cleanedComposeJson,
-        services: {
-          ...cleanedComposeJson.services,
-          ...platformAdjustedLabeledServices,
-          ...envFileServices,
+      const updatedComposeFile = ensureNetworkDefinition(
+        {
+          ...composeJson,
+          services: mergeServices([
+            composeJson.services,
+            cleanedServicesContainerName,
+            platformAdjustedLabeledServices,
+            envFileServices,
+            networkAllServices,
+          ]),
         },
-      };
+        networkName,
+        isWindows,
+      );
 
       await writeComposeFile(updatedComposeFile);
 
@@ -218,17 +279,21 @@ const autoAdoptServices = async (): Promise<{
           ...removedContainerNameIds,
           ...platformAdjustedIds,
           ...envFileUpdatedIds,
+          ...networkAllUpdatedIds,
         ],
         unmatchedIds: [],
       };
     }
 
     // Base services: already-labeled services are cleaned + platform-adjusted (except third-party) + env_file
-    const baseServices: Record<string, RawComposeService> = {
-      ...cleanedComposeJson.services,
-      ...platformAdjustedLabeledServices,
-      ...envFileServices,
-    };
+    // IMPORTANT: include networkAllServices here too, otherwise the network changes are dropped on write.
+    const baseServices: Record<string, RawComposeService> = mergeServices([
+      composeJson.services,
+      cleanedServicesContainerName,
+      platformAdjustedLabeledServices,
+      envFileServices,
+      networkAllServices,
+    ]);
 
     type AdoptResult = Readonly<{
       id: string;
@@ -405,12 +470,13 @@ const autoAdoptServices = async (): Promise<{
       .filter(r => r.unmatched)
       .map(r => r.id);
 
-    // If no newly adopted services and no depends_on was removed and no env_file changes, bail out
+    // If no newly adopted services and no depends_on was removed and no env_file changes and no network changes, bail out
     if (
       updatedIds.length === 0 &&
       removedDependsOnIds.length === 0 &&
-      removedContainerNameIds.length === 0 &&
-      envFileUpdatedIds.length === 0
+      envFileUpdatedIds.length === 0 &&
+      networkAllUpdatedIds.length === 0 &&
+      removedContainerNameIds.length === 0
     ) {
       return {
         success: true,
@@ -425,13 +491,14 @@ const autoAdoptServices = async (): Promise<{
       id => !alreadyLabeledIds.includes(id),
     );
 
-    const updatedComposeFile = {
-      ...cleanedComposeJson,
-      services: {
-        ...baseServices,
-        ...updatedServices,
+    const updatedComposeFile = ensureNetworkDefinition(
+      {
+        ...composeJson,
+        services: mergeServices([baseServices, updatedServices]),
       },
-    };
+      networkName,
+      isWindows,
+    );
 
     await writeComposeFile(updatedComposeFile);
 
@@ -442,11 +509,11 @@ const autoAdoptServices = async (): Promise<{
         ...removedContainerNameIds,
         ...newlyAdopted,
         ...envFileUpdatedIds,
+        ...networkAllUpdatedIds,
       ],
       unmatchedIds,
     };
   } catch (error) {
-    // eslint-disable-next-line no-console
     console.error(
       `Failed to apply Conductor labels: ${
         error instanceof Error ? error.message : String(error)
