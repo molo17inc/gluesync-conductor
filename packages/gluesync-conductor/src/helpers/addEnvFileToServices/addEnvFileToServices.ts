@@ -88,14 +88,6 @@ const addEnvFileToServices: AddEnvFile = (services, serviceIds) => {
         return acc;
       }
 
-      // TODO remove when chronos is fixed: Skip env_file injection for Chronos on Windows
-      if (isWindows && id === 'gluesync-chronos') {
-        console.log(
-          `addEnvFileToServices: skipping env_file for ${id} on Windows`,
-        );
-        return acc;
-      }
-
       const currentEnvFile = (service as { env_file?: unknown }).env_file;
 
       // already has both required entries -> do nothing
