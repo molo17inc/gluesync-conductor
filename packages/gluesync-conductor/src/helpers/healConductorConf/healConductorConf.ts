@@ -6,7 +6,11 @@ import fetchAgentInfo from '../agentInfo/agentInfo';
 import parseImage from '../parseImage/parseImage';
 import getVersionByChannel from '../releaseChannel/getVersionByChannel';
 import buildEnvFileConf from '../buildEnvFileConf/buildEnvFileConf';
-import { EnvFile, EnvFileElement } from '../../models/composeFile.model';
+import {
+  EnvFile,
+  EnvFileElement,
+  RawComposeService,
+} from '../../models/composeFile.model';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
@@ -205,12 +209,20 @@ const healConductorConf = async (): Promise<boolean> => {
 
   const healedNetworks: ReadonlyArray<string> =
     currentNetworks && currentNetworks.length > 0
-      ? [...currentNetworks, networkName]
+      ? currentNetworks.includes(networkName)
+        ? currentNetworks
+        : [...currentNetworks, networkName]
       : [networkName];
+
+  // ----- CONTAINER_NAME HEALING -----
+  const { container_name: containerName, ...serviceWithNoContainerName } =
+    service as RawComposeService & { container_name?: string };
+
+  const containerNameChanged = !!containerName;
 
   // ----- BASE SERVICE -----
   const baseService: any = {
-    ...service,
+    ...serviceWithNoContainerName,
     ...(envChanged ? { environment: healedEnvArray } : {}),
     ...(envFileChanged ? { env_file: finalEnvFile } : {}),
     ...(networkChanged ? { networks: healedNetworks } : {}),
@@ -238,6 +250,7 @@ const healConductorConf = async (): Promise<boolean> => {
 
   // ----- is changed DETECTION -----
   const isChanged =
+    containerNameChanged ||
     volumesChanged ||
     envChanged ||
     envFileChanged ||
