@@ -18,10 +18,6 @@ const pickResource = <T extends string | number | null | undefined>(
     : newValue || oldValue;
 
 const mergeTwoServices: MergeTwoServices = (service1, service2) => {
-  console.log(
-    `Deploy here!: ${JSON.stringify(service1?.deploy)} ${JSON.stringify(service2?.deploy)}`,
-  );
-
   const limCpus = pickResource(
     service2?.deploy?.resources?.limits?.cpus,
     service1?.deploy?.resources?.limits?.cpus,
@@ -42,18 +38,26 @@ const mergeTwoServices: MergeTwoServices = (service1, service2) => {
   return {
     ...service1,
     ...service2,
-    deploy: {
-      resources: {
-        reservations: {
-          ...(resvCpus && { cpus: resvCpus }),
-          ...(resvMemory && { memory: resvMemory }),
-        },
-        limits: {
-          ...(limCpus && { cpus: limCpus }),
-          ...(limMemory && { memory: limMemory }),
-        },
+    ...((resvCpus || resvMemory || limCpus || limMemory) && {
+      deploy: {
+        ...((resvCpus || resvMemory || limCpus || limMemory) && {
+          resources: {
+            ...((resvCpus || resvMemory) && {
+              reservations: {
+                ...(resvCpus && { cpus: resvCpus }),
+                ...(resvMemory && { memory: resvMemory }),
+              },
+            }),
+            ...((limCpus || limMemory) && {
+              limits: {
+                ...(limCpus && { cpus: limCpus }),
+                ...(limMemory && { memory: limMemory }),
+              },
+            }),
+          },
+        }),
       },
-    },
+    }),
     ...(
       Object.keys(
         composeServiceFieldConfig,

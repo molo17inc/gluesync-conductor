@@ -1,17 +1,23 @@
 import {
-  EXCLUDED_SERVICES,
+  THIRD_PARTY_SERVICES,
   FetchAllServicesInCompose,
 } from './fetchAllServicesInCompose.model';
 
 const fetchAllServicesInCompose: FetchAllServicesInCompose = (
   composeJson,
   reorder = false,
+  includeThirdParty = false,
 ) => {
-  if (!composeJson.services) return [];
+  if (!composeJson.services) {
+    return [];
+  }
 
-  const services = Object.keys(composeJson.services).filter(
-    id => !EXCLUDED_SERVICES.has(id),
-  );
+  const services = Object.keys(composeJson.services).filter(id => {
+    if (includeThirdParty) {
+      return true;
+    }
+    return !THIRD_PARTY_SERVICES.has(id);
+  });
 
   if (!reorder) {
     return services;

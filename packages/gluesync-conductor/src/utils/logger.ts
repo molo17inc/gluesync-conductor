@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import pino, { Logger, LoggerOptions } from 'pino';
-import { createStream } from 'rotating-file-stream';
+import { createStream, FileSize } from 'rotating-file-stream';
 
 const DEFAULT_LOG_DIR = '/opt/gluesync/logs';
 const DEFAULT_LOG_FILENAME = 'gluesync-conductor.log';
@@ -26,8 +26,8 @@ const getCandidateDirectories = (): string[] => {
 const resolveLogFilename = (): string =>
   process.env.GLUESYNC_LOG_FILE || DEFAULT_LOG_FILENAME;
 
-const resolveRotationSize = (): string =>
-  process.env.GLUESYNC_LOG_ROTATION_SIZE || DEFAULT_ROTATION_SIZE;
+const resolveRotationSize = (): FileSize =>
+  (process.env.GLUESYNC_LOG_ROTATION_SIZE || DEFAULT_ROTATION_SIZE) as FileSize;
 
 const loggerCache = { current: null as Logger | null };
 
@@ -55,6 +55,26 @@ const ensureLogDirectory = (): string | null => {
   return foundDirectory ? foundDirectory.directory : null;
 };
 
+/**
+ * Format timestamp using LOCAL system timezone only.
+ * Matches debug-tz output format: DD/MM/YYYY HH:mm:ss TZ
+ */
+const buildTimestamp = (): string => {
+  const tz = process.env.TZ || undefined;
+  const localTime = new Date().toLocaleString('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+
+  return `,"time":"${localTime}"`;
+};
+
 const buildLogger = (): Logger => {
   const directory = ensureLogDirectory();
   const filename = resolveLogFilename();
@@ -62,6 +82,7 @@ const buildLogger = (): Logger => {
 
   const options: LoggerOptions = {
     level: (process.env.LOG_LEVEL || 'info').toLowerCase(),
+    timestamp: buildTimestamp,
   };
 
   if (!directory) {

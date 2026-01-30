@@ -1,9 +1,8 @@
 import { RawComposeService } from '../../models/composeFile.model';
 
-export type AddPlatformVolumes = (
-  services: Record<string, RawComposeService>,
-  serviceIds: readonly string[],
-  isWindows: boolean,
+export type AddEnvFile = (
+  services: Readonly<Record<string, RawComposeService>>,
+  serviceIds: ReadonlyArray<string>,
 ) => {
   services: Record<string, RawComposeService>;
   updatedIds: ReadonlyArray<string>;

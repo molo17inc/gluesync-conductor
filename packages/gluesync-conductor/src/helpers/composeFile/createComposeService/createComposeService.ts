@@ -3,6 +3,7 @@ import {
   ComposeVolume,
   LabelPrefix,
 } from '../../../models/composeFile.model';
+import buildEnvFileConf from '../../buildEnvFileConf/buildEnvFileConf';
 import mergeComposeKeyValueField from '../mergeKeyValueStrings/mergeKeyValueStrings';
 import { CreateComposeService } from './createComposeService.model';
 
@@ -44,7 +45,9 @@ const mapVolumes = (
     // String input: "host:container[:mode]"
     if (typeof vol === 'string') {
       const raw = vol.trim();
-      if (!raw) return acc;
+      if (!raw) {
+        return acc;
+      }
 
       // Split into host, container, mode (mode is optional)
       const [host = '', container = '', mode] = raw.split(':');
@@ -53,7 +56,9 @@ const mapVolumes = (
       const containerT = container.trim();
       const modeT = mode?.trim();
 
-      if (!hostT || !containerT) return acc;
+      if (!hostT || !containerT) {
+        return acc;
+      }
 
       // Normalize mode to only 'rw' or 'ro' if present; ignore others
       const normalizedMode =
@@ -71,7 +76,9 @@ const mapVolumes = (
       const containerT = String(vol.container ?? '').trim();
       const modeT = vol.mode?.toString().trim();
 
-      if (!hostT || !containerT) return acc;
+      if (!hostT || !containerT) {
+        return acc;
+      }
 
       const normalizedMode =
         modeT === 'rw' || modeT === 'ro' ? modeT : undefined;
@@ -179,19 +186,17 @@ const createComposeService: CreateComposeService = (
         ...(isWindows && { GLUESYNC_HOST: ['gluesync-core-hub'] }),
       }),
     }).map(([key, value]) => `${key}=${value}`),
-
     ...(ports && ports.length > 0 && { ports: mapPorts(ports) }),
-
     volumes: mergeComposeKeyValueField(
       'volumes',
       defaultVolumes,
       mapVolumes(volumes),
     ),
 
-    ...(isWindows && { networks: ['gluesync-windows-net'] }),
-
+    networks: [isWindows ? 'gluesync-windows-net' : 'gluesync-net'],
     healthcheck,
     depends_on: dependsOn,
+    env_file: buildEnvFileConf(),
   };
 };
 

@@ -6,11 +6,24 @@ import parseImage from '../parseImage/parseImage';
 import getVersionByChannel from '../releaseChannel/getVersionByChannel';
 import { CanUpdateContainers } from './canUpdateContainers.model';
 
+const getWindowsYearFromTag = (tag: string): '2019' | '2022' | null => {
+  const lower = (tag || '').toLowerCase();
+  if (lower.includes('ltsc2022')) {
+    return '2022';
+  }
+  if (lower.includes('ltsc2019')) {
+    return '2019';
+  }
+  return null;
+};
+
 const canUpdateContainers: CanUpdateContainers = async (
   containerIds,
   composeJson,
   releaseChannel,
 ) => {
+  const isWindows = (process.env.IS_WINDOWS || '').toLowerCase() === 'true';
+
   // Build promises tagged with service type
   const taggedPromises = containerIds.map(id => {
     const service = composeJson.services?.[id];
@@ -18,7 +31,7 @@ const canUpdateContainers: CanUpdateContainers = async (
       return Promise.reject(new Error(`Service ${id} not found`));
     }
 
-    const { shortImageName } = parseImage(service.image);
+    const parsed = parseImage(service.image);
 
     const serviceTypeArray: ReadonlyArray<string> = Array.isArray(
       service?.labels,
@@ -30,7 +43,16 @@ const canUpdateContainers: CanUpdateContainers = async (
       .find(label => label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
       ?.split('=')[1] as ConductorServiceTypes | undefined;
 
-    return fetchAgentInfo(shortImageName).then(agentInfo => ({
+    // Append Windows year ONLY for third-party services
+    const isThirdParty = serviceType === 'third-party';
+    const windowsYear =
+      isWindows && isThirdParty ? getWindowsYearFromTag(parsed.tag) : null;
+
+    const imageNameToFetch = windowsYear
+      ? `${parsed.shortImageName}-win-${windowsYear}`
+      : parsed.shortImageName;
+
+    return fetchAgentInfo(imageNameToFetch).then(agentInfo => ({
       id,
       agentInfo,
       type: serviceType,
@@ -75,7 +97,10 @@ const canUpdateContainers: CanUpdateContainers = async (
   const agentsAndCoreHub = fulfilledInfos.filter(
     info => info.type === 'agent' || info.type === 'core-hub',
   );
-  const modules = fulfilledInfos.filter(info => info.type === 'module');
+
+  const modules = fulfilledInfos.filter(
+    info => info.type === 'module' || info.type === 'third-party',
+  );
 
   // Collect agent versions
   const agentVersions = agentsAndCoreHub.map(info =>
@@ -87,6 +112,7 @@ const canUpdateContainers: CanUpdateContainers = async (
     coreHubVersionInfo,
     releaseChannel,
   );
+
   const allAgentVersions = coreHubVersion
     ? [...agentVersions, coreHubVersion]
     : agentVersions;
@@ -110,12 +136,10 @@ const canUpdateContainers: CanUpdateContainers = async (
     message: '',
     data: {
       agentVersion: allAgentVersions[0] ?? null,
-      modules: [
-        ...modules.map(info => ({
-          id: info.id,
-          version: getVersionByChannel(info.agentInfo, releaseChannel) ?? null,
-        })),
-      ],
+      modules: modules.map(info => ({
+        id: info.id,
+        version: getVersionByChannel(info.agentInfo, releaseChannel) ?? null,
+      })),
     },
   };
 };

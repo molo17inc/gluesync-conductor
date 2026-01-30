@@ -1,7 +1,9 @@
 const toLabelStrings = (
   labels: Readonly<object> | ReadonlyArray<string> | undefined,
 ): ReadonlyArray<string> => {
-  if (!labels) return [];
+  if (!labels) {
+    return [];
+  }
 
   if (Array.isArray(labels)) {
     // Compose array form: ['key=value', ...]

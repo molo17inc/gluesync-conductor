@@ -15,11 +15,13 @@ const updateNormalBulk: UpdateNormalBulk = async (
 ): Promise<UpdateNormalBulkResult> => {
   const initialEffectiveIds: ReadonlyArray<string> =
     requestIds.length === 0
-      ? fetchAllServicesInCompose(composeJson, true)
+      ? fetchAllServicesInCompose(composeJson, true, true)
           .filter(id => id !== 'gluesync-conductor')
           .filter(id => {
             const service = composeJson.services?.[id];
-            if (!service) return false;
+            if (!service) {
+              return false;
+            }
 
             const serviceTypeArray: ReadonlyArray<string> = Array.isArray(
               service?.labels,

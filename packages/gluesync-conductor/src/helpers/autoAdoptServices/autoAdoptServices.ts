@@ -6,18 +6,69 @@ import {
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
 import fetchAllServicesInCompose from '../fetchAllServicesInCompose/fetchAllServicesInCompose';
+import { THIRD_PARTY_SERVICES } from '../fetchAllServicesInCompose/fetchAllServicesInCompose.model';
 import parseImage from '../parseImage/parseImage';
 import agentsJson from '../../../agents.json';
 import extractKeyValue from '../composeFile/extractKeyValue/extractKeyValue';
 import removeDependsOnFromServices from '../removeDependsOnFromServices/removeDependsOnFromServices';
 import addGluesyncHostToAgents from '../addGluesyncHostToAgents/addGluesyncHostToAgents';
 import addNetworkToServices from '../addNetworkToServices/addNetworkToServices';
-import addPlatformVolumes from '../addPlatformVolumes/addPlatformVolumes';
 import toLabelStrings from '../../utils/toLabelStrings';
+import retagThirdPartyImageToMolo17GA from '../retagThirdPartyImageToMolo17/retagThirdPartyImageToMolo17';
+import addEnvFileToServices from '../addEnvFileToServices/addEnvFileToServices';
+import { mergeServices } from '../composeFile/mergeComposeFiles/mergeComposeFiles';
+import { ConductorServiceTypes } from '../../models/conductor.model';
+import removeContainerNameFromServices from '../removeContainerNameFromServices/removeContainerNameFromServices';
+
+/**
+ * Ensure the given network exists at the root compose level.
+ * To use a named network across services, it must be declared under top-level
+ * `networks`, and services must reference it via `services.<svc>.networks`.
+ */
+const ensureNetworkDefinition = (
+  composeJson: any,
+  networkName: string,
+  isWindows: boolean,
+) => {
+  if (composeJson.networks?.[networkName]) {
+    return composeJson;
+  }
+
+  return {
+    ...composeJson,
+    networks: {
+      ...composeJson.networks,
+      [networkName]: {
+        name: networkName,
+        driver: isWindows ? 'nat' : 'bridge',
+      },
+    },
+  };
+};
+
+/**
+ * Add a network to ALL services in the compose, excluding the conductor.
+ * This avoids repeating per-service "addNetworkToServices" calls all over the flow.
+ */
+const addNetworkToAllServicesExceptConductor = (
+  services: Readonly<Record<string, RawComposeService>>,
+  networkName: string,
+  conductorServiceName: string,
+): {
+  services: Record<string, RawComposeService>;
+  updatedIds: ReadonlyArray<string>;
+} => {
+  const allIdsExceptConductor = Object.keys(services ?? {}).filter(
+    id => id !== conductorServiceName,
+  );
+
+  return addNetworkToServices(services, allIdsExceptConductor, networkName);
+};
 
 /**
  * Apply platform-specific adjustments (GLUESYNC_HOST + network + volumes).
- * On non-Windows, only volumes are normalized.
+ * - Network is applied only on Windows.
+ * - On non-Windows, volumes are still normalized.
  * Returns only the updated services and their ids.
  */
 const applyPlatformAdjustments = (
@@ -25,57 +76,61 @@ const applyPlatformAdjustments = (
   serviceIds: ReadonlyArray<string>,
   isWindows: boolean,
   gluesyncHostDefault: string,
-  windowsNetworkName: string,
+  networkName: string,
 ): {
   services: Record<string, RawComposeService>;
   updatedIds: ReadonlyArray<string>;
 } => {
+  // Step 1: Windows -> add GLUESYNC_HOST to agents; Non-Windows -> normalize volumes
   const step1 = isWindows
     ? addGluesyncHostToAgents(services, serviceIds, gluesyncHostDefault)
-    : addPlatformVolumes(services, serviceIds, false);
+    : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
-  const afterStep1Services: Readonly<Record<string, RawComposeService>> = {
-    ...services,
-    ...step1.services,
-  };
+  const afterStep1Services: Readonly<Record<string, RawComposeService>> =
+    mergeServices([services, step1.services]);
 
+  // Step 2: Network only on Windows
   const step2 = isWindows
-    ? addNetworkToServices(afterStep1Services, serviceIds, windowsNetworkName)
+    ? addNetworkToServices(afterStep1Services, serviceIds, networkName)
     : { services: {}, updatedIds: [] as ReadonlyArray<string> };
 
-  const afterStep2Services: Readonly<Record<string, RawComposeService>> = {
-    ...afterStep1Services,
-    ...step2.services,
-  };
+  const finalServices: Readonly<Record<string, RawComposeService>> =
+    mergeServices([afterStep1Services, step2.services]);
 
-  const step3 = isWindows
-    ? addPlatformVolumes(afterStep2Services, serviceIds, true)
-    : { services: {}, updatedIds: [] as ReadonlyArray<string> };
-
-  const finalServices: Readonly<Record<string, RawComposeService>> = {
-    ...afterStep2Services,
-    ...step3.services,
-  };
-
-  const allUpdatedIds: ReadonlyArray<string> = [
-    ...step1.updatedIds,
-    ...step2.updatedIds,
-    ...step3.updatedIds,
-  ];
-
-  const changedServices = Object.fromEntries(
-    allUpdatedIds.map(id => [id, finalServices[id]]),
-  ) as Record<string, RawComposeService>;
+  const allUpdatedIds = [
+    ...new Set([...step1.updatedIds, ...step2.updatedIds]),
+  ] as ReadonlyArray<string>;
 
   return {
-    services: changedServices,
+    services: finalServices as Record<string, RawComposeService>,
     updatedIds: allUpdatedIds,
   };
 };
 
+const buildFinalLabels = (
+  initialLabels: ReadonlyArray<string>,
+  conductorType: ConductorServiceTypes,
+  serviceId: string,
+): ReadonlyArray<string> => {
+  const base = initialLabels
+    .filter(l => !l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
+    .filter(l => !l.startsWith(`${LabelPrefix.CONDUCTOR}.service_id=`));
+
+  return [
+    ...base,
+    `${LabelPrefix.CONDUCTOR}.type=${conductorType}`,
+    ...(conductorType === 'agent'
+      ? [`${LabelPrefix.CONDUCTOR}.service_id=${serviceId}`]
+      : []),
+  ];
+};
+
 /**
  * Function to apply Conductor labels to services in docker-compose.yml.
- * Services with type labels will be handled by Conductor
+ * Services with type labels will be handled by Conductor.
+ *
+ * Third-party services are always adopted by id, but must not be mutated
+ * (no env/networks/volumes/depends_on changes).
  */
 const autoAdoptServices = async (): Promise<{
   success: boolean;
@@ -95,63 +150,109 @@ const autoAdoptServices = async (): Promise<{
 
     const gluesyncHostDefault =
       process.env.GLUESYNC_HOST ?? 'gluesync-core-hub';
-
-    const windowsNetworkName = 'gluesync-windows-net';
-
     const conductorServiceName =
       process.env.CONDUCTOR_NAME || 'gluesync-conductor';
-
     const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
-    // Extract all service IDs without the EXCLUDED_SERVICES
+    // Network name is still computed, but applied only on Windows.
+    const networkName = isWindows ? 'gluesync-windows-net' : 'gluesync-net';
+
+    // Always include third-party in the scan.
     const allServiceIds: readonly string[] = fetchAllServicesInCompose(
       composeJson,
       false,
+      true,
     );
+
+    // Remove depends_on + container_name for ALL services except conductor
+    const idsToClean = allServiceIds.filter(id => id !== conductorServiceName);
+
+    // First pass: remove depends_on from already-labeled services
+    const { cleanedServices: cleanedServicesDependsOn, removedDependsOnIds } =
+      removeDependsOnFromServices(composeJson, idsToClean);
+
+    // Second pass: remove container_name from already-labeled services
+    // IMPORTANT: this helper expects an object with `.services`, so thread the previous cleaned map as `.services`.
+    const {
+      cleanedServices: cleanedServicesContainerName,
+      removedContainerNameIds,
+    } = removeContainerNameFromServices(
+      { ...composeJson, services: cleanedServicesDependsOn },
+      idsToClean,
+    );
+
+    // ComposeJson with both cleaners applied (used as the base for everything below)
+    const cleanedComposeJson = {
+      ...composeJson,
+      services: {
+        ...composeJson.services,
+        ...cleanedServicesContainerName,
+      },
+    };
+
+    // Add env_file to ALL services if not windows.
+    const { services: envFileServices, updatedIds: envFileUpdatedIds } =
+      isWindows
+        ? {
+            services: {} as Record<string, RawComposeService>,
+            updatedIds: [] as string[],
+          }
+        : addEnvFileToServices(cleanedComposeJson.services, allServiceIds);
 
     // Services that ALREADY have a conductor type label
     const alreadyLabeledIds = allServiceIds.filter(id => {
-      const service = composeJson.services?.[id];
-      if (!service) return false;
+      const service = cleanedComposeJson.services?.[id];
+      if (!service) {
+        return false;
+      }
 
-      // FIX: Use toLabelStrings to handle both array and object formats
       const labelStrings = toLabelStrings(service.labels);
 
-      const hasConductorType = labelStrings.some(label =>
+      return labelStrings.some(label =>
         label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`),
       );
-
-      return hasConductorType;
     });
 
-    // Exclude conductor from platform adjustments
+    // Exclude conductor + third-party from platform adjustments.
     const adjustedIds = alreadyLabeledIds.filter(
-      id => id !== conductorServiceName,
+      id => id !== conductorServiceName && !THIRD_PARTY_SERVICES.has(id),
     );
 
-    // First pass: remove depends_on
-    const { cleanedServices, removedDependsOnIds } =
-      removeDependsOnFromServices(composeJson, alreadyLabeledIds);
-
+    // Apply platform adjustments to already-labeled services (except third-party)
     const {
       services: platformAdjustedLabeledServices,
       updatedIds: platformAdjustedIds,
     } = applyPlatformAdjustments(
-      composeJson.services,
+      cleanedComposeJson.services,
       adjustedIds,
       isWindows,
       gluesyncHostDefault,
-      windowsNetworkName,
+      networkName,
     );
+
+    // Add network to ALL services present in compose (except conductor)
+    // NOTE: compute this early so we can:
+    // - include it in the early-exit guard
+    // - merge it into baseServices in the unlabeledIds>0 branch
+    const { services: networkAllServices, updatedIds: networkAllUpdatedIds } =
+      addNetworkToAllServicesExceptConductor(
+        cleanedComposeJson.services,
+        networkName,
+        conductorServiceName,
+      );
 
     const unlabeledIds = allServiceIds.filter(
       id => !alreadyLabeledIds.includes(id),
     );
 
+    // Nothing new to label: only write file if we actually mutated labeled services
     if (unlabeledIds.length === 0) {
       if (
         removedDependsOnIds.length === 0 &&
-        platformAdjustedIds.length === 0
+        removedContainerNameIds.length === 0 &&
+        platformAdjustedIds.length === 0 &&
+        envFileUpdatedIds.length === 0 &&
+        networkAllUpdatedIds.length === 0
       ) {
         return {
           success: true,
@@ -160,40 +261,85 @@ const autoAdoptServices = async (): Promise<{
         };
       }
 
-      const updatedComposeFile = {
-        ...composeJson,
-        services: {
-          ...composeJson.services,
-          ...{ ...platformAdjustedLabeledServices, ...cleanedServices },
+      const updatedComposeFile = ensureNetworkDefinition(
+        {
+          ...composeJson,
+          services: mergeServices([
+            cleanedComposeJson.services,
+            platformAdjustedLabeledServices,
+            envFileServices,
+            networkAllServices,
+          ]),
         },
-      };
+        networkName,
+        isWindows,
+      );
 
       await writeComposeFile(updatedComposeFile);
 
       return {
         success: true,
-        updatedIds: [...removedDependsOnIds, ...platformAdjustedIds],
+        updatedIds: [
+          ...removedDependsOnIds,
+          ...removedContainerNameIds,
+          ...platformAdjustedIds,
+          ...envFileUpdatedIds,
+          ...networkAllUpdatedIds,
+        ],
         unmatchedIds: [],
       };
     }
 
-    // From this point on, work on a base services object where
-    // already-labeled services are already cleaned from depends_on.
-    const baseServices: Record<string, RawComposeService> = {
-      ...composeJson.services,
-      ...platformAdjustedLabeledServices,
-    };
+    // Base services: already-labeled services are cleaned + platform-adjusted (except third-party) + env_file
+    // IMPORTANT: include networkAllServices here too, otherwise the network changes are dropped on write.
+    const baseServices: Record<string, RawComposeService> = mergeServices([
+      cleanedComposeJson.services,
+      platformAdjustedLabeledServices,
+      envFileServices,
+      networkAllServices,
+    ]);
 
-    // Second pass: adopt UNLABELED services (and ensure depends_on removed via utility)
-    const { updatedServices, updatedIds, unmatchedIds } = unlabeledIds.reduce(
-      (acc, id) => {
+    type AdoptResult = Readonly<{
+      id: string;
+      service: RawComposeService;
+      updated: boolean;
+      unmatched: boolean;
+    }>;
+
+    const adoptionResults: ReadonlyArray<AdoptResult> = await Promise.all(
+      unlabeledIds.map(async (id): Promise<AdoptResult> => {
         const service = baseServices?.[id];
         if (!service) {
           throw new Error(`Service ${id} not found`);
         }
 
-        // FIX: Use toLabelStrings to handle both array and object formats
+        const isThirdParty = THIRD_PARTY_SERVICES.has(id);
+
+        // Normalize labels into string array for manipulation.
         const initialLabels = toLabelStrings(service.labels);
+
+        // THIRD-PARTY: adopt by id only; do not modify env/networks/volumes/depends_on.
+        // Only allowed change: optional retag to molo17/<repo>:<latestGA> if helper resolves a version.
+        if (isThirdParty) {
+          const retaggedImage = await retagThirdPartyImageToMolo17GA(
+            service.image,
+            isWindows,
+            process.env.WINDOWS_YEAR,
+          );
+
+          return {
+            id,
+            updated: true,
+            unmatched: false,
+            service: {
+              ...service,
+              ...(retaggedImage && {
+                image: retaggedImage,
+                labels: buildFinalLabels(initialLabels, 'third-party', id),
+              }),
+            },
+          };
+        }
 
         const { imageName } = parseImage(service.image);
 
@@ -202,19 +348,16 @@ const autoAdoptServices = async (): Promise<{
         );
 
         if (!agentEntry) {
-          // No match in agents.json → track as unmatched
           return {
-            updatedServices: {
-              ...acc.updatedServices,
-              [id]: { ...service, labels: initialLabels },
-            },
-            updatedIds: acc.updatedIds,
-            unmatchedIds: [...acc.unmatchedIds, id],
+            id,
+            updated: false,
+            unmatched: true,
+            service: { ...service, labels: initialLabels },
           };
         }
 
-        // Decide conductor type with stricter rules
-        const conductorType: string | null = (() => {
+        // Decide conductor type
+        const conductorType: ConductorServiceTypes | null = (() => {
           if (agentEntry.dockerHubRepoName === 'gluesync-core-hub') {
             return 'core-hub';
           }
@@ -234,56 +377,66 @@ const autoAdoptServices = async (): Promise<{
         })();
 
         if (!conductorType) {
-          // No valid conductor type → track as unmatched
           return {
-            updatedServices: {
-              ...acc.updatedServices,
-              [id]: { ...service, labels: initialLabels },
-            },
-            updatedIds: acc.updatedIds,
-            unmatchedIds: [...acc.unmatchedIds, id],
+            id,
+            updated: false,
+            unmatched: true,
+            service: { ...service, labels: initialLabels },
           };
         }
 
-        // Use the utility to drop depends_on for this service
-        const { cleanedServices: cleanedSingle } = removeDependsOnFromServices(
-          { ...composeJson, services: baseServices },
-          [id],
-        );
+        // Remove depends_on + container_name for this service (non-third-party only).
+        const composeForSingle = {
+          ...cleanedComposeJson,
+          services: baseServices,
+        };
 
-        const cleanedServiceBase = cleanedSingle[id] ?? service;
+        const { cleanedServices: cleanedDependsSingle } =
+          removeDependsOnFromServices(composeForSingle, [id]);
+
+        const { cleanedServices: cleanedContainerSingle } =
+          removeContainerNameFromServices(
+            { ...cleanedComposeJson, services: cleanedDependsSingle },
+            [id],
+          );
+
+        const cleanedServiceBase = cleanedContainerSingle[id] ?? service;
 
         const platformAdjustedService: RawComposeService = (() => {
-          // Skip conductor → return cleaned base unchanged
+          // Skip conductor service itself
           if (id === conductorServiceName) {
             return cleanedServiceBase;
           }
 
-          const singleServiceMap = { [id]: cleanedServiceBase };
+          const singleServiceMap: Record<string, RawComposeService> = {
+            [id]: cleanedServiceBase,
+          };
 
-          const adjustedServices: Record<string, RawComposeService> =
-            conductorType === 'agent'
-              ? applyPlatformAdjustments(
-                  singleServiceMap,
-                  [id],
-                  isWindows,
-                  gluesyncHostDefault,
-                  windowsNetworkName,
-                ).services
-              : addNetworkToServices(singleServiceMap, [id], windowsNetworkName)
-                  .services;
+          // Agents: full adjustments. Modules/Core-hub: network only (but network is Windows-only in helpers below).
+          const adjustedMap: Record<string, RawComposeService> = (() => {
+            if (conductorType === 'agent') {
+              return applyPlatformAdjustments(
+                singleServiceMap,
+                [id],
+                isWindows,
+                gluesyncHostDefault,
+                networkName,
+              ).services;
+            }
 
-          return adjustedServices[id] ?? cleanedServiceBase;
+            // Network only on Windows
+            if (isWindows) {
+              return addNetworkToServices(singleServiceMap, [id], networkName)
+                .services;
+            }
+
+            return singleServiceMap;
+          })();
+
+          return adjustedMap[id] ?? cleanedServiceBase;
         })();
 
-        // Add conductor type label and service_id label
-        const finalLabels = [
-          ...initialLabels,
-          `${LabelPrefix.CONDUCTOR}.type=${conductorType}`,
-          ...(conductorType === 'agent'
-            ? [`${LabelPrefix.CONDUCTOR}.service_id=${id}`]
-            : []),
-        ];
+        const finalLabels = buildFinalLabels(initialLabels, conductorType, id);
 
         // Normalize environment
         const normalizedEnv = extractKeyValue(
@@ -296,27 +449,42 @@ const autoAdoptServices = async (): Promise<{
         );
 
         return {
-          updatedServices: {
-            ...acc.updatedServices,
-            [id]: {
-              ...platformAdjustedService,
-              labels: finalLabels,
-              environment: envArray,
-            },
+          id,
+          updated: true,
+          unmatched: false,
+          service: {
+            ...platformAdjustedService,
+            // Preserve env_file if present (added by addEnvFileToServices or originally set)
+            env_file: platformAdjustedService.env_file ?? service.env_file,
+            labels: finalLabels,
+            environment: envArray,
           },
-          updatedIds: [...acc.updatedIds, id],
-          unmatchedIds: acc.unmatchedIds,
         };
-      },
-      {
-        updatedServices: {} as Record<string, RawComposeService>,
-        updatedIds: [] as ReadonlyArray<string>,
-        unmatchedIds: [] as ReadonlyArray<string>,
-      },
+      }),
     );
 
-    // If no newly adopted services and no depends_on was removed, bail out
-    if (updatedIds.length === 0 && removedDependsOnIds.length === 0) {
+    const updatedServices: Record<string, RawComposeService> =
+      Object.fromEntries(adoptionResults.map(r => [r.id, r.service])) as Record<
+        string,
+        RawComposeService
+      >;
+
+    const updatedIds: ReadonlyArray<string> = adoptionResults
+      .filter(r => r.updated)
+      .map(r => r.id);
+
+    const unmatchedIds: ReadonlyArray<string> = adoptionResults
+      .filter(r => r.unmatched)
+      .map(r => r.id);
+
+    // If no newly adopted services and no depends_on was removed and no env_file changes and no network changes, bail out
+    if (
+      updatedIds.length === 0 &&
+      removedDependsOnIds.length === 0 &&
+      envFileUpdatedIds.length === 0 &&
+      networkAllUpdatedIds.length === 0 &&
+      removedContainerNameIds.length === 0
+    ) {
       return {
         success: true,
         updatedIds: [],
@@ -330,19 +498,26 @@ const autoAdoptServices = async (): Promise<{
       id => !alreadyLabeledIds.includes(id),
     );
 
-    const updatedComposeFile = {
-      ...composeJson,
-      services: {
-        ...baseServices,
-        ...updatedServices,
+    const updatedComposeFile = ensureNetworkDefinition(
+      {
+        ...composeJson,
+        services: mergeServices([baseServices, updatedServices]),
       },
-    };
+      networkName,
+      isWindows,
+    );
 
     await writeComposeFile(updatedComposeFile);
 
     return {
       success: true,
-      updatedIds: [...removedDependsOnIds, ...newlyAdopted],
+      updatedIds: [
+        ...removedDependsOnIds,
+        ...removedContainerNameIds,
+        ...newlyAdopted,
+        ...envFileUpdatedIds,
+        ...networkAllUpdatedIds,
+      ],
       unmatchedIds,
     };
   } catch (error) {

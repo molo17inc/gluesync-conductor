@@ -71,7 +71,6 @@ services:
       - SSL_ENABLED=true
       - LOG_CONFIG_FILE=C:\\opt\\gluesync\\shared\\logback.xml
       - GRAFANA_REMOTE_ADDRESS=/grafana/d/fecxnzptcq8zkd/core-hub-metrics
-      - WINDOWS_VERSION=2022
     volumes:
       - ./shared:C:\opt\gluesync\shared
       - ./data/core-hub:C:\opt\gluesync\data
@@ -99,12 +98,12 @@ services:
       - com.molo17.conductor.type=module
     environment:
       - BASE_PATH=$BASE_PATH
-      - CORE_HUB_ADDRESS=gluesync-core-hub
+      - GLUESYNC_HOST=gluesync-core-hub
       - LOG_LEVEL=trace
     volumes:
       - \\.\pipe\docker_engine:\\.\pipe\docker_engine
       - ./shared:C:\opt\gluesync\data
-      - .:C:\opt\gluesync-conductor\root-folder
+      - ./:C:\opt\gluesync-conductor\root-folder
       - ./logs:C:\opt\gluesync-conductor\logs
     ports:
       - 5017:1717
@@ -140,7 +139,7 @@ services:
       - gluesync-windows-net
 
   reverse-proxy:
-    image: traefik:nanoserver-ltsc2022
+    image: molo17/traefik:3.6.2-win-nanoserver-ltsc2022
     user: ContainerAdministrator
     ports:
       - 80:80
@@ -195,7 +194,7 @@ services:
 
   # portainer:
   #   # Portainer default credentials: admin | passwordpassword
-  #   image: portainer/portainer-ce:2.33.0-windowsltsc2022-amd64
+  #   image: molo17/portainer:2.35.0-win-nanoserver-ltsc2022
   #   ports:
   #     - 9443:9443
   #   volumes:

@@ -8,8 +8,8 @@ import fetchAgentInfo from '../../../helpers/agentInfo/agentInfo';
 import parseImage from '../../../helpers/parseImage/parseImage';
 import { ReleaseChannelTypes } from '../../../models/conductor.model';
 import getVersionByChannel from '../../../helpers/releaseChannel/getVersionByChannel';
-
 import { LabelPrefix } from '../../../models/composeFile.model';
+import { THIRD_PARTY_SERVICES } from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose.model';
 
 const handler: GetServiceVersionHandler = async (req, reply) => {
   try {
@@ -32,46 +32,83 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     }
 
     // Get actual running version from Docker
+    // Get actual running version from Docker, or fallback to compose image tag if no running container
     const getCurrentVersion = async (
       serviceId: string,
     ): Promise<string | null> => {
       try {
-        // Find containers by Compose labels instead of assuming container name == service key. [web:17]
         const containers = await req.server.docker.listContainers({
           all: true,
           filters: {
-            label: [
-              `${LabelPrefix.COMPOSE}.project=${'gluesync'}`,
-              `${LabelPrefix.COMPOSE}.service=${serviceId}`,
-            ],
+            label: [`${LabelPrefix.COMPOSE}.service=${serviceId}`],
           },
         });
 
-        const selected =
-          containers.find(c => c.State === 'running') ?? containers[0];
+        // No containers at all for this service -> fallback to compose image tag
+        if (!containers || containers.length === 0) {
+          req.log.info(
+            { service: serviceId },
+            'No containers found for service, using compose image tag as fallback',
+          );
+          const svc = composeJson.services?.[serviceId];
+          if (!svc?.image) {
+            return null;
+          }
+          const { tag: composeTag } = parseImage(svc.image);
+          return composeTag.split('-')[0];
+        }
 
+        // Prefer a running container (normalize State)
+        const running = containers.find(
+          c => (c.State || '').toLowerCase() === 'running',
+        );
+
+        if (!running) {
+          // No running container found -> use compose image tag as requested
+          req.log.info(
+            { service: serviceId },
+            'No running container found, using compose image tag as fallback',
+          );
+          const svc = composeJson.services?.[serviceId];
+          if (!svc?.image) {
+            return null;
+          }
+          const { tag: composeTag } = parseImage(svc.image);
+          return composeTag.split('-')[0];
+        }
+
+        // Inspect the running container and parse its image tag
         const inspect = await req.server.docker
-          .getContainer(selected.Id)
+          .getContainer(running.Id)
           .inspect();
-
         const runningImage = inspect.Config.Image;
         const { tag } = parseImage(runningImage);
-
-        // Strip suffix after first dash
         return tag.split('-')[0];
       } catch (err) {
         req.log.warn(
           { service: serviceId, error: err },
           `Failed to get running version for ${serviceId}, falling back to compose file`,
         );
-        return null;
+        // On any unexpected error, fall back to compose file if possible
+        try {
+          const svc = composeJson.services?.[serviceId];
+          if (!svc?.image) {
+            return null;
+          }
+          const { tag: composeTag } = parseImage(svc.image);
+          return composeTag.split('-')[0];
+        } catch {
+          return null;
+        }
       }
     };
 
     // Helper to check if a service needs update based on release channel
     const needsUpdate = async (serviceId: string): Promise<boolean> => {
       const svc = composeJson.services?.[serviceId];
-      if (!svc) return false;
+      if (!svc) {
+        return false;
+      }
 
       const { shortImageName, tag: composeTag } = parseImage(svc.image);
 
@@ -107,12 +144,25 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       fetchAgentInfo(shortImageName),
       (async () => {
         if (id === coreHubName) {
-          // Parallelize: check conductor and chronos updates at the same time
-          const [conductorNeedsUpdate, chronosNeedsUpdate] = await Promise.all([
+          const thirdPartyServices = Array.from(THIRD_PARTY_SERVICES);
+
+          const results = await Promise.all([
             needsUpdate(conductorName),
             needsUpdate(chronosName),
+            ...thirdPartyServices.map(needsUpdate),
           ]);
-          return conductorNeedsUpdate || chronosNeedsUpdate;
+
+          const [
+            conductorNeedsUpdate,
+            chronosNeedsUpdate,
+            ...thirdPartyResults
+          ] = results;
+
+          const thirdPartyNeedsUpdate = thirdPartyResults.some(x => x === true);
+
+          return (
+            conductorNeedsUpdate || chronosNeedsUpdate || thirdPartyNeedsUpdate
+          );
         }
         return false;
       })(),

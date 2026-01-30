@@ -12,7 +12,9 @@ const removeDependsOnFromServices: RemoveDependsOnFromServices = (
   serviceIds.reduce(
     (acc, id) => {
       const service = composeJson.services?.[id];
-      if (!service) return acc;
+      if (!service) {
+        return acc;
+      }
 
       const { depends_on: dependsOn, ...serviceWithNoDependsOn } = service;
 
