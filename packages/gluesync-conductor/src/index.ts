@@ -6,7 +6,9 @@ import Docker from 'dockerode';
 import dockerPlugin from './plugins/docker';
 import swaggerPlugin from './plugins/swagger';
 import gluesyncPlugin from './plugins/gluesync';
-import apiBlockerAsUpdatingPlugin from './plugins/apiBlockerAsUpdating';
+import apiBlockerAsUpdatingPlugin, {
+  enableUpdateMode,
+} from './plugins/apiBlockerAsUpdating';
 import tzFix from './plugins/tzFix';
 
 import httpsRedirectMiddleware from './middleware/httpsRedirect';
@@ -86,6 +88,8 @@ const startServer = async (): Promise<void> => {
   await server.register(apiBlockerAsUpdatingPlugin, {
     statusCode: 503,
     message: 'Conductor is updating. Try again later',
+    bypassPaths: ['/containers'],
+    bypassMethods: ['POST'],
   });
 
   // Register route modules

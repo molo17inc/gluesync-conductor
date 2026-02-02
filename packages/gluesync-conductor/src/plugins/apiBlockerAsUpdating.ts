@@ -19,7 +19,10 @@ export const isUpdateMode = (): boolean => cell.get('value') ?? false;
 type ApiBlockerOptions = {
   statusCode?: number;
   message?: string;
+  bypassPaths?: string[];
+  bypassMethods?: string[];
 };
+
 const apiBlockerAsUpdatingPlugin = (
   fastify: Readonly<FastifyInstance>,
   opts: Readonly<ApiBlockerOptions>,
@@ -30,15 +33,33 @@ const apiBlockerAsUpdatingPlugin = (
     opts.message ??
     'Conductor is currently updating and will be back online soon';
 
+  const bypassPaths = opts.bypassPaths ?? [];
+  const bypassMethods = opts.bypassMethods?.map(m => m.toUpperCase()) ?? [];
+
   fastify.log.info('[CONDUCTOR-UPDATE] blocker plugin registered');
 
   fastify.addHook('onRequest', async (req, reply) => {
     if (isUpdateMode()) {
-      reply.header('Retry-After', '60').code(statusCode).send({
-        success: false,
-        error: 'Conductor update in progress',
-        message,
-      });
+      const pathAllowed = bypassPaths.some(
+        path => req.url === path || req.url.startsWith(`${path}/`),
+      );
+
+      const methodAllowed =
+        bypassMethods.length === 0 || bypassMethods.includes(req.method);
+
+      const shouldBypass = pathAllowed && methodAllowed;
+
+      fastify.log.debug(
+        `[CONDUCTOR-UPDATE] bypassCheck: pathAllowed=${pathAllowed}, methodAllowed=${methodAllowed}, shouldBypass=${shouldBypass}`,
+      );
+
+      if (!shouldBypass) {
+        reply.header('Retry-After', '60').code(statusCode).send({
+          success: false,
+          error: 'Conductor update in progress',
+          message,
+        });
+      }
     }
   });
 
