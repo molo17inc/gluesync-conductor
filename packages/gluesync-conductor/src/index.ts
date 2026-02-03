@@ -6,9 +6,7 @@ import Docker from 'dockerode';
 import dockerPlugin from './plugins/docker';
 import swaggerPlugin from './plugins/swagger';
 import gluesyncPlugin from './plugins/gluesync';
-import apiBlockerAsUpdatingPlugin, {
-  enableUpdateMode,
-} from './plugins/apiBlockerAsUpdating';
+import apiBlockerAsUpdatingPlugin from './plugins/apiBlockerAsUpdating';
 import tzFix from './plugins/tzFix';
 
 import httpsRedirectMiddleware from './middleware/httpsRedirect';

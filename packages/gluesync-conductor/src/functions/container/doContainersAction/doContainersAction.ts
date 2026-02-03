@@ -27,7 +27,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     // Block all actions except restart when update mode is active
     if (isUpdateMode() && containerAction !== 'restart') {
       reply.code(503);
-      return reply.send({
+      reply.send({
         success: false,
         error: 'Conductor is updating',
         details: 'Only restart operations are allowed during update mode',
