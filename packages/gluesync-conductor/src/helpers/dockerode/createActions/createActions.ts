@@ -33,17 +33,25 @@ const runCmd: RunCmd = async (cmdFn, id, filename, extraOptions?) => {
     commandOptions: [...(extraOptions ?? []), id],
   };
 
+  const isPodman = await checkIfPodmanCompose();
+
   // On Windows, force standalone docker-compose (spawns `docker-compose ...`)
   const options = isWindows
     ? {
         ...commonOptions,
         executable: {
-          standalone: true,
-          // optional if not in PATH:
-          // executablePath: 'docker-compose',
+          standalone: true, // forces docker-compose
         },
       }
-    : commonOptions;
+    : isPodman
+      ? {
+          ...commonOptions,
+          executable: {
+            executablePath: 'podman',
+            standalone: false,
+          },
+        }
+      : commonOptions;
 
   const result = await cmdFn(options);
 
