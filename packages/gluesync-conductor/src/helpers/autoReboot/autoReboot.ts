@@ -2,17 +2,9 @@ import { spawn } from 'node:child_process';
 import autoRebootWindows from './autoRebootWindows';
 import autoRebootLinux from './autorebootLinux';
 import { disableUpdateMode } from '../../plugins/apiBlockerAsUpdating';
+import { AutoReboot } from './autoReboot.model';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
-
-type AutoReboot = (
-  options: Readonly<{
-    hostProjectDir: string;
-    serviceName: string;
-    helperImage: string;
-    log: (msg: Readonly<string>) => void;
-  }>,
-) => Promise<boolean>;
 
 export const spawnAsync = (
   cmd: string,

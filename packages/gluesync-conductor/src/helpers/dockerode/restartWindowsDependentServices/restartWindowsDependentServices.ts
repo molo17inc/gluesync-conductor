@@ -5,6 +5,7 @@ import waitForContainerReady from '../../waitForContainerReady/waitForContainerR
 import { enableUpdateMode } from '../../../plugins/apiBlockerAsUpdating';
 import { autoReboot } from '../../autoReboot/autoReboot';
 import { RestartWindowsDependentServices } from './restartWindowsDependentServices.models';
+import checkIfPodmanCompose from '../../checkIfPodmanCompose/checkIfPodmanCompose';
 
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
 
@@ -75,6 +76,7 @@ const restartWindowsDependentServices: RestartWindowsDependentServices = async (
     `[core-hub-updater] triggering ${conductorService} restart`,
   );
 
+  const isPodman = await checkIfPodmanCompose();
   // Wrap in setImmediate to send response before conductor dies
   setImmediate(() => {
     autoReboot({
@@ -83,6 +85,7 @@ const restartWindowsDependentServices: RestartWindowsDependentServices = async (
       helperImage: helperImageWindows,
       log: msg =>
         logger.info({ msg }, '[core-hub-updater] conductor restart log'),
+      isPodman,
     }).catch(err => {
       logger.error({ error: err }, '[core-hub-updater] autoReboot failed');
     });

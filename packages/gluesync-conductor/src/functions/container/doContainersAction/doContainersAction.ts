@@ -14,6 +14,7 @@ import {
 } from '../../../plugins/apiBlockerAsUpdating';
 import { autoReboot } from '../../../helpers/autoReboot/autoReboot';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
+import checkIfPodmanCompose from '../../../helpers/checkIfPodmanCompose/checkIfPodmanCompose';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
@@ -140,6 +141,8 @@ const handler: DoContainersActionHandler = async (req, reply) => {
           },
         });
 
+        const isPodman = await checkIfPodmanCompose();
+
         // Wrap in setImmediate to send response before conductor dies
         setImmediate(() => {
           autoReboot({
@@ -148,6 +151,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
             helperImage: isWindows ? helperImageWindows : 'docker:cli',
             log: msg =>
               req.log.info({ msg }, '[conductor-restart] restart log'),
+            isPodman,
           }).catch(err => {
             req.log.error(
               { error: err },
@@ -217,6 +221,8 @@ const handler: DoContainersActionHandler = async (req, reply) => {
             data: { containers },
           });
 
+          const isPodman = await checkIfPodmanCompose();
+
           // Wrap in setImmediate to send response before conductor dies
           setImmediate(() => {
             autoReboot({
@@ -225,6 +231,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
               helperImage: isWindows ? helperImageWindows : 'docker:cli',
               log: msg =>
                 req.log.info({ msg }, '[conductor-restart] restart log'),
+              isPodman,
             }).catch(err => {
               req.log.error(
                 { error: err },

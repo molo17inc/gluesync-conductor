@@ -29,6 +29,7 @@ import { autoReboot } from './helpers/autoReboot/autoReboot';
 import getRootPath from './helpers/getRootPath/getRootPath';
 import healConductorConf from './helpers/healConductorConf/healConductorConf';
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
+import checkIfPodmanCompose from './helpers/checkIfPodmanCompose/checkIfPodmanCompose';
 
 type FastifyServices = {
   docker: Docker;
@@ -156,6 +157,7 @@ const startServer = async (): Promise<void> => {
       serviceName: 'gluesync-conductor',
       helperImage: isWindows ? helperImageWindows : 'docker:cli',
       log: msg => logger.info({ msg }, '[conductor-healer] self-heal log'),
+      isPodman: await checkIfPodmanCompose(),
     });
   }
 };

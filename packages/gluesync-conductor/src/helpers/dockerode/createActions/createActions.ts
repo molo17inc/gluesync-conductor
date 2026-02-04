@@ -11,6 +11,7 @@ import { autoReboot } from '../../autoReboot/autoReboot';
 import ensureVolumeDirs from '../../ensureVolumeDirs/ensureVolumeDirs';
 import { enableUpdateMode } from '../../../plugins/apiBlockerAsUpdating';
 import restartWindowsDependentServices from '../restartWindowsDependentServices/restartWindowsDependentServices';
+import checkIfPodmanCompose from '../../checkIfPodmanCompose/checkIfPodmanCompose';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
@@ -100,6 +101,8 @@ const createActions: CreateActions = ({
         // Enable update mode to block incoming requests during conductor restart
         enableUpdateMode();
 
+        const isPodman = await checkIfPodmanCompose();
+
         // Wrap in setImmediate to send response before conductor dies
         setImmediate(() => {
           autoReboot({
@@ -108,6 +111,7 @@ const createActions: CreateActions = ({
             helperImage: isWindows ? helperImageWindows : 'docker:cli',
             log: msg =>
               logger.info({ msg }, '[conductor-updater] self-update log'),
+            isPodman,
           }).catch(err => {
             logger.error(
               { error: err },

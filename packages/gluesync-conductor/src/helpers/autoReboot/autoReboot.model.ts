@@ -4,5 +4,6 @@ export type AutoReboot = (
     serviceName: string;
     helperImage: string;
     log: (msg: Readonly<string>) => void;
+    isPodman?: boolean;
   }>,
 ) => Promise<boolean>;

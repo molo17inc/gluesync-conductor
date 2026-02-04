@@ -1,37 +1,32 @@
 import { spawnAsync } from './autoReboot';
+import { AutoReboot } from './autoReboot.model';
 
-type AutoReboot = (
-  options: Readonly<{
-    hostProjectDir: string;
-    serviceName: string;
-    helperImage: string;
-    log: (msg: Readonly<string>) => void;
-  }>,
-) => Promise<boolean>;
-
-/**
- * Runs a helper container that performs:
- *   docker compose up -d --force-recreate <service>
- */
 const autoRebootLinux: AutoReboot = async ({
   hostProjectDir,
   serviceName = 'gluesync-conductor',
-  helperImage = 'docker:28', // image with docker CLI + compose plugin
+  helperImage = 'docker:28',
   log = msg => console.log(msg),
+  isPodman = false,
 }) => {
   if (!hostProjectDir) {
     throw new Error('hostProjectDir is required');
   }
 
-  const innerCmd = [
-    `docker compose up -d --force-recreate ${serviceName}`,
-  ].join(' && ');
+  const runtime = isPodman ? 'podman' : 'docker';
+
+  const socketMount = isPodman
+    ? '/run/podman/podman.sock:/var/run/docker.sock'
+    : '/var/run/docker.sock:/var/run/docker.sock';
+
+  const composeCmd = isPodman ? 'podman compose' : 'docker compose';
+
+  const innerCmd = `${composeCmd} up -d --force-recreate ${serviceName}`;
 
   const args: ReadonlyArray<string> = [
     'run',
     '--rm',
     '-v',
-    '/var/run/docker.sock:/var/run/docker.sock',
+    socketMount,
     '-v',
     `${hostProjectDir}:${hostProjectDir}`,
     '-w',
@@ -42,9 +37,9 @@ const autoRebootLinux: AutoReboot = async ({
     innerCmd,
   ];
 
-  log(`[conductor-updater] docker ${args.join(' ')}`);
+  log(`[conductor-updater] ${runtime} ${args.join(' ')}`);
 
-  await spawnAsync('docker', args);
+  await spawnAsync(runtime, args);
   return true;
 };
 
