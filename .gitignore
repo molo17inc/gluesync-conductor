@@ -3,8 +3,8 @@
 gs-license.dat
 *.jks
 
-debug-container/linux/data/core-hub
-debug-container/**/data/core-hub/database
+debug-container/**/data
+debug-container/**/database
 debug-container/**/logs/**
 !debug-container/**/logs/**/
 !debug-container/**/logs/**/.gitkeep
