@@ -5,10 +5,10 @@ export type LoggerLike = {
 };
 
 export type WaitForDockerDaemonOptions = Readonly<{
-  totalTimeoutMs?: number; // overall budget (default 5000)
-  perAttemptTimeoutMs?: number; // cap for each ping attempt (default 800)
-  baseDelayMs?: number; // backoff base (default 200)
-  maxDelayMs?: number; // backoff cap (default 1000)
+  totalTimeoutMs?: number;
+  perAttemptTimeoutMs?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
 }>;
 
 const sleep = (ms: number) =>
@@ -27,7 +27,10 @@ const withTimeout = async <T>(p: Promise<T>, ms: number): Promise<T> =>
   ]);
 
 export const isTransientDockerConnError = (err: unknown): boolean => {
-  if (!err || typeof err !== 'object') return false;
+  if (!err || typeof err !== 'object') {
+    return false;
+  }
+
   const e = err as any;
 
   const code = String(e.code ?? '');
@@ -35,28 +38,32 @@ export const isTransientDockerConnError = (err: unknown): boolean => {
   const message = String(e.message ?? '');
 
   // Windows named pipe not ready is commonly ENOENT / errno -4058
-  if (code === 'ENOENT' || errno === '-4058') return true;
+  if (code === 'ENOENT' || errno === '-4058') {
+    return true;
+  }
+
   if (
     code === 'ENONET' ||
     code === 'ECONNRESET' ||
     code === 'EPIPE' ||
     code === 'ETIMEDOUT'
-  )
+  ) {
     return true;
+  }
 
   // Fallback: error text contains the pipe path
   if (
     message.includes('//./pipe/docker_engine') ||
     message.includes('\\\\.\\pipe\\docker_engine')
-  )
+  ) {
     return true;
+  }
 
   return false;
 };
 
 /**
- * Wait until the Docker daemon responds to ping (cheap readiness check),
- * but never longer than totalTimeoutMs.
+ * Wait until the Docker daemon responds to ping
  */
 export const waitForDockerDaemon = async (
   docker: Readonly<Pick<Dockerode, 'ping'>>,
@@ -72,6 +79,7 @@ export const waitForDockerDaemon = async (
 
   const attemptPing = async (attempt: number): Promise<void> => {
     const remaining = deadline - Date.now();
+
     if (remaining <= 0) {
       throw new Error(`Docker daemon not ready within ${totalTimeoutMs}ms`);
     }
@@ -82,7 +90,9 @@ export const waitForDockerDaemon = async (
         Math.min(perAttemptTimeoutMs, remaining),
       );
     } catch (err) {
-      if (!isTransientDockerConnError(err)) throw err;
+      if (!isTransientDockerConnError(err)) {
+        throw err;
+      }
 
       const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** attempt);
       const cappedDelay = Math.min(delay, Math.max(0, deadline - Date.now()));
