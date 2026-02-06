@@ -54,6 +54,7 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
           properties: {
             success: { type: 'boolean', const: false },
             error: { type: 'string' },
+            details: { type: 'string', nullable: true },
           },
           required: ['success', 'error'],
           additionalProperties: false,
