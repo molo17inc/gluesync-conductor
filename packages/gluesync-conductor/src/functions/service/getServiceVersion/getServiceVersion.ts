@@ -24,11 +24,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       req.params,
     );
 
-    logger.info(
-      { id, releaseChannel },
-      '[get-service-version] request received',
-    );
-
+    // Default to "ga" if releaseChannel is not provided
     const channel: ReleaseChannelTypes =
       (releaseChannel as ReleaseChannelTypes) || 'ga';
 
