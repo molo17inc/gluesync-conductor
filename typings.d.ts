@@ -32,7 +32,6 @@ declare namespace NodeJS {
     readonly MOUNT_LEGACY_FILE_CONFIG: string;
 
     readonly IS_WINDOWS: string;
-    readonly WINDOWS_NETWORK_NAME?: string;
     readonly WINDOWS_YEAR: string;
     readonly HELPER_IMAGE_BASE: string;
   }
