@@ -15,81 +15,89 @@ import {
   ConductorServiceTypes,
   conductorServiceTypes,
 } from '../../../models/conductor.model';
+import {
+  isTransientDockerConnError,
+  waitForDockerDaemon,
+} from '../../../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
 
 const handler: ListContainersHandler = async (req, reply) => {
   try {
     const { type } = castObject<ListContainersParams>(req.query);
 
-    // Get Docker system information (CPU count and total memory)
-    // Read the compose file to check which containers are persisted
-    // Use all: true to show all containers (not just running ones)
-    const [systemInfo, composeJson = {}, containerList] = await Promise.all([
-      getSystemInfo(req.server.docker, req.log),
-      readComposeFile(),
-      req.server.docker.listContainers({ all: true }),
-    ]);
-
+    const composeJson = (await readComposeFile()) ?? {};
     const dockerComposeServicesNames = Object.keys(composeJson.services || {});
 
-    req.log.debug(
-      `dockerComposeServicesNames: ${JSON.stringify(dockerComposeServicesNames)}`,
-    );
+    await waitForDockerDaemon(req.server.docker, req.log, {
+      totalTimeoutMs: 5000,
+      perAttemptTimeoutMs: 800,
+    });
 
-    req.log.debug(`containerList: ${JSON.stringify(containerList)}`);
+    const safeFetch = async () =>
+      Promise.all([
+        getSystemInfo(req.server.docker, req.log),
+        req.server.docker.listContainers({ all: true }),
+      ]);
+
+    const [systemInfo, containerList] = await (async () => {
+      try {
+        return await safeFetch();
+      } catch (err) {
+        if (isTransientDockerConnError(err)) {
+          req.log.warn('[list-containers] docker pipe busy — retrying');
+
+          await waitForDockerDaemon(req.server.docker, req.log, {
+            totalTimeoutMs: 4000,
+            perAttemptTimeoutMs: 800,
+          });
+
+          return safeFetch();
+        }
+        throw err;
+      }
+    })();
 
     const containerListMap = containerList.reduce<
       Record<string, ContainerInfo>
     >((acc, container) => {
-      const serviceName = container.Labels[`${LabelPrefix.COMPOSE}.service`];
+      const serviceName = container.Labels?.[`${LabelPrefix.COMPOSE}.service`];
 
-      return {
-        ...acc,
-        [serviceName]: container,
-      };
+      return serviceName ? { ...acc, [serviceName]: container } : acc;
     }, {});
 
     const allServicesNames = [
       ...new Set([
         ...dockerComposeServicesNames,
-        ...containerList.reduce<ReadonlyArray<string>>(
-          (acc, { Labels }) => [
-            ...acc,
-            Labels[`${LabelPrefix.COMPOSE}.service`],
-          ],
-          [],
-        ),
+        ...containerList
+          .map(c => c.Labels?.[`${LabelPrefix.COMPOSE}.service`])
+          .filter(Boolean),
       ]),
     ];
 
     const containers: ListContainersSuccessResponse['containers'] =
-      allServicesNames
-        .filter(id => !!id)
-        .map(id => {
-          const service = composeJson.services?.[id];
-          const info = containerInfoMapper(containerListMap[id]);
+      allServicesNames.map(id => {
+        const service = composeJson.services?.[id];
+        const info = containerInfoMapper(containerListMap[id]);
 
-          const serviceName =
-            service?.labels?.[`${LabelPrefix.COMPOSE}.service`];
-          const persisted = info?.uniqueId === serviceName;
+        const serviceType =
+          parseServiceType(
+            service?.labels?.[`${LabelPrefix.CONDUCTOR}.type`],
+          ) || parseServiceType(info?.type);
 
-          const serviceType =
-            parseServiceType(
-              service?.labels?.[`${LabelPrefix.CONDUCTOR}.type`],
-            ) || parseServiceType(info?.type);
+        const persisted = Boolean(service);
 
-          return {
-            id,
-            persisted,
-            agentId: service?.environment?.INITIAL_AGENT_ID
-              ? String(service?.environment?.INITIAL_AGENT_ID)
-              : undefined,
-            type:
-              (persisted ? serviceType : parseServiceType(info?.type)) ||
-              'unknown',
-            service,
-            info,
-          };
-        });
+        return {
+          id,
+          persisted,
+          agentId: service?.environment?.INITIAL_AGENT_ID
+            ? String(service.environment.INITIAL_AGENT_ID)
+            : undefined,
+          type:
+            (persisted ? serviceType : parseServiceType(info?.type)) ||
+            'unknown',
+          service,
+          info,
+        };
+      });
 
     const filteredContainers = containers.filter(({ type: currentType }) => {
       if (!type || type === 'all') {
@@ -105,8 +113,7 @@ const handler: ListContainersHandler = async (req, reply) => {
       return currentType === type;
     });
 
-    reply.code(200);
-    reply.send({
+    reply.code(200).send({
       success: true,
       data: {
         containers: filteredContainers,
@@ -115,22 +122,18 @@ const handler: ListContainersHandler = async (req, reply) => {
     });
   } catch (error) {
     req.log.error(
-      `Error listing containers: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
+      `Error listing containers: ${
+        error instanceof Error ? error.message : JSON.stringify(error)
+      }`,
     );
 
-    try {
-      await req.server.docker.ping();
-      req.log.debug('Docker daemon is responding to ping');
-    } catch (pingError) {
-      req.log.error(
-        `Docker daemon ping failed: ${pingError instanceof Error ? pingError.message : String(pingError)}`,
-      );
-    }
+    const transient = isTransientDockerConnError(error);
 
-    reply.code(500);
-    reply.send({
+    reply.code(transient ? 503 : 500).send({
       success: false,
-      error: 'Failed to list containers',
+      error: transient
+        ? 'Docker daemon not ready yet'
+        : 'Failed to list containers',
       details: error instanceof Error ? error.message : String(error),
     });
   }

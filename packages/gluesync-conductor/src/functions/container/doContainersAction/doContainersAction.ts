@@ -8,7 +8,10 @@ import checkConductorUpdate from '../../../helpers/checkConductorUpdate/checkCon
 import updateConductorOnly from './handleUpdate/updateConductorOnly';
 import updateNormalBulk from './handleUpdate/updateNormalBulk';
 import fetchAllServicesInCompose from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose';
-import { enableUpdateMode } from '../../../plugins/apiBlockerAsUpdating';
+import {
+  enableUpdateMode,
+  isUpdateMode,
+} from '../../../plugins/apiBlockerAsUpdating';
 import { autoReboot } from '../../../helpers/autoReboot/autoReboot';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 
@@ -20,6 +23,16 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     const containerAction = req.body.action;
     const requestIds: readonly string[] = req.body.ids || [];
     const releaseChannel = req.body.releaseChannel || 'ga';
+
+    // Block all actions except restart when update mode is active
+    if (isUpdateMode() && containerAction !== 'restart') {
+      reply.code(503);
+      reply.send({
+        success: false,
+        error: 'Conductor is updating',
+        details: 'Only restart operations are allowed during update mode',
+      });
+    }
 
     const actions = createActions({ docker: req.server.docker });
     const action = actions[containerAction];

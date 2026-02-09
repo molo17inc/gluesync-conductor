@@ -86,6 +86,8 @@ const startServer = async (): Promise<void> => {
   await server.register(apiBlockerAsUpdatingPlugin, {
     statusCode: 503,
     message: 'Conductor is updating. Try again later',
+    bypassPaths: ['/containers'],
+    bypassMethods: ['POST'],
   });
 
   // Register route modules

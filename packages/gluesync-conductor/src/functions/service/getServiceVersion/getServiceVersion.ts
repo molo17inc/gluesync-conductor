@@ -10,6 +10,13 @@ import { ReleaseChannelTypes } from '../../../models/conductor.model';
 import getVersionByChannel from '../../../helpers/releaseChannel/getVersionByChannel';
 import { LabelPrefix } from '../../../models/composeFile.model';
 import { THIRD_PARTY_SERVICES } from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose.model';
+import { getLogger } from '../../../utils/logger';
+import {
+  isTransientDockerConnError,
+  waitForDockerDaemon,
+} from '../../../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
+
+const logger = getLogger();
 
 const handler: GetServiceVersionHandler = async (req, reply) => {
   try {
@@ -25,18 +32,23 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     const service = composeJson.services?.[id];
 
     if (!service) {
+      logger.warn({ id }, '[get-service-version] service not found');
       return reply.code(404).send({
         success: false,
-        error: `Service ${id} not found in docker file`,
+        error: `Service ${id} not found in docker compose file`,
       });
     }
 
-    // Get actual running version from Docker
-    // Get actual running version from Docker, or fallback to compose image tag if no running container
+    // Ensure docker ready (Windows pipe cold boot fix)
+    await waitForDockerDaemon(req.server.docker, req.log, {
+      totalTimeoutMs: 5000,
+      perAttemptTimeoutMs: 800,
+    });
+
     const getCurrentVersion = async (
       serviceId: string,
     ): Promise<string | null> => {
-      try {
+      const attempt = async (): Promise<string | null> => {
         const containers = await req.server.docker.listContainers({
           all: true,
           filters: {
@@ -44,66 +56,65 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
           },
         });
 
-        // No containers at all for this service -> fallback to compose image tag
         if (!containers || containers.length === 0) {
-          req.log.info(
-            { service: serviceId },
-            'No containers found for service, using compose image tag as fallback',
-          );
           const svc = composeJson.services?.[serviceId];
           if (!svc?.image) {
             return null;
           }
-          const { tag: composeTag } = parseImage(svc.image);
-          return composeTag.split('-')[0];
+          const { tag } = parseImage(svc.image);
+          return tag.split('-')[0];
         }
 
-        // Prefer a running container (normalize State)
         const running = containers.find(
           c => (c.State || '').toLowerCase() === 'running',
         );
 
         if (!running) {
-          // No running container found -> use compose image tag as requested
-          req.log.info(
-            { service: serviceId },
-            'No running container found, using compose image tag as fallback',
-          );
           const svc = composeJson.services?.[serviceId];
           if (!svc?.image) {
             return null;
           }
-          const { tag: composeTag } = parseImage(svc.image);
-          return composeTag.split('-')[0];
+          const { tag } = parseImage(svc.image);
+          return tag.split('-')[0];
         }
 
-        // Inspect the running container and parse its image tag
         const inspect = await req.server.docker
           .getContainer(running.Id)
           .inspect();
+
         const runningImage = inspect.Config.Image;
         const { tag } = parseImage(runningImage);
         return tag.split('-')[0];
+      };
+
+      try {
+        return await attempt();
       } catch (err) {
-        req.log.warn(
-          { service: serviceId, error: err },
-          `Failed to get running version for ${serviceId}, falling back to compose file`,
-        );
-        // On any unexpected error, fall back to compose file if possible
-        try {
-          const svc = composeJson.services?.[serviceId];
-          if (!svc?.image) {
-            return null;
-          }
-          const { tag: composeTag } = parseImage(svc.image);
-          return composeTag.split('-')[0];
-        } catch {
+        if (isTransientDockerConnError(err)) {
+          logger.warn(
+            { service: serviceId },
+            '[get-service-version] docker pipe busy — retrying',
+          );
+
+          await waitForDockerDaemon(req.server.docker, req.log, {
+            totalTimeoutMs: 4000,
+            perAttemptTimeoutMs: 800,
+          });
+
+          return attempt();
+        }
+
+        logger.warn({ service: serviceId, err }, 'inspect failed fallback');
+
+        const svc = composeJson.services?.[serviceId];
+        if (!svc?.image) {
           return null;
         }
+        const { tag } = parseImage(svc.image);
+        return tag.split('-')[0];
       }
     };
 
-    // Helper to check if a service needs update based on release channel
     const needsUpdate = async (serviceId: string): Promise<boolean> => {
       const svc = composeJson.services?.[serviceId];
       if (!svc) {
@@ -112,22 +123,36 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
       const { shortImageName, tag: composeTag } = parseImage(svc.image);
 
-      // Parallelize: fetch service info and current version at the same time
+      const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
+      const windowsYear = process.env.WINDOWS_YEAR;
+
+      const { labels } = svc;
+
+      const serviceType = Array.isArray(labels)
+        ? labels
+            .find(l => l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
+            ?.split('=')[1]
+        : labels?.[`${LabelPrefix.CONDUCTOR}.type`];
+
+      const isThirdParty = serviceType === 'third-party';
+
+      // Build correct imageName for backoffice API
+      const imageNameToFetch =
+        isWindows && isThirdParty && windowsYear
+          ? `${shortImageName}-win-${windowsYear}`
+          : shortImageName;
+
       const [svcInfo, currentVersion] = await Promise.all([
-        fetchAgentInfo(shortImageName),
+        fetchAgentInfo(imageNameToFetch),
         getCurrentVersion(serviceId),
       ]);
 
       const expectedVersion = getVersionByChannel(svcInfo, channel);
-
-      // If we can't determine the expected version, assume no update is needed
       if (!expectedVersion) {
         return false;
       }
 
-      // Use running version or fallback to compose file version
       const versionToCheck = currentVersion || composeTag.split('-')[0];
-
       return expectedVersion !== versionToCheck;
     };
 
@@ -135,9 +160,10 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     const conductorName = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
     const chronosName = process.env.CHRONOS_NAME || 'gluesync-chronos';
 
-    // Parallelize: get current version and check mandatory updates at the same time
     const { shortImageName, tag } = parseImage(service.image);
     const fallbackVersion = tag.split('-')[0];
+
+    logger.info({ id, shortImageName }, 'fetching agent info');
 
     const [currentVersion, serviceInfo, mandatoryUpdate] = await Promise.all([
       getCurrentVersion(id),
@@ -152,18 +178,9 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
             ...thirdPartyServices.map(needsUpdate),
           ]);
 
-          const [
-            conductorNeedsUpdate,
-            chronosNeedsUpdate,
-            ...thirdPartyResults
-          ] = results;
-
-          const thirdPartyNeedsUpdate = thirdPartyResults.some(x => x === true);
-
-          return (
-            conductorNeedsUpdate || chronosNeedsUpdate || thirdPartyNeedsUpdate
-          );
+          return results.some(Boolean);
         }
+
         return false;
       })(),
     ]);
@@ -181,24 +198,20 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       },
     });
   } catch (error: unknown) {
-    req.log.error(
-      `Error getting agent version: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+    logger.error({ error }, '[get-service-version] unexpected error');
 
-    if (error instanceof Error && (error as any).statusCode === 404) {
-      return reply.code(404).send({
+    if (isTransientDockerConnError(error)) {
+      return reply.code(503).send({
         success: false,
-        error: 'Service not found',
+        error: 'Docker daemon not ready yet',
+        details: error instanceof Error ? error.message : String(error),
       });
     }
 
-    return reply.code(500).send({
+    return reply.code(502).send({
       success: false,
-      error: `Failed to get agent version: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      error: 'Unable to retrieve agent version',
+      details: error instanceof Error ? error.message : String(error),
     });
   }
 };
