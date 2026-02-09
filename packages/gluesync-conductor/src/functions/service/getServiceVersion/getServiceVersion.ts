@@ -105,7 +105,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
             perAttemptTimeoutMs: 800,
           });
 
-          return attempt(); // ← fixed no-return-await
+          return attempt();
         }
 
         logger.warn({ service: serviceId, err }, 'inspect failed fallback');
@@ -127,8 +127,27 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
       const { shortImageName, tag: composeTag } = parseImage(svc.image);
 
+      const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
+      const windowsYear = process.env.WINDOWS_YEAR;
+
+      const { labels } = svc;
+
+      const serviceType = Array.isArray(labels)
+        ? labels
+            .find(l => l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
+            ?.split('=')[1]
+        : labels?.[`${LabelPrefix.CONDUCTOR}.type`];
+
+      const isThirdParty = serviceType === 'third-party';
+
+      // Build correct imageName for backoffice API
+      const imageNameToFetch =
+        isWindows && isThirdParty && windowsYear
+          ? `${shortImageName}-win-${windowsYear}`
+          : shortImageName;
+
       const [svcInfo, currentVersion] = await Promise.all([
-        fetchAgentInfo(shortImageName),
+        fetchAgentInfo(imageNameToFetch),
         getCurrentVersion(serviceId),
       ]);
 
