@@ -457,7 +457,7 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
                 latestVersionBeta: { type: 'string' },
                 latestVersionGA: { type: 'string' },
                 mandatoryUpdate: { type: 'boolean' },
-                internalNames: {
+                servicesToUpdate: {
                   type: 'array',
                   description: 'List of service that needs mandatory update',
                   items: {
