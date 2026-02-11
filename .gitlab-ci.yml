@@ -20,6 +20,7 @@ variables:
   DOCKER_TLS_CERTDIR: ''
   DOCKER_REGISTRY: registry.gitlab.com/molo17-public/gluesync/gluesync-conductor
   CONTAINER_MATE_IMAGE: ${DOCKER_REGISTRY}:${CI_COMMIT_REF_SLUG}
+  DOCKER_HOST: tcp://docker:2375
 
 build_artifacts:
   stage: build
