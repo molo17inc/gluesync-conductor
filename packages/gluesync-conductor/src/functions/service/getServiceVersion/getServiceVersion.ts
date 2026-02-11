@@ -173,7 +173,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
           if (id !== coreHubName) {
             return {
               mandatoryUpdate: false,
-              internalNames: [] as string[],
+              servicesToUpdate: [],
             };
           }
 
@@ -200,20 +200,20 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
             }),
           );
 
-          const internalNames = results
+          const servicesToUpdate = results
             .filter(r => r.needsUpdate)
             .map(r => r.id);
 
           return {
-            mandatoryUpdate: internalNames.length > 0,
-            internalNames,
+            mandatoryUpdate: servicesToUpdate.length > 0,
+            servicesToUpdate,
           };
         })(),
       ]);
 
     const actualCurrentVersion = currentVersion || fallbackVersion;
 
-    const { mandatoryUpdate, internalNames } = mandatoryUpdateResult;
+    const { mandatoryUpdate, servicesToUpdate } = mandatoryUpdateResult;
 
     return reply.send({
       success: true,
@@ -223,7 +223,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         latestVersionBeta: serviceInfo?.latestVersionBeta,
         latestVersionGA: serviceInfo?.latestVersionGA,
         mandatoryUpdate,
-        internalNames,
+        servicesToUpdate,
       },
     });
   } catch (error: unknown) {
