@@ -12,49 +12,42 @@ export type WaitForDockerDaemonOptions = Readonly<{
 }>;
 
 const sleep = (ms: number) =>
-  new Promise<void>(resolve => {
-    setTimeout(resolve, ms);
-  });
+  new Promise<void>(resolve => setTimeout(resolve, ms));
 
 const withTimeout = async <T>(p: Promise<T>, ms: number): Promise<T> =>
   Promise.race([
     p,
-    new Promise<T>((_, reject) => {
-      setTimeout(() => {
-        reject(new Error(`Timeout after ${ms}ms`));
-      }, ms);
-    }),
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms),
+    ),
   ]);
 
+/**
+ * Windows-safe detection of transient Docker pipe errors
+ */
 export const isTransientDockerConnError = (err: unknown): boolean => {
-  if (!err || typeof err !== 'object') {
-    return false;
-  }
+  if (!err || typeof err !== 'object') return false;
 
   const e = err as any;
-
   const code = String(e.code ?? '');
   const errno = String(e.errno ?? '');
-  const message = String(e.message ?? '');
+  const message = String(e.message ?? '').toLowerCase();
 
-  // Windows named pipe not ready is commonly ENOENT / errno -4058
-  if (code === 'ENOENT' || errno === '-4058') {
-    return true;
-  }
-
+  if (code === 'ENOENT' || errno === '-4058') return true;
   if (
     code === 'ENONET' ||
     code === 'ECONNRESET' ||
     code === 'EPIPE' ||
     code === 'ETIMEDOUT'
-  ) {
+  )
     return true;
-  }
 
-  // Fallback: error text contains the pipe path
   if (
     message.includes('//./pipe/docker_engine') ||
-    message.includes('\\\\.\\pipe\\docker_engine')
+    message.includes('\\\\.\\pipe\\docker_engine') ||
+    message.includes('eof') ||
+    message.includes('connection reset') ||
+    message.includes('the pipe has been ended')
   ) {
     return true;
   }
@@ -64,22 +57,22 @@ export const isTransientDockerConnError = (err: unknown): boolean => {
 
 /**
  * Wait until the Docker daemon responds to ping
+ * Fully Windows-safe with exponential backoff
  */
 export const waitForDockerDaemon = async (
   docker: Readonly<Pick<Dockerode, 'ping'>>,
   log: Readonly<LoggerLike>,
   opts?: WaitForDockerDaemonOptions,
 ): Promise<void> => {
-  const totalTimeoutMs = opts?.totalTimeoutMs ?? 5000;
-  const perAttemptTimeoutMs = opts?.perAttemptTimeoutMs ?? 800;
-  const baseDelayMs = opts?.baseDelayMs ?? 200;
-  const maxDelayMs = opts?.maxDelayMs ?? 1000;
+  const totalTimeoutMs = opts?.totalTimeoutMs ?? 15000;
+  const perAttemptTimeoutMs = opts?.perAttemptTimeoutMs ?? 1500;
+  const baseDelayMs = opts?.baseDelayMs ?? 500;
+  const maxDelayMs = opts?.maxDelayMs ?? 2000;
 
   const deadline = Date.now() + totalTimeoutMs;
 
   const attemptPing = async (attempt: number): Promise<void> => {
     const remaining = deadline - Date.now();
-
     if (remaining <= 0) {
       throw new Error(`Docker daemon not ready within ${totalTimeoutMs}ms`);
     }
@@ -90,9 +83,7 @@ export const waitForDockerDaemon = async (
         Math.min(perAttemptTimeoutMs, remaining),
       );
     } catch (err) {
-      if (!isTransientDockerConnError(err)) {
-        throw err;
-      }
+      if (!isTransientDockerConnError(err)) throw err;
 
       const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** attempt);
       const cappedDelay = Math.min(delay, Math.max(0, deadline - Date.now()));

@@ -3,20 +3,20 @@ import fp from 'fastify-plugin';
 import Docker from 'dockerode';
 import * as os from 'os';
 import * as fs from 'fs';
+import { getDocker } from '../utils/docker/resilientDocker';
+import { dockerSafeCall } from '../utils/docker/dockerSafeCall';
+import { waitForDockerDaemon } from '../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
 
 const dockerPlugin = async (fastify: Readonly<FastifyInstance>) => {
   try {
-    // eslint-disable-next-line functional/no-let
     let docker: Docker;
 
-    // Check if DOCKER_HOST environment variable is set
     if (process.env.DOCKER_HOST) {
       fastify.log.info(
         `Using Docker host from environment: ${process.env.DOCKER_HOST}`,
       );
       docker = new Docker();
     } else if (os.platform() === 'darwin') {
-      // On macOS, Docker Desktop socket path can be in different locations
       const possibleSocketPaths = [
         '/var/run/docker.sock',
         `${os.homedir()}/Library/Containers/com.docker.docker/Data/docker.sock`,
@@ -24,7 +24,6 @@ const dockerPlugin = async (fastify: Readonly<FastifyInstance>) => {
         `${os.homedir()}/.docker/run/docker.sock`,
       ];
 
-      // Find the first socket path that exists
       const socketPath = possibleSocketPaths.find(path => fs.existsSync(path));
 
       if (socketPath) {
@@ -36,21 +35,37 @@ const dockerPlugin = async (fastify: Readonly<FastifyInstance>) => {
         );
         docker = new Docker();
       }
+    } else if (os.platform() === 'win32') {
+      fastify.log.info(
+        'Using Windows Docker named pipe: \\\\.\\pipe\\docker_engine',
+      );
+      docker = getDocker(); // resilient Windows client
     } else {
-      // Default for Linux and other platforms
+      // Default for Linux
       fastify.log.info(
         'Using default Docker socket path: /var/run/docker.sock',
       );
       docker = new Docker({ socketPath: '/var/run/docker.sock' });
     }
 
-    // Decorate fastify instance with docker client
-    fastify.decorate('docker', docker);
+    // Wait for Docker daemon to be ready
+    await dockerSafeCall(async d =>
+      waitForDockerDaemon(d, fastify.log, {
+        totalTimeoutMs: 15000,
+        perAttemptTimeoutMs: 1500,
+      }),
+    );
 
-    fastify.log.info('Docker plugin registered');
+    // Decorate Fastify instance
+    fastify.decorate('docker', docker);
+    fastify.decorate('dockerSafeCall', dockerSafeCall);
+
+    fastify.log.info('Production-safe Docker plugin registered');
   } catch (error) {
     fastify.log.error(
-      `Error initializing Docker plugin: ${error instanceof Error ? error.message : String(error)}`,
+      `Error initializing Docker plugin: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
     throw error;
   }
