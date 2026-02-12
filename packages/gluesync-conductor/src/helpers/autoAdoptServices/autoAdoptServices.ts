@@ -319,9 +319,9 @@ const autoAdoptServices = async (): Promise<{
         const initialLabels = toLabelStrings(service.labels);
 
         if (isThirdParty) {
-          const { imageName } = parseImage(service.image);
+          const { fullName } = parseImage(service.image);
 
-          const isMolo17Image = imageName?.startsWith('molo17');
+          const isMolo17Image = fullName?.startsWith('molo17');
 
           // already retagged image
           if (isMolo17Image) {
