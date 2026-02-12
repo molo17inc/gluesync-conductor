@@ -35,6 +35,13 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
                 latestVersionBeta: { type: 'string' },
                 latestVersionGA: { type: 'string' },
                 mandatoryUpdate: { type: 'boolean' },
+                servicesToUpdate: {
+                  type: 'array',
+                  description: 'List of service that needs mandatory update',
+                  items: {
+                    type: 'string',
+                  },
+                },
                 releaseChannel: { type: 'string' },
               },
             },

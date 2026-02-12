@@ -165,27 +165,55 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
     logger.info({ id, shortImageName }, 'fetching agent info');
 
-    const [currentVersion, serviceInfo, mandatoryUpdate] = await Promise.all([
-      getCurrentVersion(id),
-      fetchAgentInfo(shortImageName),
-      (async () => {
-        if (id === coreHubName) {
+    const [currentVersion, serviceInfo, mandatoryUpdateResult] =
+      await Promise.all([
+        getCurrentVersion(id),
+        fetchAgentInfo(shortImageName),
+        (async () => {
+          if (id !== coreHubName) {
+            return {
+              mandatoryUpdate: false,
+              servicesToUpdate: [],
+            };
+          }
+
           const thirdPartyServices = Array.from(THIRD_PARTY_SERVICES);
 
-          const results = await Promise.all([
-            needsUpdate(conductorName),
-            needsUpdate(chronosName),
-            ...thirdPartyServices.map(needsUpdate),
-          ]);
+          const servicesToCheck = [
+            conductorName,
+            chronosName,
+            ...thirdPartyServices,
+          ];
 
-          return results.some(Boolean);
-        }
+          const results = await Promise.all(
+            servicesToCheck.map(async svcId => {
+              try {
+                const update = await needsUpdate(svcId);
+                return { id: svcId, needsUpdate: update };
+              } catch (err) {
+                logger.warn(
+                  { service: svcId, err },
+                  '[get-service-version] needsUpdate failed',
+                );
+                return { id: svcId, needsUpdate: false };
+              }
+            }),
+          );
 
-        return false;
-      })(),
-    ]);
+          const servicesToUpdate = results
+            .filter(r => r.needsUpdate)
+            .map(r => r.id);
+
+          return {
+            mandatoryUpdate: servicesToUpdate.length > 0,
+            servicesToUpdate,
+          };
+        })(),
+      ]);
 
     const actualCurrentVersion = currentVersion || fallbackVersion;
+
+    const { mandatoryUpdate, servicesToUpdate } = mandatoryUpdateResult;
 
     return reply.send({
       success: true,
@@ -195,6 +223,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         latestVersionBeta: serviceInfo?.latestVersionBeta,
         latestVersionGA: serviceInfo?.latestVersionGA,
         mandatoryUpdate,
+        servicesToUpdate,
       },
     });
   } catch (error: unknown) {
