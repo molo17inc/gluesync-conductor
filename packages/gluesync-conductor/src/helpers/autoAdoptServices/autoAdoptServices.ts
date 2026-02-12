@@ -318,9 +318,31 @@ const autoAdoptServices = async (): Promise<{
         // Normalize labels into string array for manipulation.
         const initialLabels = toLabelStrings(service.labels);
 
-        // THIRD-PARTY: adopt by id only; do not modify env/networks/volumes/depends_on.
-        // Only allowed change: optional retag to molo17/<repo>:<latestGA> if helper resolves a version.
         if (isThirdParty) {
+          const { fullName } = parseImage(service.image);
+
+          const isMolo17Image = fullName?.startsWith('molo17');
+
+          // already retagged image
+          if (isMolo17Image) {
+            const finalLabels = buildFinalLabels(
+              initialLabels,
+              'third-party',
+              id,
+            );
+
+            return {
+              id,
+              updated: true,
+              unmatched: false,
+              service: {
+                ...service,
+                labels: finalLabels,
+              },
+            };
+          }
+
+          // if here the third-party image needs a retag
           const retaggedImage = await retagThirdPartyImageToMolo17GA(
             service.image,
             isWindows,
