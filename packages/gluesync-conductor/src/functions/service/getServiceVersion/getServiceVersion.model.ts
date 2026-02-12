@@ -8,6 +8,7 @@ export type GetServiceVersionSuccessResponse = Readonly<{
   latestVersionBeta?: Readonly<string>;
   latestVersionGA?: Readonly<string>;
   mandatoryUpdate: boolean;
+  servicesToUpdate: ReadonlyArray<string>;
 }>;
 
 export type GetServiceVersionParams = Readonly<{
