@@ -11,36 +11,46 @@ export type WaitForDockerDaemonOptions = Readonly<{
   maxDelayMs?: number;
 }>;
 
-const sleep = (ms: number) =>
-  new Promise<void>(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number): Promise<void> =>
+  new Promise<void>(resolve => {
+    setTimeout(resolve, ms);
+  });
 
 const withTimeout = async <T>(p: Promise<T>, ms: number): Promise<T> =>
   Promise.race([
     p,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms),
-    ),
+    new Promise<T>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Timeout after ${ms}ms`));
+      }, ms);
+    }),
   ]);
 
 /**
  * Windows-safe detection of transient Docker pipe errors
  */
 export const isTransientDockerConnError = (err: unknown): boolean => {
-  if (!err || typeof err !== 'object') return false;
+  if (!err || typeof err !== 'object') {
+    return false;
+  }
 
   const e = err as any;
   const code = String(e.code ?? '');
   const errno = String(e.errno ?? '');
   const message = String(e.message ?? '').toLowerCase();
 
-  if (code === 'ENOENT' || errno === '-4058') return true;
+  if (code === 'ENOENT' || errno === '-4058') {
+    return true;
+  }
+
   if (
     code === 'ENONET' ||
     code === 'ECONNRESET' ||
     code === 'EPIPE' ||
     code === 'ETIMEDOUT'
-  )
+  ) {
     return true;
+  }
 
   if (
     message.includes('//./pipe/docker_engine') ||
@@ -73,6 +83,7 @@ export const waitForDockerDaemon = async (
 
   const attemptPing = async (attempt: number): Promise<void> => {
     const remaining = deadline - Date.now();
+
     if (remaining <= 0) {
       throw new Error(`Docker daemon not ready within ${totalTimeoutMs}ms`);
     }
@@ -83,7 +94,9 @@ export const waitForDockerDaemon = async (
         Math.min(perAttemptTimeoutMs, remaining),
       );
     } catch (err) {
-      if (!isTransientDockerConnError(err)) throw err;
+      if (!isTransientDockerConnError(err)) {
+        throw err;
+      }
 
       const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** attempt);
       const cappedDelay = Math.min(delay, Math.max(0, deadline - Date.now()));

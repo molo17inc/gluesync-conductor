@@ -1,5 +1,7 @@
-export function isDockerPipeError(err: unknown): boolean {
-  if (!err) return false;
+const isDockerPipeError = (err: unknown): boolean => {
+  if (!err) {
+    return false;
+  }
 
   const msg =
     err instanceof Error
@@ -16,4 +18,6 @@ export function isDockerPipeError(err: unknown): boolean {
     msg.includes('bad response from docker engine') ||
     msg.includes('context deadline exceeded')
   );
-}
+};
+
+export default isDockerPipeError;

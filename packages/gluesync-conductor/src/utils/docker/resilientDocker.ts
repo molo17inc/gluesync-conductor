@@ -1,48 +1,59 @@
 import Docker from 'dockerode';
-import { FastifyLoggerInstance } from 'fastify';
 import os from 'os';
 import fs from 'fs';
 import { getLogger } from '../logger';
 
-let docker: Docker | null = null;
-
 /**
- * Rebuilds Docker client (for Windows pipe EOF issues)
+ * Factory that creates a fresh Docker client
  */
-export const rebuildDocker = (): Docker => {
+const createDocker = (): Docker => {
   const logger = getLogger();
 
-  try {
-    if (process.env.DOCKER_HOST) {
-      logger.info(
-        `Using Docker host from environment: ${process.env.DOCKER_HOST}`,
-      );
-      docker = new Docker();
-    } else if (os.platform() === 'win32') {
-      // Use named pipe
-      docker = new Docker({ socketPath: '\\\\.\\pipe\\docker_engine' });
-    } else {
-      // macOS / Linux fallback
-      const defaultSocket = '/var/run/docker.sock';
-      docker = fs.existsSync(defaultSocket)
-        ? new Docker({ socketPath: defaultSocket })
-        : new Docker();
-    }
-    return docker;
-  } catch (err) {
-    logger.error(
-      `Failed to rebuild Docker client: ${err instanceof Error ? err.message : String(err)}`,
+  if (process.env.DOCKER_HOST) {
+    logger.info(
+      `Using Docker host from environment: ${process.env.DOCKER_HOST}`,
     );
-    throw err;
+    return new Docker();
   }
+
+  if (os.platform() === 'win32') {
+    return new Docker({ socketPath: '\\\\.\\pipe\\docker_engine' });
+  }
+
+  const defaultSocket = '/var/run/docker.sock';
+  if (fs.existsSync(defaultSocket)) {
+    return new Docker({ socketPath: defaultSocket });
+  }
+
+  return new Docker();
 };
 
 /**
- * Returns a valid Docker client, rebuilds if null
+ * Pure functional "once" wrapper
  */
-export const getDocker = (): Docker => {
-  if (!docker) {
-    docker = rebuildDocker();
-  }
-  return docker;
+const once = <T>(fn: () => T): (() => T) => {
+  const cache = { value: undefined as T | undefined };
+  return () => {
+    if (cache.value === undefined) {
+      cache.value = fn();
+    }
+    return cache.value;
+  };
+};
+
+/**
+ * Immutable Docker accessors
+ */
+const getDockerSingleton = once(createDocker);
+
+export const getDocker = (): Docker => getDockerSingleton();
+
+/**
+ * Rebuild Docker client (returns new instance and replaces cached one)
+ */
+export const rebuildDocker = (): Docker => {
+  const newDocker = createDocker();
+  // Replace the cached singleton
+  (getDockerSingleton as any).value = newDocker; // type-safe replacement trick
+  return newDocker;
 };
