@@ -29,31 +29,33 @@ const createDocker = (): Docker => {
 };
 
 /**
- * Pure functional "once" wrapper
+ * Helper to wrap an existing instance immutably
  */
-const once = <T>(fn: () => T): (() => T) => {
-  const cache = { value: undefined as T | undefined };
-  return () => {
-    if (cache.value === undefined) {
-      cache.value = fn();
-    }
-    return cache.value;
+const makeDockerSingletonWithInstance = (docker: Readonly<Docker>) => ({
+  get: (): Docker => docker,
+  rebuild: (): Docker => makeDockerSingletonWithInstance(createDocker()).get(),
+});
+
+/**
+ * Pure functional Docker singleton container
+ */
+export const makeDockerSingleton = () => {
+  const instance = createDocker();
+
+  return {
+    get: (): Docker => instance,
+    rebuild: (): Docker =>
+      makeDockerSingletonWithInstance(createDocker()).get(),
   };
 };
 
 /**
- * Immutable Docker accessors
+ * Default singleton
  */
-const getDockerSingleton = once(createDocker);
-
-export const getDocker = (): Docker => getDockerSingleton();
+export const dockerSingleton = makeDockerSingleton();
 
 /**
- * Rebuild Docker client (returns new instance and replaces cached one)
+ * Exposed functions
  */
-export const rebuildDocker = (): Docker => {
-  const newDocker = createDocker();
-  // Replace the cached singleton
-  (getDockerSingleton as any).value = newDocker; // type-safe replacement trick
-  return newDocker;
-};
+export const getDocker = (): Docker => dockerSingleton.get();
+export const rebuildDocker = (): Docker => dockerSingleton.rebuild();
