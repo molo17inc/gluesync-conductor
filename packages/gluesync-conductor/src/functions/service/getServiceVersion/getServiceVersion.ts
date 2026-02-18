@@ -11,10 +11,8 @@ import getVersionByChannel from '../../../helpers/releaseChannel/getVersionByCha
 import { LabelPrefix } from '../../../models/composeFile.model';
 import { THIRD_PARTY_SERVICES } from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose.model';
 import { getLogger } from '../../../utils/logger';
-import {
-  isTransientDockerConnError,
-  waitForDockerDaemon,
-} from '../../../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
+import waitForDockerDaemon from '../../../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
+import isTransientDockerConnError from '../../../helpers/dockerode/isTransientDockerConnError/isTransientDockerConnError';
 
 const logger = getLogger();
 
@@ -40,14 +38,41 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     }
 
     // Ensure docker ready (Windows pipe cold boot fix)
-    await waitForDockerDaemon(req.server.docker, req.log, {
-      totalTimeoutMs: 5000,
-      perAttemptTimeoutMs: 800,
-    });
+    const dockerReady = await (async () => {
+      try {
+        await waitForDockerDaemon(req.server.docker, logger, {
+          totalTimeoutMs: 5000,
+          perAttemptTimeoutMs: 800,
+        });
+        return true;
+      } catch (err) {
+        if (isTransientDockerConnError(err)) {
+          req.log.warn(
+            '[get-service-version] Docker daemon not ready — falling back to compose.yml',
+          );
+          return false;
+        }
+        throw err;
+      }
+    })();
 
     const getCurrentVersion = async (
       serviceId: string,
     ): Promise<string | null> => {
+      const fallback = (): string | null => {
+        const svc = composeJson.services?.[serviceId];
+        if (!svc?.image) {
+          return null;
+        }
+        const { tag } = parseImage(svc.image);
+        return tag.split('-')[0];
+      };
+
+      // If Docker never became ready, skip Docker and use docker-compose file
+      if (!dockerReady) {
+        return fallback();
+      }
+
       const attempt = async (): Promise<string | null> => {
         const containers = await req.server.docker.listContainers({
           all: true,
@@ -57,12 +82,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         });
 
         if (!containers || containers.length === 0) {
-          const svc = composeJson.services?.[serviceId];
-          if (!svc?.image) {
-            return null;
-          }
-          const { tag } = parseImage(svc.image);
-          return tag.split('-')[0];
+          return fallback();
         }
 
         const running = containers.find(
@@ -70,12 +90,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         );
 
         if (!running) {
-          const svc = composeJson.services?.[serviceId];
-          if (!svc?.image) {
-            return null;
-          }
-          const { tag } = parseImage(svc.image);
-          return tag.split('-')[0];
+          return fallback();
         }
 
         const inspect = await req.server.docker
@@ -93,25 +108,16 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         if (isTransientDockerConnError(err)) {
           logger.warn(
             { service: serviceId },
-            '[get-service-version] docker pipe busy — retrying',
+            '[get-service-version] docker unreachable — falling back to compose.yml',
           );
-
-          await waitForDockerDaemon(req.server.docker, req.log, {
-            totalTimeoutMs: 4000,
-            perAttemptTimeoutMs: 800,
-          });
-
-          return attempt();
+          return fallback();
         }
 
-        logger.warn({ service: serviceId, err }, 'inspect failed fallback');
-
-        const svc = composeJson.services?.[serviceId];
-        if (!svc?.image) {
-          return null;
-        }
-        const { tag } = parseImage(svc.image);
-        return tag.split('-')[0];
+        logger.warn(
+          { service: serviceId, err },
+          '[get-service-version] unexpected error — falling back to compose.yml',
+        );
+        return fallback();
       }
     };
 
@@ -136,7 +142,6 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
       const isThirdParty = serviceType === 'third-party';
 
-      // Build correct imageName for backoffice API
       const imageNameToFetch =
         isWindows && isThirdParty && windowsYear
           ? `${shortImageName}-win-${windowsYear}`
@@ -165,55 +170,53 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
     logger.info({ id, shortImageName }, 'fetching agent info');
 
-    const [currentVersion, serviceInfo, mandatoryUpdateResult] =
-      await Promise.all([
-        getCurrentVersion(id),
-        fetchAgentInfo(shortImageName),
-        (async () => {
-          if (id !== coreHubName) {
-            return {
-              mandatoryUpdate: false,
-              servicesToUpdate: [],
-            };
+    const mandatoryUpdateResult = await (async () => {
+      if (id !== coreHubName) {
+        return {
+          mandatoryUpdate: false,
+          servicesToUpdate: [],
+        };
+      }
+
+      const thirdPartyServices = Array.from(THIRD_PARTY_SERVICES);
+
+      const servicesToCheck = [
+        conductorName,
+        chronosName,
+        ...thirdPartyServices,
+      ];
+
+      const results = await Promise.all(
+        servicesToCheck.map(async svcId => {
+          try {
+            const update = await needsUpdate(svcId);
+            return { id: svcId, needsUpdate: update };
+          } catch (err) {
+            logger.warn(
+              { service: svcId, err },
+              '[get-service-version] needsUpdate failed',
+            );
+            return { id: svcId, needsUpdate: false };
           }
+        }),
+      );
 
-          const thirdPartyServices = Array.from(THIRD_PARTY_SERVICES);
+      const servicesToUpdate = results
+        .filter(r => r.needsUpdate)
+        .map(r => r.id);
 
-          const servicesToCheck = [
-            conductorName,
-            chronosName,
-            ...thirdPartyServices,
-          ];
+      return {
+        mandatoryUpdate: servicesToUpdate.length > 0,
+        servicesToUpdate,
+      };
+    })();
 
-          const results = await Promise.all(
-            servicesToCheck.map(async svcId => {
-              try {
-                const update = await needsUpdate(svcId);
-                return { id: svcId, needsUpdate: update };
-              } catch (err) {
-                logger.warn(
-                  { service: svcId, err },
-                  '[get-service-version] needsUpdate failed',
-                );
-                return { id: svcId, needsUpdate: false };
-              }
-            }),
-          );
-
-          const servicesToUpdate = results
-            .filter(r => r.needsUpdate)
-            .map(r => r.id);
-
-          return {
-            mandatoryUpdate: servicesToUpdate.length > 0,
-            servicesToUpdate,
-          };
-        })(),
-      ]);
+    const [currentVersion, serviceInfo] = await Promise.all([
+      getCurrentVersion(id),
+      fetchAgentInfo(shortImageName),
+    ]);
 
     const actualCurrentVersion = currentVersion || fallbackVersion;
-
-    const { mandatoryUpdate, servicesToUpdate } = mandatoryUpdateResult;
 
     return reply.send({
       success: true,
@@ -222,20 +225,12 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         latestVersionAlpha: serviceInfo?.latestVersionAlpha,
         latestVersionBeta: serviceInfo?.latestVersionBeta,
         latestVersionGA: serviceInfo?.latestVersionGA,
-        mandatoryUpdate,
-        servicesToUpdate,
+        mandatoryUpdate: mandatoryUpdateResult.mandatoryUpdate,
+        servicesToUpdate: mandatoryUpdateResult.servicesToUpdate,
       },
     });
   } catch (error: unknown) {
     logger.error({ error }, '[get-service-version] unexpected error');
-
-    if (isTransientDockerConnError(error)) {
-      return reply.code(503).send({
-        success: false,
-        error: 'Docker daemon not ready yet',
-        details: error instanceof Error ? error.message : String(error),
-      });
-    }
 
     return reply.code(502).send({
       success: false,

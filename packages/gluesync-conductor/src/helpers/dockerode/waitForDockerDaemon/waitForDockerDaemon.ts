@@ -1,22 +1,18 @@
-import type Dockerode from 'dockerode';
+import isTransientDockerConnError from '../isTransientDockerConnError/isTransientDockerConnError';
+import type { WaitForDockerDaemon } from './waitForDockerDaemon.model';
 
-export type LoggerLike = {
-  warn: (obj: any, msg?: string) => void;
-};
-
-export type WaitForDockerDaemonOptions = Readonly<{
-  totalTimeoutMs?: number;
-  perAttemptTimeoutMs?: number;
-  baseDelayMs?: number;
-  maxDelayMs?: number;
-}>;
-
-const sleep = (ms: number) =>
-  new Promise<void>(resolve => {
+/**
+ * Sleep helper
+ */
+const sleep = (ms: number): Promise<void> =>
+  new Promise(resolve => {
     setTimeout(resolve, ms);
   });
 
-const withTimeout = async <T>(p: Promise<T>, ms: number): Promise<T> =>
+/**
+ * Promise timeout wrapper
+ */
+const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> =>
   Promise.race([
     p,
     new Promise<T>((_, reject) => {
@@ -26,54 +22,15 @@ const withTimeout = async <T>(p: Promise<T>, ms: number): Promise<T> =>
     }),
   ]);
 
-export const isTransientDockerConnError = (err: unknown): boolean => {
-  if (!err || typeof err !== 'object') {
-    return false;
-  }
-
-  const e = err as any;
-
-  const code = String(e.code ?? '');
-  const errno = String(e.errno ?? '');
-  const message = String(e.message ?? '');
-
-  // Windows named pipe not ready is commonly ENOENT / errno -4058
-  if (code === 'ENOENT' || errno === '-4058') {
-    return true;
-  }
-
-  if (
-    code === 'ENONET' ||
-    code === 'ECONNRESET' ||
-    code === 'EPIPE' ||
-    code === 'ETIMEDOUT'
-  ) {
-    return true;
-  }
-
-  // Fallback: error text contains the pipe path
-  if (
-    message.includes('//./pipe/docker_engine') ||
-    message.includes('\\\\.\\pipe\\docker_engine')
-  ) {
-    return true;
-  }
-
-  return false;
-};
-
 /**
- * Wait until the Docker daemon responds to ping
+ * Wait until the Docker daemon responds to ping.
+ * Fully cross‑platform with exponential backoff.
  */
-export const waitForDockerDaemon = async (
-  docker: Readonly<Pick<Dockerode, 'ping'>>,
-  log: Readonly<LoggerLike>,
-  opts?: WaitForDockerDaemonOptions,
-): Promise<void> => {
-  const totalTimeoutMs = opts?.totalTimeoutMs ?? 5000;
-  const perAttemptTimeoutMs = opts?.perAttemptTimeoutMs ?? 800;
-  const baseDelayMs = opts?.baseDelayMs ?? 200;
-  const maxDelayMs = opts?.maxDelayMs ?? 1000;
+const waitForDockerDaemon: WaitForDockerDaemon = async (docker, log, opts) => {
+  const totalTimeoutMs = opts?.totalTimeoutMs ?? 15000;
+  const perAttemptTimeoutMs = opts?.perAttemptTimeoutMs ?? 1500;
+  const baseDelayMs = opts?.baseDelayMs ?? 500;
+  const maxDelayMs = opts?.maxDelayMs ?? 2000;
 
   const deadline = Date.now() + totalTimeoutMs;
 
@@ -84,16 +41,23 @@ export const waitForDockerDaemon = async (
       throw new Error(`Docker daemon not ready within ${totalTimeoutMs}ms`);
     }
 
-    try {
+    const tryPing = async (): Promise<void> => {
       await withTimeout(
         docker.ping(),
         Math.min(perAttemptTimeoutMs, remaining),
       );
+    };
+
+    try {
+      await tryPing();
+      return undefined; // <-- fixes consistent-return
     } catch (err) {
+      // Non‑transient error → fail immediately
       if (!isTransientDockerConnError(err)) {
         throw err;
       }
 
+      // Transient → retry with exponential backoff
       const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** attempt);
       const cappedDelay = Math.min(delay, Math.max(0, deadline - Date.now()));
 
@@ -114,9 +78,11 @@ export const waitForDockerDaemon = async (
       }
 
       await sleep(cappedDelay);
-      await attemptPing(attempt + 1);
+      return attemptPing(attempt + 1);
     }
   };
 
   return attemptPing(0);
 };
+
+export default waitForDockerDaemon;

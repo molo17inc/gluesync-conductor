@@ -15,26 +15,26 @@ import {
   ConductorServiceTypes,
   conductorServiceTypes,
 } from '../../../models/conductor.model';
-import {
-  isTransientDockerConnError,
-  waitForDockerDaemon,
-} from '../../../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
+import waitForDockerDaemon from '../../../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
+import isTransientDockerConnError from '../../../helpers/dockerode/isTransientDockerConnError/isTransientDockerConnError';
+import { getLogger } from '../../../utils/logger';
 
 const handler: ListContainersHandler = async (req, reply) => {
   try {
     const { type } = castObject<ListContainersParams>(req.query);
+    const logger = getLogger();
 
     const composeJson = (await readComposeFile()) ?? {};
     const dockerComposeServicesNames = Object.keys(composeJson.services || {});
 
-    await waitForDockerDaemon(req.server.docker, req.log, {
+    await waitForDockerDaemon(req.server.docker, logger, {
       totalTimeoutMs: 5000,
       perAttemptTimeoutMs: 800,
     });
 
     const safeFetch = async () =>
       Promise.all([
-        getSystemInfo(req.server.docker, req.log),
+        getSystemInfo(req.server.docker, logger),
         req.server.docker.listContainers({ all: true }),
       ]);
 
@@ -45,7 +45,7 @@ const handler: ListContainersHandler = async (req, reply) => {
         if (isTransientDockerConnError(err)) {
           req.log.warn('[list-containers] docker pipe busy — retrying');
 
-          await waitForDockerDaemon(req.server.docker, req.log, {
+          await waitForDockerDaemon(req.server.docker, logger, {
             totalTimeoutMs: 4000,
             perAttemptTimeoutMs: 800,
           });
