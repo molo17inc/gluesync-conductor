@@ -14,6 +14,8 @@ import {
 } from '../../../plugins/apiBlockerAsUpdating';
 import { autoReboot } from '../../../helpers/autoReboot/autoReboot';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
+import restartWindows from '../../../helpers/restartAllServices/windowsRestart';
+import restartLinux from '../../../helpers/restartAllServices/linuxRestart';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
@@ -116,7 +118,96 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       const CONDUCTOR_SERVICE =
         process.env.CONDUCTOR_NAME || 'gluesync-conductor';
 
-      // Check if only conductor is being restarted
+      // ---------------------------------------------------------
+      // CASE 1 — No IDs → full stack restart using new utilities
+      // ---------------------------------------------------------
+      if (requestIds.length === 0) {
+        req.log.info('[conductor-restart] full stack restart requested');
+
+        enableUpdateMode();
+
+        reply.code(200);
+        reply.send({
+          success: true,
+          data: {
+            containers: [
+              {
+                id: 'ALL',
+                status: 'OK',
+                message: 'Full stack restart initiated.',
+              },
+            ],
+          },
+        });
+
+        setImmediate(() => {
+          const hostProjectDir = getRootPath({
+            basePath: process.env.BASE_PATH,
+          });
+
+          const restartFn = isWindows ? restartWindows : restartLinux;
+
+          restartFn({
+            hostProjectDir,
+            helperImage: isWindows ? helperImageWindows : 'docker:28',
+            log: msg =>
+              req.log.info({ msg }, '[conductor-restart] full restart log'),
+          }).catch(err => {
+            req.log.error(
+              { error: err },
+              '[conductor-restart] full restart failed',
+            );
+          });
+        });
+
+        return;
+      }
+
+      // ---------------------------------------------------------
+      // CASE 2 — IDs provided → ORIGINAL LOGIC
+      // ---------------------------------------------------------
+
+      // Restart ONLY conductor
+      if (requestIds.length === 1 && requestIds[0] === CONDUCTOR_SERVICE) {
+        req.log.info(
+          { service: CONDUCTOR_SERVICE },
+          '[conductor-restart] triggering conductor restart',
+        );
+
+        enableUpdateMode();
+
+        reply.code(200);
+        reply.send({
+          success: true,
+          data: {
+            containers: [
+              {
+                id: CONDUCTOR_SERVICE,
+                status: 'OK',
+                message: `Conductor ${CONDUCTOR_SERVICE} restart initiated.`,
+              },
+            ],
+          },
+        });
+
+        setImmediate(() => {
+          autoReboot({
+            hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
+            serviceName: CONDUCTOR_SERVICE,
+            helperImage: isWindows ? helperImageWindows : 'docker:cli',
+            log: msg =>
+              req.log.info({ msg }, '[conductor-restart] restart log'),
+          }).catch(err => {
+            req.log.error(
+              { error: err },
+              '[conductor-restart] autoReboot failed',
+            );
+          });
+        });
+
+        return;
+      }
+
       if (requestIds.length === 1 && requestIds[0] === CONDUCTOR_SERVICE) {
         req.log.info(
           { service: CONDUCTOR_SERVICE },
