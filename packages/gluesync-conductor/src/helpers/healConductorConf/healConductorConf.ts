@@ -231,6 +231,22 @@ const healConductorConf = async (): Promise<boolean> => {
     ...(networkChanged ? { networks: healedNetworks } : {}),
   };
 
+  // ----- DNS HEALING (Windows only) -----
+  const { healedDns, dnsChanged } = (() => {
+    if (!isWindows) {
+      return { healedDns: baseService.dns, dnsChanged: false };
+    }
+
+    const defaultDns = ['8.8.8.8', '1.1.1.1'];
+
+    const needsHealing =
+      !Array.isArray(baseService.dns) || baseService.dns.length === 0;
+
+    return needsHealing
+      ? { healedDns: defaultDns, dnsChanged: true }
+      : { healedDns: baseService.dns, dnsChanged: false };
+  })();
+
   const {
     fullName,
     shortImageName,
@@ -248,6 +264,7 @@ const healConductorConf = async (): Promise<boolean> => {
   const finalService: any = {
     ...baseService,
     volumes: finalVolumes,
+    ...(dnsChanged ? { dns: healedDns } : {}),
     ...(newTag ? { image: `${fullName}:${newTag}` } : {}),
   };
 
@@ -258,6 +275,7 @@ const healConductorConf = async (): Promise<boolean> => {
     envChanged ||
     envFileChanged ||
     networkChanged ||
+    dnsChanged ||
     (!!newTag && newTag !== currentTag);
 
   if (!isChanged) {
@@ -272,6 +290,10 @@ const healConductorConf = async (): Promise<boolean> => {
       [conductorServiceName]: finalService,
     },
   });
+
+  if (dnsChanged) {
+    logger.info('[conductor-healer] DNS healed (8.8.8.8, 1.1.1.1)');
+  }
 
   logger.info('[conductor-healer] reboot needed to heal');
   return true;
