@@ -22,4 +22,5 @@ export type RunCmd = (
   id: string,
   filename: string,
   extraOptions?: ReadonlyArray<string>,
+  maxRetries?: number,
 ) => Promise<string>;

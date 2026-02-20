@@ -1,4 +1,12 @@
-import { rm, kill, pullAll, restartAll, stop, upAll } from 'docker-compose';
+import {
+  rm,
+  kill,
+  pullAll,
+  restartAll,
+  stop,
+  upAll,
+  IDockerComposeResult,
+} from 'docker-compose';
 import { CreateActions, RunCmd } from './createActions.model';
 import getRootPath from '../../getRootPath/getRootPath';
 import cleanupOrphanNetworkByName from '../cleanupOrphanNetworkByName/cleanupOrphanNetworkByName';
@@ -11,6 +19,7 @@ import { autoReboot } from '../../autoReboot/autoReboot';
 import ensureVolumeDirs from '../../ensureVolumeDirs/ensureVolumeDirs';
 import { enableUpdateMode } from '../../../plugins/apiBlockerAsUpdating';
 import restartWindowsDependentServices from '../restartWindowsDependentServices/restartWindowsDependentServices';
+import { retryCmd, shouldRetryError } from '../retryHelper/retryHelper';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
@@ -19,12 +28,20 @@ const CHRONOS_SERVICE = process.env.CHRONOS_NAME || 'gluesync-chronos';
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
 
-const runCmd: RunCmd = async (cmdFn, id, filename, extraOptions?) => {
+/**
+ * Executes a docker-compose command with functional retry logic
+ */
+export const runCmd: RunCmd = async (
+  cmdFn,
+  id,
+  filename,
+  extraOptions,
+  maxRetries = 3,
+) => {
   const commonOptions: any = {
     cwd: getRootPath(),
     config: filename,
     log: true,
-    // global options
     composeOptions: [
       '--project-directory',
       getRootPath({ basePath: process.env.BASE_PATH }),
@@ -44,15 +61,32 @@ const runCmd: RunCmd = async (cmdFn, id, filename, extraOptions?) => {
       }
     : commonOptions;
 
-  const result = await cmdFn(options);
+  const logger = getLogger();
 
-  const message = result.out.trim() || result.err.trim();
+  const exec = (): Promise<unknown> =>
+    cmdFn(options).then((result: Readonly<unknown>) => {
+      const typed = result as Readonly<IDockerComposeResult>;
+      const msg = typed.out.trim() || typed.err.trim();
 
-  if (result.exitCode === null || result.exitCode > 0) {
-    throw new Error(message);
+      if (typed.exitCode === null || typed.exitCode > 0) {
+        if (!isWindows || !shouldRetryError(typed, msg)) {
+          throw new Error(msg);
+        }
+        throw new Error(msg);
+      }
+
+      return typed;
+    });
+
+  const final = await retryCmd(1, maxRetries, exec, logger, id);
+
+  const finalMessage = final.out.trim() || final.err.trim();
+
+  if (final.exitCode === null || final.exitCode > 0) {
+    throw new Error(finalMessage);
   }
 
-  return message;
+  return finalMessage;
 };
 
 const createActions: CreateActions = ({
