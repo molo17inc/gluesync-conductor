@@ -61,6 +61,10 @@ const build = async (
               to: 'build/collect-logs.sh',
             },
             {
+              from: '../gluesync-logs-uploader/copy-agent-data.sh',
+              to: 'build/copy-agent-data.sh',
+            },
+            {
               from: `${swaggerUiStatic}/**/*`,
               to: 'build/static',
             },
