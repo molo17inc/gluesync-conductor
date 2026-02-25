@@ -13,6 +13,7 @@ import { THIRD_PARTY_SERVICES } from '../../../helpers/fetchAllServicesInCompose
 import { getLogger } from '../../../utils/logger';
 import waitForDockerDaemon from '../../../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
 import isTransientDockerConnError from '../../../helpers/dockerode/isTransientDockerConnError/isTransientDockerConnError';
+import fetchAllArtifactVersions from '../../../helpers/fetchLatestArtifactVersion/fetchLatestArtifactVersion';
 
 const logger = getLogger();
 
@@ -73,7 +74,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         return fallback();
       }
 
-      const attempt = async (): Promise<string | null> => {
+      try {
         const containers = await req.server.docker.listContainers({
           all: true,
           filters: {
@@ -81,14 +82,9 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
           },
         });
 
-        if (!containers || containers.length === 0) {
-          return fallback();
-        }
-
-        const running = containers.find(
+        const running = containers?.find(
           c => (c.State || '').toLowerCase() === 'running',
         );
-
         if (!running) {
           return fallback();
         }
@@ -96,30 +92,19 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         const inspect = await req.server.docker
           .getContainer(running.Id)
           .inspect();
-
-        const runningImage = inspect.Config.Image;
-        const { tag } = parseImage(runningImage);
+        const { tag } = parseImage(inspect.Config.Image);
         return tag.split('-')[0];
-      };
-
-      try {
-        return await attempt();
       } catch (err) {
-        if (isTransientDockerConnError(err)) {
-          logger.warn(
-            { service: serviceId },
-            '[get-service-version] docker unreachable — falling back to compose.yml',
-          );
-          return fallback();
-        }
-
         logger.warn(
-          { service: serviceId, err },
-          '[get-service-version] unexpected error — falling back to compose.yml',
+          { serviceId, err },
+          '[get-service-version] Docker inspection failed — fallback to compose.yml',
         );
         return fallback();
       }
     };
+
+    // Fetch all Maven artifact versions once
+    const allArtifactVersions = await fetchAllArtifactVersions(channel);
 
     const needsUpdate = async (serviceId: string): Promise<boolean> => {
       const svc = composeJson.services?.[serviceId];
@@ -127,7 +112,11 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         return false;
       }
 
-      const { shortImageName, tag: composeTag } = parseImage(svc.image);
+      const {
+        imageName,
+        shortImageName,
+        tag: composeTag,
+      } = parseImage(svc.image);
 
       const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
       const windowsYear = process.env.WINDOWS_YEAR;
@@ -140,6 +129,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
             ?.split('=')[1]
         : labels?.[`${LabelPrefix.CONDUCTOR}.type`];
 
+      const isAgentService = serviceType === 'agent';
       const isThirdParty = serviceType === 'third-party';
 
       const imageNameToFetch =
@@ -157,15 +147,25 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         return false;
       }
 
+      // Only check Maven for agents
+      const artifactName = isAgentService ? imageName : null;
+      const artifact = artifactName
+        ? allArtifactVersions.find(a => a.a === artifactName)
+        : null;
+      const mavenLatestVersion = artifact?.latestVersion;
+
       const versionToCheck = currentVersion || composeTag.split('-')[0];
-      return expectedVersion !== versionToCheck;
+
+      return mavenLatestVersion
+        ? mavenLatestVersion !== versionToCheck
+        : expectedVersion !== versionToCheck;
     };
 
     const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
     const conductorName = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
     const chronosName = process.env.CHRONOS_NAME || 'gluesync-chronos';
 
-    const { shortImageName, tag } = parseImage(service.image);
+    const { imageName, shortImageName, tag } = parseImage(service.image);
     const fallbackVersion = tag.split('-')[0];
 
     logger.info({ id, shortImageName }, 'fetching agent info');
@@ -204,27 +204,66 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       const servicesToUpdate = results
         .filter(r => r.needsUpdate)
         .map(r => r.id);
-
       return {
         mandatoryUpdate: servicesToUpdate.length > 0,
         servicesToUpdate,
       };
     })();
 
+    // Determine currentVersion for the requested service
     const [currentVersion, serviceInfo] = await Promise.all([
       getCurrentVersion(id),
       fetchAgentInfo(shortImageName),
     ]);
 
-    const actualCurrentVersion = currentVersion || fallbackVersion;
+    const expectedVersion = getVersionByChannel(serviceInfo, channel);
+
+    // Only check Maven for agents
+    const serviceType = Array.isArray(service.labels)
+      ? service.labels
+          .find(l => l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
+          ?.split('=')[1]
+      : service.labels?.[`${LabelPrefix.CONDUCTOR}.type`];
+
+    const isAgentService = serviceType === 'agent';
+    const artifactName = isAgentService ? imageName : undefined;
+    const artifact = artifactName
+      ? allArtifactVersions.find(a => a.a === artifactName)
+      : undefined;
+    const mavenLatestVersion = artifact?.latestVersion;
+
+    // Determine effective current version
+    const effectiveVersion =
+      isAgentService &&
+      mavenLatestVersion &&
+      expectedVersion !== mavenLatestVersion
+        ? (logger.warn(
+            { id, channel, expectedVersion, mavenLatestVersion },
+            '[get-service-version] version mismatch - overriding with Maven latest',
+          ),
+          mavenLatestVersion)
+        : currentVersion || fallbackVersion;
+
+    // Adjust serviceInfo for the requested release channel
+    const adjustedServiceInfo = {
+      ...serviceInfo,
+      latestVersionGA:
+        channel === 'ga' ? effectiveVersion : serviceInfo?.latestVersionGA,
+      latestVersionBeta:
+        channel === 'beta' ? effectiveVersion : serviceInfo?.latestVersionBeta,
+      latestVersionAlpha:
+        channel === 'alpha'
+          ? effectiveVersion
+          : serviceInfo?.latestVersionAlpha,
+    };
 
     return reply.send({
       success: true,
       data: {
-        currentVersion: actualCurrentVersion,
-        latestVersionAlpha: serviceInfo?.latestVersionAlpha,
-        latestVersionBeta: serviceInfo?.latestVersionBeta,
-        latestVersionGA: serviceInfo?.latestVersionGA,
+        currentVersion: effectiveVersion,
+        latestVersionAlpha: adjustedServiceInfo.latestVersionAlpha,
+        latestVersionBeta: adjustedServiceInfo.latestVersionBeta,
+        latestVersionGA: adjustedServiceInfo.latestVersionGA,
         mandatoryUpdate: mandatoryUpdateResult.mandatoryUpdate,
         servicesToUpdate: mandatoryUpdateResult.servicesToUpdate,
       },
