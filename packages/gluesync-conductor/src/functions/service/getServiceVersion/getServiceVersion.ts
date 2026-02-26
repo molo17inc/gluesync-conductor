@@ -69,7 +69,6 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         return tag.split('-')[0];
       };
 
-      // If Docker never became ready, skip Docker and use docker-compose file
       if (!dockerReady) {
         return fallback();
       }
@@ -81,14 +80,12 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
             label: [`${LabelPrefix.COMPOSE}.service=${serviceId}`],
           },
         });
-
         const running = containers?.find(
           c => (c.State || '').toLowerCase() === 'running',
         );
         if (!running) {
           return fallback();
         }
-
         const inspect = await req.server.docker
           .getContainer(running.Id)
           .inspect();
@@ -103,7 +100,6 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       }
     };
 
-    // Fetch all Maven artifact versions once
     const allArtifactVersions = await fetchAllArtifactVersions(channel);
 
     const needsUpdate = async (serviceId: string): Promise<boolean> => {
@@ -117,18 +113,15 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         shortImageName,
         tag: composeTag,
       } = parseImage(svc.image);
-
       const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
       const windowsYear = process.env.WINDOWS_YEAR;
 
       const { labels } = svc;
-
       const serviceType = Array.isArray(labels)
         ? labels
             .find(l => l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
             ?.split('=')[1]
         : labels?.[`${LabelPrefix.CONDUCTOR}.type`];
-
       const isAgentService = serviceType === 'agent';
       const isThirdParty = serviceType === 'third-party';
 
@@ -147,7 +140,6 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         return false;
       }
 
-      // Only check Maven for agents
       const artifactName = isAgentService ? imageName : null;
       const artifact = artifactName
         ? allArtifactVersions.find(a => a.a === artifactName)
@@ -155,122 +147,122 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       const mavenLatestVersion = artifact?.latestVersion;
 
       const versionToCheck = currentVersion || composeTag.split('-')[0];
-
       return mavenLatestVersion
         ? mavenLatestVersion !== versionToCheck
         : expectedVersion !== versionToCheck;
     };
 
-    const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
+    // const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
     const conductorName = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
     const chronosName = process.env.CHRONOS_NAME || 'gluesync-chronos';
 
-    const { imageName, shortImageName, tag } = parseImage(service.image);
+    const { shortImageName, tag } = parseImage(service.image);
     const fallbackVersion = tag.split('-')[0];
 
     logger.info({ id, shortImageName }, 'fetching agent info');
 
-    const mandatoryUpdateResult = await (async () => {
-      if (id !== coreHubName) {
-        return {
-          mandatoryUpdate: false,
-          servicesToUpdate: [],
-        };
-      }
-
-      const thirdPartyServices = Array.from(THIRD_PARTY_SERVICES);
-
-      const servicesToCheck = [
-        conductorName,
-        chronosName,
-        ...thirdPartyServices,
-      ];
-
-      const results = await Promise.all(
-        servicesToCheck.map(async svcId => {
-          try {
-            const update = await needsUpdate(svcId);
-            return { id: svcId, needsUpdate: update };
-          } catch (err) {
-            logger.warn(
-              { service: svcId, err },
-              '[get-service-version] needsUpdate failed',
-            );
-            return { id: svcId, needsUpdate: false };
-          }
-        }),
-      );
-
-      const servicesToUpdate = results
-        .filter(r => r.needsUpdate)
-        .map(r => r.id);
-      return {
-        mandatoryUpdate: servicesToUpdate.length > 0,
-        servicesToUpdate,
-      };
-    })();
-
-    // Determine currentVersion for the requested service
+    // Determine currentVersion and agent info
     const [currentVersion, serviceInfo] = await Promise.all([
       getCurrentVersion(id),
       fetchAgentInfo(shortImageName),
     ]);
 
-    const expectedVersion = getVersionByChannel(serviceInfo, channel);
-
-    // Only check Maven for agents
-    const serviceType = Array.isArray(service.labels)
-      ? service.labels
-          .find(l => l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
-          ?.split('=')[1]
-      : service.labels?.[`${LabelPrefix.CONDUCTOR}.type`];
-
-    const isAgentService = serviceType === 'agent';
-    const artifactName = isAgentService ? imageName : undefined;
-    const artifact = artifactName
-      ? allArtifactVersions.find(a => a.a === artifactName)
-      : undefined;
-    const mavenLatestVersion = artifact?.latestVersion;
-
-    // Determine effective current version
-    const effectiveVersion =
-      isAgentService &&
-      mavenLatestVersion &&
-      expectedVersion !== mavenLatestVersion
-        ? (logger.warn(
-            { id, channel, expectedVersion, mavenLatestVersion },
-            '[get-service-version] version mismatch - overriding with Maven latest',
-          ),
-          mavenLatestVersion)
-        : currentVersion || fallbackVersion;
-
-    // Adjust serviceInfo for the requested release channel
-    const adjustedServiceInfo = {
-      ...serviceInfo,
-      latestVersionGA:
-        channel === 'ga' ? effectiveVersion : serviceInfo?.latestVersionGA,
-      latestVersionBeta:
-        channel === 'beta' ? effectiveVersion : serviceInfo?.latestVersionBeta,
-      latestVersionAlpha:
-        channel === 'alpha'
-          ? effectiveVersion
-          : serviceInfo?.latestVersionAlpha,
+    /// Determine latestVersion for requested channel
+    const latestVersionMap: Record<
+      ReleaseChannelTypes,
+      'latestVersionAlpha' | 'latestVersionBeta' | 'latestVersionGA'
+    > = {
+      alpha: 'latestVersionAlpha',
+      beta: 'latestVersionBeta',
+      ga: 'latestVersionGA',
     };
 
+    const latestVersionKey = latestVersionMap[channel];
+
+    // Gather all agent services
+    const agents: Array<{ id: string; image: string }> = Object.entries(
+      composeJson.services || {},
+    )
+      .filter(([, svc]) => {
+        const { labels } = svc;
+        const serviceType = Array.isArray(labels)
+          ? labels
+              .find(l => l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
+              ?.split('=')[1]
+          : labels?.[`${LabelPrefix.CONDUCTOR}.type`];
+        return serviceType === 'agent';
+      })
+      .map(([id, svc]) => ({ id, image: svc.image }));
+
+    const backofficeVersionForChannel = serviceInfo[latestVersionKey];
+    // Determine the appropriate latestVersion for the requested channel
+    const updatedServiceInfo = !agents.length
+      ? {
+          ...serviceInfo,
+          [latestVersionKey]: backofficeVersionForChannel,
+        }
+      : (() => {
+          const allAgentsMatchBackoffice = agents.every(agent => {
+            const artifact = allArtifactVersions.find(
+              a => a.a === parseImage(agent.image).imageName,
+            );
+            return artifact?.latestVersion === backofficeVersionForChannel;
+          });
+
+          if (allAgentsMatchBackoffice) {
+            logger.info(
+              { latestVersionKey },
+              '[get-service-version] all agents match backoffice → using backoffice version',
+            );
+            return {
+              ...serviceInfo,
+              [latestVersionKey]: backofficeVersionForChannel,
+            };
+          }
+          logger.warn(
+            { latestVersionKey, currentVersion },
+            '[get-service-version] agent mismatch → using currentVersion',
+          );
+          return {
+            ...serviceInfo,
+            [latestVersionKey]: currentVersion || fallbackVersion,
+          };
+        })();
+
+    // Determine effectiveVersion for the response
+    const effectiveVersion = currentVersion || fallbackVersion;
+
+    // Check modules & third-party services for updates
+    const thirdPartyServices = Array.from(THIRD_PARTY_SERVICES);
+    const servicesToCheck = [conductorName, chronosName, ...thirdPartyServices];
+
+    const results = await Promise.all(
+      servicesToCheck.map(async svcId => {
+        try {
+          const update = await needsUpdate(svcId);
+          return { id: svcId, needsUpdate: update };
+        } catch {
+          return { id: svcId, needsUpdate: false };
+        }
+      }),
+    );
+
+    const servicesToUpdate = results.filter(r => r.needsUpdate).map(r => r.id);
+
+    // Return response
     return reply.send({
       success: true,
       data: {
         currentVersion: effectiveVersion,
-        latestVersionAlpha: adjustedServiceInfo.latestVersionAlpha,
-        latestVersionBeta: adjustedServiceInfo.latestVersionBeta,
-        latestVersionGA: adjustedServiceInfo.latestVersionGA,
-        mandatoryUpdate: mandatoryUpdateResult.mandatoryUpdate,
-        servicesToUpdate: mandatoryUpdateResult.servicesToUpdate,
+        latestVersionAlpha: updatedServiceInfo.latestVersionAlpha,
+        latestVersionBeta: updatedServiceInfo.latestVersionBeta,
+        latestVersionGA: updatedServiceInfo.latestVersionGA,
+        mandatoryUpdate: servicesToUpdate.length > 0,
+        servicesToUpdate,
       },
     });
   } catch (error: unknown) {
     logger.error({ error }, '[get-service-version] unexpected error');
-
     return reply.code(502).send({
       success: false,
       error: 'Unable to retrieve agent version',
