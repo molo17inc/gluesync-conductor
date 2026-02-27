@@ -6,8 +6,6 @@ import {
   stop,
   upAll,
   IDockerComposeResult,
-  pullOne,
-  IDockerComposeOptions,
 } from 'docker-compose';
 import { CreateActions, RunCmd } from './createActions.model';
 import getRootPath from '../../getRootPath/getRootPath';
@@ -125,11 +123,7 @@ const createActions: CreateActions = ({
       return `Agent ${id} undeployed successfully`;
     },
     update: async (id: string) => {
-      await runCmd(
-        (options: Readonly<IDockerComposeOptions>) => pullOne(id, options),
-        filename,
-        '--include-deps',
-      );
+      await runCmd(pullAll, id, filename, ['--include-deps']);
 
       if (id === CONDUCTOR_SERVICE) {
         logger.info(
