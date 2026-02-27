@@ -30,38 +30,59 @@ export const markMigrationCompleted = async (): Promise<void> => {
 };
 
 export const migrationNeeded = async (): Promise<boolean> => {
+  console.log('[migration-check] Starting migration check');
+  console.log('[migration-check] MIGRATION_FILE path:', MIGRATION_FILE);
+
   try {
-    // If migration file exists and completed=true → no migration needed
+    // Check migration file
     try {
       const file = await fs.readFile(MIGRATION_FILE, 'utf-8');
+      console.log('[migration-check] migration file contents:', file);
+
       const parsed = JSON.parse(file);
+      console.log('[migration-check] parsed migration file:', parsed);
 
       if (parsed?.completed === true) {
+        console.log('[migration-check] Migration already completed → skipping');
         return false;
       }
-    } catch {
-      // file doesn't exist → continue
+    } catch (fileErr) {
+      console.log(
+        '[migration-check] migration file does not exist or unreadable:',
+        fileErr,
+      );
     }
 
-    // Auto-detect agents in compose
+    console.log('[migration-check] Reading compose file...');
     const composeJson = await readComposeFile({ raw: true });
 
-    const hasAgents = Object.values(composeJson.services || {}).some(
-      (svc: any) => {
-        const labels = svc.labels || {};
-        return labels[`${LabelPrefix.CONDUCTOR}.type`] === 'agent';
-      },
+    console.log(
+      '[migration-check] Compose services keys:',
+      Object.keys(composeJson?.services || {}),
     );
 
+    const hasAgents = Object.entries(composeJson.services ?? {}).some(
+      ([, service]: any) =>
+        Array.isArray(service.labels)
+          ? service.labels.includes(`${LabelPrefix.CONDUCTOR}.type=agent`)
+          : service.labels?.[`${LabelPrefix.CONDUCTOR}.type`] === 'agent',
+    );
+
+    console.log('[migration-check] hasAgents =', hasAgents);
+
     if (hasAgents) {
+      console.log('[migration-check] Migration required → returning true');
       return true;
     }
 
-    // No agents → mark completed
+    console.log(
+      '[migration-check] No agents found → marking migration complete',
+    );
     await markMigrationCompleted();
+
     return false;
   } catch (err) {
-    console.error('[migration-check] Error:', err);
+    console.error('[migration-check] Fatal error:', err);
     return false;
   }
 };

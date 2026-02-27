@@ -47,9 +47,17 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     }
 
     if (containerAction === 'update') {
+      console.log('[update-handler] Update action triggered');
+
       const needsMigration = await migrationNeeded();
 
+      console.log(
+        '[update-handler] migrationNeeded() returned:',
+        needsMigration,
+      );
+
       if (needsMigration) {
+        console.log('[update-handler] Entering MIGRATION FLOW');
         try {
           await migrationWithUpdate(
             requestIds,
@@ -76,6 +84,8 @@ const handler: DoContainersActionHandler = async (req, reply) => {
           return;
         }
       }
+
+      console.log('[update-handler] Entering NORMAL UPDATE FLOW');
 
       const composeJson = await readComposeFile({ raw: true });
       req.log.debug(

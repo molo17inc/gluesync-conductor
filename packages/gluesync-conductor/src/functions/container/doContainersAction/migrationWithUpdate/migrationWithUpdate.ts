@@ -34,11 +34,11 @@ const migrationWithUpdate: MigrationWithUpdate = async (
   }
   logger.info('[migration] Script execution completed');
 
-  const agentIds = Object.entries(composeJson ?? {})
-    .filter(
-      ([, service]) =>
-        Array.isArray(service.labels) &&
-        service.labels.includes(`${LabelPrefix.CONDUCTOR}.type=agent`),
+  const agentIds = Object.entries(composeJson.services ?? {})
+    .filter(([, service]: any) =>
+      Array.isArray(service.labels)
+        ? service.labels.includes(`${LabelPrefix.CONDUCTOR}.type=agent`)
+        : service.labels?.[`${LabelPrefix.CONDUCTOR}.type`] === 'agent',
     )
     .map(([id]) => id);
 
