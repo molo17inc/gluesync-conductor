@@ -1,7 +1,7 @@
 FROM node:22.13.1-alpine
 
 # Install Docker CLI and tzdata for timezone support
-RUN apk add --no-cache docker-cli docker-cli-compose curl bash zip tar tzdata
+RUN apk add --no-cache docker-cli docker-cli-compose curl bash zip tar tzdata yq
 
 # Create Gluesync data and logs directory structure with proper permissions
 RUN mkdir -p /opt/gluesync/data /opt/gluesync/logs \
@@ -38,12 +38,14 @@ COPY build/static/ static/
 COPY agents.json agents.json
 
 # Copy log uploader scripts FROM build output
-COPY build/collect-logs.ps1 collect-logs.ps1
 COPY build/collect-logs.sh collect-logs.sh
 
 # Set executable permission for scripts
-RUN chmod +x collect-logs.ps1
 RUN chmod +x collect-logs.sh
+
+# Dockerfile snippet
+COPY build/copy-agent-data.sh copy-agent-data.sh
+RUN chmod +x copy-agent-data.sh
 
 COPY public/gluesync-conductor.svg static/logo.svg
 

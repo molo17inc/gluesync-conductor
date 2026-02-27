@@ -29,6 +29,7 @@ import { autoReboot } from './helpers/autoReboot/autoReboot';
 import getRootPath from './helpers/getRootPath/getRootPath';
 import healConductorConf from './helpers/healConductorConf/healConductorConf';
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
+import migrateRoutes from './routes/migrate';
 
 type FastifyServices = {
   docker: Docker;
@@ -96,6 +97,7 @@ const startServer = async (): Promise<void> => {
   await server.register(containerRoutes);
   await server.register(agentRoutes);
   await server.register(supportRoutes);
+  await server.register(migrateRoutes);
 
   await server.ready();
   await server.listen({ host, port });
