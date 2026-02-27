@@ -34,34 +34,25 @@ const migrationWithUpdate: MigrationWithUpdate = async (
   }
   logger.info('[migration] Script execution completed');
 
-  // Remove all agent services from the compose file
-  const cleanedComposeJson: typeof composeJson = {
+  const agentIds = Object.entries(composeJson ?? {})
+    .filter(
+      ([, service]) =>
+        Array.isArray(service.labels) &&
+        service.labels.includes(`${LabelPrefix.CONDUCTOR}.type=agent`),
+    )
+    .map(([id]) => id);
+
+  const cleanedComposeJson = {
     ...composeJson,
     services: Object.fromEntries(
-      Object.entries(composeJson.services || {}).filter(([id, svc]) => {
-        const labels = svc.labels as
-          | string[]
-          | Record<string, string>
-          | undefined;
-        const serviceType = Array.isArray(labels)
-          ? labels
-              .find(l => l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
-              ?.split('=')[1]
-          : labels?.[`${LabelPrefix.CONDUCTOR}.type`];
-        if (serviceType === 'agent') {
-          logger.debug({ id }, 'Removing agent service');
-        }
-        return serviceType !== 'agent';
-      }),
+      Object.entries(composeJson.services || {}).filter(
+        ([id]) => !agentIds.includes(id),
+      ),
     ),
   };
 
   logger.info(
-    {
-      removedAgents:
-        Object.keys(composeJson.services || {}).length -
-        Object.keys(cleanedComposeJson.services || {}).length,
-    },
+    { removedAgents: agentIds.length },
     '[migration] removed all agent services from compose',
   );
 
