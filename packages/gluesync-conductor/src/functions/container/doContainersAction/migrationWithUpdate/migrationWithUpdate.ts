@@ -3,7 +3,6 @@ import getRootPath from '../../../../helpers/getRootPath/getRootPath';
 import restartLinux from '../../../../helpers/restartAllServices/linuxRestart';
 import restartWindows from '../../../../helpers/restartAllServices/windowsRestart';
 import runMigrationScript from '../../../../helpers/runMigrationScript/runMigrationScript';
-import { enableUpdateMode } from '../../../../plugins/apiBlockerAsUpdating';
 import { getLogger } from '../../../../utils/logger';
 import { MigrationWithUpdate } from './migrationWithUpdate.model';
 import prepareComposeUpdate from './prepareComposeUpdate';
@@ -18,8 +17,6 @@ const migrationWithUpdate: MigrationWithUpdate = async (
 ) => {
   const logger = getLogger();
   logger.info('[migration] Migration to v2 enabled — starting flow');
-
-  enableUpdateMode();
 
   const composeJson = await readComposeFile({ raw: true });
 
