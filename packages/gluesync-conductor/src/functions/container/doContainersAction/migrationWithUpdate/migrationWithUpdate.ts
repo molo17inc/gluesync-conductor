@@ -5,7 +5,7 @@ import restartWindows from '../../../../helpers/restartAllServices/windowsRestar
 import runMigrationScript from '../../../../helpers/runMigrationScript/runMigrationScript';
 import { getLogger } from '../../../../utils/logger';
 import { MigrationWithUpdate } from './migrationWithUpdate.model';
-import prepareComposeUpdate from './prepareComposeUpdate';
+import prepareComposeUpdate from '../prepareComposeUpdate/prepareComposeUpdate';
 import { LabelPrefix } from '../../../../models/composeFile.model';
 import { markMigrationCompleted } from '../../../../helpers/migrationNeeded/migrationNeeded';
 

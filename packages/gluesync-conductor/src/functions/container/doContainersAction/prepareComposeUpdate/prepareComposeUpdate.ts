@@ -2,12 +2,12 @@ import canUpdateContainers from '../../../../helpers/canUpdateContainers/canUpda
 import fetchAllServicesInCompose from '../../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose';
 import editUpdateImagesInComposeFile from '../../../../helpers/editUpdatedImagesInComposeFile/editUpdateImagesInComposeFile';
 import { LabelPrefix } from '../../../../models/composeFile.model';
-import { ReleaseChannelTypes } from '../../../../models/conductor.model';
+import { PrepareComposeUpdate } from './prepareComposeUpdate.model';
 
-const prepareComposeUpdate = async (
-  composeJson: any,
-  requestIds: readonly string[],
-  releaseChannel: ReleaseChannelTypes,
+const prepareComposeUpdate: PrepareComposeUpdate = async (
+  composeJson,
+  requestIds,
+  releaseChannel,
 ) => {
   const initialEffectiveIds: ReadonlyArray<string> =
     requestIds.length === 0

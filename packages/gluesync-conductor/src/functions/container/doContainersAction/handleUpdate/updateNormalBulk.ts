@@ -1,4 +1,4 @@
-import prepareComposeUpdate from '../migrationWithUpdate/prepareComposeUpdate';
+import prepareComposeUpdate from '../prepareComposeUpdate/prepareComposeUpdate';
 import { UpdateNormalBulk } from './updateNormalBulk.model';
 
 const updateNormalBulk: UpdateNormalBulk = async (
