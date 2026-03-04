@@ -96,7 +96,7 @@ const runMigrationScript: RunMigrationScript = async () => {
     if (exitCode === 0) {
       return {
         success: true,
-        output: stdoutText.trim(),
+        data: stdoutText.trim(),
       };
     }
 

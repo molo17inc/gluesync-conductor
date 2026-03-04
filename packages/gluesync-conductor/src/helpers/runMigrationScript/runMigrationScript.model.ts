@@ -1,12 +1,5 @@
-export type RunMigrationScriptResult =
-  | {
-      success: true;
-      output: string;
-    }
-  | {
-      success: false;
-      error: string;
-      details?: string;
-    };
+import { ErrorResponse, SuccessResponse } from '../../models/common.model';
 
-export type RunMigrationScript = () => Promise<RunMigrationScriptResult>;
+export type RunMigrationScript = () => Promise<
+  SuccessResponse<string> | ErrorResponse
+>;
