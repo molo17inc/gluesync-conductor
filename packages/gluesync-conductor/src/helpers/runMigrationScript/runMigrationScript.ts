@@ -1,4 +1,3 @@
-// utils/runMigrationScript.ts
 import { spawn } from 'node:child_process';
 import { copyFile, chmod, mkdir } from 'node:fs/promises';
 import { buffer } from 'node:stream/consumers';
@@ -50,7 +49,7 @@ const runMigrationScript: RunMigrationScript = async () => {
   }
 
   try {
-    const command = isWindows ? 'pwsh' : SCRIPT_PATH;
+    const command = isWindows ? 'pwsh' : '/bin/bash';
     const args = isWindows
       ? [
           '-NoProfile',
@@ -61,7 +60,7 @@ const runMigrationScript: RunMigrationScript = async () => {
           '-ComposeFile',
           dockerComposeFilePath,
         ]
-      : [dockerComposeFilePath];
+      : [SCRIPT_PATH, dockerComposeFilePath];
 
     const child = spawn(command, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
