@@ -6,7 +6,6 @@ import createActions from '../../../helpers/dockerode/createActions/createAction
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import checkConductorUpdate from '../../../helpers/checkConductorUpdate/checkConductorUpdate';
 import updateConductorOnly from './handleUpdate/updateConductorOnly';
-import updateNormalBulk from './handleUpdate/updateNormalBulk';
 import fetchAllServicesInCompose from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose';
 import {
   enableUpdateMode,
@@ -16,6 +15,9 @@ import { autoReboot } from '../../../helpers/autoReboot/autoReboot';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 import restartWindows from '../../../helpers/restartAllServices/windowsRestart';
 import restartLinux from '../../../helpers/restartAllServices/linuxRestart';
+import migrationWithUpdate from './migrationWithUpdate/migrationWithUpdate';
+import updateNormalBulk from './handleUpdate/updateNormalBulk';
+import { migrationNeeded } from '../../../helpers/migrationNeeded/migrationNeeded';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
@@ -45,6 +47,46 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     }
 
     if (containerAction === 'update') {
+      console.log('[update-handler] Update action triggered');
+
+      const needsMigration = await migrationNeeded();
+
+      console.log(
+        '[update-handler] migrationNeeded() returned:',
+        needsMigration,
+      );
+
+      if (needsMigration) {
+        console.log('[update-handler] Entering MIGRATION FLOW');
+        try {
+          await migrationWithUpdate(
+            requestIds,
+            releaseChannel,
+            isWindows,
+            helperImageWindows,
+          );
+
+          reply.code(200).send({
+            success: true,
+            data: {
+              containers: [
+                { id: 'ALL', status: 'OK', message: 'v2 Migration complete' },
+              ],
+            },
+          });
+          return;
+        } catch (err) {
+          reply.code(500).send({
+            success: false,
+            error: 'Migration failed',
+            details: err instanceof Error ? err.message : String(err),
+          });
+          return;
+        }
+      }
+
+      console.log('[update-handler] Entering NORMAL UPDATE FLOW');
+
       const composeJson = await readComposeFile({ raw: true });
       req.log.debug(
         `Checking for conductor update, ids length=${requestIds.length}`,
