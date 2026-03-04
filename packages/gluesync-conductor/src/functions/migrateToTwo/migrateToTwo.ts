@@ -8,7 +8,7 @@ const migrateToTwoHandler: MigrateToTwoHandler = async (req, reply) => {
     if (result.success) {
       return reply.status(200).send({
         success: true,
-        data: result.output,
+        data: result.data,
       });
     }
 
