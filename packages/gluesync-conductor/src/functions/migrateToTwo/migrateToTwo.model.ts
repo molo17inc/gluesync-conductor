@@ -1,12 +1,7 @@
 import { RouteHandlerMethod } from 'fastify';
-import { ErrorResponse } from '../../models/common.model';
+import { ErrorResponse, SuccessResponse } from '../../models/common.model';
 
-export type MigrateToTwoSuccessResponse = {
-  success: true;
-  data: string;
-};
-
-export type MigrateToTwoResponse = MigrateToTwoSuccessResponse | ErrorResponse;
+export type MigrateToTwoResponse = SuccessResponse<string> | ErrorResponse;
 
 export type MigrateToTwoHandler = RouteHandlerMethod<
   any,
