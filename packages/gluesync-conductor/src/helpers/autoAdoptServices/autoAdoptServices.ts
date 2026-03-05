@@ -19,6 +19,7 @@ import addEnvFileToServices from '../addEnvFileToServices/addEnvFileToServices';
 import { mergeServices } from '../composeFile/mergeComposeFiles/mergeComposeFiles';
 import { ConductorServiceTypes } from '../../models/conductor.model';
 import removeContainerNameFromServices from '../removeContainerNameFromServices/removeContainerNameFromServices';
+import addGluesyncHostToChronos from '../addGluesyncHostToChronos/addGluesyncHostToChronos';
 
 /**
  * Ensure the given network exists at the root compose level.
@@ -190,6 +191,16 @@ const autoAdoptServices = async (): Promise<{
       },
     };
 
+    const stepChronos = addGluesyncHostToChronos(
+      cleanedComposeJson.services,
+      'https://gluesync-core-hub:1717',
+    );
+
+    const servicesWithChronosHost = mergeServices([
+      cleanedComposeJson.services,
+      stepChronos.services,
+    ]);
+
     // Add env_file to ALL services if not windows.
     const { services: envFileServices, updatedIds: envFileUpdatedIds } =
       isWindows
@@ -197,11 +208,11 @@ const autoAdoptServices = async (): Promise<{
             services: {} as Record<string, RawComposeService>,
             updatedIds: [] as string[],
           }
-        : addEnvFileToServices(cleanedComposeJson.services, allServiceIds);
+        : addEnvFileToServices(servicesWithChronosHost, allServiceIds);
 
     // Services that ALREADY have a conductor type label
     const alreadyLabeledIds = allServiceIds.filter(id => {
-      const service = cleanedComposeJson.services?.[id];
+      const service = servicesWithChronosHost?.[id];
       if (!service) {
         return false;
       }
@@ -223,7 +234,7 @@ const autoAdoptServices = async (): Promise<{
       services: platformAdjustedLabeledServices,
       updatedIds: platformAdjustedIds,
     } = applyPlatformAdjustments(
-      cleanedComposeJson.services,
+      servicesWithChronosHost,
       adjustedIds,
       isWindows,
       gluesyncHostDefault,
@@ -236,7 +247,7 @@ const autoAdoptServices = async (): Promise<{
     // - merge it into baseServices in the unlabeledIds>0 branch
     const { services: networkAllServices, updatedIds: networkAllUpdatedIds } =
       addNetworkToAllServicesExceptConductor(
-        cleanedComposeJson.services,
+        servicesWithChronosHost,
         networkName,
         conductorServiceName,
       );
@@ -252,7 +263,8 @@ const autoAdoptServices = async (): Promise<{
         removedContainerNameIds.length === 0 &&
         platformAdjustedIds.length === 0 &&
         envFileUpdatedIds.length === 0 &&
-        networkAllUpdatedIds.length === 0
+        networkAllUpdatedIds.length === 0 &&
+        stepChronos.updatedIds.length === 0
       ) {
         return {
           success: true,
@@ -265,7 +277,7 @@ const autoAdoptServices = async (): Promise<{
         {
           ...composeJson,
           services: mergeServices([
-            cleanedComposeJson.services,
+            servicesWithChronosHost,
             platformAdjustedLabeledServices,
             envFileServices,
             networkAllServices,
@@ -285,6 +297,7 @@ const autoAdoptServices = async (): Promise<{
           ...platformAdjustedIds,
           ...envFileUpdatedIds,
           ...networkAllUpdatedIds,
+          ...stepChronos.updatedIds,
         ],
         unmatchedIds: [],
       };
@@ -293,7 +306,7 @@ const autoAdoptServices = async (): Promise<{
     // Base services: already-labeled services are cleaned + platform-adjusted (except third-party) + env_file
     // IMPORTANT: include networkAllServices here too, otherwise the network changes are dropped on write.
     const baseServices: Record<string, RawComposeService> = mergeServices([
-      cleanedComposeJson.services,
+      servicesWithChronosHost,
       platformAdjustedLabeledServices,
       envFileServices,
       networkAllServices,
