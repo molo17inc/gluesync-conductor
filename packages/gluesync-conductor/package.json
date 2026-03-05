@@ -28,6 +28,7 @@
     "gluesync-sdk-client": "workspace:*",
     "pino": "^10.1.0",
     "rotating-file-stream": "^3.2.7",
+    "semver": "^7.7.4",
     "uuid": "^13.0.0",
     "windows-iana": "^5.1.0",
     "yaml": "^2.7.0"
@@ -37,6 +38,7 @@
     "@gluesync/scripts": "workspace:*",
     "@types/dockerode": "^3.3.34",
     "@types/node": "^22.14.1",
+    "@types/semver": "^7",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
     "eslint": "^8.56.0",

@@ -74,6 +74,8 @@ services:
         required: false
       - path: /opt/gluesync-conductor/root-folder/.env
         required: false
+    networks:
+      - gluesync-net
   gluesync-chronos:
     restart: unless-stopped
     image: molo17/gluesync-chronos:latest
@@ -95,6 +97,7 @@ services:
       - SSL_ENABLED=true
       - SSL_SKIP_VERIFY=true
       - TIMEZONE=UTC
+      - GLUESYNC_HOST=https://gluesync-core-hub:1717
     volumes:
       - ./shared:/opt/gluesync/shared:ro
       - ./data/chronos:/app/data
@@ -104,6 +107,8 @@ services:
         required: false
       - path: /opt/gluesync-conductor/root-folder/.env
         required: false
+    networks:
+      - gluesync-net
   gluesync-conductor:
     restart: unless-stopped
     # image: molo17/gluesync-conductor:latest
@@ -126,9 +131,10 @@ services:
       - SSL_ENABLED=true
       - SSL_SKIP_VERIFY=true
       - LOG_LEVEL=trace
+      - GLUESYNC_HOST=https://gluesync-core-hub:1717
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./shared:/opt/gluesync/data # replace in codebase gluesync/data with gluesync/shared
+      - ./shared:/opt/gluesync/data
       - ./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml
       - ./logs:/opt/gluesync-conductor/logs
       - ./:/opt/gluesync-conductor/root-folder
@@ -139,9 +145,11 @@ services:
         required: false
       - path: /opt/gluesync-conductor/root-folder/.env
         required: false
+    networks:
+      - gluesync-net
   reverse-proxy:
     restart: unless-stopped
-    image: traefik:v3.6.2
+    image: molo17/traefik:3.6.2
     ports:
       - 80:80
       - 443:443
@@ -151,10 +159,18 @@ services:
       - ./proxy/certs.yml:/etc/traefik/certs.yml:ro
       - ./shared/gluesync-cert.pem:/etc/traefik/gluesync-cert.pem:ro
       - ./shared/gluesync-key.pem:/etc/traefik/gluesync-key.pem:ro
-
+    labels:
+      - com.molo17.conductor.type=third-party
+    env_file:
+      - path: .env
+        required: false
+      - path: /opt/gluesync-conductor/root-folder/.env
+        required: false
+    networks:
+      - gluesync-net
   prometheus:
     restart: unless-stopped
-    image: prom/prometheus
+    image: molo17/prometheus:3.8.0
     labels:
       - traefik.enable=true
       - traefik.http.routers.prometheus.entrypoints=websecure
@@ -162,20 +178,25 @@ services:
       - traefik.http.routers.prometheus.tls=true
       - traefik.http.services.prometheus.loadbalancer.server.port=9090
       - traefik.http.routers.prometheus.service=prometheus
+      - com.molo17.conductor.type=third-party
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-        # - ./data/prometheus:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.size=5GB
       - --storage.tsdb.retention.time=5d
       - --web.external-url=/prometheus/
       - --web.route-prefix=/prometheus
-
+    env_file:
+      - path: .env
+        required: false
+      - path: /opt/gluesync-conductor/root-folder/.env
+        required: false
+    networks:
+      - gluesync-net
   grafana:
-    # Grafana default credentials: admin | password
     restart: unless-stopped
-    image: grafana/grafana
+    image: molo17/grafana:12.3.0
     labels:
       - traefik.enable=true
       - traefik.http.routers.grafana.entrypoints=websecure
@@ -183,6 +204,7 @@ services:
       - traefik.http.routers.grafana.tls=true
       - traefik.http.services.grafana.loadbalancer.server.port=3000
       - traefik.http.routers.grafana.service=grafana
+      - com.molo17.conductor.type=third-party
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=password
@@ -190,10 +212,15 @@ services:
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
     volumes:
       - ./grafana:/etc/grafana/provisioning
-        # - ./data:/var/lib/grafana
-
+    env_file:
+      - path: .env
+        required: false
+      - path: /opt/gluesync-conductor/root-folder/.env
+        required: false
+    networks:
+      - gluesync-net
   portainer:
-    image: portainer/portainer-ce:latest
+    image: molo17/portainer:2.33.6
     restart: unless-stopped
     ports:
       - 9443:9443
@@ -202,3 +229,16 @@ services:
     command:
       - --admin-password
       - $$2y$$05$$wxahdaIgY6yjxyPjvSqyr.NeLhCOY/pWLXSJykVsfUGaRXnjq3etK
+    labels:
+      - com.molo17.conductor.type=third-party
+    env_file:
+      - path: .env
+        required: false
+      - path: /opt/gluesync-conductor/root-folder/.env
+        required: false
+    networks:
+      - gluesync-net
+networks:
+  gluesync-net:
+    name: gluesync-net
+    driver: bridge

@@ -1,7 +1,7 @@
 import fetchAgentInfo from '../agentInfo/agentInfo';
 import parseImage from '../parseImage/parseImage';
 import getVersionByChannel from '../releaseChannel/getVersionByChannel';
-import { CheckModuleUpdate } from './checkConductorUpdate.model';
+import { CheckModuleUpdate } from './checkModuleUpdate.model';
 
 const checkModuleUpdate: CheckModuleUpdate = async (
   composeJson,

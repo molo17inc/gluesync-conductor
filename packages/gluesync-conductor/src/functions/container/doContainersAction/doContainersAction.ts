@@ -4,7 +4,7 @@ import {
 } from './doContainersAction.model';
 import createActions from '../../../helpers/dockerode/createActions/createActions';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
-import checkModuleUpdate from '../../../helpers/checkConductorUpdate/checkConductorUpdate';
+import checkModuleUpdate from '../../../helpers/checkModuleUpdate/checkModuleUpdate';
 import updateConductorOnly from './handleUpdate/updateConductorOnly';
 import fetchAllServicesInCompose from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose';
 import {
@@ -18,6 +18,7 @@ import restartLinux from '../../../helpers/restartAllServices/linuxRestart';
 import migrationWithUpdate from './migrationWithUpdate/migrationWithUpdate';
 import updateNormalBulk from './handleUpdate/updateNormalBulk';
 import { migrationNeeded } from '../../../helpers/migrationNeeded/migrationNeeded';
+import semver from 'semver';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
@@ -63,6 +64,10 @@ const handler: DoContainersActionHandler = async (req, reply) => {
 
       const CONDUCTOR_NAME = 'gluesync-conductor';
       const CHRONOS_NAME = 'gluesync-chronos';
+      const CORE_HUB_NAME = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
+      const MIN_CORE_HUB_VERSION = '2.2.0';
+      const normalizeVersion = (v: string) =>
+        v.split('-')[0].split('.').slice(0, 3).join('.'); // take first 3 parts
 
       const conductorInfo = await checkModuleUpdate(
         composeJson,
@@ -80,10 +85,37 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         CHRONOS_NAME,
       );
 
+      // --- Core-hub version check (functional) ---
+      const coreHubNeedsMigration: boolean = await (async () => {
+        try {
+          const coreHubInfo = await checkModuleUpdate(
+            composeJson,
+            releaseChannel,
+            CORE_HUB_NAME,
+          );
+          const semVerVersion = normalizeVersion(
+            coreHubInfo?.availableVersion || '',
+          );
+
+          req.log.debug(
+            `[update-handler] Core-hub latest ${releaseChannel}: ${semVerVersion}`,
+          );
+
+          return !semver.gte(semVerVersion, MIN_CORE_HUB_VERSION);
+        } catch (err) {
+          req.log.warn(
+            `[update-handler] Failed to fetch core-hub version → assuming migration needed ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return true;
+        }
+      })();
+
+      // --- Decide migration flow (functional) ---
       if (
         needsMigration &&
         !conductorInfo?.needsUpdate &&
-        !chronosInfo?.needsUpdate
+        !chronosInfo?.needsUpdate &&
+        coreHubNeedsMigration
       ) {
         console.log('[update-handler] Entering MIGRATION FLOW');
         try {
@@ -182,7 +214,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         process.env.CONDUCTOR_NAME || 'gluesync-conductor';
 
       // ---------------------------------------------------------
-      // CASE 1 — No IDs → full stack restart using new utilities
+      // CASE 1 — No IDs → full stack restart
       // ---------------------------------------------------------
       if (requestIds.length === 0) {
         req.log.info('[conductor-restart] full stack restart requested');
@@ -227,49 +259,10 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       }
 
       // ---------------------------------------------------------
-      // CASE 2 — IDs provided → ORIGINAL LOGIC
+      // CASE 2 — IDs provided
       // ---------------------------------------------------------
 
       // Restart ONLY conductor
-      if (requestIds.length === 1 && requestIds[0] === CONDUCTOR_SERVICE) {
-        req.log.info(
-          { service: CONDUCTOR_SERVICE },
-          '[conductor-restart] triggering conductor restart',
-        );
-
-        enableUpdateMode();
-
-        reply.code(200);
-        reply.send({
-          success: true,
-          data: {
-            containers: [
-              {
-                id: CONDUCTOR_SERVICE,
-                status: 'OK',
-                message: `Conductor ${CONDUCTOR_SERVICE} restart initiated.`,
-              },
-            ],
-          },
-        });
-
-        setImmediate(() => {
-          autoReboot({
-            hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
-            serviceName: CONDUCTOR_SERVICE,
-            helperImage: isWindows ? helperImageWindows : 'docker:cli',
-            log: msg =>
-              req.log.info({ msg }, '[conductor-restart] restart log'),
-          }).catch(err => {
-            req.log.error(
-              { error: err },
-              '[conductor-restart] autoReboot failed',
-            );
-          });
-        });
-
-        return;
-      }
 
       if (requestIds.length === 1 && requestIds[0] === CONDUCTOR_SERVICE) {
         req.log.info(
@@ -309,6 +302,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
             );
           });
         });
+        return;
       } else {
         // If no IDs provided, get all services from compose file
         const allServiceIds =
