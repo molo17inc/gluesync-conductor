@@ -8,17 +8,38 @@ import { MigrationWithUpdate } from './migrationWithUpdate.model';
 import prepareComposeUpdate from '../prepareComposeUpdate/prepareComposeUpdate';
 import { LabelPrefix } from '../../../../models/composeFile.model';
 import { markMigrationCompleted } from '../../../../helpers/migrationNeeded/migrationNeeded';
+import createActions from '../../../../helpers/dockerode/createActions/createActions';
 
 const migrationWithUpdate: MigrationWithUpdate = async (
   requestIds,
   releaseChannel,
   isWindows,
   helperImageWindows,
+  docker,
 ) => {
   const logger = getLogger();
   logger.info('[migration] Migration to v2 enabled — starting flow');
 
   const composeJson = await readComposeFile({ raw: true });
+
+  const agentIds = Object.entries(composeJson.services ?? {})
+    .filter(([, service]: any) =>
+      Array.isArray(service.labels)
+        ? service.labels.includes(`${LabelPrefix.CONDUCTOR}.type=agent`)
+        : service.labels?.[`${LabelPrefix.CONDUCTOR}.type`] === 'agent',
+    )
+    .map(([id]) => id);
+
+  // Assuming you have access to `req.server.docker` (or docker client)
+  const actions = createActions({ docker });
+
+  // Stop all agent services
+  await Promise.allSettled(agentIds.map(id => actions.stop(id)));
+
+  logger.info(
+    { stoppedAgents: agentIds.length },
+    '[migration] stopped all agent services before removal',
+  );
 
   // Run migration script
   const scriptResult = await runMigrationScript();
@@ -30,14 +51,6 @@ const migrationWithUpdate: MigrationWithUpdate = async (
     throw new Error(scriptResult.error || 'Migration script failed');
   }
   logger.info('[migration] Script execution completed');
-
-  const agentIds = Object.entries(composeJson.services ?? {})
-    .filter(([, service]: any) =>
-      Array.isArray(service.labels)
-        ? service.labels.includes(`${LabelPrefix.CONDUCTOR}.type=agent`)
-        : service.labels?.[`${LabelPrefix.CONDUCTOR}.type`] === 'agent',
-    )
-    .map(([id]) => id);
 
   const cleanedComposeJson = {
     ...composeJson,

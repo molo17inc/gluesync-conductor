@@ -92,6 +92,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
             releaseChannel,
             isWindows,
             helperImageWindows,
+            req.server.docker,
           );
 
           reply.code(200).send({
