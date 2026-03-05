@@ -4,7 +4,7 @@ import {
 } from './doContainersAction.model';
 import createActions from '../../../helpers/dockerode/createActions/createActions';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
-import checkConductorUpdate from '../../../helpers/checkConductorUpdate/checkConductorUpdate';
+import checkModuleUpdate from '../../../helpers/checkConductorUpdate/checkConductorUpdate';
 import updateConductorOnly from './handleUpdate/updateConductorOnly';
 import fetchAllServicesInCompose from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose';
 import {
@@ -56,7 +56,35 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         needsMigration,
       );
 
-      if (needsMigration) {
+      const composeJson = await readComposeFile({ raw: true });
+      req.log.debug(
+        `Checking for conductor update, ids length=${requestIds.length}`,
+      );
+
+      const CONDUCTOR_NAME = 'gluesync-conductor';
+      const CHRONOS_NAME = 'gluesync-chronos';
+
+      const conductorInfo = await checkModuleUpdate(
+        composeJson,
+        releaseChannel,
+        CONDUCTOR_NAME,
+      );
+
+      req.log.debug(
+        `Checking for chronos update, ids length=${requestIds.length}`,
+      );
+
+      const chronosInfo = await checkModuleUpdate(
+        composeJson,
+        releaseChannel,
+        CHRONOS_NAME,
+      );
+
+      if (
+        needsMigration &&
+        !conductorInfo?.needsUpdate &&
+        !chronosInfo?.needsUpdate
+      ) {
         console.log('[update-handler] Entering MIGRATION FLOW');
         try {
           await migrationWithUpdate(
@@ -87,25 +115,17 @@ const handler: DoContainersActionHandler = async (req, reply) => {
 
       console.log('[update-handler] Entering NORMAL UPDATE FLOW');
 
-      const composeJson = await readComposeFile({ raw: true });
-      req.log.debug(
-        `Checking for conductor update, ids length=${requestIds.length}`,
-      );
-
-      const conductorInfo = await checkConductorUpdate({
-        composeJson,
-        releaseChannel,
-      });
-
       const branchResult =
         conductorInfo?.needsUpdate &&
         (requestIds.length === 0 ||
-          (requestIds.length === 1 && requestIds[0] === 'gluesync-conductor'))
+          (requestIds.length === 1 && requestIds[0] === CONDUCTOR_NAME))
           ? await updateConductorOnly(action, conductorInfo, composeJson)
           : await updateNormalBulk(
               action,
               composeJson,
-              requestIds,
+              requestIds.length === 0 && chronosInfo?.needsUpdate
+                ? [CHRONOS_NAME]
+                : requestIds,
               releaseChannel,
             );
 
