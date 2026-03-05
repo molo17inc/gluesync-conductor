@@ -3,6 +3,25 @@ import { buffer } from 'node:stream/consumers';
 import { access, constants } from 'node:fs/promises';
 import { CollectLogsHandler } from './collectLogs.model';
 
+const MAX_OUTPUT_LINES = 10;
+
+const sanitizeLines = (text: string): string[] =>
+  text
+    .split(/\r?\n/)
+    .map(line => line.replace(/[^\t -~]/g, '').trimEnd()) // tab + printable ASCII
+    .filter(line => line.length > 0);
+
+const formatOutput = (text: string): string => {
+  const lines = sanitizeLines(text);
+  if (!lines.length) {
+    return 'Unknown error';
+  }
+  if (lines.length <= MAX_OUTPUT_LINES) {
+    return lines.join('\n');
+  }
+  return `${lines.slice(0, MAX_OUTPUT_LINES).join('\n')}\n...`;
+};
+
 const handler: CollectLogsHandler = async (req, reply) => {
   const { ticketId, email } = req.body as Readonly<{
     ticketId?: string;
@@ -104,20 +123,17 @@ const handler: CollectLogsHandler = async (req, reply) => {
     const stdout = stdoutBuf.toString('utf8');
     const stderr = stderrBuf.toString('utf8');
 
-    const extractLastLine = (text: string): string =>
-      text.trim().split(/\r?\n/).filter(Boolean).pop() ?? 'Unknown error';
-
     if (exitCode === 0) {
       return reply.code(200).send({
         success: true,
-        output: stdout,
+        output: formatOutput(stdout),
       });
     }
 
     return reply.code(500).send({
       success: false,
       error: `Script failed with exit code ${exitCode}`,
-      details: extractLastLine(stderr || stdout),
+      details: formatOutput(stderr || stdout),
     });
   } catch (err) {
     req.log.error({ err }, 'failed to run script');

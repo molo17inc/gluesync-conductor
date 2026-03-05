@@ -54,7 +54,7 @@ const restartWindows: RestartWindows = async ({
     `$env:BASE_PATH='${pwd}'; ` +
     `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'; ` +
     `docker-compose pull; ` +
-    `docker-compose down; ` +
+    `docker-compose down --remove-orphans; ` +
     `docker-compose up -d`;
 
   const args = [

@@ -1744,6 +1744,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/semver@npm:^7":
+  version: 7.7.1
+  resolution: "@types/semver@npm:7.7.1"
+  checksum: 10/8f09e7e6ca3ded67d78ba7a8f7535c8d9cf8ced83c52e7f3ac3c281fe8c689c3fe475d199d94390dc04fc681d51f2358b430bb7b2e21c62de24f2bee2c719068
+  languageName: node
+  linkType: hard
+
 "@types/semver@npm:^7.5.0":
   version: 7.7.0
   resolution: "@types/semver@npm:7.7.0"
@@ -4362,6 +4369,7 @@ __metadata:
     "@gluesync/scripts": "workspace:*"
     "@types/dockerode": "npm:^3.3.34"
     "@types/node": "npm:^22.14.1"
+    "@types/semver": "npm:^7"
     "@typescript-eslint/eslint-plugin": "npm:^6.15.0"
     "@typescript-eslint/parser": "npm:^6.15.0"
     axios: "npm:^1.8.4"
@@ -4378,6 +4386,7 @@ __metadata:
     pino: "npm:^10.1.0"
     prettier: "npm:^3.4.2"
     rotating-file-stream: "npm:^3.2.7"
+    semver: "npm:^7.7.4"
     ts-node: "npm:^10.9.2"
     tsx: "npm:^4.20.4"
     typescript: "npm:5.8.3"
@@ -7005,6 +7014,15 @@ __metadata:
   bin:
     semver: bin/semver.js
   checksum: 10/4cfa1eb91ef3751e20fc52e47a935a0118d56d6f15a837ab814da0c150778ba2ca4f1a4d9068b33070ea4273629e615066664c2cfcd7c272caf7a8a0f6518b2c
+  languageName: node
+  linkType: hard
+
+"semver@npm:^7.7.4":
+  version: 7.7.4
+  resolution: "semver@npm:7.7.4"
+  bin:
+    semver: bin/semver.js
+  checksum: 10/26bdc6d58b29528f4142d29afb8526bc335f4fc04c4a10f2b98b217f277a031c66736bf82d3d3bb354a2f6a3ae50f18fd62b053c4ac3f294a3d10a61f5075b75
   languageName: node
   linkType: hard
 

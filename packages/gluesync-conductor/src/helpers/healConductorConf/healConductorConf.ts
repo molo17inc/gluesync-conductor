@@ -118,21 +118,37 @@ const healConductorConf = async (): Promise<boolean> => {
   );
 
   const { healedEnvArray, envChanged } = (() => {
-    const mapped = rawEnvArray.map(e => {
-      if (e.startsWith('CORE_HUB_ADDRESS=')) {
-        const value = e.substring('CORE_HUB_ADDRESS='.length);
-        if (!hasGluesyncHostInitial) {
-          return { value: `GLUESYNC_HOST=${value}`, changed: true };
-        }
-        return { value: '', changed: true };
-      }
-      return { value: e, changed: false };
-    });
+    // Step 1: map legacy CORE_HUB_ADDRESS → GLUESYNC_HOST
+    const mapped = rawEnvArray
+      .map(e => {
+        if (e.startsWith('CORE_HUB_ADDRESS=')) {
+          const value = e.substring('CORE_HUB_ADDRESS='.length);
 
-    return {
-      healedEnvArray: mapped.filter(x => x.value).map(x => x.value),
-      envChanged: mapped.some(x => x.changed),
-    };
+          // only add GLUESYNC_HOST if not already present
+          if (!hasGluesyncHostInitial) {
+            return { value: `GLUESYNC_HOST=${value}`, changed: true };
+          }
+
+          // remove legacy entry
+          return { value: '', changed: true };
+        }
+
+        return { value: e, changed: false };
+      })
+      .filter(x => x.value) // remove empty strings (removed legacy)
+      .map(x => x.value);
+
+    // Step 2: if no GLUESYNC_HOST exists after mapping → add default
+    const finalEnvArray = mapped.some(e => e.startsWith('GLUESYNC_HOST='))
+      ? mapped
+      : mapped.concat(`GLUESYNC_HOST=https://gluesync-core-hub:1717`);
+
+    // Step 3: envChanged = true if original changed OR default added
+    const envChanged =
+      mapped.length !== finalEnvArray.length ||
+      mapped.length !== rawEnvArray.length;
+
+    return { healedEnvArray: finalEnvArray, envChanged };
   })();
 
   // ----- ENV_FILE HEALING -----

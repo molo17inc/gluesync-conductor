@@ -3,7 +3,7 @@ import { spawnAsync } from '../autoReboot/autoReboot';
 type RestartLinux = (
   options: Readonly<{
     hostProjectDir: string;
-    helperImage: string; // image with docker CLI + compose plugin
+    helperImage?: string; // image with docker CLI + compose plugin
     log?: (msg: Readonly<string>) => void;
   }>,
 ) => Promise<boolean>;
@@ -14,7 +14,8 @@ type RestartLinux = (
  *   docker compose down
  *   docker compose up -d
  *
- * This is the Linux equivalent of the Windows full restart helper.
+ * Automatically detects whether the system has `docker compose` or `docker-compose`.
+ * Fully functional style: no `let` or `for`.
  */
 const restartLinux: RestartLinux = async ({
   hostProjectDir,
@@ -25,10 +26,35 @@ const restartLinux: RestartLinux = async ({
     throw new Error('hostProjectDir is required');
   }
 
+  const composeCandidates = ['docker compose', 'docker-compose'] as const;
+
+  const composeCmd = await composeCandidates.reduce<Promise<string | null>>(
+    async (accPromise, candidate) => {
+      const acc = await accPromise;
+      if (acc) {
+        return acc;
+      } // already found
+      try {
+        await spawnAsync('sh', ['-c', `${candidate} version >/dev/null 2>&1`]);
+        log(`[conductor-updater] Using ${candidate}`);
+        return candidate;
+      } catch {
+        return null;
+      }
+    },
+    Promise.resolve(null),
+  );
+
+  if (!composeCmd) {
+    throw new Error(
+      '[conductor-updater] ERROR: No docker compose or docker-compose found',
+    );
+  }
+
   const innerCmd = [
-    'docker compose pull',
-    'docker compose down',
-    'docker compose up -d',
+    `${composeCmd} pull`,
+    `${composeCmd} down --remove-orphans`,
+    `${composeCmd} up -d`,
   ].join(' && ');
 
   const args: ReadonlyArray<string> = [

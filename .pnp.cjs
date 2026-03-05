@@ -2481,6 +2481,13 @@ const RAW_RUNTIME_STATE =
           ["@types/semver", "npm:7.7.0"]\
         ],\
         "linkType": "HARD"\
+      }],\
+      ["npm:7.7.1", {\
+        "packageLocation": "./.yarn/cache/@types-semver-npm-7.7.1-1a46d6e2dd-8f09e7e6ca.zip/node_modules/@types/semver/",\
+        "packageDependencies": [\
+          ["@types/semver", "npm:7.7.1"]\
+        ],\
+        "linkType": "HARD"\
       }]\
     ]],\
     ["@types/ssh2", [\
@@ -5715,6 +5722,7 @@ const RAW_RUNTIME_STATE =
           ["@gluesync/scripts", "workspace:packages/scripts"],\
           ["@types/dockerode", "npm:3.3.38"],\
           ["@types/node", "npm:22.14.1"],\
+          ["@types/semver", "npm:7.7.1"],\
           ["@typescript-eslint/eslint-plugin", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:6.21.0"],\
           ["@typescript-eslint/parser", "virtual:80c932466a13777e9b9c286c7c7a4bc7f94836146793aa9d31d6d947df194b998eeed4b347e206341f130a53440ed666f2ad520a2619a9586914503e3b9855fa#npm:6.21.0"],\
           ["axios", "npm:1.8.4"],\
@@ -5731,6 +5739,7 @@ const RAW_RUNTIME_STATE =
           ["pino", "npm:10.1.0"],\
           ["prettier", "npm:3.5.3"],\
           ["rotating-file-stream", "npm:3.2.7"],\
+          ["semver", "npm:7.7.4"],\
           ["ts-node", "virtual:034f9ed205a5f66264fee41c6df436c9dcef3f8116beb72d220f3710a40569698233dbcf841b133703c95cf748137a93ca21390dc36b185b836a4c7aff3d5dc7#npm:10.9.2"],\
           ["tsx", "npm:4.20.4"],\
           ["typescript", "patch:typescript@npm%3A5.8.3#optional!builtin<compat/typescript>::version=5.8.3&hash=5786d5"],\
@@ -8707,6 +8716,13 @@ const RAW_RUNTIME_STATE =
         "packageLocation": "./.yarn/cache/semver-npm-7.7.1-4572475307-4cfa1eb91e.zip/node_modules/semver/",\
         "packageDependencies": [\
           ["semver", "npm:7.7.1"]\
+        ],\
+        "linkType": "HARD"\
+      }],\
+      ["npm:7.7.4", {\
+        "packageLocation": "./.yarn/cache/semver-npm-7.7.4-746e538da5-26bdc6d58b.zip/node_modules/semver/",\
+        "packageDependencies": [\
+          ["semver", "npm:7.7.4"]\
         ],\
         "linkType": "HARD"\
       }]\

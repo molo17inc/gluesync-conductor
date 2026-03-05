@@ -1,21 +1,18 @@
 import fetchAgentInfo from '../agentInfo/agentInfo';
 import parseImage from '../parseImage/parseImage';
 import getVersionByChannel from '../releaseChannel/getVersionByChannel';
-import {
-  CheckConductorUpdateParams,
-  CheckConductorUpdateResult,
-} from './checkConductorUpdate.model';
+import { CheckModuleUpdate } from './checkModuleUpdate.model';
 
-const checkConductorUpdate = async ({
+const checkModuleUpdate: CheckModuleUpdate = async (
   composeJson,
   releaseChannel,
-  conductorServiceName = process.env.CONDUCTOR_NAME || 'gluesync-conductor',
-}: CheckConductorUpdateParams): Promise<CheckConductorUpdateResult | null> => {
+  serviceName,
+) => {
   const services = (composeJson as any).services as
     | Readonly<Record<string, { image?: string }>>
     | undefined;
 
-  const service = services?.[conductorServiceName];
+  const service = services?.[serviceName];
 
   if (!service?.image) {
     return null;
@@ -38,9 +35,9 @@ const checkConductorUpdate = async ({
 
   return {
     needsUpdate,
-    id: conductorServiceName,
+    id: serviceName,
     availableVersion,
   };
 };
 
-export default checkConductorUpdate;
+export default checkModuleUpdate;
