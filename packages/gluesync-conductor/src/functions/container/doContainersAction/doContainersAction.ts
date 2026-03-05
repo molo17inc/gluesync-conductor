@@ -50,13 +50,6 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     if (containerAction === 'update') {
       console.log('[update-handler] Update action triggered');
 
-      const needsMigration = await migrationNeeded();
-
-      console.log(
-        '[update-handler] migrationNeeded() returned:',
-        needsMigration,
-      );
-
       const composeJson = await readComposeFile({ raw: true });
       req.log.debug(
         `Checking for conductor update, ids length=${requestIds.length}`,
@@ -101,48 +94,55 @@ const handler: DoContainersActionHandler = async (req, reply) => {
             `[update-handler] Core-hub latest ${releaseChannel}: ${semVerVersion}`,
           );
 
-          return !semver.gte(semVerVersion, MIN_CORE_HUB_VERSION);
+          return semver.gte(semVerVersion, MIN_CORE_HUB_VERSION);
         } catch (err) {
           req.log.warn(
             `[update-handler] Failed to fetch core-hub version → assuming migration needed ${err instanceof Error ? err.message : String(err)}`,
           );
-          return true;
+          return false;
         }
       })();
 
       // --- Decide migration flow (functional) ---
       if (
-        needsMigration &&
         !conductorInfo?.needsUpdate &&
         !chronosInfo?.needsUpdate &&
         coreHubNeedsMigration
       ) {
-        console.log('[update-handler] Entering MIGRATION FLOW');
-        try {
-          await migrationWithUpdate(
-            requestIds,
-            releaseChannel,
-            isWindows,
-            helperImageWindows,
-            req.server.docker,
-          );
+        const needsMigration = await migrationNeeded();
 
-          reply.code(200).send({
-            success: true,
-            data: {
-              containers: [
-                { id: 'ALL', status: 'OK', message: 'v2 Migration complete' },
-              ],
-            },
-          });
-          return;
-        } catch (err) {
-          reply.code(500).send({
-            success: false,
-            error: 'Migration failed',
-            details: err instanceof Error ? err.message : String(err),
-          });
-          return;
+        console.log(
+          '[update-handler] migrationNeeded() returned:',
+          needsMigration,
+        );
+        if (needsMigration) {
+          console.log('[update-handler] Entering MIGRATION FLOW');
+          try {
+            await migrationWithUpdate(
+              requestIds,
+              releaseChannel,
+              isWindows,
+              helperImageWindows,
+              req.server.docker,
+            );
+
+            reply.code(200).send({
+              success: true,
+              data: {
+                containers: [
+                  { id: 'ALL', status: 'OK', message: 'v2 Migration complete' },
+                ],
+              },
+            });
+            return;
+          } catch (err) {
+            reply.code(500).send({
+              success: false,
+              error: 'Migration failed',
+              details: err instanceof Error ? err.message : String(err),
+            });
+            return;
+          }
         }
       }
 
