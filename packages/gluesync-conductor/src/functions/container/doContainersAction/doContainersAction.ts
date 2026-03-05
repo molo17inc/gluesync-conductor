@@ -1,3 +1,4 @@
+import semver from 'semver';
 import {
   DoContainersActionHandler,
   DoContainersActionItem,
@@ -18,7 +19,6 @@ import restartLinux from '../../../helpers/restartAllServices/linuxRestart';
 import migrationWithUpdate from './migrationWithUpdate/migrationWithUpdate';
 import updateNormalBulk from './handleUpdate/updateNormalBulk';
 import { migrationNeeded } from '../../../helpers/migrationNeeded/migrationNeeded';
-import semver from 'semver';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
@@ -302,7 +302,6 @@ const handler: DoContainersActionHandler = async (req, reply) => {
             );
           });
         });
-        return;
       } else {
         // If no IDs provided, get all services from compose file
         const allServiceIds =
