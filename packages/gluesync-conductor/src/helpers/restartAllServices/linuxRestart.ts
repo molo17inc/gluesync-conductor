@@ -3,19 +3,11 @@ import { spawnAsync } from '../autoReboot/autoReboot';
 type RestartLinux = (
   options: Readonly<{
     hostProjectDir: string;
-    helperImage: string; // image with docker CLI + compose plugin
+    helperImage: string;
     log?: (msg: Readonly<string>) => void;
   }>,
 ) => Promise<boolean>;
 
-/**
- * Runs a helper container that performs:
- *   docker compose pull
- *   docker compose down
- *   docker compose up -d
- *
- * This is the Linux equivalent of the Windows full restart helper.
- */
 const restartLinux: RestartLinux = async ({
   hostProjectDir,
   helperImage = 'docker:28',
@@ -25,11 +17,23 @@ const restartLinux: RestartLinux = async ({
     throw new Error('hostProjectDir is required');
   }
 
-  const innerCmd = [
-    'docker compose pull',
-    'docker compose down --remove-orphans',
-    'docker compose up -d',
-  ].join(' && ');
+  // Try docker compose first, fallback to docker-compose
+  const composeCmd = `
+    if docker compose version >/dev/null 2>&1; then
+      echo "[conductor-updater] Using docker compose";
+      docker compose pull &&
+      docker compose down --remove-orphans &&
+      docker compose up -d;
+    elif docker-compose version >/dev/null 2>&1; then
+      echo "[conductor-updater] Using docker-compose";
+      docker-compose pull &&
+      docker-compose down --remove-orphans &&
+      docker-compose up -d;
+    else
+      echo "[conductor-updater] ERROR: No docker compose or docker-compose found" >&2;
+      exit 1;
+    fi
+  `;
 
   const args: ReadonlyArray<string> = [
     'run',
@@ -43,7 +47,7 @@ const restartLinux: RestartLinux = async ({
     helperImage,
     'sh',
     '-c',
-    innerCmd,
+    composeCmd,
   ];
 
   log(`[conductor-updater] docker ${args.join(' ')}`);
