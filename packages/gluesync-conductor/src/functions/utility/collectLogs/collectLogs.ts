@@ -8,7 +8,7 @@ const MAX_OUTPUT_LINES = 10;
 const sanitizeLines = (text: string): string[] =>
   text
     .split(/\r?\n/)
-    .map(line => line.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '').trimEnd())
+    .map(line => line.replace(/[^\t -~]/g, '').trimEnd()) // tab + printable ASCII
     .filter(line => line.length > 0);
 
 const formatOutput = (text: string): string => {
@@ -122,9 +122,6 @@ const handler: CollectLogsHandler = async (req, reply) => {
 
     const stdout = stdoutBuf.toString('utf8');
     const stderr = stderrBuf.toString('utf8');
-
-    const extractLastLine = (text: string): string =>
-      text.trim().split(/\r?\n/).filter(Boolean).pop() ?? 'Unknown error';
 
     if (exitCode === 0) {
       return reply.code(200).send({
