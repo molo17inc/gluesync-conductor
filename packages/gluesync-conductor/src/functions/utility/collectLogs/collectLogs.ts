@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { buffer } from 'node:stream/consumers';
 import { access, constants } from 'node:fs/promises';
+import path from 'node:path';
 import { CollectLogsHandler } from './collectLogs.model';
 
 const MAX_OUTPUT_LINES = 10;
@@ -41,20 +42,22 @@ const handler: CollectLogsHandler = async (req, reply) => {
   }
 
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
-  const scriptPath = isWindows ? './collect-logs.ps1' : './collect-logs.sh';
 
-  // Check if script exists
+  const ROOT_DIR = process.cwd();
+
+  const scriptPath = isWindows
+    ? path.join(ROOT_DIR, 'collect-logs.ps1')
+    : path.join(ROOT_DIR, 'collect-logs.sh');
+
   try {
     await access(scriptPath, constants.F_OK);
-    // Only check executable permission on Unix-like systems
+
     if (!isWindows) {
       await access(scriptPath, constants.X_OK);
     }
   } catch (err) {
-    req.log.error(
-      { err, scriptPath, isWindows },
-      'script not found or not executable',
-    );
+    req.log.error({ err, scriptPath }, 'script not found or not executable');
+
     return reply.code(500).send({
       success: false,
       error: 'log collection script not available',
@@ -63,7 +66,8 @@ const handler: CollectLogsHandler = async (req, reply) => {
 
   try {
     // Prepare command based on platform
-    const command = isWindows ? 'pwsh' : scriptPath;
+    const command = isWindows ? 'pwsh.exe' : scriptPath;
+
     const args = isWindows
       ? [
           '-NoProfile',
@@ -82,6 +86,11 @@ const handler: CollectLogsHandler = async (req, reply) => {
     const child = spawn(command, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
+      windowsHide: true,
+    });
+
+    child.on('error', err => {
+      req.log.error({ err }, 'script spawn error');
     });
 
     // Stream per-line logs as chunks arrive
@@ -97,19 +106,8 @@ const handler: CollectLogsHandler = async (req, reply) => {
       });
     };
 
-    child.stdout.on('data', (chunk: Buffer) =>
-      logLines(chunk, 'script stdout'),
-    );
-    child.stderr.on('data', (chunk: Buffer) =>
-      logLines(chunk, 'script stderr'),
-    );
-
-    child.on('error', err => {
-      req.log.error({ err }, 'script spawn error');
-      return reply
-        .code(500)
-        .send({ success: false, error: 'failed to start script' });
-    });
+    child.stdout.on('data', chunk => logLines(chunk, 'script stdout'));
+    child.stderr.on('data', chunk => logLines(chunk, 'script stderr'));
 
     // Collect full stdout/stderr buffers in parallel
     const [stdoutBuf, stderrBuf, exitCode] = await Promise.all([

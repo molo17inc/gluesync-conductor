@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
-import { copyFile, chmod, mkdir } from 'node:fs/promises';
+import { copyFile, chmod, mkdir, access } from 'node:fs/promises';
 import { buffer } from 'node:stream/consumers';
+import path from 'node:path';
 import { getLogger } from '../../utils/logger';
 import { RunMigrationScript } from './runMigrationScript.model';
 
@@ -9,24 +10,29 @@ const runMigrationScript: RunMigrationScript = async () => {
 
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
 
+  const ROOT_DIR = process.cwd();
+
   const ROOT_SCRIPT_PATH = isWindows
-    ? 'C:\\opt\\gluesync-conductor\\copy-agent-data.ps1'
-    : './copy-agent-data.sh';
+    ? path.join(ROOT_DIR, 'copy-agent-data.ps1')
+    : path.join(ROOT_DIR, 'copy-agent-data.sh');
 
   const DATA_DIR = isWindows
-    ? 'C:\\opt\\gluesync-conductor\\root-folder\\data'
-    : './root-folder/data';
+    ? path.join(ROOT_DIR, 'root-folder', 'data')
+    : path.join(ROOT_DIR, 'root-folder', 'data');
 
   const SCRIPT_PATH = isWindows
-    ? `${DATA_DIR}\\copy-agent-data.ps1`
-    : `${DATA_DIR}/copy-agent-data.sh`;
+    ? path.join(DATA_DIR, 'copy-agent-data.ps1')
+    : path.join(DATA_DIR, 'copy-agent-data.sh');
 
   const dockerComposeFilePath = isWindows
-    ? 'C:\\opt\\gluesync-conductor\\root-folder\\docker-compose.yml'
+    ? path.join(ROOT_DIR, 'root-folder', 'docker-compose.yml')
     : '/opt/gluesync-conductor/root-folder/docker-compose.yml';
 
   try {
+    await access(ROOT_SCRIPT_PATH);
+
     await mkdir(DATA_DIR, { recursive: true });
+
     await copyFile(ROOT_SCRIPT_PATH, SCRIPT_PATH);
 
     if (!isWindows) {
@@ -42,6 +48,7 @@ const runMigrationScript: RunMigrationScript = async () => {
       { err, ROOT_SCRIPT_PATH, SCRIPT_PATH },
       'Failed to copy migration script',
     );
+
     return {
       success: false,
       error: 'Failed to copy migration script',
@@ -49,7 +56,8 @@ const runMigrationScript: RunMigrationScript = async () => {
   }
 
   try {
-    const command = isWindows ? 'pwsh' : '/bin/bash';
+    const command = isWindows ? 'pwsh.exe' : '/bin/bash';
+
     const args = isWindows
       ? [
           '-NoProfile',
@@ -65,6 +73,11 @@ const runMigrationScript: RunMigrationScript = async () => {
     const child = spawn(command, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
+      windowsHide: true,
+    });
+
+    child.on('error', err => {
+      logger.error({ err }, 'Failed to spawn migration script');
     });
 
     const [stdoutBuf, stderrBuf, exitCode] = await Promise.all([
@@ -106,6 +119,7 @@ const runMigrationScript: RunMigrationScript = async () => {
     };
   } catch (err) {
     logger.error({ err }, 'Internal error running migration script');
+
     return {
       success: false,
       error: 'Internal server error',
