@@ -178,12 +178,32 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         };
       }
 
+      const discoveredModules = Object.keys(composeJson.services || {}).filter(
+        svcId => {
+          const svc = composeJson.services?.[svcId];
+          const labels = svc?.labels;
+          const serviceType = Array.isArray(labels)
+            ? labels
+                .find(l => l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
+                ?.split('=')[1]
+            : labels?.[`${LabelPrefix.CONDUCTOR}.type`];
+          return serviceType === 'module';
+        },
+      );
+
+      // exclude conductor and chronos so their logic remains separate
+      const otherModuleServices = discoveredModules.filter(
+        svcId => svcId !== conductorName && svcId !== chronosName,
+      );
+
       const thirdPartyServices = Array.from(THIRD_PARTY_SERVICES);
 
+      // build final list to check
       const servicesToCheck = [
         conductorName,
         chronosName,
         ...thirdPartyServices,
+        ...otherModuleServices,
       ];
 
       const results = await Promise.all(
