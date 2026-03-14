@@ -52,6 +52,33 @@ function Compress-FileToGzip {
     }
 }
 
+function Ensure-FtpDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string] $RemoteDir,
+        [Parameter(Mandatory = $true)][string] $Username,
+        [Parameter(Mandatory = $true)][string] $Password
+    )
+
+    try {
+        $request = [System.Net.FtpWebRequest]::Create($RemoteDir)
+        $request.Method = [System.Net.WebRequestMethods+Ftp]::MakeDirectory
+        $request.Credentials = New-Object System.Net.NetworkCredential($Username, $Password)
+        $request.UsePassive = $true
+        $request.KeepAlive = $false
+        $response = $request.GetResponse()
+        $response.Close()
+        Write-Host "Ensured FTP directory exists: $RemoteDir"
+    }
+    catch {
+        if ($_.Exception.Response -and $_.Exception.Response.StatusDescription -match "550") {
+            Write-Host "FTP directory already exists: $RemoteDir"
+        }
+        else {
+            Write-Warning "Failed to ensure FTP directory $RemoteDir: $_"
+        }
+    }
+}
+
 function Upload-FtpFile {
     param(
         [Parameter(Mandatory = $true)][string] $LocalPath,
@@ -217,10 +244,18 @@ Write-Host "Compressing Docker image tar to $gzFilePath"
 Compress-FileToGzip -InputPath $tarFilePath -OutputPath $gzFilePath
 Remove-Item -Path $tarFilePath -Force
 
-$releaseDirLower = $releaseType.ToLower()
-$remoteDir = "/molo17.com/public_html/gs-content/releases/$releaseDirLower"
+$releaseDirLower = switch ($releaseType.ToUpper()) {
+    "GA" { "ga" }
+    "BETA" { "beta" }
+    "ALPHA" { "alpha" }
+    "INTERNAL_TEST" { "internal" }
+    Default { $releaseType.ToLower() }
+}
+$remoteDir = "/releases/$releaseDirLower"
+$remoteDirUri = "ftp://$ftpSite$remoteDir"
+Ensure-FtpDirectory -RemoteDir $remoteDirUri -Username $ftpUser -Password $ftpPassword
 $remoteFileName = "$tarBaseName.tar.gz"
-$remoteUri = "ftp://$ftpSite$remoteDir/$remoteFileName"
+$remoteUri = "$remoteDirUri/$remoteFileName"
 Upload-FtpFile -LocalPath $gzFilePath -RemoteUri $remoteUri -Username $ftpUser -Password $ftpPassword
 Remove-Item -Path $gzFilePath -Force
 

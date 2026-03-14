@@ -8,25 +8,32 @@ set -o pipefail
 # Default platform
 PLATFORM="linux/amd64,linux/arm64"
 
-FTP_BASE_DIR="/molo17.com/public_html/gs-content/releases"
+FTP_BASE_DIR="/releases"
 FTP_TARGET_DIR=""
-FTP_SAVE_PLATFORM="${FTP_SAVE_PLATFORM:-linux/amd64}"
 FTP_UPLOAD_ENABLED=false
 
 sanitize_segment() {
   echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/_/g'
 }
 
-if [ -n "${RELEASE_TYPE:-}" ]; then
-  RELEASE_TYPE_LOWER=$(echo "$RELEASE_TYPE" | tr '[:upper:]' '[:lower:]')
-  case "$RELEASE_TYPE_LOWER" in
-    ga|beta|alpha|internal_test)
-      FTP_TARGET_DIR="$FTP_BASE_DIR/$RELEASE_TYPE_LOWER"
-      ;;
-    *)
-      echo "[WARN] Unrecognized RELEASE_TYPE: $RELEASE_TYPE. FTP upload disabled."
-      ;;
+map_release_dir() {
+  local type_upper
+  type_upper=$(echo "$1" | tr '[:lower:]' '[:upper:]')
+  case "$type_upper" in
+    GA) echo "ga" ;;
+    BETA) echo "beta" ;;
+    ALPHA) echo "alpha" ;;
+    INTERNAL_TEST) echo "internal" ;;
+    *) return 1 ;;
   esac
+}
+
+if [ -n "${RELEASE_TYPE:-}" ]; then
+  if release_dir=$(map_release_dir "$RELEASE_TYPE"); then
+    FTP_TARGET_DIR="$FTP_BASE_DIR/$release_dir"
+  else
+    echo "[WARN] Unrecognized RELEASE_TYPE: $RELEASE_TYPE. FTP upload disabled."
+  fi
 else
   echo "[WARN] RELEASE_TYPE not set. FTP upload disabled."
 fi
@@ -52,18 +59,30 @@ upload_docker_tar() {
   safe_image=$(sanitize_segment "$image_name")
   local safe_tag
   safe_tag=$(sanitize_segment "$tag")
-  local tar_basename="${safe_image}-${safe_tag}.tar"
   local tar_path
   tar_path=$(mktemp "/tmp/${safe_image}-${safe_tag}.XXXXXX.tar")
+  local gz_path="${tar_path}.gz"
+  local remote_basename="${safe_image}-${safe_tag}.tar.gz"
+  local ftp_url="ftp://$FTP_SITE${FTP_TARGET_DIR}/$remote_basename"
+
+  echo "Pulling $full_image before save"
+  docker pull "$full_image"
 
   echo "Saving $full_image to $tar_path"
   docker save "$full_image" -o "$tar_path"
 
-  local ftp_url="ftp://$FTP_SITE${FTP_TARGET_DIR}/$tar_basename"
-  echo "Uploading $(basename "$tar_path") to $ftp_url"
-  curl -T "$tar_path" --user "$FTP_USER:$FTP_PASSWORD" "$ftp_url"
-
+  echo "Compressing tar to $gz_path"
+  if ! gzip -c "$tar_path" > "$gz_path"; then
+    rm -f "$tar_path" "$gz_path"
+    echo "[ERROR] Failed to gzip $tar_path"
+    return 1
+  fi
   rm -f "$tar_path"
+
+  echo "Uploading $(basename "$gz_path") to $ftp_url"
+  curl --ftp-create-dirs -T "$gz_path" --user "$FTP_USER:$FTP_PASSWORD" "$ftp_url"
+
+  rm -f "$gz_path"
 }
 
 # Check if first parameter is --platform
@@ -106,17 +125,26 @@ while [ "$#" -gt 0 ]; do
     # Retry up to 3 times in case of error
     attempt=0
     until [ $attempt -ge 3 ]; do
-      eval "$DOCKER_CMD --push ." && break
+      if eval "$DOCKER_CMD --push ."; then
+        build_success=true
+        break
+      fi
 
+      build_success=false
       attempt=$((attempt+1))
       echo "Retry $attempt for $IMAGE_NAME with tags ${TAGS[*]}..."
       sleep 10
     done
 
-    if [ $attempt -ge 3 ]; then
+    if [ "$build_success" != true ]; then
       echo "Build failed for $IMAGE_NAME with tags ${TAGS[*]} after 3 attempts"
       exit 1
     fi
+
+    for TAG in "${TAGS[@]}"; do
+      FULL_IMAGE="$CI_REGISTRY_IMAGE/$IMAGE_NAME:$TAG"
+      upload_docker_tar "$FULL_IMAGE" "$IMAGE_NAME" "$TAG"
+    done
   ) &
 
   pids+=($!)
