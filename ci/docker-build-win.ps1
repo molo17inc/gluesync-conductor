@@ -25,6 +25,54 @@ $ftpSite = $env:FTP_SITE
 $ftpUser = $env:FTP_USER
 $ftpPassword = $env:FTP_PASSWORD
 
+function Get-FtpReleaseDirectories {
+    param(
+        [Parameter(Mandatory = $true)][string] $ReleaseType
+    )
+
+    switch ($ReleaseType.ToUpper()) {
+        "GA" { return @("ga") }
+        "BETA" { return @("beta") }
+        "ALPHA" { return @("alpha", "internal") }
+        "INTERNAL_TEST" { return @("internal") }
+        default { throw "Unsupported release type '$ReleaseType' for FTP upload." }
+    }
+}
+
+function Test-FtpDirectoryExistsError {
+    param(
+        [Parameter(Mandatory = $true)] $Exception
+    )
+
+    $ftpResponse = $null
+    $statusDescription = $null
+    $statusCode = $null
+
+    if ($Exception.PSObject.Properties.Name -contains 'Response') {
+        $ftpResponse = $Exception.Response
+    }
+
+    if ($ftpResponse -and $ftpResponse -is [System.Net.FtpWebResponse]) {
+        $statusCode = $ftpResponse.StatusCode
+        $statusDescription = $ftpResponse.StatusDescription
+        $ftpResponse.Close()
+    }
+
+    if ($statusCode -eq [System.Net.FtpStatusCode]::ActionNotTakenFileUnavailable) {
+        return $true
+    }
+
+    if ($statusDescription -and $statusDescription -match "550") {
+        return $true
+    }
+
+    if ($Exception.Message -and $Exception.Message -match "550") {
+        return $true
+    }
+
+    return $false
+}
+
 function Compress-FileToGzip {
     param(
         [Parameter(Mandatory = $true)][string] $InputPath,
@@ -59,28 +107,42 @@ function Ensure-FtpDirectory {
         [Parameter(Mandatory = $true)][string] $Password
     )
 
-    try {
-        $request = [System.Net.FtpWebRequest]::Create($RemoteDir)
-        $request.Method = [System.Net.WebRequestMethods+Ftp]::MakeDirectory
-        $request.Credentials = New-Object System.Net.NetworkCredential($Username, $Password)
-        $request.UsePassive = $true
-        $request.KeepAlive = $false
-        $response = $request.GetResponse()
-        $response.Close()
-        Write-Host "Ensured FTP directory exists: ${RemoteDir}"
+    if ([string]::IsNullOrWhiteSpace($RemoteDir)) {
+        return
     }
-    catch {
-        $ftpException = $_.Exception
-        $ftpResponse = $null
-        if ($ftpException.PSObject.Properties.Name -contains 'Response') {
-            $ftpResponse = $ftpException.Response
-        }
 
-        if ($ftpResponse -and $ftpResponse.StatusDescription -match "550") {
-            Write-Host "FTP directory already exists: ${RemoteDir}"
+    $uri = [System.Uri]$RemoteDir
+    $baseUri = "{0}://{1}" -f $uri.Scheme, $uri.Authority
+    $segments = $uri.AbsolutePath.Trim('/').Split('/', [System.StringSplitOptions]::RemoveEmptyEntries)
+
+    if ($segments.Count -eq 0) {
+        return
+    }
+
+    $currentPath = ""
+    foreach ($segment in $segments) {
+        if ([string]::IsNullOrWhiteSpace($segment)) { continue }
+        $currentPath = "$currentPath/$segment"
+        $currentUri = "$baseUri$currentPath"
+
+        try {
+            $request = [System.Net.FtpWebRequest]::Create($currentUri)
+            $request.Method = [System.Net.WebRequestMethods+Ftp]::MakeDirectory
+            $request.Credentials = New-Object System.Net.NetworkCredential($Username, $Password)
+            $request.UsePassive = $true
+            $request.KeepAlive = $false
+            $response = $request.GetResponse()
+            $response.Close()
+            Write-Host "Ensured FTP directory exists: ${currentUri}"
         }
-        else {
-            Write-Warning "Failed to ensure FTP directory ${RemoteDir}: $_"
+        catch {
+            $exception = $_.Exception
+            if (Test-FtpDirectoryExistsError -Exception $exception) {
+                Write-Host "FTP directory already exists: ${currentUri}"
+                continue
+            }
+
+            throw "Failed to ensure FTP directory ${currentUri}: $exception"
         }
     }
 }
@@ -250,19 +312,21 @@ Write-Host "Compressing Docker image tar to $gzFilePath"
 Compress-FileToGzip -InputPath $tarFilePath -OutputPath $gzFilePath
 Remove-Item -Path $tarFilePath -Force
 
-$releaseDirLower = switch ($releaseType.ToUpper()) {
-    "GA" { "ga" }
-    "BETA" { "beta" }
-    "ALPHA" { "alpha" }
-    "INTERNAL_TEST" { "internal" }
-    Default { $releaseType.ToLower() }
-}
-$remoteDir = "/releases/$releaseDirLower"
-$remoteDirUri = "ftp://$ftpSite$remoteDir"
-Ensure-FtpDirectory -RemoteDir $remoteDirUri -Username $ftpUser -Password $ftpPassword
+$releaseDirectories = Get-FtpReleaseDirectories -ReleaseType $releaseType
 $remoteFileName = "$tarBaseName.tar.gz"
-$remoteUri = "$remoteDirUri/$remoteFileName"
-Upload-FtpFile -LocalPath $gzFilePath -RemoteUri $remoteUri -Username $ftpUser -Password $ftpPassword
+
+foreach ($dir in $releaseDirectories) {
+    $normalizedDir = $dir.Trim('/')
+    if ([string]::IsNullOrWhiteSpace($normalizedDir)) { continue }
+
+    $remoteDirPath = "/releases/$normalizedDir"
+    $remoteDirUri = "ftp://$ftpSite$remoteDirPath"
+    Ensure-FtpDirectory -RemoteDir $remoteDirUri -Username $ftpUser -Password $ftpPassword
+
+    $remoteUri = "$remoteDirUri/$remoteFileName"
+    Upload-FtpFile -LocalPath $gzFilePath -RemoteUri $remoteUri -Username $ftpUser -Password $ftpPassword
+}
+
 Remove-Item -Path $gzFilePath -Force
 
 # --- Push Windows Docker image ---
