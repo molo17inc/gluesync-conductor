@@ -75,9 +75,11 @@ upload_docker_tar() {
   safe_image=$(sanitize_segment "$image_name")
   local safe_tag
   safe_tag=$(sanitize_segment "$tag")
-  local tar_path
-  tar_path=$(mktemp "/tmp/${safe_image}-${safe_tag}.XXXXXX.tar")
+  local tmp_base
+  tmp_base=$(mktemp "/tmp/${safe_image}-${safe_tag}.XXXXXX")
+  local tar_path="${tmp_base}.tar"
   local gz_path="${tar_path}.gz"
+  rm -f "$tmp_base"
   local remote_basename="${safe_image}-${safe_tag}.tar.gz"
 
   echo "Pulling $full_image before save"

@@ -70,7 +70,13 @@ function Ensure-FtpDirectory {
         Write-Host "Ensured FTP directory exists: ${RemoteDir}"
     }
     catch {
-        if ($_.Exception.Response -and $_.Exception.Response.StatusDescription -match "550") {
+        $ftpException = $_.Exception
+        $ftpResponse = $null
+        if ($ftpException.PSObject.Properties.Name -contains 'Response') {
+            $ftpResponse = $ftpException.Response
+        }
+
+        if ($ftpResponse -and $ftpResponse.StatusDescription -match "550") {
             Write-Host "FTP directory already exists: ${RemoteDir}"
         }
         else {
