@@ -67,14 +67,14 @@ function Ensure-FtpDirectory {
         $request.KeepAlive = $false
         $response = $request.GetResponse()
         $response.Close()
-        Write-Host "Ensured FTP directory exists: $RemoteDir"
+        Write-Host "Ensured FTP directory exists: ${RemoteDir}"
     }
     catch {
         if ($_.Exception.Response -and $_.Exception.Response.StatusDescription -match "550") {
-            Write-Host "FTP directory already exists: $RemoteDir"
+            Write-Host "FTP directory already exists: ${RemoteDir}"
         }
         else {
-            Write-Warning "Failed to ensure FTP directory $RemoteDir: $_"
+            Write-Warning "Failed to ensure FTP directory ${RemoteDir}: $_"
         }
     }
 }

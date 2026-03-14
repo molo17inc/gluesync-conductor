@@ -9,28 +9,39 @@ set -o pipefail
 PLATFORM="linux/amd64,linux/arm64"
 
 FTP_BASE_DIR="/releases"
-FTP_TARGET_DIR=""
+FTP_TARGET_DIRS=()
 FTP_UPLOAD_ENABLED=false
 
 sanitize_segment() {
   echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/_/g'
 }
 
-map_release_dir() {
+map_release_dirs() {
   local type_upper
   type_upper=$(echo "$1" | tr '[:lower:]' '[:upper:]')
   case "$type_upper" in
-    GA) echo "ga" ;;
-    BETA) echo "beta" ;;
-    ALPHA) echo "alpha" ;;
-    INTERNAL_TEST) echo "internal" ;;
+    GA)
+      printf '%s\n' "ga"
+      ;;
+    BETA)
+      printf '%s\n' "beta"
+      ;;
+    ALPHA)
+      printf '%s\n' "alpha" "internal"
+      ;;
+    INTERNAL_TEST)
+      printf '%s\n' "internal"
+      ;;
     *) return 1 ;;
   esac
 }
 
 if [ -n "${RELEASE_TYPE:-}" ]; then
-  if release_dir=$(map_release_dir "$RELEASE_TYPE"); then
-    FTP_TARGET_DIR="$FTP_BASE_DIR/$release_dir"
+  if map_release_dirs "$RELEASE_TYPE" >/tmp/ftp_dirs.$$; then
+    while IFS= read -r dir; do
+      FTP_TARGET_DIRS+=("$FTP_BASE_DIR/$dir")
+    done </tmp/ftp_dirs.$$
+    rm -f /tmp/ftp_dirs.$$ >/dev/null 2>&1 || true
   else
     echo "[WARN] Unrecognized RELEASE_TYPE: $RELEASE_TYPE. FTP upload disabled."
   fi
@@ -38,7 +49,7 @@ else
   echo "[WARN] RELEASE_TYPE not set. FTP upload disabled."
 fi
 
-if [ -n "$FTP_TARGET_DIR" ]; then
+if [ ${#FTP_TARGET_DIRS[@]} -gt 0 ]; then
   if [ -n "${FTP_SITE:-}" ] && [ -n "${FTP_USER:-}" ] && [ -n "${FTP_PASSWORD:-}" ]; then
     FTP_UPLOAD_ENABLED=true
   else
@@ -55,6 +66,11 @@ upload_docker_tar() {
     return 0
   fi
 
+  if [ ${#FTP_TARGET_DIRS[@]} -eq 0 ]; then
+    echo "[WARN] No FTP target directories resolved; skipping upload"
+    return 0
+  fi
+
   local safe_image
   safe_image=$(sanitize_segment "$image_name")
   local safe_tag
@@ -63,7 +79,6 @@ upload_docker_tar() {
   tar_path=$(mktemp "/tmp/${safe_image}-${safe_tag}.XXXXXX.tar")
   local gz_path="${tar_path}.gz"
   local remote_basename="${safe_image}-${safe_tag}.tar.gz"
-  local ftp_url="ftp://$FTP_SITE${FTP_TARGET_DIR}/$remote_basename"
 
   echo "Pulling $full_image before save"
   docker pull "$full_image"
@@ -79,8 +94,11 @@ upload_docker_tar() {
   fi
   rm -f "$tar_path"
 
-  echo "Uploading $(basename "$gz_path") to $ftp_url"
-  curl --ftp-create-dirs -T "$gz_path" --user "$FTP_USER:$FTP_PASSWORD" "$ftp_url"
+  for target_dir in "${FTP_TARGET_DIRS[@]}"; do
+    local ftp_url="ftp://$FTP_SITE${target_dir}/$remote_basename"
+    echo "Uploading $(basename "$gz_path") to $ftp_url"
+    curl --ftp-create-dirs -T "$gz_path" --user "$FTP_USER:$FTP_PASSWORD" "$ftp_url"
+  done
 
   rm -f "$gz_path"
 }
