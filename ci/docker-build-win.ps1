@@ -21,6 +21,93 @@ param (
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+$ftpSite = $env:FTP_SITE
+$ftpUser = $env:FTP_USER
+$ftpPassword = $env:FTP_PASSWORD
+
+function Compress-FileToGzip {
+    param(
+        [Parameter(Mandatory = $true)][string] $InputPath,
+        [Parameter(Mandatory = $true)][string] $OutputPath
+    )
+
+    $inputStream = $null
+    $outputStream = $null
+    $gzipStream = $null
+
+    try {
+        if (Test-Path $OutputPath) {
+            Remove-Item -Path $OutputPath -Force
+        }
+
+        $inputStream = [System.IO.File]::OpenRead($InputPath)
+        $outputStream = [System.IO.File]::Create($OutputPath)
+        $gzipStream = New-Object System.IO.Compression.GzipStream($outputStream, [System.IO.Compression.CompressionLevel]::Optimal)
+        $inputStream.CopyTo($gzipStream)
+    }
+    finally {
+        if ($gzipStream) { $gzipStream.Dispose() }
+        if ($outputStream) { $outputStream.Dispose() }
+        if ($inputStream) { $inputStream.Dispose() }
+    }
+}
+
+function Upload-FtpFile {
+    param(
+        [Parameter(Mandatory = $true)][string] $LocalPath,
+        [Parameter(Mandatory = $true)][string] $RemoteUri,
+        [Parameter(Mandatory = $true)][string] $Username,
+        [Parameter(Mandatory = $true)][string] $Password
+    )
+
+    if (-not (Test-Path $LocalPath)) {
+        throw "Local file '$LocalPath' not found."
+    }
+
+    Write-Host "Starting FTP upload to $RemoteUri"
+    $ftpRequest = [System.Net.FtpWebRequest]::Create($RemoteUri)
+    $ftpRequest.Method = [System.Net.WebRequestMethods+Ftp]::UploadFile
+    $ftpRequest.Credentials = New-Object System.Net.NetworkCredential($Username, $Password)
+    $ftpRequest.UseBinary = $true
+    $ftpRequest.UsePassive = $true
+    $ftpRequest.KeepAlive = $false
+
+    $fileContent = [System.IO.File]::ReadAllBytes($LocalPath)
+    $ftpRequest.ContentLength = $fileContent.Length
+
+    $requestStream = $null
+    $response = $null
+
+    try {
+        $requestStream = $ftpRequest.GetRequestStream()
+        $requestStream.Write($fileContent, 0, $fileContent.Length)
+        $requestStream.Flush()
+
+        $response = $ftpRequest.GetResponse()
+        $statusDescription = $response.StatusDescription
+
+        try {
+            $response.Close()
+        }
+        catch {
+            Write-Warning "FTP server closed connection early: $_"
+        }
+
+        Write-Host "FTP upload completed ($statusDescription)"
+    }
+    catch {
+        throw "FTP upload failed: $_"
+    }
+    finally {
+        if ($requestStream) { $requestStream.Dispose() }
+        if ($response) { $response.Dispose() }
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($ftpSite) -or [string]::IsNullOrWhiteSpace($ftpUser) -or [string]::IsNullOrWhiteSpace($ftpPassword)) {
+  throw "FTP credentials (FTP_SITE, FTP_USER, FTP_PASSWORD) must be set"
+}
+
 $CI_COMMIT_TAG = $env:CI_COMMIT_TAG
 $CI_COMMIT_BRANCH = $env:CI_COMMIT_BRANCH
 $CI_COMMIT_SHORT_SHA = $env:CI_COMMIT_SHORT_SHA
@@ -61,6 +148,7 @@ else {
 
   if ($allowedBranches -contains $CI_COMMIT_BRANCH) {
     $TAG_PART = $CI_COMMIT_BRANCH
+    $releaseType = "INTERNAL_TEST"
     Write-Host "Branch '$TAG_PART' is allowed. Using as version part."
   }
   else {
@@ -75,14 +163,20 @@ Write-Host "Default VERSION: $VERSION"
 if ($CI_COMMIT_TAG -match '^alpha-') {
   $TAG_PART = "$TAG_PART.$CI_COMMIT_SHORT_SHA"
   $VERSION = "$TAG_PART.$CI_COMMIT_SHORT_SHA"
+  $releaseType = "ALPHA"
   Write-Host "Alpha release detected, proceeding with TAG_PART: $TAG_PART and VERSION: $VERSION"
 }
 elseif ($CI_COMMIT_TAG -match '^beta-') {
   Write-Host "Beta release detected, proceeding with TAG_PART: $TAG_PART"
+  $releaseType = "BETA"
 }
 elseif ($CI_COMMIT_TAG -match '^release-') {
   Write-Host "GA release detected, proceeding with TAG_PART: $TAG_PART"
+  $releaseType = "GA"
 }
+
+$releaseType ??= "INTERNAL_TEST"
+Write-Host "Release type: $releaseType"
 
 $VERSION_TAG_WINDOWS = "${IMAGE_NAME}:${TAG_PART}-win-${WindowsVersion}-${WindowsTag}"
 Write-Host "Image name: $IMAGE_NAME"
@@ -108,6 +202,27 @@ docker build --file ${DOCKER_FILE} `
 
 if ($LASTEXITCODE -ne 0) { throw "❌ Docker build failed" }
 Write-Host "✅ Docker build completed successfully for $($WindowsTag)"
+
+$tarDirectory = Join-Path (Get-Location) "docker-images-windows"
+New-Item -ItemType Directory -Force -Path $tarDirectory | Out-Null
+$tarBaseName = "gluesync-conductor-${WindowsVersion}-${WindowsTag}"
+$tarFilePath = Join-Path $tarDirectory "$tarBaseName.tar"
+
+Write-Host "Saving Docker image to $tarFilePath"
+docker save "$VERSION_TAG_WINDOWS" -o $tarFilePath
+if ($LASTEXITCODE -ne 0) { throw "❌ Failed to save Docker image" }
+
+$gzFilePath = "$tarFilePath.gz"
+Write-Host "Compressing Docker image tar to $gzFilePath"
+Compress-FileToGzip -InputPath $tarFilePath -OutputPath $gzFilePath
+Remove-Item -Path $tarFilePath -Force
+
+$releaseDirLower = $releaseType.ToLower()
+$remoteDir = "/molo17.com/public_html/gs-content/releases/$releaseDirLower"
+$remoteFileName = "$tarBaseName.tar.gz"
+$remoteUri = "ftp://$ftpSite$remoteDir/$remoteFileName"
+Upload-FtpFile -LocalPath $gzFilePath -RemoteUri $remoteUri -Username $ftpUser -Password $ftpPassword
+Remove-Item -Path $gzFilePath -Force
 
 # --- Push Windows Docker image ---
 docker push "$VERSION_TAG_WINDOWS"

@@ -8,6 +8,64 @@ set -o pipefail
 # Default platform
 PLATFORM="linux/amd64,linux/arm64"
 
+FTP_BASE_DIR="/molo17.com/public_html/gs-content/releases"
+FTP_TARGET_DIR=""
+FTP_SAVE_PLATFORM="${FTP_SAVE_PLATFORM:-linux/amd64}"
+FTP_UPLOAD_ENABLED=false
+
+sanitize_segment() {
+  echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/_/g'
+}
+
+if [ -n "${RELEASE_TYPE:-}" ]; then
+  RELEASE_TYPE_LOWER=$(echo "$RELEASE_TYPE" | tr '[:upper:]' '[:lower:]')
+  case "$RELEASE_TYPE_LOWER" in
+    ga|beta|alpha|internal_test)
+      FTP_TARGET_DIR="$FTP_BASE_DIR/$RELEASE_TYPE_LOWER"
+      ;;
+    *)
+      echo "[WARN] Unrecognized RELEASE_TYPE: $RELEASE_TYPE. FTP upload disabled."
+      ;;
+  esac
+else
+  echo "[WARN] RELEASE_TYPE not set. FTP upload disabled."
+fi
+
+if [ -n "$FTP_TARGET_DIR" ]; then
+  if [ -n "${FTP_SITE:-}" ] && [ -n "${FTP_USER:-}" ] && [ -n "${FTP_PASSWORD:-}" ]; then
+    FTP_UPLOAD_ENABLED=true
+  else
+    echo "[WARN] FTP credentials missing. FTP upload disabled."
+  fi
+fi
+
+upload_docker_tar() {
+  local full_image="$1"
+  local image_name="$2"
+  local tag="$3"
+
+  if [ "$FTP_UPLOAD_ENABLED" != true ]; then
+    return 0
+  fi
+
+  local safe_image
+  safe_image=$(sanitize_segment "$image_name")
+  local safe_tag
+  safe_tag=$(sanitize_segment "$tag")
+  local tar_basename="${safe_image}-${safe_tag}.tar"
+  local tar_path
+  tar_path=$(mktemp "/tmp/${safe_image}-${safe_tag}.XXXXXX.tar")
+
+  echo "Saving $full_image to $tar_path"
+  docker save "$full_image" -o "$tar_path"
+
+  local ftp_url="ftp://$FTP_SITE${FTP_TARGET_DIR}/$tar_basename"
+  echo "Uploading $(basename "$tar_path") to $ftp_url"
+  curl -T "$tar_path" --user "$FTP_USER:$FTP_PASSWORD" "$ftp_url"
+
+  rm -f "$tar_path"
+}
+
 # Check if first parameter is --platform
 if [[ "$1" == "--platform" ]]; then
   PLATFORM="$2"
