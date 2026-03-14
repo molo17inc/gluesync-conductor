@@ -159,7 +159,8 @@ function Upload-FtpFile {
         throw "Local file '$LocalPath' not found."
     }
 
-    Write-Host "Starting FTP upload to $RemoteUri"
+    $localFileName = [System.IO.Path]::GetFileName($LocalPath)
+    Write-Host "Starting FTP upload of $localFileName to $RemoteUri"
     $ftpRequest = [System.Net.FtpWebRequest]::Create($RemoteUri)
     $ftpRequest.Method = [System.Net.WebRequestMethods+Ftp]::UploadFile
     $ftpRequest.Credentials = New-Object System.Net.NetworkCredential($Username, $Password)
@@ -177,6 +178,8 @@ function Upload-FtpFile {
         $requestStream = $ftpRequest.GetRequestStream()
         $requestStream.Write($fileContent, 0, $fileContent.Length)
         $requestStream.Flush()
+        $requestStream.Dispose()
+        $requestStream = $null
 
         $response = $ftpRequest.GetResponse()
         $statusDescription = $response.StatusDescription
@@ -327,7 +330,7 @@ foreach ($dir in $releaseDirectories) {
     Upload-FtpFile -LocalPath $gzFilePath -RemoteUri $remoteUri -Username $ftpUser -Password $ftpPassword
 }
 
-Remove-Item -Path $gzFilePath -Force
+Remove-Item -Path $gzFilePath -Force -ErrorAction SilentlyContinue
 
 # --- Push Windows Docker image ---
 docker push "$VERSION_TAG_WINDOWS"
