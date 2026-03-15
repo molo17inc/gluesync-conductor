@@ -25,6 +25,17 @@ $ftpSite = $env:FTP_SITE
 $ftpUser = $env:FTP_USER
 $ftpPassword = $env:FTP_PASSWORD
 
+function Convert-ToSafeSegment {
+    param([string] $Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ""
+    }
+
+    $lower = $Value.ToLowerInvariant()
+    return ($lower -replace '[^a-z0-9._-]', '_')
+}
+
 function Get-FtpReleaseDirectories {
     param(
         [Parameter(Mandatory = $true)][string] $ReleaseType
@@ -276,6 +287,9 @@ elseif ($CI_COMMIT_TAG -match '^release-') {
 $releaseType ??= "INTERNAL_TEST"
 Write-Host "Release type: $releaseType"
 
+$safeImageName = Convert-ToSafeSegment $AppName
+$safeReleaseTag = Convert-ToSafeSegment $releaseType
+
 $VERSION_TAG_WINDOWS = "${IMAGE_NAME}:${TAG_PART}-win-${WindowsVersion}-${WindowsTag}"
 Write-Host "Image name: $IMAGE_NAME"
 Write-Host "Version tag: $VERSION_TAG_WINDOWS"
@@ -316,13 +330,13 @@ Compress-FileToGzip -InputPath $tarFilePath -OutputPath $gzFilePath
 Remove-Item -Path $tarFilePath -Force
 
 $releaseDirectories = Get-FtpReleaseDirectories -ReleaseType $releaseType
-$remoteFileName = "$tarBaseName.tar.gz"
+$remoteFileName = "$safeImageName-$safeReleaseTag.tar.gz"
 
 foreach ($dir in $releaseDirectories) {
     $normalizedDir = $dir.Trim('/')
     if ([string]::IsNullOrWhiteSpace($normalizedDir)) { continue }
 
-    $remoteDirPath = "/releases/$normalizedDir"
+    $remoteDirPath = "/releases/windows/$normalizedDir"
     $remoteDirUri = "ftp://$ftpSite$remoteDirPath"
     Ensure-FtpDirectory -RemoteDir $remoteDirUri -Username $ftpUser -Password $ftpPassword
 

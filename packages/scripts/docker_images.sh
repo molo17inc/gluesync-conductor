@@ -8,7 +8,7 @@ set -o pipefail
 # Default platform
 PLATFORM="linux/amd64,linux/arm64"
 
-FTP_BASE_DIR="/releases"
+FTP_BASE_DIR="/releases/linux"
 FTP_TARGET_DIRS=()
 FTP_UPLOAD_ENABLED=false
 
@@ -73,6 +73,8 @@ upload_docker_tar() {
 
   local safe_image
   safe_image=$(sanitize_segment "$image_name")
+  local safe_release
+  safe_release=$(sanitize_segment "${RELEASE_TYPE:-unknown}")
   local safe_tag
   safe_tag=$(sanitize_segment "$tag")
   local tmp_base
@@ -80,7 +82,7 @@ upload_docker_tar() {
   local tar_path="${tmp_base}.tar"
   local gz_path="${tar_path}.gz"
   rm -f "$tmp_base"
-  local remote_basename="${safe_image}-${safe_tag}.tar.gz"
+  local remote_basename="${safe_image}-${safe_release}.tar.gz"
 
   echo "Pulling $full_image before save"
   docker pull "$full_image"
