@@ -99,7 +99,7 @@ upload_docker_tar() {
   rm -f "$tar_path"
 
   for target_dir in "${FTP_TARGET_DIRS[@]}"; do
-    local ftp_url="ftp://$FTP_SITE${target_dir}/$remote_basename"
+    local ftp_url="ftp://$FTP_SITE${target_dir}/linux/$remote_basename"
     echo "Uploading $(basename "$gz_path") to $ftp_url"
     curl --ftp-create-dirs -T "$gz_path" --user "$FTP_USER:$FTP_PASSWORD" "$ftp_url"
   done

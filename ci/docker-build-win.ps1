@@ -336,7 +336,7 @@ foreach ($dir in $releaseDirectories) {
     $normalizedDir = $dir.Trim('/')
     if ([string]::IsNullOrWhiteSpace($normalizedDir)) { continue }
 
-    $remoteDirPath = "/releases/windows/$normalizedDir"
+    $remoteDirPath = "/releases/$normalizedDir/windows"
     $remoteDirUri = "ftp://$ftpSite$remoteDirPath"
     Ensure-FtpDirectory -RemoteDir $remoteDirUri -Username $ftpUser -Password $ftpPassword
 
