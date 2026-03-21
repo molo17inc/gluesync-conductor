@@ -86,6 +86,11 @@ upload_docker_tar() {
   local safe_tag
   safe_tag=$(sanitize_segment "$tag")
 
+  if [[ "${safe_tag}" == "latest" ]]; then
+    echo "[INFO] Skipping FTP upload for tag '$tag'"
+    return 0
+  fi
+
   local linux_platforms=()
   for platform in "${PLATFORM_LIST[@]}"; do
     if [[ "$platform" == linux/* ]]; then
