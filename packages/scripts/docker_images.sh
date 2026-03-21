@@ -20,8 +20,8 @@ arch_alias_from_platform() {
   local platform="$1"
   local arch="${platform##*/}"
   case "$arch" in
-    amd64) echo "amd" ;;
-    arm64) echo "arm" ;;
+    amd64) echo "amd64" ;;
+    arm64) echo "arm64" ;;
     *) echo "$arch" ;;
   esac
 }
@@ -141,7 +141,7 @@ upload_docker_tar() {
     rm -f "$tar_path"
 
     for target_dir in "${FTP_TARGET_DIRS[@]}"; do
-      local ftp_url="ftp://$FTP_SITE${target_dir}/linux/$remote_basename"
+      local ftp_url="ftp://$FTP_SITE${target_dir}/$remote_basename"
       echo "Uploading $(basename "$gz_path") to $ftp_url"
       curl --ftp-create-dirs -T "$gz_path" --user "$FTP_USER:$FTP_PASSWORD" "$ftp_url"
     done
