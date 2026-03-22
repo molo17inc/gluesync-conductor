@@ -124,23 +124,20 @@ upload_docker_tar() {
       return 1
     fi
 
-    local arch_tagged_image="${full_image}-${safe_arch}"
-    docker tag "$full_image" "$arch_tagged_image"
-    docker image rm "$full_image" >/dev/null 2>&1 || true
-
-    echo "Saving $arch_tagged_image to $tar_path"
-    if ! docker save "$arch_tagged_image" -o "$tar_path"; then
-      echo "[ERROR] Failed to save $arch_tagged_image"
+    echo "Saving $full_image ($platform) to $tar_path"
+    if ! docker save "$full_image" -o "$tar_path"; then
+      echo "[ERROR] Failed to save $full_image"
       rm -f "$tar_path" "$gz_path"
-      docker image rm "$arch_tagged_image" >/dev/null 2>&1 || true
+      docker image rm "$full_image" >/dev/null 2>&1 || true
       return 1
     fi
+
+    docker image rm "$full_image" >/dev/null 2>&1 || true
 
     echo "Compressing tar to $gz_path"
     if ! gzip -c "$tar_path" > "$gz_path"; then
       rm -f "$tar_path" "$gz_path"
       echo "[ERROR] Failed to gzip $tar_path"
-      docker image rm "$arch_tagged_image" >/dev/null 2>&1 || true
       return 1
     fi
     rm -f "$tar_path"
@@ -152,10 +149,7 @@ upload_docker_tar() {
     done
 
     rm -f "$gz_path"
-    docker image rm "$arch_tagged_image" >/dev/null 2>&1 || true
   done
-
-  docker image rm "$full_image" >/dev/null 2>&1 || true
 }
 
 # Check if first parameter is --platform
