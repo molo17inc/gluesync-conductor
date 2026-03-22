@@ -49,7 +49,7 @@ map_release_dirs() {
 if [ -n "${RELEASE_TYPE:-}" ]; then
   if map_release_dirs "$RELEASE_TYPE" >/tmp/ftp_dirs.$$; then
     while IFS= read -r dir; do
-      FTP_TARGET_DIRS+=("$FTP_BASE_DIR/$dir/linux")
+      FTP_TARGET_DIRS+=("$FTP_BASE_DIR/$dir/")
     done </tmp/ftp_dirs.$$
     rm -f /tmp/ftp_dirs.$$ >/dev/null 2>&1 || true
   else
@@ -143,7 +143,7 @@ upload_docker_tar() {
     rm -f "$tar_path"
 
     for target_dir in "${FTP_TARGET_DIRS[@]}"; do
-      local ftp_url="ftp://$FTP_SITE${target_dir}/$remote_basename"
+      local ftp_url="ftp://$FTP_SITE${target_dir}/linux/$remote_basename"
       echo "Uploading $(basename "$gz_path") to $ftp_url"
       curl --ftp-create-dirs -T "$gz_path" --user "$FTP_USER:$FTP_PASSWORD" "$ftp_url"
     done
