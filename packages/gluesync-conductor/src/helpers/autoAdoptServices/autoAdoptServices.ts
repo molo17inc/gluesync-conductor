@@ -20,6 +20,7 @@ import { mergeServices } from '../composeFile/mergeComposeFiles/mergeComposeFile
 import { ConductorServiceTypes } from '../../models/conductor.model';
 import removeContainerNameFromServices from '../removeContainerNameFromServices/removeContainerNameFromServices';
 import addGluesyncHostToChronos from '../addGluesyncHostToChronos/addGluesyncHostToChronos';
+import applyCoreHubProductionTweaks from '../applyCoreHubProductionTweaks/applyCoreHubProductionTweaks';
 
 /**
  * Ensure the given network exists at the root compose level.
@@ -241,6 +242,13 @@ const autoAdoptServices = async (): Promise<{
       networkName,
     );
 
+    const { services: coreHubTweakedServices, updatedIds: coreHubTweakedIds } =
+      applyCoreHubProductionTweaks(
+        platformAdjustedLabeledServices,
+        adjustedIds,
+        isWindows,
+      );
+
     // Add network to ALL services present in compose (except conductor)
     // NOTE: compute this early so we can:
     // - include it in the early-exit guard
@@ -264,7 +272,8 @@ const autoAdoptServices = async (): Promise<{
         platformAdjustedIds.length === 0 &&
         envFileUpdatedIds.length === 0 &&
         networkAllUpdatedIds.length === 0 &&
-        stepChronos.updatedIds.length === 0
+        stepChronos.updatedIds.length === 0 &&
+        coreHubTweakedIds.length === 0
       ) {
         return {
           success: true,
@@ -281,6 +290,7 @@ const autoAdoptServices = async (): Promise<{
             platformAdjustedLabeledServices,
             envFileServices,
             networkAllServices,
+            coreHubTweakedServices,
           ]),
         },
         networkName,
@@ -298,6 +308,7 @@ const autoAdoptServices = async (): Promise<{
           ...envFileUpdatedIds,
           ...networkAllUpdatedIds,
           ...stepChronos.updatedIds,
+          ...coreHubTweakedIds,
         ],
         unmatchedIds: [],
       };
@@ -305,12 +316,21 @@ const autoAdoptServices = async (): Promise<{
 
     // Base services: already-labeled services are cleaned + platform-adjusted (except third-party) + env_file
     // IMPORTANT: include networkAllServices here too, otherwise the network changes are dropped on write.
-    const baseServices: Record<string, RawComposeService> = mergeServices([
-      servicesWithChronosHost,
-      platformAdjustedLabeledServices,
-      envFileServices,
-      networkAllServices,
-    ]);
+    const baseServicesPreTweaks: Record<string, RawComposeService> =
+      mergeServices([
+        servicesWithChronosHost,
+        platformAdjustedLabeledServices,
+        envFileServices,
+        networkAllServices,
+      ]);
+
+    const { services: baseServicesTweaked } = applyCoreHubProductionTweaks(
+      baseServicesPreTweaks,
+      allServiceIds,
+      isWindows,
+    );
+
+    const baseServices: Record<string, RawComposeService> = baseServicesTweaked;
 
     type AdoptResult = Readonly<{
       id: string;

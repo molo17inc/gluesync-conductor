@@ -58,6 +58,15 @@ export type EnvFileElement = string | { path: string; required?: boolean };
 
 export type EnvFile = EnvFileElement | ReadonlyArray<EnvFileElement>;
 
+export type Sysctls = ReadonlyArray<string>;
+
+export type Ulimits = Readonly<{
+  nofile?: Readonly<{
+    soft?: number | null;
+    hard?: number | null;
+  }>;
+}>;
+
 // Common service: allow string or list (raw shape)
 export type CommonComposeService = Readonly<{
   image: string;
@@ -68,6 +77,8 @@ export type CommonComposeService = Readonly<{
   healthcheck?: ComposeHealthcheck;
   networks?: ReadonlyArray<string>;
   env_file?: EnvFile; // <-- changed (remove Readonly<EnvFile>)
+  sysctls?: Sysctls;
+  ulimits?: Ulimits;
 }>;
 
 export type RawComposeService = Readonly<
@@ -115,6 +126,8 @@ export type ComposeService = Readonly<
         string | number | boolean | null | undefined
       >;
       env_file?: EnvFile;
+      sysctls?: Sysctls;
+      ulimits?: Ulimits;
     }>
 >;
 
