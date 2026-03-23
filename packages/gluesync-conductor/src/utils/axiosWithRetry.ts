@@ -9,7 +9,8 @@ const logger = getLogger();
  * into an Axios-compatible object.
  */
 const getProxyConfig = () => {
-  const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+  // LOOK HERE: Updated to use your custom names
+  const proxyUrl = process.env.PROXY_HTTPS || process.env.PROXY_HTTP;
 
   if (!proxyUrl) {
     return undefined;
@@ -20,6 +21,7 @@ const getProxyConfig = () => {
     return {
       protocol: url.protocol.replace(':', ''),
       host: url.hostname,
+      // Fallback to standard ports if not specified in the URL
       port: parseInt(url.port, 10) || (url.protocol === 'https:' ? 443 : 80),
       auth: url.username
         ? {
@@ -61,7 +63,7 @@ const axiosWithRetry: AxiosWithRetry = async (url, options = {}) => {
         {
           url,
           attempt,
-          usingProxy: !!proxyConfig,
+          usingCustomProxy: !!proxyConfig,
           message: error.message,
           status: error.response?.status,
         },
