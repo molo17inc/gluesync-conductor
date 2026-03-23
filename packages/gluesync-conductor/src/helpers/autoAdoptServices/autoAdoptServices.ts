@@ -204,12 +204,7 @@ const autoAdoptServices = async (): Promise<{
 
     // Add env_file to ALL services if not windows.
     const { services: envFileServices, updatedIds: envFileUpdatedIds } =
-      isWindows
-        ? {
-            services: {} as Record<string, RawComposeService>,
-            updatedIds: [] as string[],
-          }
-        : addEnvFileToServices(servicesWithChronosHost, allServiceIds);
+      addEnvFileToServices(servicesWithChronosHost, allServiceIds);
 
     // Services that ALREADY have a conductor type label
     const alreadyLabeledIds = allServiceIds.filter(id => {
