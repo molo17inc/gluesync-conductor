@@ -8,12 +8,22 @@ set -o pipefail
 # Default platform
 PLATFORM="linux/amd64,linux/arm64"
 
-FTP_BASE_DIR="/releases/"
+FTP_BASE_DIR="/releases"
 FTP_TARGET_DIRS=()
 FTP_UPLOAD_ENABLED=false
 
 sanitize_segment() {
   echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/_/g'
+}
+
+arch_alias_from_platform() {
+  local platform="$1"
+  local arch="${platform##*/}"
+  case "$arch" in
+    amd64) echo "amd64" ;;
+    arm64) echo "arm64" ;;
+    *) echo "$arch" ;;
+  esac
 }
 
 map_release_dirs() {
@@ -39,7 +49,7 @@ map_release_dirs() {
 if [ -n "${RELEASE_TYPE:-}" ]; then
   if map_release_dirs "$RELEASE_TYPE" >/tmp/ftp_dirs.$$; then
     while IFS= read -r dir; do
-      FTP_TARGET_DIRS+=("$FTP_BASE_DIR/$dir/linux")
+      FTP_TARGET_DIRS+=("$FTP_BASE_DIR/$dir/")
     done </tmp/ftp_dirs.$$
     rm -f /tmp/ftp_dirs.$$ >/dev/null 2>&1 || true
   else
@@ -73,38 +83,73 @@ upload_docker_tar() {
 
   local safe_image
   safe_image=$(sanitize_segment "$image_name")
-  local safe_release
-  safe_release=$(sanitize_segment "${RELEASE_TYPE:-unknown}")
   local safe_tag
   safe_tag=$(sanitize_segment "$tag")
-  local tmp_base
-  tmp_base=$(mktemp "/tmp/${safe_image}-${safe_tag}.XXXXXX")
-  local tar_path="${tmp_base}.tar"
-  local gz_path="${tar_path}.gz"
-  rm -f "$tmp_base"
-  local remote_basename="${safe_image}-${safe_release}.tar.gz"
 
-  echo "Pulling $full_image before save"
-  docker pull "$full_image"
-
-  echo "Saving $full_image to $tar_path"
-  docker save "$full_image" -o "$tar_path"
-
-  echo "Compressing tar to $gz_path"
-  if ! gzip -c "$tar_path" > "$gz_path"; then
-    rm -f "$tar_path" "$gz_path"
-    echo "[ERROR] Failed to gzip $tar_path"
-    return 1
+  if [[ "${safe_tag}" == "latest" ]]; then
+    echo "[INFO] Skipping FTP upload for tag '$tag'"
+    return 0
   fi
-  rm -f "$tar_path"
 
-  for target_dir in "${FTP_TARGET_DIRS[@]}"; do
-    local ftp_url="ftp://$FTP_SITE${target_dir}/$remote_basename"
-    echo "Uploading $(basename "$gz_path") to $ftp_url"
-    curl --ftp-create-dirs -T "$gz_path" --user "$FTP_USER:$FTP_PASSWORD" "$ftp_url"
+  local linux_platforms=()
+  for platform in "${PLATFORM_LIST[@]}"; do
+    if [[ "$platform" == linux/* ]]; then
+      linux_platforms+=("$platform")
+    fi
   done
 
-  rm -f "$gz_path"
+  if [ ${#linux_platforms[@]} -eq 0 ]; then
+    echo "[WARN] No linux platforms defined for tar export; skipping FTP upload"
+    return 0
+  fi
+
+  for platform in "${linux_platforms[@]}"; do
+    local arch_label="${platform##*/}"
+    local arch_alias
+    arch_alias=$(arch_alias_from_platform "$platform")
+    local safe_arch
+    safe_arch=$(sanitize_segment "$arch_alias")
+
+    local tmp_base
+    tmp_base=$(mktemp "/tmp/${safe_image}-${safe_tag}-${safe_arch}.XXXXXX")
+    local tar_path="${tmp_base}.tar"
+    local gz_path="${tar_path}.gz"
+    rm -f "$tmp_base"
+    local remote_basename="${safe_image}-${safe_tag}-${safe_arch}.tar.gz"
+
+    echo "Pulling $full_image for platform $platform"
+    if ! docker pull --platform "$platform" "$full_image"; then
+      echo "[ERROR] Failed to pull $full_image for $platform"
+      rm -f "$tar_path" "$gz_path"
+      return 1
+    fi
+
+    echo "Saving $full_image ($platform) to $tar_path"
+    if ! docker save "$full_image" -o "$tar_path"; then
+      echo "[ERROR] Failed to save $full_image"
+      rm -f "$tar_path" "$gz_path"
+      docker image rm "$full_image" >/dev/null 2>&1 || true
+      return 1
+    fi
+
+    docker image rm "$full_image" >/dev/null 2>&1 || true
+
+    echo "Compressing tar to $gz_path"
+    if ! gzip -c "$tar_path" > "$gz_path"; then
+      rm -f "$tar_path" "$gz_path"
+      echo "[ERROR] Failed to gzip $tar_path"
+      return 1
+    fi
+    rm -f "$tar_path"
+
+    for target_dir in "${FTP_TARGET_DIRS[@]}"; do
+      local ftp_url="ftp://$FTP_SITE${target_dir}/linux/$remote_basename"
+      echo "Uploading $(basename "$gz_path") to $ftp_url"
+      curl --ftp-create-dirs -T "$gz_path" --user "$FTP_USER:$FTP_PASSWORD" "$ftp_url"
+    done
+
+    rm -f "$gz_path"
+  done
 }
 
 # Check if first parameter is --platform
@@ -112,6 +157,8 @@ if [[ "$1" == "--platform" ]]; then
   PLATFORM="$2"
   shift 2
 fi
+
+IFS=',' read -ra PLATFORM_LIST <<< "${PLATFORM// /}"
 
 if [ "$#" -lt 3 ]; then
   echo "Usage: $0 [--platform linux/amd64,linux/arm64] /path/to/context image_name tag1,tag2,tag3 [/another/path image_name tagX,tagY ...]"
