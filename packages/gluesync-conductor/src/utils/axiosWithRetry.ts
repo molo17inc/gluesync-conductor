@@ -11,7 +11,7 @@ const logger = getLogger();
 const getProxyConfig = () => {
   const proxyUrl = process.env.PROXY_HTTPS || process.env.PROXY_HTTP;
 
-  logger.info({ proxyUrl }, 'Proxy URL from env'); // ← NEW: See raw value
+  logger.info({ proxyUrl }, 'Proxy URL from env');
 
   if (!proxyUrl) {
     logger.info('No proxy URL found, using direct connection');
@@ -35,12 +35,15 @@ const getProxyConfig = () => {
     logger.info({ proxyObj }, 'Parsed proxy config');
     return proxyObj;
   } catch (e: unknown) {
-    const errorMsg =
-      e instanceof Error
-        ? e.message
-        : typeof e === 'string'
-          ? e
-          : 'Failed to parse proxy URL';
+    const errorMsg: string = (() => {
+      if (e instanceof Error) {
+        return e.message;
+      }
+      if (typeof e === 'string') {
+        return e;
+      }
+      return 'Failed to parse proxy URL';
+    })();
 
     logger.error(
       { proxyUrl, error: errorMsg },
