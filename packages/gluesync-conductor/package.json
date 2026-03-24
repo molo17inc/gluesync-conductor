@@ -26,6 +26,7 @@
     "fastify": "^5.6.2",
     "fastify-plugin": "^5.0.1",
     "gluesync-sdk-client": "workspace:*",
+    "https-proxy-agent": "5",
     "pino": "^10.1.0",
     "rotating-file-stream": "^3.2.7",
     "semver": "^7.7.4",
