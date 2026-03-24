@@ -9,19 +9,20 @@ const logger = getLogger();
  * into an Axios-compatible object.
  */
 const getProxyConfig = () => {
-  // LOOK HERE: Updated to use your custom names
   const proxyUrl = process.env.PROXY_HTTPS || process.env.PROXY_HTTP;
 
+  logger.info({ proxyUrl }, 'Proxy URL from env'); // ← NEW: See raw value
+
   if (!proxyUrl) {
+    logger.info('No proxy URL found, using direct connection');
     return undefined;
   }
 
   try {
     const url = new URL(proxyUrl);
-    return {
+    const proxyObj = {
       protocol: url.protocol.replace(':', ''),
       host: url.hostname,
-      // Fallback to standard ports if not specified in the URL
       port: parseInt(url.port, 10) || (url.protocol === 'https:' ? 443 : 80),
       auth: url.username
         ? {
@@ -30,8 +31,21 @@ const getProxyConfig = () => {
           }
         : undefined,
     };
-  } catch (e) {
-    logger.error({ proxyUrl }, 'Failed to parse proxy URL from environment');
+
+    logger.info({ proxyObj }, 'Parsed proxy config');
+    return proxyObj;
+  } catch (e: unknown) {
+    const errorMsg =
+      e instanceof Error
+        ? e.message
+        : typeof e === 'string'
+          ? e
+          : 'Failed to parse proxy URL';
+
+    logger.error(
+      { proxyUrl, error: errorMsg },
+      'Failed to parse proxy URL - falling back to direct',
+    );
     return undefined;
   }
 };
