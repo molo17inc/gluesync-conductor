@@ -66,7 +66,9 @@ const createHttpsAgent = (
   skipProxy: boolean,
   proxy: string | undefined,
 ): HttpsProxyAgent | undefined => {
-  if (skipProxy || !proxy) return undefined;
+  if (skipProxy || !proxy) {
+    return undefined;
+  }
   return new HttpsProxyAgent(proxy);
 };
 
