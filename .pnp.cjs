@@ -3012,6 +3012,14 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["agent-base", [\
+      ["npm:6.0.2", {\
+        "packageLocation": "./.yarn/cache/agent-base-npm-6.0.2-428f325a93-21fb903e09.zip/node_modules/agent-base/",\
+        "packageDependencies": [\
+          ["agent-base", "npm:6.0.2"],\
+          ["debug", "virtual:1ff4b5f90832ba0a9c93ba1223af226e44ba70c1126a3740d93562b97bc36544e896a5e95908196f7458713e6a6089a34bfc67362fc6df7fa093bd06c878be47#npm:4.4.0"]\
+        ],\
+        "linkType": "HARD"\
+      }],\
       ["npm:7.1.3", {\
         "packageLocation": "./.yarn/cache/agent-base-npm-7.1.3-b2c16e72fb-3db6d8d465.zip/node_modules/agent-base/",\
         "packageDependencies": [\
@@ -5736,6 +5744,7 @@ const RAW_RUNTIME_STATE =
           ["fastify", "npm:5.6.2"],\
           ["fastify-plugin", "npm:5.0.1"],\
           ["gluesync-sdk-client", "workspace:packages/gluesync-sdk-client"],\
+          ["https-proxy-agent", "npm:5.0.1"],\
           ["pino", "npm:10.1.0"],\
           ["prettier", "npm:3.5.3"],\
           ["rotating-file-stream", "npm:3.2.7"],\
@@ -5954,6 +5963,15 @@ const RAW_RUNTIME_STATE =
       }]\
     ]],\
     ["https-proxy-agent", [\
+      ["npm:5.0.1", {\
+        "packageLocation": "./.yarn/cache/https-proxy-agent-npm-5.0.1-42d65f358e-f0dce7bdca.zip/node_modules/https-proxy-agent/",\
+        "packageDependencies": [\
+          ["https-proxy-agent", "npm:5.0.1"],\
+          ["agent-base", "npm:6.0.2"],\
+          ["debug", "virtual:1ff4b5f90832ba0a9c93ba1223af226e44ba70c1126a3740d93562b97bc36544e896a5e95908196f7458713e6a6089a34bfc67362fc6df7fa093bd06c878be47#npm:4.4.0"]\
+        ],\
+        "linkType": "HARD"\
+      }],\
       ["npm:7.0.6", {\
         "packageLocation": "./.yarn/cache/https-proxy-agent-npm-7.0.6-27a95c2690-784b628cbd.zip/node_modules/https-proxy-agent/",\
         "packageDependencies": [\
