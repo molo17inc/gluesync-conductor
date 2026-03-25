@@ -330,7 +330,8 @@ Compress-FileToGzip -InputPath $tarFilePath -OutputPath $gzFilePath
 Remove-Item -Path $tarFilePath -Force
 
 $releaseDirectories = Get-FtpReleaseDirectories -ReleaseType $releaseType
-$remoteFileName = "$safeImageName-$safeReleaseTag.tar.gz"
+$safeWindowsTag = Convert-ToSafeSegment $WindowsTag
+$remoteFileName = "$safeImageName-$safeReleaseTag-$safeWindowsTag.tar.gz"
 
 foreach ($dir in $releaseDirectories) {
     $normalizedDir = $dir.Trim('/')
