@@ -91,6 +91,14 @@ upload_docker_tar() {
     return 0
   fi
 
+  if [ -z "${RELEASE_TYPE:-}" ]; then
+    echo "[WARN] RELEASE_TYPE not set; skipping FTP upload for tag '$tag'"
+    return 0
+  fi
+
+  local safe_release_type
+  safe_release_type=$(sanitize_segment "$RELEASE_TYPE")
+
   local linux_platforms=()
   for platform in "${PLATFORM_LIST[@]}"; do
     if [[ "$platform" == linux/* ]]; then
@@ -115,7 +123,7 @@ upload_docker_tar() {
     local tar_path="${tmp_base}.tar"
     local gz_path="${tar_path}.gz"
     rm -f "$tmp_base"
-    local remote_basename="${safe_image}-${safe_tag}-${safe_arch}.tar.gz"
+    local remote_basename="${safe_image}-${safe_release_type}-${safe_arch}.tar.gz"
 
     echo "Pulling $full_image for platform $platform"
     if ! docker pull --platform "$platform" "$full_image"; then
