@@ -44,6 +44,13 @@ type CommandResult = Readonly<{
 
 type CollectLogsResult = Readonly<{
   output: string;
+  archivePath?: string;
+}>;
+
+type CollectLogsOptions = Readonly<{
+  ticketId?: string;
+  email?: string;
+  localOnly: boolean;
 }>;
 
 type CollectLogsError = Error & { details?: string; isCollectLogsError: true };
@@ -651,6 +658,7 @@ const validateCredentialConnectivity = async (
     Depth: '0',
     'Content-Type': 'text/xml',
   };
+  let webDavFailureDetail = '';
 
   try {
     const response = await fetch(webdavProbeUrl, {
@@ -661,7 +669,15 @@ const validateCredentialConnectivity = async (
     if (response.ok || response.status === 207) {
       return;
     }
-  } catch {
+    const authHint =
+      response.status === 401 || response.status === 403
+        ? ' (authentication or authorization issue)'
+        : '';
+    webDavFailureDetail =
+      `WebDAV credential pre-check failed with HTTP ${response.status} ${response.statusText}${authHint}`.trim();
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : 'unknown error';
+    webDavFailureDetail = `WebDAV credential pre-check network error: ${reason}`;
     // continue with FTP fallback
   }
 
@@ -669,6 +685,7 @@ const validateCredentialConnectivity = async (
   if (!hasCurl) {
     throw createCollectLogsError(
       'Unable to validate credentials: WebDAV failed and curl is unavailable for FTP fallback.',
+      webDavFailureDetail || undefined,
     );
   }
 
@@ -685,7 +702,9 @@ const validateCredentialConnectivity = async (
   if (ftpCheck.exitCode !== 0) {
     throw createCollectLogsError(
       'Unable to validate ticket/email credentials before collecting logs.',
-      formatOutput(`${ftpCheck.stdout}\n${ftpCheck.stderr}`),
+      formatOutput(
+        `${webDavFailureDetail ? `${webDavFailureDetail}\n` : ''}${ftpCheck.stdout}\n${ftpCheck.stderr}`,
+      ),
     );
   }
 };
@@ -699,6 +718,7 @@ const uploadArchive = async (
   const fileName = basename(archivePath);
   const encodedName = encodeURIComponent(fileName);
   const webDavTarget = `${resolveWebDavRootUrl()}${encodedName}`;
+  let webDavFailureDetail = '';
 
   try {
     const payload = await readFile(archivePath);
@@ -713,7 +733,16 @@ const uploadArchive = async (
     if (webdavResponse.ok) {
       return 'webdav';
     }
-  } catch {
+
+    const authHint =
+      webdavResponse.status === 401 || webdavResponse.status === 403
+        ? ' (authentication or authorization issue)'
+        : '';
+    webDavFailureDetail =
+      `WebDAV upload failed with HTTP ${webdavResponse.status} ${webdavResponse.statusText}${authHint}`.trim();
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : 'unknown error';
+    webDavFailureDetail = `WebDAV upload network error: ${reason}`;
     // continue with FTP fallback
   }
 
@@ -721,6 +750,7 @@ const uploadArchive = async (
   if (!hasCurl) {
     throw createCollectLogsError(
       'WebDAV upload failed and curl is unavailable for FTP fallback upload.',
+      webDavFailureDetail || undefined,
     );
   }
 
@@ -731,7 +761,9 @@ const uploadArchive = async (
     const hint = ftpFailureHint(ftpResult.exitCode, ftpResult.stderr);
     throw createCollectLogsError(
       'Failed to upload to FTP after WebDAV failure.',
-      formatOutput(`${hint}\n${ftpResult.stdout}\n${ftpResult.stderr}`),
+      formatOutput(
+        `${webDavFailureDetail ? `${webDavFailureDetail}\n` : ''}${hint}\n${ftpResult.stdout}\n${ftpResult.stderr}`,
+      ),
     );
   }
 
@@ -739,14 +771,24 @@ const uploadArchive = async (
 };
 
 const collectLogsInternally = async (
-  ticketId: string,
-  email: string,
+  options: CollectLogsOptions,
 ): Promise<CollectLogsResult> => {
+  const { ticketId, email, localOnly } = options;
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
   const messages: string[] = [];
 
-  await validateCredentialConnectivity(ticketId, email, isWindows);
-  messages.push('Credential pre-check succeeded.');
+  if (!localOnly) {
+    if (!ticketId || !email) {
+      throw createCollectLogsError(
+        'ticketId and email are required unless localOnly is true.',
+      );
+    }
+
+    await validateCredentialConnectivity(ticketId, email, isWindows);
+    messages.push('Credential pre-check succeeded.');
+  } else {
+    messages.push('Local-only mode enabled. Credential pre-check skipped.');
+  }
 
   const searchDir = await resolveSearchDir(isWindows);
   const outputDir = await resolveOutputDir();
@@ -827,10 +869,20 @@ const collectLogsInternally = async (
     );
     messages.push(`Archive created: ${archivePath}`);
 
+    if (localOnly) {
+      messages.push('Upload skipped (local-only mode).');
+      messages.push(`Archive available at: ${archivePath}`);
+
+      return {
+        output: formatOutput(messages.join('\n')),
+        archivePath,
+      };
+    }
+
     const uploadedVia = await uploadArchive(
       archivePath,
-      ticketId,
-      email,
+      ticketId || '',
+      email || '',
       isWindows,
     );
     messages.push(
@@ -851,30 +903,47 @@ const collectLogsInternally = async (
 };
 
 const handler: CollectLogsHandler = async (req, reply) => {
-  const { ticketId, email } = req.body as Readonly<{
+  const {
+    ticketId,
+    email,
+    localOnly = false,
+  } = req.body as Readonly<{
     ticketId?: string;
     email?: string;
+    localOnly?: boolean;
   }>;
 
-  if (!ticketId || !email) {
-    return reply
-      .code(400)
-      .send({ success: false, error: 'ticketId and email are required' });
+  if (!localOnly && (!ticketId || !email)) {
+    return reply.code(400).send({
+      success: false,
+      error: 'ticketId and email are required unless localOnly is true',
+    });
   }
 
-  if (!/^[^@\s]+@[^@\s]+$/.test(email)) {
+  if (!localOnly && email && !/^[^@\s]+@[^@\s]+$/.test(email)) {
     return reply
       .code(400)
       .send({ success: false, error: 'invalid email format' });
   }
 
   try {
-    const result = await collectLogsInternally(ticketId, email);
+    const result = await collectLogsInternally({
+      ticketId,
+      email,
+      localOnly,
+    });
 
-    return reply.code(200).send({
+    const responsePayload: Readonly<{
+      success: true;
+      output: string;
+      archivePath?: string;
+    }> = {
       success: true,
       output: result.output,
-    });
+      ...(result.archivePath ? { archivePath: result.archivePath } : {}),
+    };
+
+    return reply.code(200).send(responsePayload);
   } catch (err) {
     req.log.error({ err }, 'failed to collect logs internally');
 

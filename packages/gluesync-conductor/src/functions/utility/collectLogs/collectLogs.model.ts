@@ -6,13 +6,15 @@ export type CollectLogsQuerystring = Readonly<{
 }>;
 
 export type CollectLogsBody = Readonly<{
-  ticketId: string;
-  email: string;
+  ticketId?: string;
+  email?: string;
+  localOnly?: boolean;
 }>;
 
 export type CollectLogsSuccessResponse = {
   success: true;
   output: string;
+  archivePath?: string;
 };
 
 export type CollectLogsResponse = CollectLogsSuccessResponse | ErrorResponse;
@@ -23,7 +25,7 @@ export type CollectLogsHandler = RouteHandlerMethod<
   any,
   {
     Querystring: CollectLogsQuerystring;
-    Body: Partial<CollectLogsBody>;
+    Body: CollectLogsBody;
     Reply: CollectLogsResponse;
   }
 >;
