@@ -98,13 +98,13 @@ const formatOutput = (text: string): string => {
 const runCommand = async (
   command: string,
   args: ReadonlyArray<string>,
-  options: Readonly<{ cwd?: string; input?: string }> = {},
+  options: Readonly<{ cwd?: string; input?: string; useShell?: boolean }> = {},
 ): Promise<CommandResult> =>
   new Promise((resolveCommand, rejectCommand) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: false,
+      shell: options.useShell ?? false,
       env: process.env,
     });
 
@@ -624,18 +624,24 @@ const createArchive = async (
     if (canUseZstd) {
       logger?.info('Using zstd compression (high speed, good ratio)');
       const archivePath = join(outputDir, `${archiveBaseName}.tar.zst`);
-      // -T0 uses all cores, -19 for high compression, --rm removes source after
+      // Use shell pipeline: tar to stdout | zstd
       const zstdResult = await runCommand(
-        'tar',
-        ['--zstd', '-cf', archivePath, '-T', listFilePath],
-        { cwd: searchDir },
+        'sh',
+        [
+          '-c',
+          `tar -cf - -T "${listFilePath}" | zstd -T0 -19 > "${archivePath}"`,
+        ],
+        { cwd: searchDir, useShell: false }, // sh handles the pipe
       );
 
       if (zstdResult.exitCode === 0) {
         logger?.info({ archivePath }, 'zstd archive created successfully');
         return archivePath;
       }
-      logger?.warn('zstd compression failed, trying next method');
+      logger?.warn(
+        { exitCode: zstdResult.exitCode, stderr: zstdResult.stderr },
+        'zstd compression failed, trying next method',
+      );
     }
 
     // Try xz for maximum compression (slower but best ratio)
@@ -643,18 +649,21 @@ const createArchive = async (
     if (canUseXz) {
       logger?.info('Using xz compression (maximum compression ratio)');
       const archivePath = join(outputDir, `${archiveBaseName}.tar.xz`);
-      // -9 for maximum compression, -T0 for parallel
+      // Use shell pipeline: tar to stdout | xz
       const xzResult = await runCommand(
-        'tar',
-        ['-J', '-cf', archivePath, '-T', listFilePath],
-        { cwd: searchDir },
+        'sh',
+        ['-c', `tar -cf - -T "${listFilePath}" | xz -T0 -9 > "${archivePath}"`],
+        { cwd: searchDir, useShell: false },
       );
 
       if (xzResult.exitCode === 0) {
         logger?.info({ archivePath }, 'xz archive created successfully');
         return archivePath;
       }
-      logger?.warn('xz compression failed, trying next method');
+      logger?.warn(
+        { exitCode: xzResult.exitCode, stderr: xzResult.stderr },
+        'xz compression failed, trying next method',
+      );
     }
 
     // Try parallel gzip (pigz) for faster gzip compression
@@ -662,17 +671,21 @@ const createArchive = async (
     if (canUsePigz) {
       logger?.info('Using pigz compression (parallel gzip)');
       const archivePath = join(outputDir, `${archiveBaseName}.tar.gz`);
+      // Use shell pipeline: tar to stdout | pigz
       const pigzResult = await runCommand(
-        'tar',
-        ['--use-compress-program=pigz', '-cf', archivePath, '-T', listFilePath],
-        { cwd: searchDir },
+        'sh',
+        ['-c', `tar -cf - -T "${listFilePath}" | pigz > "${archivePath}"`],
+        { cwd: searchDir, useShell: false },
       );
 
       if (pigzResult.exitCode === 0) {
         logger?.info({ archivePath }, 'pigz archive created successfully');
         return archivePath;
       }
-      logger?.warn('pigz compression failed, trying next method');
+      logger?.warn(
+        { exitCode: pigzResult.exitCode, stderr: pigzResult.stderr },
+        'pigz compression failed, trying next method',
+      );
     }
 
     // Fall back to zip (good Windows compatibility)
