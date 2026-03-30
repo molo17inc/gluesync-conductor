@@ -1,10 +1,3 @@
-/* eslint-disable functional/immutable-data */
-/* eslint-disable functional/no-let */
-/* eslint-disable functional/no-loop-statements */
-/* eslint-disable no-restricted-syntax */
-/* eslint-disable no-await-in-loop */
-/* eslint-disable no-continue */
-
 import { spawn } from 'node:child_process';
 import {
   access,
@@ -152,16 +145,23 @@ const resolveSystemInfoScriptPath = async (
       : `/opt/gluesync-conductor/${scriptName}`,
   ];
 
-  for (const candidate of candidates) {
-    try {
-      await access(candidate, constants.F_OK);
-      return candidate;
-    } catch {
-      continue;
-    }
-  }
+  const validCandidate = await candidates.reduce<Promise<string | null>>(
+    async (acc, candidate) => {
+      const result = await acc;
+      if (result !== null) {
+        return result;
+      }
+      try {
+        await access(candidate, constants.F_OK);
+        return candidate;
+      } catch {
+        return null;
+      }
+    },
+    Promise.resolve(null),
+  );
 
-  return null;
+  return validCandidate;
 };
 
 const runSystemInfoScript = async (
@@ -281,24 +281,29 @@ const resolveSearchDir = async (isWindows: boolean): Promise<string> => {
     process.cwd(),
   ];
 
-  for (const candidate of candidates) {
-    if (!candidate) {
-      continue;
-    }
-
-    try {
-      const fileStat = await stat(candidate);
-      if (fileStat.isDirectory()) {
-        return candidate;
+  const validDir = await candidates.reduce<Promise<string | null>>(
+    async (acc, candidate) => {
+      const result = await acc;
+      if (result !== null || !candidate) {
+        return result;
       }
-    } catch {
-      continue;
-    }
+      try {
+        const fileStat = await stat(candidate);
+        return fileStat.isDirectory() ? candidate : null;
+      } catch {
+        return null;
+      }
+    },
+    Promise.resolve(null),
+  );
+
+  if (validDir === null) {
+    throw createCollectLogsError(
+      'No valid search directory found for log collection.',
+    );
   }
 
-  throw createCollectLogsError(
-    'No valid search directory found for log collection.',
-  );
+  return validDir;
 };
 
 const resolveOutputDir = async (): Promise<string> => {
@@ -322,43 +327,43 @@ const collectFilesRecursively = async (
   filter: (filePath: string) => boolean,
   options: Readonly<{ excludeDir?: string; isWindows: boolean }>,
 ): Promise<ReadonlyArray<string>> => {
-  const files: string[] = [];
-  const directories: string[] = [rootDir];
+  const collectFromDir = async (
+    currentDir: string,
+  ): Promise<ReadonlyArray<string>> => {
+    const entries = await readdir(currentDir, { withFileTypes: true }).catch(
+      () => [],
+    );
 
-  while (directories.length > 0) {
-    const currentDir = directories.pop();
-    if (!currentDir) {
-      continue;
-    }
+    const nestedFiles = await Promise.all(
+      entries.map(
+        async (
+          entry: Readonly<Awaited<ReturnType<typeof readdir>>[number]>,
+        ) => {
+          const fullPath = join(currentDir, entry.name);
 
-    let entries: Awaited<ReturnType<typeof readdir>>;
-    try {
-      entries = await readdir(currentDir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
+          if (
+            options.excludeDir &&
+            isPathInside(fullPath, options.excludeDir, options.isWindows)
+          ) {
+            return [] as string[];
+          }
 
-    for (const entry of entries) {
-      const fullPath = join(currentDir, entry.name);
-      if (
-        options.excludeDir &&
-        isPathInside(fullPath, options.excludeDir, options.isWindows)
-      ) {
-        continue;
-      }
+          if (entry.isDirectory()) {
+            return collectFromDir(fullPath);
+          }
 
-      if (entry.isDirectory()) {
-        directories.push(fullPath);
-        continue;
-      }
+          if (entry.isFile() && filter(fullPath)) {
+            return [fullPath];
+          }
+          return [] as string[];
+        },
+      ),
+    );
 
-      if (entry.isFile() && filter(fullPath)) {
-        files.push(fullPath);
-      }
-    }
-  }
+    return nestedFiles.flat();
+  };
 
-  return files;
+  return collectFromDir(rootDir);
 };
 
 const tryReadFile = async (filePath: string): Promise<string> => {
