@@ -1,7 +1,7 @@
 FROM node:22.13.1-alpine
 
 # Install Docker CLI and tzdata for timezone support
-RUN apk add --no-cache docker-cli docker-cli-compose curl bash zip tar tzdata yq
+RUN apk add --no-cache docker-cli docker-cli-compose curl bash zip tar tzdata yq zstd xz pigz
 
 # Create Gluesync data and logs directory structure with proper permissions
 RUN mkdir -p /opt/gluesync/data /opt/gluesync/logs \

@@ -594,6 +594,7 @@ const createArchive = async (
   outputDir: string,
   files: ReadonlyArray<string>,
   isWindows: boolean,
+  logger?: Logger,
 ): Promise<string> => {
   const timestamp = new Date()
     .toISOString()
@@ -609,27 +610,7 @@ const createArchive = async (
     );
   }
 
-  const canUseZip = await commandExists('zip', isWindows);
-  if (canUseZip) {
-    const archivePath = join(outputDir, `${archiveBaseName}.zip`);
-    const zipResult = await runCommand('zip', ['-@', archivePath], {
-      cwd: searchDir,
-      input: `${relativePaths.join('\n')}\n`,
-    });
-
-    if (zipResult.exitCode === 0) {
-      return archivePath;
-    }
-  }
-
-  const canUseTar = await commandExists('tar', isWindows);
-  if (!canUseTar) {
-    throw createCollectLogsError(
-      "Neither 'zip' nor 'tar' commands are available to create an archive.",
-    );
-  }
-
-  const archivePath = join(outputDir, `${archiveBaseName}.tar.gz`);
+  // Priority order: zstd (best speed/compression) > xz (max compression) > zip (compatibility) > tar.gz (fallback)
   const listFilePath = join(
     outputDir,
     `.collect-logs-${Date.now()}-${process.pid}.list`,
@@ -637,6 +618,84 @@ const createArchive = async (
 
   try {
     await writeFile(listFilePath, `${relativePaths.join('\n')}\n`, 'utf8');
+
+    // Try zstd first (best for large logs: good compression, very fast)
+    const canUseZstd = await commandExists('zstd', isWindows);
+    if (canUseZstd) {
+      logger?.info('Using zstd compression (high speed, good ratio)');
+      const archivePath = join(outputDir, `${archiveBaseName}.tar.zst`);
+      // -T0 uses all cores, -19 for high compression, --rm removes source after
+      const zstdResult = await runCommand(
+        'tar',
+        ['--zstd', '-cf', archivePath, '-T', listFilePath],
+        { cwd: searchDir },
+      );
+
+      if (zstdResult.exitCode === 0) {
+        logger?.info({ archivePath }, 'zstd archive created successfully');
+        return archivePath;
+      }
+      logger?.warn('zstd compression failed, trying next method');
+    }
+
+    // Try xz for maximum compression (slower but best ratio)
+    const canUseXz = await commandExists('xz', isWindows);
+    if (canUseXz) {
+      logger?.info('Using xz compression (maximum compression ratio)');
+      const archivePath = join(outputDir, `${archiveBaseName}.tar.xz`);
+      // -9 for maximum compression, -T0 for parallel
+      const xzResult = await runCommand(
+        'tar',
+        ['-J', '-cf', archivePath, '-T', listFilePath],
+        { cwd: searchDir },
+      );
+
+      if (xzResult.exitCode === 0) {
+        logger?.info({ archivePath }, 'xz archive created successfully');
+        return archivePath;
+      }
+      logger?.warn('xz compression failed, trying next method');
+    }
+
+    // Try parallel gzip (pigz) for faster gzip compression
+    const canUsePigz = await commandExists('pigz', isWindows);
+    if (canUsePigz) {
+      logger?.info('Using pigz compression (parallel gzip)');
+      const archivePath = join(outputDir, `${archiveBaseName}.tar.gz`);
+      const pigzResult = await runCommand(
+        'tar',
+        ['--use-compress-program=pigz', '-cf', archivePath, '-T', listFilePath],
+        { cwd: searchDir },
+      );
+
+      if (pigzResult.exitCode === 0) {
+        logger?.info({ archivePath }, 'pigz archive created successfully');
+        return archivePath;
+      }
+      logger?.warn('pigz compression failed, trying next method');
+    }
+
+    // Fall back to zip (good Windows compatibility)
+    const canUseZip = await commandExists('zip', isWindows);
+    if (canUseZip) {
+      logger?.info('Using zip compression');
+      const archivePath = join(outputDir, `${archiveBaseName}.zip`);
+      // Use -9 for maximum compression
+      const zipResult = await runCommand('zip', ['-9', '-@', archivePath], {
+        cwd: searchDir,
+        input: `${relativePaths.join('\n')}\n`,
+      });
+
+      if (zipResult.exitCode === 0) {
+        logger?.info({ archivePath }, 'zip archive created successfully');
+        return archivePath;
+      }
+      logger?.warn('zip compression failed, using final fallback');
+    }
+
+    // Final fallback: standard tar.gz
+    logger?.info('Using tar.gz compression (fallback)');
+    const archivePath = join(outputDir, `${archiveBaseName}.tar.gz`);
     const tarResult = await runCommand(
       'tar',
       ['-czf', archivePath, '-T', listFilePath],
@@ -650,6 +709,7 @@ const createArchive = async (
       );
     }
 
+    logger?.info({ archivePath }, 'tar.gz archive created successfully');
     return archivePath;
   } finally {
     await rm(listFilePath, { force: true });
@@ -955,6 +1015,7 @@ const collectLogsInternally = async (
       outputDir,
       readableFiles,
       isWindows,
+      logger,
     );
     logger?.info({ archivePath }, 'Archive created successfully');
     messages.push(`Archive created: ${archivePath}`);
