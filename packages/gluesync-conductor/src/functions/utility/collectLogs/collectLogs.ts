@@ -29,6 +29,14 @@ import {
 import { CollectLogsHandler } from './collectLogs.model';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 
+// Simple logger interface for internal functions
+type Logger = {
+  debug: (obj: Record<string, unknown> | string, msg?: string) => void;
+  info: (obj: Record<string, unknown> | string, msg?: string) => void;
+  warn: (obj: Record<string, unknown> | string, msg?: string) => void;
+  error: (obj: Record<string, unknown> | string, msg?: string) => void;
+};
+
 const MAX_OUTPUT_LINES = 10;
 const SCRIPT_VERSION = '2.0 internal';
 const SYSTEM_INFO_SCRIPT_LINUX = 'system-info.sh';
@@ -51,6 +59,7 @@ type CollectLogsOptions = Readonly<{
   ticketId?: string;
   email?: string;
   localOnly: boolean;
+  logger?: Logger;
 }>;
 
 type CollectLogsError = Error & { details?: string; isCollectLogsError: true };
@@ -651,7 +660,12 @@ const validateCredentialConnectivity = async (
   ticketId: string,
   email: string,
   isWindows: boolean,
+  logger?: Logger,
 ): Promise<void> => {
+  logger?.info(
+    { ticketId, email },
+    'Starting credential connectivity validation',
+  );
   const webdavProbeUrl = resolveWebDavRootUrl();
   const headers = {
     Authorization: basicAuthHeader(ticketId, email),
@@ -660,6 +674,7 @@ const validateCredentialConnectivity = async (
   };
   let webDavFailureDetail = '';
 
+  logger?.debug({ webdavProbeUrl }, 'Attempting WebDAV credential pre-check');
   try {
     const response = await fetch(webdavProbeUrl, {
       method: 'PROPFIND',
@@ -667,6 +682,10 @@ const validateCredentialConnectivity = async (
       body: WEBDAV_PAYLOAD,
     });
     if (response.ok || response.status === 207) {
+      logger?.info(
+        { status: response.status },
+        'WebDAV credential pre-check succeeded',
+      );
       return;
     }
     const authHint =
@@ -675,20 +694,28 @@ const validateCredentialConnectivity = async (
         : '';
     webDavFailureDetail =
       `WebDAV credential pre-check failed with HTTP ${response.status} ${response.statusText}${authHint}`.trim();
+    logger?.warn(
+      { status: response.status, statusText: response.statusText },
+      'WebDAV credential pre-check failed',
+    );
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'unknown error';
     webDavFailureDetail = `WebDAV credential pre-check network error: ${reason}`;
+    logger?.warn({ reason }, 'WebDAV credential pre-check network error');
     // continue with FTP fallback
   }
 
+  logger?.info('Attempting FTP fallback for credential validation');
   const hasCurl = await commandExists('curl', isWindows);
   if (!hasCurl) {
+    logger?.error('curl not available for FTP fallback');
     throw createCollectLogsError(
       'Unable to validate credentials: WebDAV failed and curl is unavailable for FTP fallback.',
       webDavFailureDetail || undefined,
     );
   }
 
+  logger?.debug('Running FTP list command for credential check');
   const ftpCheck = await runCommand('curl', [
     '--silent',
     '--fail',
@@ -700,6 +727,10 @@ const validateCredentialConnectivity = async (
   ]);
 
   if (ftpCheck.exitCode !== 0) {
+    logger?.error(
+      { exitCode: ftpCheck.exitCode, stderr: ftpCheck.stderr },
+      'FTP credential check failed',
+    );
     throw createCollectLogsError(
       'Unable to validate ticket/email credentials before collecting logs.',
       formatOutput(
@@ -707,6 +738,7 @@ const validateCredentialConnectivity = async (
       ),
     );
   }
+  logger?.info('FTP credential pre-check succeeded');
 };
 
 const uploadArchive = async (
@@ -714,14 +746,22 @@ const uploadArchive = async (
   ticketId: string,
   email: string,
   isWindows: boolean,
+  logger?: Logger,
 ): Promise<'webdav' | 'ftp'> => {
   const fileName = basename(archivePath);
   const encodedName = encodeURIComponent(fileName);
   const webDavTarget = `${resolveWebDavRootUrl()}${encodedName}`;
   let webDavFailureDetail = '';
 
+  logger?.info({ fileName, webDavTarget }, 'Starting archive upload');
+
   try {
+    logger?.debug(
+      { archivePath, size: (await stat(archivePath)).size },
+      'Reading archive file for WebDAV upload',
+    );
     const payload = await readFile(archivePath);
+    logger?.info({ size: payload.length }, 'Uploading via WebDAV PUT');
     const webdavResponse = await fetch(webDavTarget, {
       method: 'PUT',
       headers: {
@@ -731,6 +771,7 @@ const uploadArchive = async (
     });
 
     if (webdavResponse.ok) {
+      logger?.info('WebDAV upload succeeded');
       return 'webdav';
     }
 
@@ -740,14 +781,21 @@ const uploadArchive = async (
         : '';
     webDavFailureDetail =
       `WebDAV upload failed with HTTP ${webdavResponse.status} ${webdavResponse.statusText}${authHint}`.trim();
+    logger?.warn(
+      { status: webdavResponse.status, statusText: webdavResponse.statusText },
+      'WebDAV upload failed',
+    );
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'unknown error';
     webDavFailureDetail = `WebDAV upload network error: ${reason}`;
+    logger?.warn({ reason }, 'WebDAV upload network error');
     // continue with FTP fallback
   }
 
+  logger?.info('Attempting FTP fallback upload');
   const hasCurl = await commandExists('curl', isWindows);
   if (!hasCurl) {
+    logger?.error('curl not available for FTP fallback upload');
     throw createCollectLogsError(
       'WebDAV upload failed and curl is unavailable for FTP fallback upload.',
       webDavFailureDetail || undefined,
@@ -755,10 +803,12 @@ const uploadArchive = async (
   }
 
   const ftpUrl = `ftp://${ticketId}:${encodeURIComponent(email)}@ftp.molo17.com/${encodedName}`;
+  logger?.debug({ fileName }, 'Uploading via FTP using curl');
   const ftpResult = await runCommand('curl', ['-T', archivePath, ftpUrl]);
 
   if (ftpResult.exitCode !== 0) {
     const hint = ftpFailureHint(ftpResult.exitCode, ftpResult.stderr);
+    logger?.error({ exitCode: ftpResult.exitCode, hint }, 'FTP upload failed');
     throw createCollectLogsError(
       'Failed to upload to FTP after WebDAV failure.',
       formatOutput(
@@ -767,31 +817,48 @@ const uploadArchive = async (
     );
   }
 
+  logger?.info('FTP upload succeeded');
   return 'ftp';
 };
 
 const collectLogsInternally = async (
   options: CollectLogsOptions,
 ): Promise<CollectLogsResult> => {
-  const { ticketId, email, localOnly } = options;
+  const { ticketId, email, localOnly, logger } = options;
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
   const messages: string[] = [];
 
+  logger?.info(
+    {
+      localOnly,
+      ticketId: ticketId ? 'provided' : 'missing',
+      email: email ? 'provided' : 'missing',
+    },
+    'Starting log collection',
+  );
+
   if (!localOnly) {
     if (!ticketId || !email) {
+      logger?.error('ticketId and email required but not provided');
       throw createCollectLogsError(
         'ticketId and email are required unless localOnly is true.',
       );
     }
 
-    await validateCredentialConnectivity(ticketId, email, isWindows);
+    logger?.info('Validating credentials before collection');
+    await validateCredentialConnectivity(ticketId, email, isWindows, logger);
     messages.push('Credential pre-check succeeded.');
   } else {
+    logger?.info('Local-only mode: skipping credential validation');
     messages.push('Local-only mode enabled. Credential pre-check skipped.');
   }
 
+  logger?.info('Resolving search directory');
   const searchDir = await resolveSearchDir(isWindows);
+  logger?.info({ searchDir }, 'Search directory resolved');
+
   const outputDir = await resolveOutputDir();
+  logger?.info({ outputDir }, 'Output directory resolved');
   messages.push(`Collecting logs from: ${searchDir}`);
 
   const extraDir = join(
@@ -802,6 +869,7 @@ const collectLogsInternally = async (
   let archivePath = '';
 
   try {
+    logger?.info({ extraDir }, 'Creating extra diagnostics directory');
     await mkdir(extraDir, { recursive: true });
 
     const systemReportPath = join(extraDir, 'system-report.txt');
@@ -810,87 +878,114 @@ const collectLogsInternally = async (
     const dockerReportPath = join(extraDir, 'docker-report.txt');
     const containerLogsDir = join(extraDir, 'container-logs');
 
+    logger?.info('Generating system report');
     await writeSystemReport(systemReportPath, isWindows);
+
+    logger?.info('Dumping YAML files');
     await writeFileDump(yamlDumpPath, searchDir, ['.yaml', '.yml'], {
       excludeDir: extraDir,
       isWindows,
     });
+
+    logger?.info('Dumping XML files');
     await writeFileDump(xmlDumpPath, searchDir, ['.xml'], {
       excludeDir: extraDir,
       isWindows,
     });
-    await writeDockerReport(dockerReportPath);
-    await exportDockerContainerLogs(containerLogsDir);
 
+    logger?.info('Collecting Docker info');
+    await writeDockerReport(dockerReportPath);
+
+    logger?.info('Exporting container logs');
+    const exportedContainerLogs =
+      await exportDockerContainerLogs(containerLogsDir);
+    logger?.info(
+      { count: exportedContainerLogs.length },
+      'Container logs exported',
+    );
+
+    logger?.info('Collecting log files recursively');
     const logFiles = await collectFilesRecursively(
       searchDir,
       filePath => {
         const extension = extname(filePath).toLowerCase();
         return extension === '.log' || extension === '.err';
       },
-      {
-        isWindows,
-      },
+      { isWindows },
     );
+    logger?.info({ count: logFiles.length }, 'Log files discovered');
 
+    logger?.info('Collecting diagnostic files');
     const diagnosticFiles = await collectFilesRecursively(
       extraDir,
       () => true,
-      {
-        isWindows,
-      },
+      { isWindows },
+    );
+    logger?.info(
+      { count: diagnosticFiles.length },
+      'Diagnostic files discovered',
     );
 
     const candidateFiles = Array.from(
       new Set([...logFiles, ...diagnosticFiles]),
     );
 
+    logger?.info('Checking file readability');
     const readableFiles: string[] = [];
     for (const filePath of candidateFiles) {
       try {
         await access(filePath, constants.R_OK);
         readableFiles.push(filePath);
       } catch {
-        continue;
+        logger?.debug({ filePath }, 'File not readable, skipping');
       }
     }
+    logger?.info({ count: readableFiles.length }, 'Readable files for archive');
 
     if (readableFiles.length === 0) {
+      logger?.error('No readable files found to archive');
       throw createCollectLogsError(
         'No readable log, error, or diagnostics files found to archive.',
       );
     }
 
+    logger?.info('Creating archive');
     archivePath = await createArchive(
       searchDir,
       outputDir,
       readableFiles,
       isWindows,
     );
+    logger?.info({ archivePath }, 'Archive created successfully');
     messages.push(`Archive created: ${archivePath}`);
 
     if (localOnly) {
       messages.push('Upload skipped (local-only mode).');
       messages.push(`Archive available at: ${archivePath}`);
 
+      logger?.info({ archivePath }, 'Local-only mode: returning archive path');
       return {
         output: formatOutput(messages.join('\n')),
         archivePath,
       };
     }
 
+    logger?.info('Starting archive upload');
     const uploadedVia = await uploadArchive(
       archivePath,
       ticketId || '',
       email || '',
       isWindows,
+      logger,
     );
     messages.push(
       uploadedVia === 'webdav'
         ? 'Archive uploaded successfully via WebDAV.'
         : 'Archive uploaded successfully via FTP fallback.',
     );
+    logger?.info({ uploadedVia }, 'Archive upload completed');
 
+    logger?.info({ archivePath }, 'Removing local archive after upload');
     await rm(archivePath, { force: true });
     messages.push('Local archive removed after successful upload.');
 
@@ -898,6 +993,7 @@ const collectLogsInternally = async (
       output: formatOutput(messages.join('\n')),
     };
   } finally {
+    logger?.info({ extraDir }, 'Cleaning up extra diagnostics directory');
     await rm(extraDir, { recursive: true, force: true });
   }
 };
@@ -927,10 +1023,19 @@ const handler: CollectLogsHandler = async (req, reply) => {
   }
 
   try {
+    req.log.info(
+      {
+        ticketId: ticketId ? 'provided' : 'missing',
+        email: email ? 'provided' : 'missing',
+        localOnly,
+      },
+      'Calling collectLogs internally',
+    );
     const result = await collectLogsInternally({
       ticketId,
       email,
       localOnly,
+      logger: req.log,
     });
 
     const responsePayload: Readonly<{
