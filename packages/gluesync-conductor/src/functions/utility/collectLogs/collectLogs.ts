@@ -745,63 +745,7 @@ const createArchive = async (
 
   try {
     const compressionCandidates = await Promise.all([
-      commandExists('zstd', isWindows).then(enabled =>
-        enabled
-          ? ({
-              name: 'zstd',
-              archivePath: join(outputDir, `${archiveBaseName}.tar.zst`),
-              command: 'sh',
-              args: [
-                '-c',
-                `tar -cf - -T "${listFilePath}" | zstd -T0 -19 > "${join(
-                  outputDir,
-                  `${archiveBaseName}.tar.zst`,
-                )}"`,
-              ],
-              cwd: searchDir,
-              successLog: 'zstd archive created successfully',
-              failLog: 'zstd compression failed, trying next method',
-            } as CompressionCandidate)
-          : null,
-      ),
-      commandExists('xz', isWindows).then(enabled =>
-        enabled
-          ? ({
-              name: 'xz',
-              archivePath: join(outputDir, `${archiveBaseName}.tar.xz`),
-              command: 'sh',
-              args: [
-                '-c',
-                `tar -cf - -T "${listFilePath}" | xz -T0 -9 > "${join(
-                  outputDir,
-                  `${archiveBaseName}.tar.xz`,
-                )}"`,
-              ],
-              cwd: searchDir,
-              successLog: 'xz archive created successfully',
-              failLog: 'xz compression failed, trying next method',
-            } as CompressionCandidate)
-          : null,
-      ),
-      commandExists('pigz', isWindows).then(enabled =>
-        enabled
-          ? ({
-              name: 'pigz',
-              archivePath: join(outputDir, `${archiveBaseName}.tar.gz`),
-              command: 'sh',
-              args: [
-                '-c',
-                `tar -cf - -T "${listFilePath}" | pigz > "${join(
-                  outputDir,
-                  `${archiveBaseName}.tar.gz`,
-                )}"`,
-              ],
-              cwd: searchDir,
-              successLog: 'pigz archive created successfully',
-              failLog: 'pigz compression failed, trying next method',
-            } as CompressionCandidate)
-          : null,
-      ),
+      // Always include ZIP
       commandExists('zip', isWindows).then(enabled =>
         enabled
           ? ({
@@ -816,6 +760,72 @@ const createArchive = async (
             } as CompressionCandidate)
           : null,
       ),
+
+      !isWindows
+        ? commandExists('zstd', false).then(enabled =>
+            enabled
+              ? ({
+                  name: 'zstd',
+                  archivePath: join(outputDir, `${archiveBaseName}.tar.zst`),
+                  command: 'sh',
+                  args: [
+                    '-c',
+                    `tar -cf - -T "${listFilePath}" | zstd -T0 -19 > "${join(
+                      outputDir,
+                      `${archiveBaseName}.tar.zst`,
+                    )}"`,
+                  ],
+                  cwd: searchDir,
+                  successLog: 'zstd archive created successfully',
+                  failLog: 'zstd compression failed, trying next method',
+                } as CompressionCandidate)
+              : null,
+          )
+        : Promise.resolve(null),
+
+      !isWindows
+        ? commandExists('xz', false).then(enabled =>
+            enabled
+              ? ({
+                  name: 'xz',
+                  archivePath: join(outputDir, `${archiveBaseName}.tar.xz`),
+                  command: 'sh',
+                  args: [
+                    '-c',
+                    `tar -cf - -T "${listFilePath}" | xz -T0 -9 > "${join(
+                      outputDir,
+                      `${archiveBaseName}.tar.xz`,
+                    )}"`,
+                  ],
+                  cwd: searchDir,
+                  successLog: 'xz archive created successfully',
+                  failLog: 'xz compression failed, trying next method',
+                } as CompressionCandidate)
+              : null,
+          )
+        : Promise.resolve(null),
+
+      !isWindows
+        ? commandExists('pigz', false).then(enabled =>
+            enabled
+              ? ({
+                  name: 'pigz',
+                  archivePath: join(outputDir, `${archiveBaseName}.tar.gz`),
+                  command: 'sh',
+                  args: [
+                    '-c',
+                    `tar -cf - -T "${listFilePath}" | pigz > "${join(
+                      outputDir,
+                      `${archiveBaseName}.tar.gz`,
+                    )}"`,
+                  ],
+                  cwd: searchDir,
+                  successLog: 'pigz archive created successfully',
+                  failLog: 'pigz compression failed, trying next method',
+                } as CompressionCandidate)
+              : null,
+          )
+        : Promise.resolve(null),
     ]);
 
     const availableCandidates = compressionCandidates.filter(
