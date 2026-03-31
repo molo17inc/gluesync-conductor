@@ -11,21 +11,23 @@ export type CollectLogsBody = Readonly<{
   localOnly?: boolean;
 }>;
 
-export type CollectLogsSuccessResponse = {
+export type CollectLogsSuccessResponse = Readonly<{
   success: true;
   output: string;
   archivePath?: string;
-};
+}>;
 
 export type CollectLogsResponse = CollectLogsSuccessResponse | ErrorResponse;
+
+export type CollectLogsRoute = Readonly<{
+  Querystring: CollectLogsQuerystring;
+  Body: CollectLogsBody;
+  Reply: CollectLogsResponse;
+}>;
 
 export type CollectLogsHandler = RouteHandlerMethod<
   any,
   any,
   any,
-  {
-    Querystring: CollectLogsQuerystring;
-    Body: CollectLogsBody;
-    Reply: CollectLogsResponse;
-  }
+  CollectLogsRoute
 >;

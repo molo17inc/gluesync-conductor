@@ -22,20 +22,18 @@ import {
 import { CollectLogsHandler } from './collectLogs.model';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 
-// Simple logger interface for internal functions
-type Logger = {
-  debug: (obj: Record<string, unknown> | string, msg?: string) => void;
-  info: (obj: Record<string, unknown> | string, msg?: string) => void;
-  warn: (obj: Record<string, unknown> | string, msg?: string) => void;
-  error: (obj: Record<string, unknown> | string, msg?: string) => void;
-};
-
-const MAX_OUTPUT_LINES = 10;
-const SCRIPT_VERSION = '2.0 internal';
-const SYSTEM_INFO_SCRIPT_LINUX = 'system-info.sh';
-const SYSTEM_INFO_SCRIPT_WINDOWS = 'system-info.ps1';
-const WEBDAV_PAYLOAD =
-  '<?xml version="1.0" encoding="UTF-8"?><propfind xmlns="DAV:"><propname/></propfind>';
+type Logger = Readonly<{
+  debug: (
+    obj: Readonly<Record<string, unknown>> | string,
+    msg?: string,
+  ) => void;
+  info: (obj: Readonly<Record<string, unknown>> | string, msg?: string) => void;
+  warn: (obj: Readonly<Record<string, unknown>> | string, msg?: string) => void;
+  error: (
+    obj: Readonly<Record<string, unknown>> | string,
+    msg?: string,
+  ) => void;
+}>;
 
 type CommandResult = Readonly<{
   exitCode: number;
@@ -55,80 +53,190 @@ type CollectLogsOptions = Readonly<{
   logger?: Logger;
 }>;
 
-type CollectLogsError = Error & { details?: string; isCollectLogsError: true };
+type CollectLogsError = Error &
+  Readonly<{
+    details?: string;
+    isCollectLogsError: true;
+  }>;
+
+type CommandOptions = Readonly<{
+  cwd?: string;
+  input?: string;
+  useShell?: boolean;
+}>;
+
+type FileCollectionOptions = Readonly<{
+  excludeDir?: string;
+  isWindows: boolean;
+}>;
+
+type DockerCommand = Readonly<{
+  cmd: string;
+  args: ReadonlyArray<string>;
+}>;
+
+type DockerPsContainer = Readonly<Record<string, string>>;
+
+type CompressionCandidate = Readonly<{
+  name: string;
+  archivePath: string;
+  command: string;
+  args: ReadonlyArray<string>;
+  cwd: string;
+  input?: string;
+  successLog: string;
+  failLog: string;
+}>;
+
+const MAX_OUTPUT_LINES = 10;
+const SCRIPT_VERSION = '2.0-internal';
+const SYSTEM_INFO_SCRIPT_LINUX = 'system-info.sh';
+const SYSTEM_INFO_SCRIPT_WINDOWS = 'system-info.ps1';
+const WEBDAV_PAYLOAD =
+  '<?xml version="1.0" encoding="UTF-8"?><propfind xmlns="DAV:"><propname/></propfind>';
 
 const createCollectLogsError = (
   message: string,
   details?: string,
-): CollectLogsError => {
-  const error = new Error(message) as CollectLogsError;
-  error.details = details;
-  error.isCollectLogsError = true;
-  return error;
-};
+): CollectLogsError =>
+  Object.assign(new Error(message), {
+    details,
+    isCollectLogsError: true as const,
+  });
 
 const isCollectLogsError = (err: unknown): err is CollectLogsError =>
   err instanceof Error &&
-  (err as Partial<CollectLogsError>).isCollectLogsError === true;
+  'isCollectLogsError' in err &&
+  err.isCollectLogsError === true;
 
-const sanitizeLines = (text: string): string[] =>
+const sanitizeLines = (text: string): ReadonlyArray<string> =>
   text
     .split(/\r?\n/)
-    .map(line => line.replace(/[^\t -~]/g, '').trimEnd()) // tab + printable ASCII
+    .map(line => line.replace(/[^\t -~]/g, '').trimEnd())
     .filter(line => line.length > 0);
 
 const formatOutput = (text: string): string => {
   const lines = sanitizeLines(text);
-  if (!lines.length) {
+
+  if (lines.length === 0) {
     return 'Unknown error';
   }
+
   if (lines.length <= MAX_OUTPUT_LINES) {
     return lines.join('\n');
   }
+
   return `${lines.slice(0, MAX_OUTPUT_LINES).join('\n')}\n...`;
 };
 
-const runCommand = async (
+const runCommandCapture = async (
   command: string,
   args: ReadonlyArray<string>,
-  options: Readonly<{ cwd?: string; input?: string; useShell?: boolean }> = {},
+  options: CommandOptions = {},
 ): Promise<CommandResult> =>
-  new Promise((resolveCommand, rejectCommand) => {
-    const child = spawn(command, args, {
+  new Promise(resolve => {
+    const child = spawn(command, [...args], {
       cwd: options.cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
       shell: options.useShell ?? false,
       env: process.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
+    const collectStream = (
+      stream?: Readonly<NodeJS.ReadableStream>,
+    ): Promise<string> => {
+      if (!stream) {
+        return Promise.resolve('');
+      }
 
-    child.stdout.on('data', chunk => {
-      stdoutChunks.push(Buffer.from(chunk));
-    });
+      stream.setEncoding('utf8');
 
-    child.stderr.on('data', chunk => {
-      stderrChunks.push(Buffer.from(chunk));
-    });
+      return new Promise<string>(streamResolve => {
+        const accumulate = (
+          acc: ReadonlyArray<string>,
+          chunk: string,
+        ): ReadonlyArray<string> => [...acc, chunk];
 
-    child.on('error', err => {
-      rejectCommand(err);
-    });
+        const loop = (acc: ReadonlyArray<string>): void => {
+          stream.once('data', (chunk: string) => {
+            loop(accumulate(acc, chunk));
+          });
 
-    child.on('close', code => {
-      resolveCommand({
-        exitCode: code ?? 1,
-        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
-        stderr: Buffer.concat(stderrChunks).toString('utf8'),
+          stream.once('end', () => {
+            streamResolve(acc.join(''));
+          });
+        };
+
+        loop([]);
       });
-    });
+    };
 
-    if (options.input) {
-      child.stdin.write(options.input, 'utf8');
+    const stdoutPromise = collectStream(child.stdout);
+    const stderrPromise = collectStream(child.stderr);
+
+    const handleError = async (err: Readonly<Error>) => {
+      const [stdout, stderr] = await Promise.all([
+        stdoutPromise,
+        stderrPromise,
+      ]);
+
+      if (stderr.length > 0) {
+        resolve({ exitCode: 1, stdout, stderr });
+        return;
+      }
+
+      resolve({ exitCode: 1, stdout, stderr: err.message });
+    };
+
+    const handleClose = async (code: number | null) => {
+      const [stdout, stderr] = await Promise.all([
+        stdoutPromise,
+        stderrPromise,
+      ]);
+
+      const exitCode = code === null ? 1 : code;
+
+      resolve({ exitCode, stdout, stderr });
+    };
+
+    child.on('error', handleError);
+    child.on('close', handleClose);
+
+    if (child.stdin) {
+      if (typeof options.input === 'string' && options.input.length > 0) {
+        child.stdin.write(options.input, 'utf8');
+      }
+      child.stdin.end();
     }
-    child.stdin.end();
   });
+
+const runCommandStrict = async (
+  command: string,
+  args: ReadonlyArray<string>,
+  options: Readonly<{ cwd?: string }> = {},
+): Promise<boolean> => {
+  const result = await runCommandCapture(command, args, { cwd: options.cwd });
+  return result.exitCode === 0;
+};
+
+const findFirstExistingPath = async (
+  candidates: ReadonlyArray<string>,
+): Promise<string | null> => {
+  const checks = await Promise.all(
+    candidates.map(async candidate => {
+      try {
+        await access(candidate, constants.F_OK);
+        return candidate;
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return (
+    checks.find((candidate): candidate is string => candidate !== null) ?? null
+  );
+};
 
 const resolveSystemInfoScriptPath = async (
   isWindows: boolean,
@@ -145,23 +253,7 @@ const resolveSystemInfoScriptPath = async (
       : `/opt/gluesync-conductor/${scriptName}`,
   ];
 
-  const validCandidate = await candidates.reduce<Promise<string | null>>(
-    async (acc, candidate) => {
-      const result = await acc;
-      if (result !== null) {
-        return result;
-      }
-      try {
-        await access(candidate, constants.F_OK);
-        return candidate;
-      } catch {
-        return null;
-      }
-    },
-    Promise.resolve(null),
-  );
-
-  return validCandidate;
+  return findFirstExistingPath(candidates);
 };
 
 const runSystemInfoScript = async (
@@ -174,9 +266,10 @@ const runSystemInfoScript = async (
     return false;
   }
 
-  const command = isWindows ? 'pwsh' : '/bin/bash';
-  const args = isWindows
-    ? [
+  if (isWindows) {
+    return runCommandStrict(
+      'pwsh',
+      [
         '-NoProfile',
         '-ExecutionPolicy',
         'Bypass',
@@ -184,15 +277,12 @@ const runSystemInfoScript = async (
         scriptPath,
         '-OutputPath',
         outputPath,
-      ]
-    : [scriptPath, outputPath];
-
-  try {
-    const result = await runCommand(command, args);
-    return result.exitCode === 0;
-  } catch {
-    return false;
+      ],
+      {},
+    );
   }
+
+  return runCommandStrict('/bin/bash', [scriptPath, outputPath], {});
 };
 
 const isPathInside = (
@@ -214,14 +304,10 @@ const commandExists = async (
   commandName: string,
   isWindows: boolean,
 ): Promise<boolean> => {
-  try {
-    const lookup = await runCommand(isWindows ? 'where' : 'which', [
-      commandName,
-    ]);
-    return lookup.exitCode === 0;
-  } catch {
-    return false;
-  }
+  const lookup = await runCommandCapture(isWindows ? 'where' : 'which', [
+    commandName,
+  ]);
+  return lookup.exitCode === 0;
 };
 
 const resolveWebDavRootUrl = (): string => {
@@ -232,12 +318,11 @@ const resolveWebDavRootUrl = (): string => {
     .replace(/\/+$/, '');
   const remotePath = (process.env.WEBDAV_REMOTE_PATH || '').trim();
 
-  if (!remotePath) {
-    return `${baseUrl}/`;
+  if (remotePath) {
+    return `${baseUrl}/${remotePath.replace(/^\/+/, '').replace(/\/+$/, '')}/`;
   }
 
-  const normalizedPath = remotePath.replace(/^\/+/, '').replace(/\/+$/, '');
-  return `${baseUrl}/${normalizedPath}/`;
+  return `${baseUrl}/`;
 };
 
 const basicAuthHeader = (ticketId: string, email: string): string =>
@@ -249,18 +334,23 @@ const ftpFailureHint = (statusCode: number, stderr: string): string => {
   if (normalized.includes('550')) {
     return 'FTP server returned 550 (permission/target issue). Verify ticket/email and available space.';
   }
+
   if (normalized.includes('530')) {
     return 'FTP server returned 530 (authentication failure). Verify ticket and email.';
   }
+
   if (normalized.includes('curl: (7)')) {
     return 'Unable to reach ftp.molo17.com (curl 7). Ensure outbound FTP is allowed.';
   }
+
   if (statusCode === 18) {
     return 'FTP transfer was interrupted before completion (curl 18).';
   }
+
   if (statusCode === 28) {
     return 'FTP upload timed out (curl 28).';
   }
+
   if (statusCode === 67) {
     return 'FTP authentication failed (curl 67). Verify ticket and email.';
   }
@@ -281,21 +371,20 @@ const resolveSearchDir = async (isWindows: boolean): Promise<string> => {
     process.cwd(),
   ];
 
-  const validDir = await candidates.reduce<Promise<string | null>>(
-    async (acc, candidate) => {
-      const result = await acc;
-      if (result !== null || !candidate) {
-        return result;
-      }
+  const results = await Promise.all(
+    candidates.map(async candidate => {
       try {
         const fileStat = await stat(candidate);
         return fileStat.isDirectory() ? candidate : null;
       } catch {
         return null;
       }
-    },
-    Promise.resolve(null),
+    }),
   );
+
+  const validDir =
+    results.find((candidate): candidate is string => candidate !== null) ??
+    null;
 
   if (validDir === null) {
     throw createCollectLogsError(
@@ -325,7 +414,7 @@ const resolveOutputDir = async (): Promise<string> => {
 const collectFilesRecursively = async (
   rootDir: string,
   filter: (filePath: string) => boolean,
-  options: Readonly<{ excludeDir?: string; isWindows: boolean }>,
+  options: FileCollectionOptions,
 ): Promise<ReadonlyArray<string>> => {
   const collectFromDir = async (
     currentDir: string,
@@ -335,29 +424,26 @@ const collectFilesRecursively = async (
     );
 
     const nestedFiles = await Promise.all(
-      entries.map(
-        async (
-          entry: Readonly<Awaited<ReturnType<typeof readdir>>[number]>,
-        ) => {
-          const fullPath = join(currentDir, entry.name);
+      entries.map(async entry => {
+        const fullPath = join(currentDir, entry.name);
 
-          if (
-            options.excludeDir &&
-            isPathInside(fullPath, options.excludeDir, options.isWindows)
-          ) {
-            return [] as string[];
-          }
+        if (
+          options.excludeDir &&
+          isPathInside(fullPath, options.excludeDir, options.isWindows)
+        ) {
+          return [];
+        }
 
-          if (entry.isDirectory()) {
-            return collectFromDir(fullPath);
-          }
+        if (entry.isDirectory()) {
+          return collectFromDir(fullPath);
+        }
 
-          if (entry.isFile() && filter(fullPath)) {
-            return [fullPath];
-          }
-          return [] as string[];
-        },
-      ),
+        if (entry.isFile() && filter(fullPath)) {
+          return [fullPath];
+        }
+
+        return [];
+      }),
     );
 
     return nestedFiles.flat();
@@ -375,6 +461,26 @@ const tryReadFile = async (filePath: string): Promise<string> => {
   }
 };
 
+const getCommandSection = async (
+  title: string,
+  command: string,
+  args: ReadonlyArray<string>,
+): Promise<ReadonlyArray<string>> => {
+  const result = await runCommandCapture(command, args);
+  const body = `${result.stdout}${result.stderr}`.trim();
+
+  if (result.exitCode !== 0) {
+    return [
+      `### ${title}`,
+      body || '(no output returned)',
+      `(command exited with status ${result.exitCode})`,
+      '',
+    ];
+  }
+
+  return [`### ${title}`, body || '(no output returned)', ''];
+};
+
 const writeSystemReport = async (
   outputPath: string,
   isWindows: boolean,
@@ -383,56 +489,57 @@ const writeSystemReport = async (
     return;
   }
 
-  const sections: string[] = [
+  const header = [
     'Gluesync System Report',
     `Generated on: ${new Date().toISOString()}`,
     '',
   ];
 
-  const appendCommand = async (
-    title: string,
-    command: string,
-    args: ReadonlyArray<string>,
-  ): Promise<void> => {
-    sections.push(`### ${title}`);
-    try {
-      const result = await runCommand(command, args);
-      const body = `${result.stdout}${result.stderr}`.trim();
-      sections.push(body || '(no output returned)');
-      if (result.exitCode !== 0) {
-        sections.push(`(command exited with status ${result.exitCode})`);
-      }
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : 'unknown error';
-      sections.push(`Command failed: ${reason}`);
-    }
-    sections.push('');
-  };
+  const commandSpecs: ReadonlyArray<
+    Readonly<{
+      title: string;
+      command: string;
+      args: ReadonlyArray<string>;
+    }>
+  > = isWindows
+    ? [
+        { title: 'systeminfo', command: 'systeminfo', args: [] },
+        {
+          title: 'wmic os get caption,version /value',
+          command: 'wmic',
+          args: ['os', 'get', 'caption,version', '/value'],
+        },
+        { title: 'ipconfig /all', command: 'ipconfig', args: ['/all'] },
+      ]
+    : [
+        { title: 'uname -a', command: 'uname', args: ['-a'] },
+        {
+          title: 'hostnamectl status',
+          command: 'hostnamectl',
+          args: ['status'],
+        },
+        { title: 'df -h', command: 'df', args: ['-h'] },
+        { title: 'ip addr', command: 'ip', args: ['addr'] },
+      ];
 
-  if (isWindows) {
-    await appendCommand('systeminfo', 'systeminfo', []);
-    await appendCommand('wmic os get caption,version /value', 'wmic', [
-      'os',
-      'get',
-      'caption,version',
-      '/value',
-    ]);
-    await appendCommand('ipconfig /all', 'ipconfig', ['/all']);
-  } else {
-    await appendCommand('uname -a', 'uname', ['-a']);
-    await appendCommand('hostnamectl status', 'hostnamectl', ['status']);
-    await appendCommand('df -h', 'df', ['-h']);
-    await appendCommand('ip addr', 'ip', ['addr']);
-  }
+  const sections = await Promise.all(
+    commandSpecs.map(({ title, command, args }) =>
+      getCommandSection(title, command, args),
+    ),
+  );
 
-  await writeFile(outputPath, `${sections.join('\n')}\n`, 'utf8');
+  await writeFile(
+    outputPath,
+    [...header, ...sections.flat()].join('\n'),
+    'utf8',
+  );
 };
 
 const writeFileDump = async (
   outputPath: string,
   searchRoot: string,
   extensions: ReadonlyArray<string>,
-  options: Readonly<{ excludeDir?: string; isWindows: boolean }>,
+  options: FileCollectionOptions,
 ): Promise<void> => {
   const extensionSet = new Set(extensions.map(ext => ext.toLowerCase()));
   const matchingFiles = await collectFilesRecursively(
@@ -441,37 +548,42 @@ const writeFileDump = async (
     options,
   );
 
-  const lines: string[] = [
-    `Full dump generated on: ${new Date().toISOString()}`,
-    '',
-  ];
+  const header = [`Full dump generated on: ${new Date().toISOString()}`, ''];
 
   if (matchingFiles.length === 0) {
-    lines.push(`No matching files were found within ${searchRoot}.`);
-    await writeFile(outputPath, `${lines.join('\n')}\n`, 'utf8');
+    await writeFile(
+      outputPath,
+      [
+        ...header,
+        `No matching files were found within ${searchRoot}.`,
+        '',
+      ].join('\n'),
+      'utf8',
+    );
     return;
   }
 
-  for (const filePath of matchingFiles) {
-    const relativePath = relative(searchRoot, filePath);
-    lines.push(`----- START ${relativePath} -----`);
-    lines.push(await tryReadFile(filePath));
-    lines.push(`----- END ${relativePath} -----`);
-    lines.push('');
-  }
+  const fileSections = await Promise.all(
+    matchingFiles.map(async filePath => {
+      const relativePath = relative(searchRoot, filePath);
+      return [
+        `----- START ${relativePath} -----`,
+        await tryReadFile(filePath),
+        `----- END ${relativePath} -----`,
+        '',
+      ];
+    }),
+  );
 
-  await writeFile(outputPath, `${lines.join('\n')}\n`, 'utf8');
+  await writeFile(
+    outputPath,
+    [...header, ...fileSections.flat()].join('\n'),
+    'utf8',
+  );
 };
 
 const writeDockerReport = async (outputPath: string): Promise<void> => {
-  const sections: string[] = [
-    `Docker diagnostics generated on: ${new Date().toISOString()}`,
-    '',
-  ];
-
-  const commands: ReadonlyArray<
-    Readonly<{ cmd: string; args: ReadonlyArray<string> }>
-  > = [
+  const commands: ReadonlyArray<DockerCommand> = [
     { cmd: 'docker', args: ['--version'] },
     { cmd: 'docker', args: ['info'] },
     { cmd: 'docker', args: ['ps', '-a'] },
@@ -481,22 +593,42 @@ const writeDockerReport = async (outputPath: string): Promise<void> => {
     { cmd: 'docker-compose', args: ['--version'] },
   ];
 
-  for (const entry of commands) {
-    sections.push(`### ${entry.cmd} ${entry.args.join(' ')}`.trim());
-    try {
-      const result = await runCommand(entry.cmd, entry.args);
+  const sections = await Promise.all(
+    commands.map(async entry => {
+      const result = await runCommandCapture(entry.cmd, entry.args);
       const body = `${result.stdout}${result.stderr}`.trim();
-      sections.push(body || '(no output returned)');
-      if (result.exitCode !== 0) {
-        sections.push(`(command exited with status ${result.exitCode})`);
-      }
-    } catch {
-      sections.push(`Command '${entry.cmd}' not available on this system.`);
-    }
-    sections.push('');
-  }
+      const title = `### ${entry.cmd} ${entry.args.join(' ')}`.trim();
 
-  await writeFile(outputPath, `${sections.join('\n')}\n`, 'utf8');
+      if (result.exitCode !== 0) {
+        return [
+          title,
+          body || '(no output returned)',
+          `(command exited with status ${result.exitCode})`,
+          '',
+        ];
+      }
+
+      return [title, body || '(no output returned)', ''];
+    }),
+  );
+
+  await writeFile(
+    outputPath,
+    [
+      `Docker diagnostics generated on: ${new Date().toISOString()}`,
+      '',
+      ...sections.flat(),
+    ].join('\n'),
+    'utf8',
+  );
+};
+
+const parseDockerPsLine = (line: string): DockerPsContainer | null => {
+  try {
+    return JSON.parse(line) as DockerPsContainer;
+  } catch {
+    return null;
+  }
 };
 
 const exportDockerContainerLogs = async (
@@ -508,76 +640,68 @@ const exportDockerContainerLogs = async (
     return [];
   }
 
-  let containersResult: CommandResult;
-  try {
-    containersResult = await runCommand('docker', [
-      'ps',
-      '-a',
-      '--format',
-      '{{json .}}',
-    ]);
-  } catch {
-    return [];
-  }
+  const containersResult = await runCommandCapture('docker', [
+    'ps',
+    '-a',
+    '--format',
+    '{{json .}}',
+  ]);
 
   if (containersResult.exitCode !== 0) {
     return [];
   }
 
-  const containerLines = containersResult.stdout
+  const containers = containersResult.stdout
     .split(/\r?\n/)
     .map(line => line.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(parseDockerPsLine)
+    .filter((container): container is DockerPsContainer => {
+      const containerId = container?.ID || '';
+      return container !== null && containerId.length > 0;
+    });
 
-  const exportedFiles: string[] = [];
+  const exportedFiles = await Promise.all(
+    containers.map(async container => {
+      const containerId = container.ID || '';
+      const containerName =
+        container.Names ||
+        containerId.slice(0, Math.min(12, containerId.length));
+      const safeName = containerName.replace(/[\\/:*?"<>|]/g, '_');
+      const filePath = join(outputDirectory, `container-${safeName}.log`);
+      const logsResult = await runCommandCapture('docker', [
+        'logs',
+        containerId,
+      ]);
 
-  for (const line of containerLines) {
-    let container: Readonly<Record<string, string>> | null = null;
-    try {
-      const parsed = JSON.parse(line) as Record<string, string>;
-      container = parsed;
-    } catch {
-      container = null;
-    }
+      if (
+        logsResult.exitCode !== 0 &&
+        !logsResult.stdout &&
+        !logsResult.stderr
+      ) {
+        return null;
+      }
 
-    if (!container) {
-      continue;
-    }
+      const content = [
+        `Container Logs for: ${containerName}`,
+        `Container ID: ${containerId}`,
+        `Status: ${container.Status || 'unknown'}`,
+        `Image: ${container.Image || 'unknown'}`,
+        `Collected on: ${new Date().toISOString()}`,
+        '',
+        '================================================================================',
+        '',
+        `${logsResult.stdout}${logsResult.stderr}`,
+      ].join('\n');
 
-    const containerId = container.ID || '';
-    if (!containerId) {
-      continue;
-    }
+      await writeFile(filePath, content, 'utf8');
+      return filePath;
+    }),
+  );
 
-    const containerName =
-      container.Names || containerId.slice(0, Math.min(12, containerId.length));
-    const safeName = containerName.replace(/[\\/:*?"<>|]/g, '_');
-    const filePath = join(outputDirectory, `container-${safeName}.log`);
-
-    let logsResult: CommandResult;
-    try {
-      logsResult = await runCommand('docker', ['logs', containerId]);
-    } catch {
-      continue;
-    }
-
-    const content = [
-      `Container Logs for: ${containerName}`,
-      `Container ID: ${containerId}`,
-      `Status: ${container.Status || 'unknown'}`,
-      `Image: ${container.Image || 'unknown'}`,
-      `Collected on: ${new Date().toISOString()}`,
-      '',
-      '================================================================================',
-      '',
-      `${logsResult.stdout}${logsResult.stderr}`,
-    ].join('\n');
-
-    await writeFile(filePath, content, 'utf8');
-    exportedFiles.push(filePath);
-  }
-
-  return exportedFiles;
+  return exportedFiles.filter(
+    (filePath): filePath is string => filePath !== null,
+  );
 };
 
 const toRelativeArchivePaths = (
@@ -587,10 +711,7 @@ const toRelativeArchivePaths = (
   files
     .map(filePath => {
       const rel = relative(searchDir, filePath);
-      if (!rel || rel.startsWith('..') || isAbsolute(rel)) {
-        return null;
-      }
-      return rel;
+      return !rel || rel.startsWith('..') || isAbsolute(rel) ? null : rel;
     })
     .filter((entry): entry is string => entry !== null);
 
@@ -615,106 +736,135 @@ const createArchive = async (
     );
   }
 
-  // Priority order: zstd (best speed/compression) > xz (max compression) > zip (compatibility) > tar.gz (fallback)
   const listFilePath = join(
     outputDir,
     `.collect-logs-${Date.now()}-${process.pid}.list`,
   );
 
+  await writeFile(listFilePath, `${relativePaths.join('\n')}\n`, 'utf8');
+
   try {
-    await writeFile(listFilePath, `${relativePaths.join('\n')}\n`, 'utf8');
+    const compressionCandidates = await Promise.all([
+      commandExists('zstd', isWindows).then(enabled =>
+        enabled
+          ? ({
+              name: 'zstd',
+              archivePath: join(outputDir, `${archiveBaseName}.tar.zst`),
+              command: 'sh',
+              args: [
+                '-c',
+                `tar -cf - -T "${listFilePath}" | zstd -T0 -19 > "${join(
+                  outputDir,
+                  `${archiveBaseName}.tar.zst`,
+                )}"`,
+              ],
+              cwd: searchDir,
+              successLog: 'zstd archive created successfully',
+              failLog: 'zstd compression failed, trying next method',
+            } as CompressionCandidate)
+          : null,
+      ),
+      commandExists('xz', isWindows).then(enabled =>
+        enabled
+          ? ({
+              name: 'xz',
+              archivePath: join(outputDir, `${archiveBaseName}.tar.xz`),
+              command: 'sh',
+              args: [
+                '-c',
+                `tar -cf - -T "${listFilePath}" | xz -T0 -9 > "${join(
+                  outputDir,
+                  `${archiveBaseName}.tar.xz`,
+                )}"`,
+              ],
+              cwd: searchDir,
+              successLog: 'xz archive created successfully',
+              failLog: 'xz compression failed, trying next method',
+            } as CompressionCandidate)
+          : null,
+      ),
+      commandExists('pigz', isWindows).then(enabled =>
+        enabled
+          ? ({
+              name: 'pigz',
+              archivePath: join(outputDir, `${archiveBaseName}.tar.gz`),
+              command: 'sh',
+              args: [
+                '-c',
+                `tar -cf - -T "${listFilePath}" | pigz > "${join(
+                  outputDir,
+                  `${archiveBaseName}.tar.gz`,
+                )}"`,
+              ],
+              cwd: searchDir,
+              successLog: 'pigz archive created successfully',
+              failLog: 'pigz compression failed, trying next method',
+            } as CompressionCandidate)
+          : null,
+      ),
+      commandExists('zip', isWindows).then(enabled =>
+        enabled
+          ? ({
+              name: 'zip',
+              archivePath: join(outputDir, `${archiveBaseName}.zip`),
+              command: 'zip',
+              args: ['-9', '-@', join(outputDir, `${archiveBaseName}.zip`)],
+              cwd: searchDir,
+              input: `${relativePaths.join('\n')}\n`,
+              successLog: 'zip archive created successfully',
+              failLog: 'zip compression failed, using final fallback',
+            } as CompressionCandidate)
+          : null,
+      ),
+    ]);
 
-    // Try zstd first (best for large logs: good compression, very fast)
-    const canUseZstd = await commandExists('zstd', isWindows);
-    if (canUseZstd) {
-      logger?.info('Using zstd compression (high speed, good ratio)');
-      const archivePath = join(outputDir, `${archiveBaseName}.tar.zst`);
-      // Use shell pipeline: tar to stdout | zstd
-      const zstdResult = await runCommand(
-        'sh',
-        [
-          '-c',
-          `tar -cf - -T "${listFilePath}" | zstd -T0 -19 > "${archivePath}"`,
-        ],
-        { cwd: searchDir, useShell: false }, // sh handles the pipe
+    const availableCandidates = compressionCandidates.filter(
+      (candidate): candidate is CompressionCandidate => candidate !== null,
+    );
+
+    const compressedArchivePath = await availableCandidates.reduce<
+      Promise<string | null>
+    >(async (accPromise, candidate) => {
+      const acc = await accPromise;
+
+      if (acc) {
+        return acc;
+      }
+
+      logger?.info(`Using ${candidate.name} compression`);
+      const result = await runCommandCapture(
+        candidate.command,
+        candidate.args,
+        {
+          cwd: candidate.cwd,
+          ...(candidate.input ? { input: candidate.input } : {}),
+          useShell: false,
+        },
       );
 
-      if (zstdResult.exitCode === 0) {
-        logger?.info({ archivePath }, 'zstd archive created successfully');
-        return archivePath;
+      if (result.exitCode === 0) {
+        logger?.info(
+          { archivePath: candidate.archivePath },
+          candidate.successLog,
+        );
+        return candidate.archivePath;
       }
+
       logger?.warn(
-        { exitCode: zstdResult.exitCode, stderr: zstdResult.stderr },
-        'zstd compression failed, trying next method',
+        { exitCode: result.exitCode, stderr: result.stderr },
+        candidate.failLog,
       );
+
+      return null;
+    }, Promise.resolve(null));
+
+    if (compressedArchivePath) {
+      return compressedArchivePath;
     }
 
-    // Try xz for maximum compression (slower but best ratio)
-    const canUseXz = await commandExists('xz', isWindows);
-    if (canUseXz) {
-      logger?.info('Using xz compression (maximum compression ratio)');
-      const archivePath = join(outputDir, `${archiveBaseName}.tar.xz`);
-      // Use shell pipeline: tar to stdout | xz
-      const xzResult = await runCommand(
-        'sh',
-        ['-c', `tar -cf - -T "${listFilePath}" | xz -T0 -9 > "${archivePath}"`],
-        { cwd: searchDir, useShell: false },
-      );
-
-      if (xzResult.exitCode === 0) {
-        logger?.info({ archivePath }, 'xz archive created successfully');
-        return archivePath;
-      }
-      logger?.warn(
-        { exitCode: xzResult.exitCode, stderr: xzResult.stderr },
-        'xz compression failed, trying next method',
-      );
-    }
-
-    // Try parallel gzip (pigz) for faster gzip compression
-    const canUsePigz = await commandExists('pigz', isWindows);
-    if (canUsePigz) {
-      logger?.info('Using pigz compression (parallel gzip)');
-      const archivePath = join(outputDir, `${archiveBaseName}.tar.gz`);
-      // Use shell pipeline: tar to stdout | pigz
-      const pigzResult = await runCommand(
-        'sh',
-        ['-c', `tar -cf - -T "${listFilePath}" | pigz > "${archivePath}"`],
-        { cwd: searchDir, useShell: false },
-      );
-
-      if (pigzResult.exitCode === 0) {
-        logger?.info({ archivePath }, 'pigz archive created successfully');
-        return archivePath;
-      }
-      logger?.warn(
-        { exitCode: pigzResult.exitCode, stderr: pigzResult.stderr },
-        'pigz compression failed, trying next method',
-      );
-    }
-
-    // Fall back to zip (good Windows compatibility)
-    const canUseZip = await commandExists('zip', isWindows);
-    if (canUseZip) {
-      logger?.info('Using zip compression');
-      const archivePath = join(outputDir, `${archiveBaseName}.zip`);
-      // Use -9 for maximum compression
-      const zipResult = await runCommand('zip', ['-9', '-@', archivePath], {
-        cwd: searchDir,
-        input: `${relativePaths.join('\n')}\n`,
-      });
-
-      if (zipResult.exitCode === 0) {
-        logger?.info({ archivePath }, 'zip archive created successfully');
-        return archivePath;
-      }
-      logger?.warn('zip compression failed, using final fallback');
-    }
-
-    // Final fallback: standard tar.gz
     logger?.info('Using tar.gz compression (fallback)');
     const archivePath = join(outputDir, `${archiveBaseName}.tar.gz`);
-    const tarResult = await runCommand(
+    const tarResult = await runCommandCapture(
       'tar',
       ['-czf', archivePath, '-T', listFilePath],
       { cwd: searchDir },
@@ -744,57 +894,63 @@ const validateCredentialConnectivity = async (
     { ticketId, email },
     'Starting credential connectivity validation',
   );
+
   const webdavProbeUrl = resolveWebDavRootUrl();
   const headers = {
     Authorization: basicAuthHeader(ticketId, email),
     Depth: '0',
     'Content-Type': 'text/xml',
   };
-  let webDavFailureDetail = '';
 
-  logger?.debug({ webdavProbeUrl }, 'Attempting WebDAV credential pre-check');
-  try {
-    const response = await fetch(webdavProbeUrl, {
-      method: 'PROPFIND',
-      headers,
-      body: WEBDAV_PAYLOAD,
+  const webDavAttempt = await fetch(webdavProbeUrl, {
+    method: 'PROPFIND',
+    headers,
+    body: WEBDAV_PAYLOAD,
+  })
+    .then(response => {
+      if (response.ok || response.status === 207) {
+        return { ok: true as const, detail: '' };
+      }
+
+      const authHint =
+        response.status === 401 || response.status === 403
+          ? ' (authentication or authorization issue)'
+          : '';
+
+      return {
+        ok: false as const,
+        detail: `WebDAV credential pre-check failed with HTTP ${response.status} ${response.statusText}${authHint}`,
+      };
+    })
+    .catch(err => {
+      const reason = err instanceof Error ? err.message : 'unknown error';
+      return {
+        ok: false as const,
+        detail: `WebDAV credential pre-check network error: ${reason}`,
+      };
     });
-    if (response.ok || response.status === 207) {
-      logger?.info(
-        { status: response.status },
-        'WebDAV credential pre-check succeeded',
-      );
-      return;
-    }
-    const authHint =
-      response.status === 401 || response.status === 403
-        ? ' (authentication or authorization issue)'
-        : '';
-    webDavFailureDetail =
-      `WebDAV credential pre-check failed with HTTP ${response.status} ${response.statusText}${authHint}`.trim();
-    logger?.warn(
-      { status: response.status, statusText: response.statusText },
-      'WebDAV credential pre-check failed',
-    );
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : 'unknown error';
-    webDavFailureDetail = `WebDAV credential pre-check network error: ${reason}`;
-    logger?.warn({ reason }, 'WebDAV credential pre-check network error');
-    // continue with FTP fallback
+
+  if (webDavAttempt.ok) {
+    logger?.info('WebDAV credential pre-check succeeded');
+    return;
   }
 
+  logger?.warn(
+    { detail: webDavAttempt.detail },
+    'WebDAV credential pre-check failed',
+  );
   logger?.info('Attempting FTP fallback for credential validation');
+
   const hasCurl = await commandExists('curl', isWindows);
+
   if (!hasCurl) {
-    logger?.error('curl not available for FTP fallback');
     throw createCollectLogsError(
       'Unable to validate credentials: WebDAV failed and curl is unavailable for FTP fallback.',
-      webDavFailureDetail || undefined,
+      webDavAttempt.detail || undefined,
     );
   }
 
-  logger?.debug('Running FTP list command for credential check');
-  const ftpCheck = await runCommand('curl', [
+  const ftpCheck = await runCommandCapture('curl', [
     '--silent',
     '--fail',
     '--show-error',
@@ -805,17 +961,14 @@ const validateCredentialConnectivity = async (
   ]);
 
   if (ftpCheck.exitCode !== 0) {
-    logger?.error(
-      { exitCode: ftpCheck.exitCode, stderr: ftpCheck.stderr },
-      'FTP credential check failed',
-    );
     throw createCollectLogsError(
       'Unable to validate ticket/email credentials before collecting logs.',
       formatOutput(
-        `${webDavFailureDetail ? `${webDavFailureDetail}\n` : ''}${ftpCheck.stdout}\n${ftpCheck.stderr}`,
+        `${webDavAttempt.detail ? `${webDavAttempt.detail}\n` : ''}${ftpCheck.stdout}\n${ftpCheck.stderr}`,
       ),
     );
   }
+
   logger?.info('FTP credential pre-check succeeded');
 };
 
@@ -829,68 +982,76 @@ const uploadArchive = async (
   const fileName = basename(archivePath);
   const encodedName = encodeURIComponent(fileName);
   const webDavTarget = `${resolveWebDavRootUrl()}${encodedName}`;
-  let webDavFailureDetail = '';
 
   logger?.info({ fileName, webDavTarget }, 'Starting archive upload');
 
-  try {
-    logger?.debug(
-      { archivePath, size: (await stat(archivePath)).size },
-      'Reading archive file for WebDAV upload',
-    );
-    const payload = await readFile(archivePath);
-    logger?.info({ size: payload.length }, 'Uploading via WebDAV PUT');
-    const webdavResponse = await fetch(webDavTarget, {
-      method: 'PUT',
-      headers: {
-        Authorization: basicAuthHeader(ticketId, email),
-      },
-      body: payload,
+  const webDavResult = await readFile(archivePath)
+    .then(async payload => {
+      logger?.info({ size: payload.length }, 'Uploading via WebDAV PUT');
+
+      const response = await fetch(webDavTarget, {
+        method: 'PUT',
+        headers: {
+          Authorization: basicAuthHeader(ticketId, email),
+        },
+        body: payload,
+      });
+
+      if (response.ok) {
+        return { ok: true as const, method: 'webdav' as const, detail: '' };
+      }
+
+      const authHint =
+        response.status === 401 || response.status === 403
+          ? ' (authentication or authorization issue)'
+          : '';
+
+      return {
+        ok: false as const,
+        method: 'webdav' as const,
+        detail: `WebDAV upload failed with HTTP ${response.status} ${response.statusText}${authHint}`,
+      };
+    })
+    .catch(err => {
+      const reason = err instanceof Error ? err.message : 'unknown error';
+      return {
+        ok: false as const,
+        method: 'webdav' as const,
+        detail: `WebDAV upload network error: ${reason}`,
+      };
     });
 
-    if (webdavResponse.ok) {
-      logger?.info('WebDAV upload succeeded');
-      return 'webdav';
-    }
-
-    const authHint =
-      webdavResponse.status === 401 || webdavResponse.status === 403
-        ? ' (authentication or authorization issue)'
-        : '';
-    webDavFailureDetail =
-      `WebDAV upload failed with HTTP ${webdavResponse.status} ${webdavResponse.statusText}${authHint}`.trim();
-    logger?.warn(
-      { status: webdavResponse.status, statusText: webdavResponse.statusText },
-      'WebDAV upload failed',
-    );
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : 'unknown error';
-    webDavFailureDetail = `WebDAV upload network error: ${reason}`;
-    logger?.warn({ reason }, 'WebDAV upload network error');
-    // continue with FTP fallback
+  if (webDavResult.ok) {
+    logger?.info('WebDAV upload succeeded');
+    return 'webdav';
   }
 
+  logger?.warn({ detail: webDavResult.detail }, 'WebDAV upload failed');
   logger?.info('Attempting FTP fallback upload');
+
   const hasCurl = await commandExists('curl', isWindows);
+
   if (!hasCurl) {
-    logger?.error('curl not available for FTP fallback upload');
     throw createCollectLogsError(
       'WebDAV upload failed and curl is unavailable for FTP fallback upload.',
-      webDavFailureDetail || undefined,
+      webDavResult.detail || undefined,
     );
   }
 
   const ftpUrl = `ftp://${ticketId}:${encodeURIComponent(email)}@ftp.molo17.com/${encodedName}`;
-  logger?.debug({ fileName }, 'Uploading via FTP using curl');
-  const ftpResult = await runCommand('curl', ['-T', archivePath, ftpUrl]);
+  const ftpResult = await runCommandCapture('curl', [
+    '-T',
+    archivePath,
+    ftpUrl,
+  ]);
 
   if (ftpResult.exitCode !== 0) {
     const hint = ftpFailureHint(ftpResult.exitCode, ftpResult.stderr);
-    logger?.error({ exitCode: ftpResult.exitCode, hint }, 'FTP upload failed');
+
     throw createCollectLogsError(
       'Failed to upload to FTP after WebDAV failure.',
       formatOutput(
-        `${webDavFailureDetail ? `${webDavFailureDetail}\n` : ''}${hint}\n${ftpResult.stdout}\n${ftpResult.stderr}`,
+        `${webDavResult.detail ? `${webDavResult.detail}\n` : ''}${hint}\n${ftpResult.stdout}\n${ftpResult.stderr}`,
       ),
     );
   }
@@ -899,157 +1060,118 @@ const uploadArchive = async (
   return 'ftp';
 };
 
+const filterReadableFiles = async (
+  filePaths: ReadonlyArray<string>,
+  logger?: Logger,
+): Promise<ReadonlyArray<string>> => {
+  const checks = await Promise.all(
+    filePaths.map(async filePath => {
+      try {
+        await access(filePath, constants.R_OK);
+        return filePath;
+      } catch {
+        logger?.debug({ filePath }, 'File not readable, skipping');
+        return null;
+      }
+    }),
+  );
+
+  return checks.filter((filePath): filePath is string => filePath !== null);
+};
+
 const collectLogsInternally = async (
   options: CollectLogsOptions,
 ): Promise<CollectLogsResult> => {
   const { ticketId, email, localOnly, logger } = options;
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
-  const messages: string[] = [];
 
-  logger?.info(
-    {
-      localOnly,
-      ticketId: ticketId ? 'provided' : 'missing',
-      email: email ? 'provided' : 'missing',
-    },
-    'Starting log collection',
-  );
-
-  if (!localOnly) {
-    if (!ticketId || !email) {
-      logger?.error('ticketId and email required but not provided');
-      throw createCollectLogsError(
-        'ticketId and email are required unless localOnly is true.',
-      );
-    }
-
-    logger?.info('Validating credentials before collection');
-    await validateCredentialConnectivity(ticketId, email, isWindows, logger);
-    messages.push('Credential pre-check succeeded.');
-  } else {
-    logger?.info('Local-only mode: skipping credential validation');
-    messages.push('Local-only mode enabled. Credential pre-check skipped.');
+  if (!localOnly && (!ticketId || !email)) {
+    throw createCollectLogsError(
+      'ticketId and email are required unless localOnly is true.',
+    );
   }
 
-  logger?.info('Resolving search directory');
+  if (!localOnly && ticketId && email) {
+    await validateCredentialConnectivity(ticketId, email, isWindows, logger);
+  }
+
   const searchDir = await resolveSearchDir(isWindows);
-  logger?.info({ searchDir }, 'Search directory resolved');
-
   const outputDir = await resolveOutputDir();
-  logger?.info({ outputDir }, 'Output directory resolved');
-  messages.push(`Collecting logs from: ${searchDir}`);
-
   const extraDir = join(
     searchDir,
     `gluesync-support-extra-${Date.now()}-${process.pid}`,
   );
 
-  let archivePath = '';
+  await mkdir(extraDir, { recursive: true });
+
+  const systemReportPath = join(extraDir, 'system-report.txt');
+  const yamlDumpPath = join(extraDir, 'yaml-files-dump.txt');
+  const xmlDumpPath = join(extraDir, 'xml-files-dump.txt');
+  const dockerReportPath = join(extraDir, 'docker-report.txt');
+  const containerLogsDir = join(extraDir, 'container-logs');
 
   try {
-    logger?.info({ extraDir }, 'Creating extra diagnostics directory');
-    await mkdir(extraDir, { recursive: true });
+    await Promise.all([
+      writeSystemReport(systemReportPath, isWindows),
+      writeFileDump(yamlDumpPath, searchDir, ['.yaml', '.yml'], {
+        excludeDir: extraDir,
+        isWindows,
+      }),
+      writeFileDump(xmlDumpPath, searchDir, ['.xml'], {
+        excludeDir: extraDir,
+        isWindows,
+      }),
+      writeDockerReport(dockerReportPath),
+    ]);
 
-    const systemReportPath = join(extraDir, 'system-report.txt');
-    const yamlDumpPath = join(extraDir, 'yaml-files-dump.txt');
-    const xmlDumpPath = join(extraDir, 'xml-files-dump.txt');
-    const dockerReportPath = join(extraDir, 'docker-report.txt');
-    const containerLogsDir = join(extraDir, 'container-logs');
+    await exportDockerContainerLogs(containerLogsDir);
 
-    logger?.info('Generating system report');
-    await writeSystemReport(systemReportPath, isWindows);
-
-    logger?.info('Dumping YAML files');
-    await writeFileDump(yamlDumpPath, searchDir, ['.yaml', '.yml'], {
-      excludeDir: extraDir,
-      isWindows,
-    });
-
-    logger?.info('Dumping XML files');
-    await writeFileDump(xmlDumpPath, searchDir, ['.xml'], {
-      excludeDir: extraDir,
-      isWindows,
-    });
-
-    logger?.info('Collecting Docker info');
-    await writeDockerReport(dockerReportPath);
-
-    logger?.info('Exporting container logs');
-    const exportedContainerLogs =
-      await exportDockerContainerLogs(containerLogsDir);
-    logger?.info(
-      { count: exportedContainerLogs.length },
-      'Container logs exported',
-    );
-
-    logger?.info('Collecting log files recursively');
-    const logFiles = await collectFilesRecursively(
-      searchDir,
-      filePath => {
-        const extension = extname(filePath).toLowerCase();
-        return extension === '.log' || extension === '.err';
-      },
-      { isWindows },
-    );
-    logger?.info({ count: logFiles.length }, 'Log files discovered');
-
-    logger?.info('Collecting diagnostic files');
-    const diagnosticFiles = await collectFilesRecursively(
-      extraDir,
-      () => true,
-      { isWindows },
-    );
-    logger?.info(
-      { count: diagnosticFiles.length },
-      'Diagnostic files discovered',
-    );
+    const [logFiles, diagnosticFiles] = await Promise.all([
+      collectFilesRecursively(
+        searchDir,
+        filePath => {
+          const extension = extname(filePath).toLowerCase();
+          return extension === '.log' || extension === '.err';
+        },
+        { isWindows },
+      ),
+      collectFilesRecursively(extraDir, () => true, { isWindows }),
+    ]);
 
     const candidateFiles = Array.from(
       new Set([...logFiles, ...diagnosticFiles]),
     );
-
-    logger?.info('Checking file readability');
-    const readableFiles: string[] = [];
-    for (const filePath of candidateFiles) {
-      try {
-        await access(filePath, constants.R_OK);
-        readableFiles.push(filePath);
-      } catch {
-        logger?.debug({ filePath }, 'File not readable, skipping');
-      }
-    }
-    logger?.info({ count: readableFiles.length }, 'Readable files for archive');
+    const readableFiles = await filterReadableFiles(candidateFiles, logger);
 
     if (readableFiles.length === 0) {
-      logger?.error('No readable files found to archive');
       throw createCollectLogsError(
         'No readable log, error, or diagnostics files found to archive.',
       );
     }
 
-    logger?.info('Creating archive');
-    archivePath = await createArchive(
+    const archivePath = await createArchive(
       searchDir,
       outputDir,
       readableFiles,
       isWindows,
       logger,
     );
-    logger?.info({ archivePath }, 'Archive created successfully');
-    messages.push(`Archive created: ${archivePath}`);
 
     if (localOnly) {
-      messages.push('Upload skipped (local-only mode).');
-      messages.push(`Archive available at: ${archivePath}`);
-
-      logger?.info({ archivePath }, 'Local-only mode: returning archive path');
       return {
-        output: formatOutput(messages.join('\n')),
+        output: formatOutput(
+          [
+            'Local-only mode enabled. Credential pre-check skipped.',
+            `Collecting logs from: ${searchDir}`,
+            `Archive created: ${archivePath}`,
+            'Upload skipped (local-only mode).',
+            `Archive available at: ${archivePath}`,
+          ].join('\n'),
+        ),
         archivePath,
       };
     }
 
-    logger?.info('Starting archive upload');
     const uploadedVia = await uploadArchive(
       archivePath,
       ticketId || '',
@@ -1057,22 +1179,23 @@ const collectLogsInternally = async (
       isWindows,
       logger,
     );
-    messages.push(
-      uploadedVia === 'webdav'
-        ? 'Archive uploaded successfully via WebDAV.'
-        : 'Archive uploaded successfully via FTP fallback.',
-    );
-    logger?.info({ uploadedVia }, 'Archive upload completed');
 
-    logger?.info({ archivePath }, 'Removing local archive after upload');
     await rm(archivePath, { force: true });
-    messages.push('Local archive removed after successful upload.');
 
     return {
-      output: formatOutput(messages.join('\n')),
+      output: formatOutput(
+        [
+          'Credential pre-check succeeded.',
+          `Collecting logs from: ${searchDir}`,
+          `Archive created: ${archivePath}`,
+          uploadedVia === 'webdav'
+            ? 'Archive uploaded successfully via WebDAV.'
+            : 'Archive uploaded successfully via FTP fallback.',
+          'Local archive removed after successful upload.',
+        ].join('\n'),
+      ),
     };
   } finally {
-    logger?.info({ extraDir }, 'Cleaning up extra diagnostics directory');
     await rm(extraDir, { recursive: true, force: true });
   }
 };
@@ -1096,9 +1219,10 @@ const handler: CollectLogsHandler = async (req, reply) => {
   }
 
   if (!localOnly && email && !/^[^@\s]+@[^@\s]+$/.test(email)) {
-    return reply
-      .code(400)
-      .send({ success: false, error: 'invalid email format' });
+    return reply.code(400).send({
+      success: false,
+      error: 'invalid email format',
+    });
   }
 
   try {
@@ -1110,24 +1234,19 @@ const handler: CollectLogsHandler = async (req, reply) => {
       },
       'Calling collectLogs internally',
     );
+
     const result = await collectLogsInternally({
       ticketId,
       email,
       localOnly,
-      logger: req.log,
+      logger: req.log as unknown as Logger,
     });
 
-    const responsePayload: Readonly<{
-      success: true;
-      output: string;
-      archivePath?: string;
-    }> = {
+    return reply.code(200).send({
       success: true,
       output: result.output,
       ...(result.archivePath ? { archivePath: result.archivePath } : {}),
-    };
-
-    return reply.code(200).send(responsePayload);
+    });
   } catch (err) {
     req.log.error({ err }, 'failed to collect logs internally');
 
@@ -1139,9 +1258,10 @@ const handler: CollectLogsHandler = async (req, reply) => {
       });
     }
 
-    return reply
-      .code(500)
-      .send({ success: false, error: 'internal server error' });
+    return reply.code(500).send({
+      success: false,
+      error: 'internal server error',
+    });
   }
 };
 
