@@ -6,24 +6,28 @@ export type CollectLogsQuerystring = Readonly<{
 }>;
 
 export type CollectLogsBody = Readonly<{
-  ticketId: string;
-  email: string;
+  ticketId?: string;
+  email?: string;
+  localOnly?: boolean;
 }>;
 
-export type CollectLogsSuccessResponse = {
+export type CollectLogsSuccessResponse = Readonly<{
   success: true;
   output: string;
-};
+  archivePath?: string;
+}>;
 
 export type CollectLogsResponse = CollectLogsSuccessResponse | ErrorResponse;
+
+export type CollectLogsRoute = Readonly<{
+  Querystring: CollectLogsQuerystring;
+  Body: CollectLogsBody;
+  Reply: CollectLogsResponse;
+}>;
 
 export type CollectLogsHandler = RouteHandlerMethod<
   any,
   any,
   any,
-  {
-    Querystring: CollectLogsQuerystring;
-    Body: Partial<CollectLogsBody>;
-    Reply: CollectLogsResponse;
-  }
+  CollectLogsRoute
 >;

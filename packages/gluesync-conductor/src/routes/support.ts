@@ -17,7 +17,6 @@ const utilityRoutes = async (fastify: Readonly<FastifyInstance>) => {
       },
       body: {
         type: 'object',
-        required: ['ticketId', 'email'],
         additionalProperties: false,
         properties: {
           ticketId: {
@@ -27,6 +26,11 @@ const utilityRoutes = async (fastify: Readonly<FastifyInstance>) => {
           email: {
             type: 'string',
             description: 'User email sending the logs',
+          },
+          localOnly: {
+            type: 'boolean',
+            description:
+              'If true, collects and archives logs locally without credential validation or upload',
           },
         },
       },
@@ -38,6 +42,7 @@ const utilityRoutes = async (fastify: Readonly<FastifyInstance>) => {
           properties: {
             success: { type: 'boolean', const: true },
             output: { type: 'string' },
+            archivePath: { type: 'string' },
           },
         },
         400: {

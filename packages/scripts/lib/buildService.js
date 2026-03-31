@@ -61,6 +61,14 @@ const build = async (
               to: 'build/collect-logs.sh',
             },
             {
+              from: '../gluesync-logs-uploader/system-info.sh',
+              to: 'build/system-info.sh',
+            },
+            {
+              from: '../gluesync-logs-uploader/system-info.ps1',
+              to: 'build/system-info.ps1',
+            },
+            {
               from: '../gluesync-logs-uploader/copy-agent-data.sh',
               to: 'build/copy-agent-data.sh',
             },
