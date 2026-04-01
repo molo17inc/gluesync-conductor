@@ -872,23 +872,29 @@ const createArchive = async (
       return compressedArchivePath;
     }
 
-    logger?.info('Using tar.gz compression (fallback)');
-    const archivePath = join(outputDir, `${archiveBaseName}.tar.gz`);
-    const tarResult = await runCommandCapture(
-      'tar',
-      ['-czf', archivePath, '-T', listFilePath],
-      { cwd: searchDir },
-    );
-
-    if (tarResult.exitCode !== 0) {
-      throw createCollectLogsError(
-        'Failed to create archive with tar.',
-        formatOutput(`${tarResult.stdout}\n${tarResult.stderr}`),
+    if (!isWindows) {
+      logger?.info('Using tar.gz compression (fallback)');
+      const archivePath = join(outputDir, `${archiveBaseName}.tar.gz`);
+      const tarResult = await runCommandCapture(
+        'tar',
+        ['-czf', archivePath, '-T', listFilePath],
+        { cwd: searchDir },
       );
+
+      if (tarResult.exitCode !== 0) {
+        throw createCollectLogsError(
+          'Failed to create archive with tar.',
+          formatOutput(`${tarResult.stdout}\n${tarResult.stderr}`),
+        );
+      }
+
+      logger?.info({ archivePath }, 'tar.gz archive created successfully');
+      return archivePath;
     }
 
-    logger?.info({ archivePath }, 'tar.gz archive created successfully');
-    return archivePath;
+    throw createCollectLogsError(
+      'No archive compression tool available. Please install zip.',
+    );
   } finally {
     await rm(listFilePath, { force: true });
   }
