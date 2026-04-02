@@ -28,14 +28,14 @@ WORKDIR C:\opt\gluesync-conductor
 SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
 
 # Install Docker CLI + Compose + 7zip in one layer
-RUN Invoke-WebRequest -Uri https://download.docker.com/win/static/stable/x86_64/docker-28.0.0.zip -OutFile C:/docker.zip; `
-  Invoke-WebRequest -Uri https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-windows-x86_64.exe -OutFile C:/Windows/System32/docker-compose.exe; `
-  Invoke-WebRequest -Uri https://www.7-zip.org/a/7zr.exe -OutFile C:/7zr.exe; `
+RUN Invoke-WebRequest -Uri https://download.docker.com/win/static/stable/x86_64/docker-28.0.0.zip -OutFile C:/docker.zip -MaximumRetryCount 3 -RetryIntervalSec 5; `
+  Invoke-WebRequest -Uri https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-windows-x86_64.exe -OutFile C:/Windows/System32/docker-compose.exe -MaximumRetryCount 3 -RetryIntervalSec 5; `
+  Invoke-WebRequest -Uri https://www.7-zip.org/a/7zr.exe -OutFile C:/7zr.exe -MaximumRetryCount 3 -RetryIntervalSec 5; `
   # Extract Docker
   Expand-Archive -Path C:/docker.zip -DestinationPath C:/docker-temp; `
   Copy-Item 'C:/docker-temp/docker/docker.exe' 'C:/Windows/System32/docker.exe'; `
   # Download 7z extra, extract using 7zr, and locate 7za.exe
-  Invoke-WebRequest -Uri https://www.7-zip.org/a/7z2401-extra.7z -OutFile C:/7z-extra.7z; `
+  Invoke-WebRequest -Uri https://www.7-zip.org/a/7z2401-extra.7z -OutFile C:/7z-extra.7z -MaximumRetryCount 3 -RetryIntervalSec 5; `
   & C:/7zr.exe x C:/7z-extra.7z -oC:/7z-temp -y; `
   $found = Get-ChildItem -Path C:/7z-temp -Recurse -Filter '7za.exe' | Select-Object -First 1; `
   if (-not $found) { throw '7za.exe not found in extracted archive' }; `
