@@ -27,13 +27,21 @@ WORKDIR C:\opt\gluesync-conductor
 # Switch default shell to PowerShell 7 for runtime stage
 SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
 
-# Install Docker CLI + Compose in one layer
+# Install Docker CLI + Compose + 7zip in one layer
 RUN Invoke-WebRequest -Uri https://download.docker.com/win/static/stable/x86_64/docker-28.0.0.zip -OutFile C:/docker.zip; `
-  Expand-Archive -Path C:/docker.zip -DestinationPath C:/docker; `
-  Copy-Item 'C:/docker/docker/docker.exe' 'C:/Windows/System32/docker.exe'; `
-  Remove-Item 'C:/docker' -Recurse -Force; `
-  Remove-Item 'C:/docker.zip' -Force; `
-  Invoke-WebRequest -Uri https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-windows-x86_64.exe -OutFile C:/Windows/System32/docker-compose.exe
+  Invoke-WebRequest -Uri https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-windows-x86_64.exe -OutFile C:/Windows/System32/docker-compose.exe; `
+  Invoke-WebRequest -Uri https://www.7-zip.org/a/7z2401-extra.7z -OutFile C:/7z-extra.7z; `
+  # Extract Docker
+  Expand-Archive -Path C:/docker.zip -DestinationPath C:/docker-temp; `
+  Copy-Item 'C:/docker-temp/docker/docker.exe' 'C:/Windows/System32/docker.exe'; `
+  # Extract 7za (Zip) - using built-in Expand-Archive (pwsh) or tar for .7z
+  Expand-Archive -Path C:/docker.zip -DestinationPath C:/temp-utils; `
+  # We rename 7za.exe to zip.exe for command parity with Linux
+  tar -xf C:/7z-extra.7z -C C:/Windows/System32 x64/7za.exe; `
+  Move-Item 'C:/Windows/System32/x64/7za.exe' 'C:/Windows/System32/zip.exe'; `
+  # Cleanup
+  Remove-Item 'C:/Windows/System32/x64' -Recurse -Force; `
+  Remove-Item 'C:/docker.zip', 'C:/7z-extra.7z', 'C:/docker-temp', 'C:/temp-utils' -Recurse -Force
 
 # Environment variables (one per line)
 ENV NODE_ENV=production

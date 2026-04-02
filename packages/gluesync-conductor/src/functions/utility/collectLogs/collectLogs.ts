@@ -744,17 +744,28 @@ const createArchive = async (
   await writeFile(listFilePath, `${relativePaths.join('\n')}\n`, 'utf8');
 
   try {
+    const zipArgs = isWindows
+      ? [
+          'a',
+          '-tzip',
+          '-mx5',
+          join(outputDir, `${archiveBaseName}.zip`),
+          `@${listFilePath}`,
+        ]
+      : ['-9', '-@', join(outputDir, `${archiveBaseName}.zip`)];
+
     const compressionCandidates = await Promise.all([
-      // Always include ZIP
       commandExists('zip', isWindows).then(enabled =>
         enabled
           ? ({
               name: 'zip',
               archivePath: join(outputDir, `${archiveBaseName}.zip`),
               command: 'zip',
-              args: ['-9', '-@', join(outputDir, `${archiveBaseName}.zip`)],
+              args: zipArgs,
               cwd: searchDir,
-              input: `${relativePaths.join('\n')}\n`,
+              // On Linux we pipe the list to stdin (-@),
+              // on Windows we use the file path (@file) via args
+              input: isWindows ? undefined : `${relativePaths.join('\n')}\n`,
               successLog: 'zip archive created successfully',
               failLog: 'zip compression failed, using final fallback',
             } as CompressionCandidate)
