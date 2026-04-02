@@ -1,4 +1,3 @@
-import path from 'path';
 import { spawnAsync } from './autoReboot';
 
 type AutoReboot = (
@@ -35,32 +34,54 @@ const autoRebootWindows: AutoReboot = async ({
     throw new Error('hostProjectDir is required');
   }
 
-  // Ensure absolute host path
-  const absHostProjectDir = path.win32.resolve(hostProjectDir);
-
   // Grab the env var your compose.yml expects
   const pwd = process.env.BASE_PATH;
   if (!pwd) {
     throw new Error('PWD/BASE_PATH env var must be set');
   }
 
-  // PowerShell command inside helper
-  const psCommand =
-    `$env:BASE_PATH='${pwd}'; ` +
-    `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'; ` +
-    `docker-compose up -d --force-recreate --pull always ${serviceName}`;
+  // 1. Normalize host path: E:/ProgramFiles/Gluesync
+  const hostPath = hostProjectDir.replace(/\\/g, '/').replace(/\/$/, '');
+
+  // 2. Fixed internal path for the helper container (C: is safer for HCS)
+  const internalPath = 'C:/update_context';
+
+  // 3. Define the explicit path to the compose file inside the helper
+  const internalComposeFile = `${internalPath}/docker-compose.yml`;
+
+  /**
+   * We use the exact same strategy as the full restart:
+   * - Mirror Host E: to Helper C:
+   * - Use -f to point to the configuration file
+   * - Use --project-directory to point the Engine back to the E: drive
+   */
+  const psCommand = [
+    `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'`,
+    `$env:BASE_PATH='${hostPath}'`,
+    `docker-compose -f "${internalComposeFile}" --project-directory "${hostPath}" pull ${serviceName}`,
+    `docker-compose -f "${internalComposeFile}" --project-directory "${hostPath}" up -d --force-recreate ${serviceName}`,
+  ].join('; ');
 
   const args = [
     'run',
+    '--rm', // Ensure helper is removed after execution
+    '--user',
+    'ContainerAdministrator',
     '-v',
     '\\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine',
-    '--rm',
+
+    // Mirror the E: folder (Host) to the helper's C: folder (Container)
     '-v',
-    `${absHostProjectDir}:${absHostProjectDir}`,
+    `${hostPath}:${internalPath}`,
+
+    // Set workdir to the mount point
     '-w',
-    absHostProjectDir,
+    internalPath,
+
+    // Pass BASE_PATH environment variable
     '-e',
-    `BASE_PATH=${pwd}`, // propagate to helper
+    `BASE_PATH=${hostPath}`,
+
     helperImage,
     'pwsh',
     '-NoLogo',
@@ -69,7 +90,9 @@ const autoRebootWindows: AutoReboot = async ({
     psCommand,
   ];
 
-  log(`[conductor-updater] docker (windows helper) ${args.join(' ')}`);
+  log(
+    `[conductor-updater] Rebooting service "${serviceName}" on drive ${hostPath[0]}:`,
+  );
   await spawnAsync('docker', args);
   return true;
 };

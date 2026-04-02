@@ -1,4 +1,3 @@
-import path from 'path';
 import { spawnAsync } from '../autoReboot/autoReboot';
 
 type RestartWindows = (
@@ -40,32 +39,47 @@ const restartWindows: RestartWindows = async ({
     throw new Error('hostProjectDir is required');
   }
 
-  // Ensure absolute host path
-  const absHostProjectDir = path.win32.resolve(hostProjectDir);
-
   // Grab the env var your compose.yml expects
   const pwd = process.env.BASE_PATH;
   if (!pwd) {
     throw new Error('PWD/BASE_PATH env var must be set');
   }
 
-  // PowerShell command inside helper
-  const psCommand =
-    `$env:BASE_PATH='${pwd}'; ` +
-    `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'; ` +
-    `docker-compose pull; ` +
-    `docker-compose down --remove-orphans; ` +
-    `docker-compose up -d`;
+  // 1. Normalize host path: E:/ProgramFiles/Gluesync
+  const hostPath = hostProjectDir.replace(/\\/g, '/').replace(/\/$/, '');
+
+  // 2. Fixed internal path for the helper container
+  const internalPath = 'C:/update_context';
+
+  // 3. Define the explicit path to the compose file inside the helper
+  const internalComposeFile = `${internalPath}/docker-compose.yml`;
+
+  const psCommand = [
+    `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'`,
+    `$env:BASE_PATH='${hostPath}'`,
+
+    // We use -f to explicitly point to the file so "cd" is not required
+    `docker-compose -f "${internalComposeFile}" pull`,
+    `docker-compose -f "${internalComposeFile}" down --remove-orphans`,
+
+    // We tell the engine to use the Host E: path for data volumes
+    `docker-compose -f "${internalComposeFile}" --project-directory "${hostPath}" up -d`,
+  ].join('; ');
 
   const args = [
     'run',
+    '--user',
+    'ContainerAdministrator',
     '-v',
     '\\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine',
-    '--rm',
+
+    // Mirror the E: folder to the helper's C: folder
     '-v',
-    `${absHostProjectDir}:${absHostProjectDir}`,
+    `${hostPath}:${internalPath}`,
+
+    // Setting the workdir to the mount point as a backup
     '-w',
-    absHostProjectDir,
+    internalPath,
     '-e',
     `BASE_PATH=${pwd}`, // propagate to helper
     helperImage,
