@@ -30,15 +30,15 @@ SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
 # Install Docker CLI + Compose + 7zip in one layer
 RUN Invoke-WebRequest -Uri https://download.docker.com/win/static/stable/x86_64/docker-28.0.0.zip -OutFile C:/docker.zip -MaximumRetryCount 3 -RetryIntervalSec 5; `
   Invoke-WebRequest -Uri https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-windows-x86_64.exe -OutFile C:/Windows/System32/docker-compose.exe -MaximumRetryCount 3 -RetryIntervalSec 5; `
-  Invoke-WebRequest -Uri https://www.7-zip.org/a/7z2401-x64.exe -OutFile C:/7z-installer.exe -MaximumRetryCount 3 -RetryIntervalSec 5; `
+  Invoke-WebRequest -Uri https://www.7-zip.org/a/7z2401-x64.msi -OutFile C:/7z.msi -MaximumRetryCount 3 -RetryIntervalSec 5; `
   # Extract Docker
   Expand-Archive -Path C:/docker.zip -DestinationPath C:/docker-temp; `
   Copy-Item 'C:/docker-temp/docker/docker.exe' 'C:/Windows/System32/docker.exe'; `
-  # Install 7-zip silently and copy 7za.exe to zip.exe
-  Start-Process -FilePath 'C:/7z-installer.exe' -ArgumentList '/S', '/D=C:\7z' -Wait; `
+  # Install 7-zip via MSI and copy 7za.exe to zip.exe
+  Start-Process -FilePath 'msiexec.exe' -ArgumentList '/i', 'C:\7z.msi', '/qn', '/norestart', 'INSTALLDIR=C:\7z' -Wait; `
   Copy-Item 'C:/7z/7za.exe' 'C:/Windows/System32/zip.exe'; `
   # Cleanup
-  Remove-Item 'C:/docker.zip', 'C:/7z-installer.exe', 'C:/docker-temp', 'C:/7z' -Recurse -Force
+  Remove-Item 'C:/docker.zip', 'C:/7z.msi', 'C:/docker-temp', 'C:/7z' -Recurse -Force
 
 # Environment variables (one per line)
 ENV NODE_ENV=production
