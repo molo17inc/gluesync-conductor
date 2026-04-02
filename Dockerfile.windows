@@ -34,14 +34,11 @@ RUN Invoke-WebRequest -Uri https://download.docker.com/win/static/stable/x86_64/
   # Extract Docker
   Expand-Archive -Path C:/docker.zip -DestinationPath C:/docker-temp; `
   Copy-Item 'C:/docker-temp/docker/docker.exe' 'C:/Windows/System32/docker.exe'; `
-  # Extract 7za (Zip) - using built-in Expand-Archive (pwsh) or tar for .7z
-  Expand-Archive -Path C:/docker.zip -DestinationPath C:/temp-utils; `
-  # We rename 7za.exe to zip.exe for command parity with Linux
-  tar -xf C:/7z-extra.7z -C C:/Windows/System32 x64/7za.exe; `
-  Move-Item 'C:/Windows/System32/x64/7za.exe' 'C:/Windows/System32/zip.exe'; `
+  # Extract 7za (Zip) using Expand-Archive and rename to zip.exe for command parity with Linux
+  Expand-Archive -Path C:/7z-extra.7z -DestinationPath C:/7z-temp; `
+  Move-Item 'C:/7z-temp/x64/7za.exe' 'C:/Windows/System32/zip.exe'; `
   # Cleanup
-  Remove-Item 'C:/Windows/System32/x64' -Recurse -Force; `
-  Remove-Item 'C:/docker.zip', 'C:/7z-extra.7z', 'C:/docker-temp', 'C:/temp-utils' -Recurse -Force
+  Remove-Item 'C:/docker.zip', 'C:/7z-extra.7z', 'C:/docker-temp', 'C:/7z-temp' -Recurse -Force
 
 # Environment variables (one per line)
 ENV NODE_ENV=production
