@@ -35,10 +35,13 @@ RUN Invoke-WebRequest -Uri https://download.docker.com/win/static/stable/x86_64/
   Expand-Archive -Path C:/docker.zip -DestinationPath C:/docker-temp; `
   Copy-Item 'C:/docker-temp/docker/docker.exe' 'C:/Windows/System32/docker.exe'; `
   # Extract 7za from .7z using Windows built-in bsdtar and rename to zip.exe
+  New-Item -ItemType Directory -Path C:/7z-temp -Force | Out-Null; `
   tar -xf C:/7z-extra.7z -C C:/7z-temp; `
-  $found = Get-ChildItem -Path C:/7z-temp -Recurse -Filter '7za.exe' | Select-Object -First 1; `
+  $candidates = @('C:/7z-temp/x64/7za.exe', 'C:/7z-temp/7za.exe'); `
+  $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1; `
+  if (-not $found) { $found = (Get-ChildItem -Path C:/7z-temp -Recurse -Filter '7za.exe' | Select-Object -First 1).FullName }; `
   if (-not $found) { throw '7za.exe not found in extracted archive' }; `
-  Copy-Item $found.FullName 'C:/Windows/System32/zip.exe'; `
+  Copy-Item $found 'C:/Windows/System32/zip.exe'; `
   # Cleanup
   Remove-Item 'C:/docker.zip', 'C:/7z-extra.7z', 'C:/docker-temp', 'C:/7z-temp' -Recurse -Force
 
