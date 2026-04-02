@@ -872,41 +872,6 @@ const createArchive = async (
       return compressedArchivePath;
     }
 
-    if (isWindows) {
-      logger?.info('Using PowerShell Compress-Archive');
-
-      const archivePath = join(outputDir, `${archiveBaseName}.zip`);
-
-      const safeArchivePath = archivePath.replace(/'/g, "''");
-      const safeListPath = listFilePath.replace(/'/g, "''");
-
-      const psCommand = `
-      $files = Get-Content '${safeListPath}';
-      Compress-Archive -Path $files -DestinationPath '${safeArchivePath}' -Force
-    `;
-
-      const result = await runCommandCapture(
-        'pwsh',
-        ['-NoProfile', '-Command', psCommand],
-        { cwd: searchDir, useShell: false },
-      );
-
-      if (result.exitCode !== 0) {
-        logger?.error(
-          { stdout: result.stdout, stderr: result.stderr },
-          'Compress-Archive failed',
-        );
-
-        throw createCollectLogsError(
-          'Failed to create archive with Compress-Archive.',
-          formatOutput(`${result.stdout}\n${result.stderr}`),
-        );
-      }
-
-      logger?.info({ archivePath }, 'zip archive created via PowerShell');
-      return archivePath;
-    }
-
     if (!isWindows) {
       logger?.info('Using tar.gz compression (fallback)');
       const archivePath = join(outputDir, `${archiveBaseName}.tar.gz`);
