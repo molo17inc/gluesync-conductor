@@ -727,6 +727,7 @@ const createArchive = async (
     .replace(/[-:]/g, '')
     .replace(/\..*/, '')
     .replace('T', '-');
+
   const archiveBaseName = `support-logs-v${SCRIPT_VERSION}-${timestamp}`;
   const relativePaths = toRelativeArchivePaths(searchDir, files);
 
@@ -740,12 +741,97 @@ const createArchive = async (
     outputDir,
     `.collect-logs-${Date.now()}-${process.pid}.list`,
   );
-
   await writeFile(listFilePath, `${relativePaths.join('\n')}\n`, 'utf8');
 
   try {
     const compressionCandidates = await Promise.all([
-      // Always include ZIP
+      // --- WINDOWS NATIVE (Nanoserver 2022 / Server 2019) ---
+      isWindows
+        ? commandExists('tar.exe', true).then(enabled =>
+            enabled
+              ? ({
+                  name: 'tar.exe',
+                  archivePath: join(outputDir, `${archiveBaseName}.zip`),
+                  command: 'tar.exe',
+                  // -a auto-detects .zip, -C changes context to searchDir, -T reads the list
+                  args: [
+                    '-a',
+                    '-cf',
+                    join(outputDir, `${archiveBaseName}.zip`),
+                    '-C',
+                    searchDir,
+                    '-T',
+                    listFilePath,
+                  ],
+                  cwd: process.cwd(),
+                  successLog: 'zip archive created via tar.exe',
+                  failLog: 'tar.exe failed, trying next candidate',
+                } as CompressionCandidate)
+              : null,
+          )
+        : Promise.resolve(null),
+
+      // --- LINUX: PIGZ (Parallel GZIP - Fast & Multi-core) ---
+      !isWindows
+        ? commandExists('pigz', false).then(enabled =>
+            enabled
+              ? ({
+                  name: 'pigz',
+                  archivePath: join(outputDir, `${archiveBaseName}.tar.gz`),
+                  command: 'sh',
+                  args: [
+                    '-c',
+                    `tar -cf - -C "${searchDir}" -T "${listFilePath}" | pigz > "${join(outputDir, `${archiveBaseName}.tar.gz`)}"`,
+                  ],
+                  cwd: searchDir,
+                  successLog: 'tar.gz created via pigz',
+                  failLog: 'pigz failed, trying next candidate',
+                } as CompressionCandidate)
+              : null,
+          )
+        : Promise.resolve(null),
+
+      // --- LINUX: ZSTD (High Performance) ---
+      !isWindows
+        ? commandExists('zstd', false).then(enabled =>
+            enabled
+              ? ({
+                  name: 'zstd',
+                  archivePath: join(outputDir, `${archiveBaseName}.tar.zst`),
+                  command: 'sh',
+                  args: [
+                    '-c',
+                    `tar -cf - -C "${searchDir}" -T "${listFilePath}" | zstd -T0 -19 > "${join(outputDir, `${archiveBaseName}.tar.zst`)}"`,
+                  ],
+                  cwd: searchDir,
+                  successLog: 'tar.zst created via zstd',
+                  failLog: 'zstd failed, trying next candidate',
+                } as CompressionCandidate)
+              : null,
+          )
+        : Promise.resolve(null),
+
+      // --- LINUX: XZ (Maximum Compression) ---
+      !isWindows
+        ? commandExists('xz', false).then(enabled =>
+            enabled
+              ? ({
+                  name: 'xz',
+                  archivePath: join(outputDir, `${archiveBaseName}.tar.xz`),
+                  command: 'sh',
+                  args: [
+                    '-c',
+                    `tar -cf - -C "${searchDir}" -T "${listFilePath}" | xz -T0 -9 > "${join(outputDir, `${archiveBaseName}.tar.xz`)}"`,
+                  ],
+                  cwd: searchDir,
+                  successLog: 'tar.xz created via xz',
+                  failLog: 'xz failed, trying next candidate',
+                } as CompressionCandidate)
+              : null,
+          )
+        : Promise.resolve(null),
+
+      // --- CROSS-PLATFORM: ZIP ---
       commandExists('zip', isWindows).then(enabled =>
         enabled
           ? ({
@@ -756,76 +842,10 @@ const createArchive = async (
               cwd: searchDir,
               input: `${relativePaths.join('\n')}\n`,
               successLog: 'zip archive created successfully',
-              failLog: 'zip compression failed, using final fallback',
+              failLog: 'zip failed, trying next candidate',
             } as CompressionCandidate)
           : null,
       ),
-
-      !isWindows
-        ? commandExists('zstd', false).then(enabled =>
-            enabled
-              ? ({
-                  name: 'zstd',
-                  archivePath: join(outputDir, `${archiveBaseName}.tar.zst`),
-                  command: 'sh',
-                  args: [
-                    '-c',
-                    `tar -cf - -T "${listFilePath}" | zstd -T0 -19 > "${join(
-                      outputDir,
-                      `${archiveBaseName}.tar.zst`,
-                    )}"`,
-                  ],
-                  cwd: searchDir,
-                  successLog: 'zstd archive created successfully',
-                  failLog: 'zstd compression failed, trying next method',
-                } as CompressionCandidate)
-              : null,
-          )
-        : Promise.resolve(null),
-
-      !isWindows
-        ? commandExists('xz', false).then(enabled =>
-            enabled
-              ? ({
-                  name: 'xz',
-                  archivePath: join(outputDir, `${archiveBaseName}.tar.xz`),
-                  command: 'sh',
-                  args: [
-                    '-c',
-                    `tar -cf - -T "${listFilePath}" | xz -T0 -9 > "${join(
-                      outputDir,
-                      `${archiveBaseName}.tar.xz`,
-                    )}"`,
-                  ],
-                  cwd: searchDir,
-                  successLog: 'xz archive created successfully',
-                  failLog: 'xz compression failed, trying next method',
-                } as CompressionCandidate)
-              : null,
-          )
-        : Promise.resolve(null),
-
-      !isWindows
-        ? commandExists('pigz', false).then(enabled =>
-            enabled
-              ? ({
-                  name: 'pigz',
-                  archivePath: join(outputDir, `${archiveBaseName}.tar.gz`),
-                  command: 'sh',
-                  args: [
-                    '-c',
-                    `tar -cf - -T "${listFilePath}" | pigz > "${join(
-                      outputDir,
-                      `${archiveBaseName}.tar.gz`,
-                    )}"`,
-                  ],
-                  cwd: searchDir,
-                  successLog: 'pigz archive created successfully',
-                  failLog: 'pigz compression failed, trying next method',
-                } as CompressionCandidate)
-              : null,
-          )
-        : Promise.resolve(null),
     ]);
 
     const availableCandidates = compressionCandidates.filter(
@@ -841,14 +861,14 @@ const createArchive = async (
         return acc;
       }
 
-      logger?.info(`Using ${candidate.name} compression`);
+      logger?.info(`Attempting compression with ${candidate.name}`);
       const result = await runCommandCapture(
         candidate.command,
         candidate.args,
         {
           cwd: candidate.cwd,
           ...(candidate.input ? { input: candidate.input } : {}),
-          useShell: false,
+          useShell: candidate.command === 'sh', // Shell only needed for Linux pipes
         },
       );
 
@@ -864,7 +884,6 @@ const createArchive = async (
         { exitCode: result.exitCode, stderr: result.stderr },
         candidate.failLog,
       );
-
       return null;
     }, Promise.resolve(null));
 
@@ -872,23 +891,28 @@ const createArchive = async (
       return compressedArchivePath;
     }
 
-    logger?.info('Using tar.gz compression (fallback)');
-    const archivePath = join(outputDir, `${archiveBaseName}.tar.gz`);
-    const tarResult = await runCommandCapture(
-      'tar',
-      ['-czf', archivePath, '-T', listFilePath],
-      { cwd: searchDir },
-    );
+    // --- FINAL UNIVERSAL FALLBACK (Standard tar) ---
+    const fallbackExt = isWindows ? '.zip' : '.tar.gz';
+    const fallbackPath = join(outputDir, `${archiveBaseName}${fallbackExt}`);
+    const fallbackCmd = isWindows ? 'tar.exe' : 'tar';
+    const fallbackArgs = isWindows
+      ? ['-a', '-cf', fallbackPath, '-C', searchDir, '-T', listFilePath]
+      : ['-czf', fallbackPath, '-C', searchDir, '-T', listFilePath];
 
-    if (tarResult.exitCode !== 0) {
-      throw createCollectLogsError(
-        'Failed to create archive with tar.',
-        formatOutput(`${tarResult.stdout}\n${tarResult.stderr}`),
-      );
+    logger?.info(
+      `All candidates failed. Attempting final fallback: ${fallbackCmd}`,
+    );
+    const finalResult = await runCommandCapture(fallbackCmd, fallbackArgs, {
+      cwd: process.cwd(),
+    });
+
+    if (finalResult.exitCode === 0) {
+      return fallbackPath;
     }
 
-    logger?.info({ archivePath }, 'tar.gz archive created successfully');
-    return archivePath;
+    throw createCollectLogsError(
+      'No archive compression tool available. Please install zip.',
+    );
   } finally {
     await rm(listFilePath, { force: true });
   }
