@@ -715,6 +715,52 @@ const toRelativeArchivePaths = (
     })
     .filter((entry): entry is string => entry !== null);
 
+const isArchiveValid = async (archivePath: string): Promise<boolean> => {
+  try {
+    const stats = await stat(archivePath);
+    // Minimum valid archive size: 100 bytes (rough heuristic)
+    // Empty/compressed empty files are typically 20-40 bytes
+    if (stats.size < 100) {
+      return false;
+    }
+
+    // Verify archive can be read by checking its format
+    const ext = extname(archivePath).toLowerCase();
+
+    if (ext === '.zip') {
+      // Check zip magic number (PK\x03\x04 or PK\x05\x06 for empty zip)
+      const header = await readFile(archivePath).then(b => b.subarray(0, 4));
+      const magic = Buffer.from([0x50, 0x4b]);
+      return header.subarray(0, 2).equals(magic);
+    }
+
+    if (ext === '.tar.gz' || ext.endsWith('.gz')) {
+      // Check gzip magic number (0x1f 0x8b)
+      const header = await readFile(archivePath).then(b => b.subarray(0, 2));
+      const magic = Buffer.from([0x1f, 0x8b]);
+      return header.equals(magic);
+    }
+
+    if (ext === '.tar.zst') {
+      // Check zstd magic number (0x28 0xb5 0x2f 0xfd)
+      const header = await readFile(archivePath).then(b => b.subarray(0, 4));
+      const magic = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+      return header.equals(magic);
+    }
+
+    if (ext === '.tar.xz') {
+      // Check xz magic number (0xfd 0x37 0x7a 0x58 0x5a 0x00)
+      const header = await readFile(archivePath).then(b => b.subarray(0, 6));
+      const magic = Buffer.from([0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00]);
+      return header.equals(magic);
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const createArchive = async (
   searchDir: string,
   outputDir: string,
@@ -772,6 +818,7 @@ const createArchive = async (
         : Promise.resolve(null),
 
       // --- LINUX: PIGZ (Parallel GZIP - Fast & Multi-core) ---
+      // Using pipefail to catch tar failures in pipeline
       !isWindows
         ? commandExists('pigz', false).then(enabled =>
             enabled
@@ -781,7 +828,7 @@ const createArchive = async (
                   command: 'sh',
                   args: [
                     '-c',
-                    `tar -cf - -C "${searchDir}" -T "${listFilePath}" | pigz > "${join(outputDir, `${archiveBaseName}.tar.gz`)}"`,
+                    `set -o pipefail; tar -cf - -C "${searchDir}" -T "${listFilePath}" | pigz > "${join(outputDir, `${archiveBaseName}.tar.gz`)}"`,
                   ],
                   cwd: searchDir,
                   successLog: 'tar.gz created via pigz',
@@ -801,7 +848,7 @@ const createArchive = async (
                   command: 'sh',
                   args: [
                     '-c',
-                    `tar -cf - -C "${searchDir}" -T "${listFilePath}" | zstd -T0 -19 > "${join(outputDir, `${archiveBaseName}.tar.zst`)}"`,
+                    `set -o pipefail; tar -cf - -C "${searchDir}" -T "${listFilePath}" | zstd -T0 -19 > "${join(outputDir, `${archiveBaseName}.tar.zst`)}"`,
                   ],
                   cwd: searchDir,
                   successLog: 'tar.zst created via zstd',
@@ -821,7 +868,7 @@ const createArchive = async (
                   command: 'sh',
                   args: [
                     '-c',
-                    `tar -cf - -C "${searchDir}" -T "${listFilePath}" | xz -T0 -9 > "${join(outputDir, `${archiveBaseName}.tar.xz`)}"`,
+                    `set -o pipefail; tar -cf - -C "${searchDir}" -T "${listFilePath}" | xz -T0 -9 > "${join(outputDir, `${archiveBaseName}.tar.xz`)}"`,
                   ],
                   cwd: searchDir,
                   successLog: 'tar.xz created via xz',
@@ -877,7 +924,24 @@ const createArchive = async (
           { archivePath: candidate.archivePath },
           candidate.successLog,
         );
-        return candidate.archivePath;
+
+        // Validate archive is not corrupted (catches 20-byte empty archive issue)
+        const valid = await isArchiveValid(candidate.archivePath);
+        if (valid) {
+          logger?.info(
+            { archivePath: candidate.archivePath },
+            'Archive validation passed',
+          );
+          return candidate.archivePath;
+        }
+
+        logger?.warn(
+          { archivePath: candidate.archivePath },
+          'Archive validation failed (corrupted/empty), trying next candidate',
+        );
+        // Delete corrupted archive and continue to next candidate
+        await rm(candidate.archivePath, { force: true });
+        return null;
       }
 
       logger?.warn(
@@ -907,7 +971,20 @@ const createArchive = async (
     });
 
     if (finalResult.exitCode === 0) {
-      return fallbackPath;
+      const valid = await isArchiveValid(fallbackPath);
+      if (valid) {
+        logger?.info(
+          { archivePath: fallbackPath },
+          'Fallback archive validation passed',
+        );
+        return fallbackPath;
+      }
+
+      logger?.error(
+        { archivePath: fallbackPath },
+        'Fallback archive validation failed (corrupted)',
+      );
+      await rm(fallbackPath, { force: true });
     }
 
     throw createCollectLogsError(
