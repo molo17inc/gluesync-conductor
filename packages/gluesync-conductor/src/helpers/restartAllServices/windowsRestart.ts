@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { spawnAsync } from '../autoReboot/autoReboot';
 
 type RestartWindows = (
@@ -54,34 +56,54 @@ const restartWindows: RestartWindows = async ({
   // 3. Define the explicit path to the compose file inside the helper
   const internalComposeFile = `${internalPath}/docker-compose.yml`;
 
+  // automatically use .env if present in root folder
+  const internalEnvFile = `${internalPath}/.env`;
+
+  // --- 1. Read host .env file manually ---
+  const envFilePaths = [
+    path.join(hostProjectDir, '.env'),
+    'C:/opt/gluesync-conductor/root-folder/.env',
+  ];
+
+  const envVars = envFilePaths
+    .filter(fs.existsSync)
+    .flatMap(filePath => fs.readFileSync(filePath, 'utf-8').split(/\r?\n/))
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#'))
+    .map(line => {
+      const [key, ...rest] = line.split('=');
+      return [key.trim(), rest.join('=').trim()] as const;
+    })
+    .reduce<Record<string, string>>(
+      (acc, [key, value]) => ({ ...acc, [key]: value }),
+      {},
+    );
+
+  // Merge BASE_PATH so it is always available
+  const finalEnvVars = { ...envVars, BASE_PATH: pwd };
+
+  // --- Build PowerShell command ---
   const psCommand = [
     `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'`,
     `$env:BASE_PATH='${hostPath}'`,
-
-    // We use -f to explicitly point to the file so "cd" is not required
-    `docker-compose -f "${internalComposeFile}" pull`,
-    `docker-compose -f "${internalComposeFile}" down --remove-orphans`,
-
-    // We tell the engine to use the Host E: path for data volumes
-    `docker-compose -f "${internalComposeFile}" --project-directory "${hostPath}" up -d`,
+    `docker-compose -f "${internalComposeFile}" --env-file "${internalEnvFile}" pull`,
+    `docker-compose -f "${internalComposeFile}" --env-file "${internalEnvFile}" down --remove-orphans`,
+    `docker-compose -f "${internalComposeFile}" --env-file "${internalEnvFile}" --project-directory "${hostPath}" up -d`,
   ].join('; ');
 
+  // --- Build docker run args ---
   const args = [
     'run',
     '--user',
     'ContainerAdministrator',
     '-v',
     '\\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine',
-
-    // Mirror the E: folder to the helper's C: folder
     '-v',
     `${hostPath}:${internalPath}`,
-
-    // Setting the workdir to the mount point as a backup
     '-w',
     internalPath,
-    '-e',
-    `BASE_PATH=${pwd}`, // propagate to helper
+    // Inject all environment variables including BASE_PATH
+    ...Object.entries(finalEnvVars).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
     helperImage,
     'pwsh',
     '-NoLogo',
