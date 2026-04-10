@@ -94,6 +94,7 @@ const restartWindows: RestartWindows = async ({
   // --- Build docker run args ---
   const args = [
     'run',
+    '--rm',
     '--user',
     'ContainerAdministrator',
     '-v',
