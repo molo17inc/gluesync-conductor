@@ -796,17 +796,16 @@ const createArchive = async (
 
   try {
     const commandAvailability = await Promise.all([
-      isWindows ? commandExists('tar.exe', true) : Promise.resolve(false),
+      // isWindows ? commandExists('tar.exe', true) : Promise.resolve(false),
       !isWindows ? commandExists('zip', false) : commandExists('zip', true),
       !isWindows ? commandExists('zstd', false) : Promise.resolve(false),
     ]);
 
-    const [windowsTarAvailable, zipAvailable, zstdAvailable] =
-      commandAvailability;
+    const [zipAvailable, zstdAvailable] = commandAvailability;
 
     const candidateMatrix: ReadonlyArray<CompressionCandidate | null> = [
       // --- WINDOWS NATIVE (Nanoserver 2022 / Server 2019) ---
-      isWindows && windowsTarAvailable
+      isWindows
         ? ({
             name: 'tar.exe',
             archivePath: join(outputDir, `${archiveBaseName}.tar`),
@@ -866,7 +865,7 @@ const createArchive = async (
           } as CompressionCandidate)
         : null,
 
-      zipAvailable
+      !isWindows && zipAvailable
         ? ({
             name: 'zip',
             archivePath: join(outputDir, `${archiveBaseName}.zip`),
