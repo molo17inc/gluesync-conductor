@@ -1192,7 +1192,12 @@ const collectLogsInternally = async (
     );
   }
 
-  if (!localOnly && ticketId && email) {
+  if (
+    !localOnly &&
+    ticketId &&
+    email &&
+    !(!!process.env.PROXY_HTTPS || !!process.env.PROXY_HTTP)
+  ) {
     await validateCredentialConnectivity(ticketId, email, isWindows, logger);
   }
 
