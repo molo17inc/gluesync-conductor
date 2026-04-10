@@ -809,19 +809,18 @@ const createArchive = async (
       isWindows && windowsTarAvailable
         ? ({
             name: 'tar.exe',
-            archivePath: join(outputDir, `${archiveBaseName}.zip`),
+            archivePath: join(outputDir, `${archiveBaseName}.tar`),
             command: 'tar.exe',
             args: [
-              '-a',
               '-cf',
-              join(outputDir, `${archiveBaseName}.zip`),
+              join(outputDir, `${archiveBaseName}.tar`),
               '-C',
               searchDir,
               '-T',
               listFilePath,
             ],
             cwd: process.cwd(),
-            successLog: 'zip archive created via tar.exe',
+            successLog: 'tar archive created via tar.exe',
             failLog: 'tar.exe failed, trying next candidate',
           } as CompressionCandidate)
         : null,
