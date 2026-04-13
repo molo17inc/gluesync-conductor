@@ -1,5 +1,3 @@
-import fs from 'fs';
-import path from 'path';
 import { spawnAsync } from '../autoReboot/autoReboot';
 
 type RestartWindows = (
@@ -56,55 +54,37 @@ const restartWindows: RestartWindows = async ({
   // 3. Define the explicit path to the compose file inside the helper
   const internalComposeFile = `${internalPath}/docker-compose.yml`;
 
-  // automatically use .env if present in root folder
-  const internalEnvFile = `${internalPath}/.env`;
-
-  // --- 1. Read host .env file manually ---
-  const envFilePaths = [
-    path.join(hostProjectDir, '.env'),
-    'C:/opt/gluesync-conductor/root-folder/.env',
-  ];
-
-  const envVars = envFilePaths
-    .filter(fs.existsSync)
-    .flatMap(filePath => fs.readFileSync(filePath, 'utf-8').split(/\r?\n/))
-    .map(line => line.trim())
-    .filter(line => line && !line.startsWith('#'))
-    .map(line => {
-      const [key, ...rest] = line.split('=');
-      return [key.trim(), rest.join('=').trim()] as const;
-    })
-    .reduce<Record<string, string>>(
-      (acc, [key, value]) => ({ ...acc, [key]: value }),
-      {},
-    );
-
-  // Merge BASE_PATH so it is always available
-  const finalEnvVars = { ...envVars, BASE_PATH: pwd };
-
   // --- Build PowerShell command ---
   const psCommand = [
     `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'`,
-    `$env:BASE_PATH='${hostPath}'`,
-    `docker-compose -f "${internalComposeFile}" --env-file "${internalEnvFile}" pull`,
-    `docker-compose -f "${internalComposeFile}" --env-file "${internalEnvFile}" down --remove-orphans`,
-    `docker-compose -f "${internalComposeFile}" --env-file "${internalEnvFile}" --project-directory "${hostPath}" up -d`,
+    `$env:BASE_PATH='${internalPath}'`,
+
+    `$env:PROXY_HTTP='${process.env.PROXY_HTTP ?? ''}'`,
+    `$env:PROXY_HTTPS='${process.env.PROXY_HTTPS ?? ''}'`,
+
+    `docker-compose -f "${internalComposeFile}" pull`,
+    `docker-compose -f "${internalComposeFile}" down --remove-orphans`,
+    `docker-compose -f "${internalComposeFile}" --project-directory "${hostPath}" up -d`,
   ].join('; ');
 
   // --- Build docker run args ---
   const args = [
     'run',
-    '--rm',
     '--user',
     'ContainerAdministrator',
+    '--rm',
     '-v',
     '\\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine',
     '-v',
     `${hostPath}:${internalPath}`,
     '-w',
     internalPath,
-    // Inject all environment variables including BASE_PATH
-    ...Object.entries(finalEnvVars).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
+    '-e',
+    `PROXY_HTTP=${process.env.PROXY_HTTP ?? ''}`,
+    '-e',
+    `PROXY_HTTPS=${process.env.PROXY_HTTPS ?? ''}`,
+    '-e',
+    `BASE_PATH=${pwd}`,
     helperImage,
     'pwsh',
     '-NoLogo',
@@ -114,6 +94,7 @@ const restartWindows: RestartWindows = async ({
   ];
 
   log(`[conductor-updater] docker (windows helper) ${args.join(' ')}`);
+
   await spawnAsync('docker', args);
   return true;
 };
