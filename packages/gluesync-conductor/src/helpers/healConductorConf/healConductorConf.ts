@@ -124,31 +124,53 @@ const healConductorConf = async (): Promise<boolean> => {
         if (e.startsWith('CORE_HUB_ADDRESS=')) {
           const value = e.substring('CORE_HUB_ADDRESS='.length);
 
-          // only add GLUESYNC_HOST if not already present
           if (!hasGluesyncHostInitial) {
-            return { value: `GLUESYNC_HOST=${value}`, changed: true };
+            return `GLUESYNC_HOST=${value}`;
           }
 
-          // remove legacy entry
-          return { value: '', changed: true };
+          return '';
         }
 
-        return { value: e, changed: false };
+        return e;
       })
-      .filter(x => x.value) // remove empty strings (removed legacy)
-      .map(x => x.value);
+      .filter(Boolean);
 
-    // Step 2: if no GLUESYNC_HOST exists after mapping → add default
-    const finalEnvArray = mapped.some(e => e.startsWith('GLUESYNC_HOST='))
+    const mappedChanged =
+      mapped.length !== rawEnvArray.length ||
+      rawEnvArray.some(e => e.startsWith('CORE_HUB_ADDRESS='));
+
+    // Step 2: ensure GLUESYNC_HOST exists
+    const hasGluesyncHost = mapped.some(e => e.startsWith('GLUESYNC_HOST='));
+
+    const withHost = hasGluesyncHost
       ? mapped
-      : mapped.concat(`GLUESYNC_HOST=https://gluesync-core-hub:1717`);
+      : [...mapped, `GLUESYNC_HOST=https://gluesync-core-hub:1717`];
 
-    // Step 3: envChanged = true if original changed OR default added
-    const envChanged =
-      mapped.length !== finalEnvArray.length ||
-      mapped.length !== rawEnvArray.length;
+    const hostAdded = !hasGluesyncHost;
 
-    return { healedEnvArray: finalEnvArray, envChanged };
+    // Step 3: PROXY HEALING (Windows only)
+    const hasProxyHttp = withHost.some(e => e.startsWith('PROXY_HTTP='));
+    const hasProxyHttps = withHost.some(e => e.startsWith('PROXY_HTTPS='));
+
+    const proxyEntries = isWindows
+      ? [
+          ...(hasProxyHttp
+            ? []
+            : [`PROXY_HTTP=${['$', '{PROXY_HTTP:-}'].join('')}`]),
+          ...(hasProxyHttps
+            ? []
+            : [`PROXY_HTTPS=${['$', '{PROXY_HTTPS:-}'].join('')}`]),
+        ]
+      : [];
+
+    const withProxy = [...withHost, ...proxyEntries];
+
+    const proxyAdded = isWindows && (!hasProxyHttp || !hasProxyHttps);
+
+    return {
+      healedEnvArray: withProxy,
+      envChanged: mappedChanged || hostAdded || proxyAdded,
+    };
   })();
 
   // ----- ENV_FILE HEALING -----
@@ -158,7 +180,6 @@ const healConductorConf = async (): Promise<boolean> => {
 
   const currentEnvFileRaw = normalizeEnvFile(service.env_file);
 
-  // Only heal/add ENV_FILE on non-Windows
   const currentEnvFile: EnvFile = isWindows
     ? currentEnvFileRaw.map(e => (typeof e === 'string' ? { path: e } : e))
     : currentEnvFileRaw.map(e => {
@@ -183,6 +204,7 @@ const healConductorConf = async (): Promise<boolean> => {
   const finalEnvFile: EnvFile = isWindows ? currentEnvFile : buildEnvFileConf();
 
   const normalizedCurrentEnv = currentEnvFile.map(canonicalizeEnvFileElement);
+
   const normalizedFinalEnv = normalizeEnvFile(finalEnvFile).map(
     canonicalizeEnvFileElement,
   );
@@ -208,6 +230,7 @@ const healConductorConf = async (): Promise<boolean> => {
     : [...healedVolumes, REQUIRED_ROOT_FOLDER_MOUNT_VOLUME];
 
   const normalizedCurrentVolumes = currentVolumes.map(normalizeVolumeStr);
+
   const normalizedFinalVolumes = finalVolumes.map(normalizeVolumeStr);
 
   const volumesChanged =
@@ -269,7 +292,7 @@ const healConductorConf = async (): Promise<boolean> => {
     tag: currentTag = 'latest',
   } = parseImage(baseService.image);
 
-  // ----- OPTIONAL RETAG (only if currentTag === 'latest') -----
+  // ----- OPTIONAL RETAG -----
   const newTag: string | null =
     currentTag === 'latest'
       ? (getVersionByChannel(await fetchAgentInfo(shortImageName), 'ga') ??
@@ -284,7 +307,7 @@ const healConductorConf = async (): Promise<boolean> => {
     ...(newTag ? { image: `${fullName}:${newTag}` } : {}),
   };
 
-  // ----- is changed DETECTION -----
+  // ----- CHANGE DETECTION -----
   const isChanged =
     containerNameChanged ||
     volumesChanged ||

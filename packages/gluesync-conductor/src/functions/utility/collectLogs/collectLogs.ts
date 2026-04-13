@@ -19,8 +19,10 @@ import {
   resolve,
   sep,
 } from 'node:path';
+import { AxiosError } from 'axios';
 import { CollectLogsHandler } from './collectLogs.model';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
+import axiosWithRetry from '../../../utils/axiosWithRetry';
 
 type Logger = Readonly<{
   debug: (
@@ -794,32 +796,30 @@ const createArchive = async (
 
   try {
     const commandAvailability = await Promise.all([
-      isWindows ? commandExists('tar.exe', true) : Promise.resolve(false),
+      // isWindows ? commandExists('tar.exe', true) : Promise.resolve(false),
       !isWindows ? commandExists('zip', false) : commandExists('zip', true),
       !isWindows ? commandExists('zstd', false) : Promise.resolve(false),
     ]);
 
-    const [windowsTarAvailable, zipAvailable, zstdAvailable] =
-      commandAvailability;
+    const [zipAvailable, zstdAvailable] = commandAvailability;
 
     const candidateMatrix: ReadonlyArray<CompressionCandidate | null> = [
       // --- WINDOWS NATIVE (Nanoserver 2022 / Server 2019) ---
-      isWindows && windowsTarAvailable
+      isWindows
         ? ({
             name: 'tar.exe',
-            archivePath: join(outputDir, `${archiveBaseName}.zip`),
+            archivePath: join(outputDir, `${archiveBaseName}.tar`),
             command: 'tar.exe',
             args: [
-              '-a',
               '-cf',
-              join(outputDir, `${archiveBaseName}.zip`),
+              join(outputDir, `${archiveBaseName}.tar`),
               '-C',
               searchDir,
               '-T',
               listFilePath,
             ],
             cwd: process.cwd(),
-            successLog: 'zip archive created via tar.exe',
+            successLog: 'tar archive created via tar.exe',
             failLog: 'tar.exe failed, trying next candidate',
           } as CompressionCandidate)
         : null,
@@ -865,7 +865,7 @@ const createArchive = async (
           } as CompressionCandidate)
         : null,
 
-      zipAvailable
+      !isWindows && zipAvailable
         ? ({
             name: 'zip',
             archivePath: join(outputDir, `${archiveBaseName}.zip`),
@@ -1026,33 +1026,19 @@ const validateCredentialConnectivity = async (
     'Content-Type': 'text/xml',
   };
 
-  const webDavAttempt = await fetch(webdavProbeUrl, {
+  const webDavAttempt = await axiosWithRetry<unknown>(webdavProbeUrl, {
     method: 'PROPFIND',
     headers,
-    body: WEBDAV_PAYLOAD,
+    data: WEBDAV_PAYLOAD,
+    retries: 3,
+    timeout: 5000,
+    backoffMs: 300,
   })
-    .then(response => {
-      if (response.ok || response.status === 207) {
-        return { ok: true as const, detail: '' };
-      }
-
-      const authHint =
-        response.status === 401 || response.status === 403
-          ? ' (authentication or authorization issue)'
-          : '';
-
-      return {
-        ok: false as const,
-        detail: `WebDAV credential pre-check failed with HTTP ${response.status} ${response.statusText}${authHint}`,
-      };
-    })
-    .catch(err => {
-      const reason = err instanceof Error ? err.message : 'unknown error';
-      return {
-        ok: false as const,
-        detail: `WebDAV credential pre-check network error: ${reason}`,
-      };
-    });
+    .then(() => ({ ok: true as const, detail: '' }))
+    .catch(err => ({
+      ok: false as const,
+      detail: `WebDAV credential pre-check failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+    }));
 
   if (webDavAttempt.ok) {
     logger?.info('WebDAV credential pre-check succeeded');
@@ -1063,17 +1049,16 @@ const validateCredentialConnectivity = async (
     { detail: webDavAttempt.detail },
     'WebDAV credential pre-check failed',
   );
-  logger?.info('Attempting FTP fallback for credential validation');
 
   const hasCurl = await commandExists('curl', isWindows);
-
   if (!hasCurl) {
     throw createCollectLogsError(
-      'Unable to validate credentials: WebDAV failed and curl is unavailable for FTP fallback.',
+      'WebDAV credential check failed and curl is not available for FTP fallback.',
       webDavAttempt.detail || undefined,
     );
   }
 
+  // FTP fallback if WebDAV fails
   const ftpCheck = await runCommandCapture('curl', [
     '--silent',
     '--fail',
@@ -1086,14 +1071,14 @@ const validateCredentialConnectivity = async (
 
   if (ftpCheck.exitCode !== 0) {
     throw createCollectLogsError(
-      'Unable to validate ticket/email credentials before collecting logs.',
+      'Unable to validate credentials via WebDAV or FTP.',
       formatOutput(
         `${webDavAttempt.detail ? `${webDavAttempt.detail}\n` : ''}${ftpCheck.stdout}\n${ftpCheck.stderr}`,
       ),
     );
   }
 
-  logger?.info('FTP credential pre-check succeeded');
+  logger?.info('FTP fallback credential pre-check succeeded');
 };
 
 const uploadArchive = async (
@@ -1107,41 +1092,36 @@ const uploadArchive = async (
   const encodedName = encodeURIComponent(fileName);
   const webDavTarget = `${resolveWebDavRootUrl()}${encodedName}`;
 
-  logger?.info({ fileName, webDavTarget }, 'Starting archive upload');
+  logger?.info(
+    { fileName, webDavTarget },
+    'Starting archive upload via WebDAV',
+  );
 
   const webDavResult = await readFile(archivePath)
     .then(async payload => {
-      logger?.info({ size: payload.length }, 'Uploading via WebDAV PUT');
-
-      const response = await fetch(webDavTarget, {
+      await axiosWithRetry<void>(webDavTarget, {
         method: 'PUT',
-        headers: {
-          Authorization: basicAuthHeader(ticketId, email),
-        },
-        body: payload,
+        headers: { Authorization: basicAuthHeader(ticketId, email) },
+        data: payload,
+        retries: 3,
+        timeout: 10000,
+        backoffMs: 500,
       });
 
-      if (response.ok) {
-        return { ok: true as const, method: 'webdav' as const, detail: '' };
-      }
-
-      const authHint =
-        response.status === 401 || response.status === 403
-          ? ' (authentication or authorization issue)'
-          : '';
-
-      return {
-        ok: false as const,
-        method: 'webdav' as const,
-        detail: `WebDAV upload failed with HTTP ${response.status} ${response.statusText}${authHint}`,
-      };
+      return { ok: true as const, method: 'webdav' as const, detail: '' };
     })
     .catch(err => {
-      const reason = err instanceof Error ? err.message : 'unknown error';
+      const axiosErr = err as AxiosError;
+      const status = axiosErr.response?.status;
+      const statusText = axiosErr.response?.statusText;
+      const detail = status
+        ? `WebDAV upload failed with HTTP ${status} ${statusText}`
+        : `WebDAV upload network error: ${axiosErr.message}`;
+
       return {
         ok: false as const,
         method: 'webdav' as const,
-        detail: `WebDAV upload network error: ${reason}`,
+        detail,
       };
     });
 
@@ -1151,17 +1131,16 @@ const uploadArchive = async (
   }
 
   logger?.warn({ detail: webDavResult.detail }, 'WebDAV upload failed');
-  logger?.info('Attempting FTP fallback upload');
 
   const hasCurl = await commandExists('curl', isWindows);
-
   if (!hasCurl) {
     throw createCollectLogsError(
-      'WebDAV upload failed and curl is unavailable for FTP fallback upload.',
+      'WebDAV upload failed and curl is not available for FTP fallback.',
       webDavResult.detail || undefined,
     );
   }
 
+  logger?.info('Attempting FTP fallback upload');
   const ftpUrl = `ftp://${ticketId}:${encodeURIComponent(email)}@ftp.molo17.com/${encodedName}`;
   const ftpResult = await runCommandCapture('curl', [
     '-T',
@@ -1170,17 +1149,15 @@ const uploadArchive = async (
   ]);
 
   if (ftpResult.exitCode !== 0) {
-    const hint = ftpFailureHint(ftpResult.exitCode, ftpResult.stderr);
-
     throw createCollectLogsError(
       'Failed to upload to FTP after WebDAV failure.',
       formatOutput(
-        `${webDavResult.detail ? `${webDavResult.detail}\n` : ''}${hint}\n${ftpResult.stdout}\n${ftpResult.stderr}`,
+        `${webDavResult.detail ? `${webDavResult.detail}\n` : ''}${ftpFailureHint(ftpResult.exitCode, ftpResult.stderr)}\n${ftpResult.stdout}\n${ftpResult.stderr}`,
       ),
     );
   }
 
-  logger?.info('FTP upload succeeded');
+  logger?.info('FTP fallback upload succeeded');
   return 'ftp';
 };
 
@@ -1215,7 +1192,12 @@ const collectLogsInternally = async (
     );
   }
 
-  if (!localOnly && ticketId && email) {
+  if (
+    !localOnly &&
+    ticketId &&
+    email &&
+    !(!!process.env.PROXY_HTTPS || !!process.env.PROXY_HTTP)
+  ) {
     await validateCredentialConnectivity(ticketId, email, isWindows, logger);
   }
 

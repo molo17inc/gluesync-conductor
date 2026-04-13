@@ -49,6 +49,13 @@ const autoRebootWindows: AutoReboot = async ({
   // 3. Define the explicit path to the compose file inside the helper
   const internalComposeFile = `${internalPath}/docker-compose.yml`;
 
+  // Minimal fix: automatically use .env if present in root folder
+  const internalEnvFile = `${internalPath}/.env`;
+
+  // --- shared proxy env (MATCH restartWindows behavior) ---
+  const proxyHttp = process.env.PROXY_HTTP ?? '';
+  const proxyHttps = process.env.PROXY_HTTPS ?? '';
+
   /**
    * We use the exact same strategy as the full restart:
    * - Mirror Host E: to Helper C:
@@ -58,8 +65,11 @@ const autoRebootWindows: AutoReboot = async ({
   const psCommand = [
     `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'`,
     `$env:BASE_PATH='${hostPath}'`,
-    `docker-compose -f "${internalComposeFile}" --project-directory "${hostPath}" pull ${serviceName}`,
-    `docker-compose -f "${internalComposeFile}" --project-directory "${hostPath}" up -d --force-recreate ${serviceName}`,
+    `$env:PROXY_HTTP='${proxyHttp}'`,
+    `$env:PROXY_HTTPS='${proxyHttps}'`,
+
+    `docker-compose -f "${internalComposeFile}" --env-file "${internalEnvFile}" --project-directory "${hostPath}" pull ${serviceName}`,
+    `docker-compose -f "${internalComposeFile}" --env-file "${internalEnvFile}" --project-directory "${hostPath}" up -d --force-recreate ${serviceName}`,
   ].join('; ');
 
   const args = [
@@ -80,7 +90,12 @@ const autoRebootWindows: AutoReboot = async ({
 
     // Pass BASE_PATH environment variable
     '-e',
-    `BASE_PATH=${hostPath}`,
+    `BASE_PATH=${pwd}`,
+    // Pass proxy env (MATCH restartWindows)
+    '-e',
+    `PROXY_HTTP=${proxyHttp}`,
+    '-e',
+    `PROXY_HTTPS=${proxyHttps}`,
 
     helperImage,
     'pwsh',

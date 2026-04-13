@@ -1,7 +1,7 @@
 import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { getLogger } from './logger';
-import { AxiosWithRetry } from './axisWithRetry.model';
+import { AxiosWithRetry, AxiosRequestOptions } from './axisWithRetry.model';
 
 const logger = getLogger();
 
@@ -34,7 +34,7 @@ const getProxyConfig = (): string | undefined => {
     return proxyUrl;
   } catch (e: any) {
     logger.error(
-      { proxyUrl, error: e.message || e.message },
+      { proxyUrl, error: e.message },
       'Failed to parse proxy URL - falling back to direct',
     );
 
@@ -54,12 +54,12 @@ const getNoProxyHosts = (): string[] => {
 };
 
 const shouldSkipProxy = (url: string): boolean => {
-  const hosts = getNoProxyHosts();
-
-  const matches = hosts.map(host => url.includes(host));
-  const found = matches.find(match => match === true);
-
-  return found === true;
+  try {
+    const { hostname } = new URL(url);
+    return getNoProxyHosts().some(host => hostname.endsWith(host));
+  } catch {
+    return false;
+  }
 };
 
 const createHttpsAgent = (
@@ -77,36 +77,49 @@ const sleep = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
-const axiosWithRetry: AxiosWithRetry = async (url, options = {}) => {
-  const { timeout = 5000, retries = 3, backoffMs = 300 } = options;
+export const axiosWithRetry: AxiosWithRetry = async <T>(
+  url: string,
+  options: AxiosRequestOptions = {},
+): Promise<T> => {
+  const {
+    timeout = 5000,
+    retries = 3,
+    backoffMs = 300,
+    method = 'GET',
+    data,
+    headers,
+  } = options;
 
   const attemptRequest = async (attempt: number): Promise<any> => {
     logger.info({ url, attempt }, '[axiosWithRetry] attempt');
 
     try {
       const skipProxy = shouldSkipProxy(url);
-
-      logger.info(
-        { url, shouldSkipProxy: skipProxy, attempt },
-        '[axiosWithRetry] proxy decision',
-      );
-
       const httpsAgent = createHttpsAgent(skipProxy, proxyUrl);
 
       const config: AxiosRequestConfig = {
+        url,
+        method,
+        data,
+        headers,
         timeout,
         proxy: false,
         httpsAgent,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        responseType: method === 'PROPFIND' ? 'text' : 'json',
+        validateStatus: status =>
+          (status >= 200 && status < 300) || status === 207,
       };
 
-      const response = await axios.get(url, config);
+      const response = await axios<T>(config);
 
       logger.info(
         { url, attempt, status: response.status },
         '[axiosWithRetry] request succeeded',
       );
 
-      return response.data;
+      return response.data as T;
     } catch (err) {
       const error = err as AxiosError;
 

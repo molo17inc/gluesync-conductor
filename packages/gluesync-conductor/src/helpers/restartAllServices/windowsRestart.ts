@@ -54,34 +54,37 @@ const restartWindows: RestartWindows = async ({
   // 3. Define the explicit path to the compose file inside the helper
   const internalComposeFile = `${internalPath}/docker-compose.yml`;
 
+  // --- Build PowerShell command ---
   const psCommand = [
     `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'`,
-    `$env:BASE_PATH='${hostPath}'`,
+    `$env:BASE_PATH='${internalPath}'`,
 
-    // We use -f to explicitly point to the file so "cd" is not required
+    `$env:PROXY_HTTP='${process.env.PROXY_HTTP ?? ''}'`,
+    `$env:PROXY_HTTPS='${process.env.PROXY_HTTPS ?? ''}'`,
+
     `docker-compose -f "${internalComposeFile}" pull`,
     `docker-compose -f "${internalComposeFile}" down --remove-orphans`,
-
-    // We tell the engine to use the Host E: path for data volumes
     `docker-compose -f "${internalComposeFile}" --project-directory "${hostPath}" up -d`,
   ].join('; ');
 
+  // --- Build docker run args ---
   const args = [
     'run',
     '--user',
     'ContainerAdministrator',
+    '--rm',
     '-v',
     '\\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine',
-
-    // Mirror the E: folder to the helper's C: folder
     '-v',
     `${hostPath}:${internalPath}`,
-
-    // Setting the workdir to the mount point as a backup
     '-w',
     internalPath,
     '-e',
-    `BASE_PATH=${pwd}`, // propagate to helper
+    `PROXY_HTTP=${process.env.PROXY_HTTP ?? ''}`,
+    '-e',
+    `PROXY_HTTPS=${process.env.PROXY_HTTPS ?? ''}`,
+    '-e',
+    `BASE_PATH=${pwd}`,
     helperImage,
     'pwsh',
     '-NoLogo',
@@ -91,6 +94,7 @@ const restartWindows: RestartWindows = async ({
   ];
 
   log(`[conductor-updater] docker (windows helper) ${args.join(' ')}`);
+
   await spawnAsync('docker', args);
   return true;
 };
