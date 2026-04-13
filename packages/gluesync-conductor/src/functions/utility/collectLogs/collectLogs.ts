@@ -91,7 +91,7 @@ type CompressionCandidate = Readonly<{
 }>;
 
 const MAX_OUTPUT_LINES = 10;
-const SCRIPT_VERSION = '2.0-internal';
+const SCRIPT_VERSION = '2.1-internal';
 const SYSTEM_INFO_SCRIPT_LINUX = 'system-info.sh';
 const SYSTEM_INFO_SCRIPT_WINDOWS = 'system-info.ps1';
 const WEBDAV_PAYLOAD =
