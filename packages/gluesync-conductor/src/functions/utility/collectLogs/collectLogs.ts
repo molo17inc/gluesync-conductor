@@ -958,7 +958,7 @@ const createArchive = async (
     }
 
     // --- FINAL UNIVERSAL FALLBACK (Standard tar) ---
-    const fallbackExt = isWindows ? '.zip' : '.tar';
+    const fallbackExt = '.tar';
     const fallbackPath = join(outputDir, `${archiveBaseName}${fallbackExt}`);
     const fallbackCmd = isWindows ? 'tar.exe' : 'tar';
     const fallbackArgs = isWindows
