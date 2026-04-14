@@ -785,31 +785,26 @@ const createArchive = async (
     );
   }
 
-  // Create the list file for tar/zip to consume
   const listFilePath = join(
     outputDir,
     `.collect-logs-${Date.now()}-${process.pid}.list`,
   );
 
-  // Use \n for standard tar/zip lists
   await writeFile(listFilePath, `${relativePaths.join('\n')}\n`, 'utf8');
 
   try {
-    const commandAvailability = await Promise.all([
-      // isWindows ? commandExists('tar.exe', true) : Promise.resolve(false),
-      !isWindows ? commandExists('zip', false) : commandExists('zip', true),
-      !isWindows ? commandExists('zstd', false) : Promise.resolve(false),
-    ]);
+    const tarCmd = isWindows ? 'tar.exe' : 'tar';
 
-    const [zipAvailable, zstdAvailable] = commandAvailability;
+    // ❗ IMPORTANT: DO NOT detect tar on Windows
+    const zstdAvailable = !isWindows && (await commandExists('zstd', false));
 
     const candidateMatrix: ReadonlyArray<CompressionCandidate | null> = [
-      // --- WINDOWS NATIVE (Nanoserver 2022 / Server 2019) ---
+      // --- WINDOWS: ALWAYS TAR (no detection) ---
       isWindows
-        ? ({
+        ? {
             name: 'tar.exe',
             archivePath: join(outputDir, `${archiveBaseName}.tar`),
-            command: 'tar.exe',
+            command: tarCmd,
             args: [
               '-cf',
               join(outputDir, `${archiveBaseName}.tar`),
@@ -820,13 +815,13 @@ const createArchive = async (
             ],
             cwd: process.cwd(),
             successLog: 'tar archive created via tar.exe',
-            failLog: 'tar.exe failed, trying next candidate',
-          } as CompressionCandidate)
+            failLog: 'tar.exe failed',
+          }
         : null,
 
-      // --- LINUX: PIGZ (Parallel GZIP - Fast & Multi-core) ---
+      // --- LINUX TAR.GZ ---
       !isWindows
-        ? ({
+        ? {
             name: 'tar.gz',
             archivePath: join(outputDir, `${archiveBaseName}.tar.gz`),
             command: 'tar',
@@ -840,13 +835,13 @@ const createArchive = async (
             ],
             cwd: process.cwd(),
             successLog: 'tar.gz created successfully',
-            failLog: 'tar.gz failed, trying next candidate',
-          } as CompressionCandidate)
+            failLog: 'tar.gz failed',
+          }
         : null,
 
-      // --- LINUX: ZSTD (tar.zst) ---
+      // --- LINUX ZSTD ---
       !isWindows && zstdAvailable
-        ? ({
+        ? {
             name: 'tar.zst',
             archivePath: join(outputDir, `${archiveBaseName}.tar.zst`),
             command: 'tar',
@@ -861,48 +856,30 @@ const createArchive = async (
             ],
             cwd: process.cwd(),
             successLog: 'tar.zst created successfully',
-            failLog: 'tar.zst failed, trying next candidate',
-          } as CompressionCandidate)
-        : null,
-
-      !isWindows && zipAvailable
-        ? ({
-            name: 'zip',
-            archivePath: join(outputDir, `${archiveBaseName}.zip`),
-            command: 'zip',
-            args: ['-9', '-@', join(outputDir, `${archiveBaseName}.zip`)],
-            cwd: searchDir,
-            input: `${relativePaths.join('\n')}\n`,
-            successLog: 'zip archive created successfully',
-            failLog: 'zip failed, trying next candidate',
-          } as CompressionCandidate)
+            failLog: 'tar.zst failed',
+          }
         : null,
     ];
 
     const availableCandidates = candidateMatrix.filter(
-      (candidate): candidate is CompressionCandidate => candidate !== null,
+      (c): c is CompressionCandidate => c !== null,
     );
 
     const compressedArchivePath = await availableCandidates.reduce<
       Promise<string | null>
-    >(async (resolvedArchivePathPromise, candidate) => {
-      const resolvedArchivePath = await resolvedArchivePathPromise;
-
-      if (resolvedArchivePath !== null) {
-        return resolvedArchivePath;
+    >(async (acc, candidate) => {
+      const resolved = await acc;
+      if (resolved) {
+        return resolved;
       }
 
-      logger?.info(
-        { candidate: candidate.name },
-        `Attempting compression with ${candidate.name}`,
-      );
+      logger?.info({ candidate: candidate.name }, 'Trying compression');
 
       const result = await runCommandCapture(
         candidate.command,
         candidate.args,
         {
           cwd: candidate.cwd,
-          ...(candidate.input ? { input: candidate.input } : {}),
           useShell: false,
         },
       );
@@ -911,7 +888,6 @@ const createArchive = async (
         logger?.warn(
           {
             candidate: candidate.name,
-            exitCode: result.exitCode,
             stderr: result.stderr,
           },
           candidate.failLog,
@@ -919,90 +895,39 @@ const createArchive = async (
         return null;
       }
 
-      logger?.info(
-        {
-          archivePath: candidate.archivePath,
-          candidate: candidate.name,
-        },
-        candidate.successLog,
-      );
+      const valid = await isArchiveValid(candidate.archivePath);
 
-      const isValid = await isArchiveValid(candidate.archivePath);
-
-      if (isValid) {
-        logger?.info(
-          {
-            archivePath: candidate.archivePath,
-            candidate: candidate.name,
-          },
-          'Archive validation passed',
-        );
-        return candidate.archivePath;
+      if (!valid) {
+        await rm(candidate.archivePath, { force: true });
+        return null;
       }
 
-      logger?.warn(
-        {
-          archivePath: candidate.archivePath,
-          candidate: candidate.name,
-        },
-        'Archive validation failed (corrupted/empty), trying next candidate',
-      );
-
-      await rm(candidate.archivePath, { force: true });
-
-      return null;
+      return candidate.archivePath;
     }, Promise.resolve<string | null>(null));
 
     if (compressedArchivePath) {
       return compressedArchivePath;
     }
 
-    // --- FINAL UNIVERSAL FALLBACK (Standard tar) ---
-    const fallbackExt = isWindows ? '.zip' : '.tar';
-    const fallbackPath = join(outputDir, `${archiveBaseName}${fallbackExt}`);
-    const fallbackCmd = isWindows ? 'tar.exe' : 'tar';
-    const fallbackArgs = isWindows
-      ? ['-a', '-cf', fallbackPath, '-C', searchDir, '-T', listFilePath]
-      : ['-cf', fallbackPath, '-C', searchDir, '-T', listFilePath];
+    // --- FINAL FALLBACK (WINDOWS/LINUX BOTH TAR ONLY) ---
+    const fallbackPath = join(outputDir, `${archiveBaseName}.tar`);
 
     logger?.info(
-      { command: fallbackCmd, archivePath: fallbackPath },
-      `All candidates failed. Attempting final fallback: ${fallbackCmd}`,
+      { archivePath: fallbackPath },
+      `All candidates failed. Using tar fallback`,
     );
-    const finalResult = await runCommandCapture(fallbackCmd, fallbackArgs, {
-      cwd: process.cwd(),
-      useShell: false,
-    });
 
-    if (finalResult.exitCode === 0) {
-      const isValid = await isArchiveValid(fallbackPath);
-      if (isValid) {
-        logger?.info(
-          { archivePath: fallbackPath },
-          'Fallback archive validation passed',
-        );
-        return fallbackPath;
-      }
+    const finalResult = await runCommandCapture(
+      tarCmd,
+      ['-cf', fallbackPath, '-C', searchDir, '-T', listFilePath],
+      { cwd: process.cwd(), useShell: false },
+    );
 
-      logger?.error(
-        { archivePath: fallbackPath },
-        'Fallback archive validation failed (corrupted)',
-      );
-      await rm(fallbackPath, { force: true });
-    } else {
-      logger?.error(
-        {
-          command: fallbackCmd,
-          exitCode: finalResult.exitCode,
-          stderr: finalResult.stderr,
-        },
-        'Final fallback compression failed',
-      );
+    if (finalResult.exitCode === 0 && (await isArchiveValid(fallbackPath))) {
+      return fallbackPath;
     }
 
-    throw createCollectLogsError(
-      'No archive compression tool available. Please install zip.',
-    );
+    throw createCollectLogsError('Tar compression failed on all attempts.');
   } finally {
     await rm(listFilePath, { force: true });
   }
