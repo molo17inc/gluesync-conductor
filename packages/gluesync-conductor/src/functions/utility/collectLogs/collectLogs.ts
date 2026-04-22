@@ -18,6 +18,7 @@ import {
   relative,
   resolve,
   sep,
+  dirname,
 } from 'node:path';
 import { AxiosError } from 'axios';
 import { CollectLogsHandler } from './collectLogs.model';
@@ -785,6 +786,9 @@ const createArchive = async (
     );
   }
 
+  const zipPath = join(outputDir, `${archiveBaseName}.zip`);
+  const tarPath = join(outputDir, `${archiveBaseName}.tar`);
+
   const listFilePath = join(
     outputDir,
     `.collect-logs-${Date.now()}-${process.pid}.list`,
@@ -793,54 +797,80 @@ const createArchive = async (
   await writeFile(listFilePath, `${relativePaths.join('\n')}\n`, 'utf8');
 
   try {
-    const tarCmd = isWindows ? 'tar.exe' : 'tar';
-
-    // ❗ IMPORTANT: DO NOT detect tar on Windows
     const zstdAvailable = !isWindows && (await commandExists('zstd', false));
 
+    // =========================
+    // WINDOWS PATH
+    // =========================
+    if (isWindows) {
+      logger?.info({ zipPath }, 'Trying Compress-Archive (Windows primary)');
+
+      const psScript = `
+        $ErrorActionPreference = "Stop";
+
+        $source = "${searchDir.replace(/"/g, '""')}";
+        $dest = "${zipPath.replace(/"/g, '""')}";
+
+        if (Test-Path $dest) { Remove-Item $dest -Force }
+
+        Compress-Archive -Path "$source\\*" -DestinationPath $dest -Force
+      `;
+
+      const zipResult = await runCommandCapture(
+        'pwsh',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript],
+        { cwd: process.cwd(), useShell: false },
+      );
+
+      if (zipResult.exitCode === 0 && (await isArchiveValid(zipPath))) {
+        logger?.info({ zipPath }, 'Compress-Archive succeeded');
+        return zipPath;
+      }
+
+      logger?.warn(
+        { stderr: zipResult.stderr },
+        'Compress-Archive failed, falling back to tar.exe',
+      );
+
+      // fallback tar.exe
+      const tarResult = await runCommandCapture(
+        'tar.exe',
+        ['-cf', tarPath, '-C', searchDir, '-T', listFilePath],
+        { cwd: process.cwd(), useShell: false },
+      );
+
+      if (tarResult.exitCode === 0 && (await isArchiveValid(tarPath))) {
+        return tarPath;
+      }
+
+      throw createCollectLogsError(
+        'Both Compress-Archive and tar.exe failed on Windows.',
+        `${zipResult.stderr}\n${tarResult.stderr}`,
+      );
+    }
+
+    // =========================
+    // LINUX PATH
+    // =========================
     const candidateMatrix: ReadonlyArray<CompressionCandidate | null> = [
-      // --- WINDOWS: ALWAYS TAR (no detection) ---
-      isWindows
-        ? {
-            name: 'tar.exe',
-            archivePath: join(outputDir, `${archiveBaseName}.tar`),
-            command: tarCmd,
-            args: [
-              '-cf',
-              join(outputDir, `${archiveBaseName}.tar`),
-              '-C',
-              searchDir,
-              '-T',
-              listFilePath,
-            ],
-            cwd: process.cwd(),
-            successLog: 'tar archive created via tar.exe',
-            failLog: 'tar.exe failed',
-          }
-        : null,
+      {
+        name: 'tar.gz',
+        archivePath: join(outputDir, `${archiveBaseName}.tar.gz`),
+        command: 'tar',
+        args: [
+          '-czf',
+          join(outputDir, `${archiveBaseName}.tar.gz`),
+          '-C',
+          searchDir,
+          '-T',
+          listFilePath,
+        ],
+        cwd: process.cwd(),
+        successLog: 'tar.gz created successfully',
+        failLog: 'tar.gz failed',
+      },
 
-      // --- LINUX TAR.GZ ---
-      !isWindows
-        ? {
-            name: 'tar.gz',
-            archivePath: join(outputDir, `${archiveBaseName}.tar.gz`),
-            command: 'tar',
-            args: [
-              '-czf',
-              join(outputDir, `${archiveBaseName}.tar.gz`),
-              '-C',
-              searchDir,
-              '-T',
-              listFilePath,
-            ],
-            cwd: process.cwd(),
-            successLog: 'tar.gz created successfully',
-            failLog: 'tar.gz failed',
-          }
-        : null,
-
-      // --- LINUX ZSTD ---
-      !isWindows && zstdAvailable
+      zstdAvailable
         ? {
             name: 'tar.zst',
             archivePath: join(outputDir, `${archiveBaseName}.tar.zst`),
@@ -878,18 +908,12 @@ const createArchive = async (
       const result = await runCommandCapture(
         candidate.command,
         candidate.args,
-        {
-          cwd: candidate.cwd,
-          useShell: false,
-        },
+        { cwd: candidate.cwd, useShell: false },
       );
 
       if (result.exitCode !== 0) {
         logger?.warn(
-          {
-            candidate: candidate.name,
-            stderr: result.stderr,
-          },
+          { candidate: candidate.name, stderr: result.stderr },
           candidate.failLog,
         );
         return null;
@@ -909,16 +933,18 @@ const createArchive = async (
       return compressedArchivePath;
     }
 
-    // --- FINAL FALLBACK (WINDOWS/LINUX BOTH TAR ONLY) ---
+    // =========================
+    // FINAL FALLBACK (LINUX TAR ONLY)
+    // =========================
     const fallbackPath = join(outputDir, `${archiveBaseName}.tar`);
 
     logger?.info(
       { archivePath: fallbackPath },
-      `All candidates failed. Using tar fallback`,
+      'All candidates failed. Using tar fallback',
     );
 
     const finalResult = await runCommandCapture(
-      tarCmd,
+      'tar',
       ['-cf', fallbackPath, '-C', searchDir, '-T', listFilePath],
       { cwd: process.cwd(), useShell: false },
     );
@@ -927,7 +953,7 @@ const createArchive = async (
       return fallbackPath;
     }
 
-    throw createCollectLogsError('Tar compression failed on all attempts.');
+    throw createCollectLogsError('Archive creation failed on all attempts.');
   } finally {
     await rm(listFilePath, { force: true });
   }
@@ -1128,12 +1154,20 @@ const collectLogsInternally = async (
 
   const searchDir = await resolveSearchDir(isWindows);
   const outputDir = await resolveOutputDir();
+
   const extraDir = join(
     searchDir,
     `gluesync-support-extra-${Date.now()}-${process.pid}`,
   );
 
+  // snapshot directory for Windows safety
+  const snapshotDir = join(
+    outputDir,
+    `gluesync-snapshot-${Date.now()}-${process.pid}`,
+  );
+
   await mkdir(extraDir, { recursive: true });
+  await mkdir(snapshotDir, { recursive: true });
 
   const systemReportPath = join(extraDir, 'system-report.txt');
   const yamlDumpPath = join(extraDir, 'yaml-files-dump.txt');
@@ -1179,11 +1213,27 @@ const collectLogsInternally = async (
         'No readable log, error, or diagnostics files found to archive.',
       );
     }
+    const filesToArchive = await Promise.all(
+      readableFiles.map(async file => {
+        const rel = relative(searchDir, file);
+        const target = join(snapshotDir, rel);
+
+        await mkdir(dirname(target), { recursive: true });
+
+        try {
+          await writeFile(target, await readFile(file));
+        } catch (err) {
+          logger?.warn({ file }, 'Failed to snapshot file');
+        }
+
+        return target;
+      }),
+    );
 
     const archivePath = await createArchive(
-      searchDir,
+      snapshotDir,
       outputDir,
-      readableFiles,
+      filesToArchive,
       isWindows,
       logger,
     );
@@ -1228,6 +1278,7 @@ const collectLogsInternally = async (
     };
   } finally {
     await rm(extraDir, { recursive: true, force: true });
+    await rm(snapshotDir, { recursive: true, force: true });
   }
 };
 
