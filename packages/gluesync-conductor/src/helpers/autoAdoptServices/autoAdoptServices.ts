@@ -112,19 +112,12 @@ const applyPlatformAdjustments = (
 const buildFinalLabels = (
   initialLabels: ReadonlyArray<string>,
   conductorType: ConductorServiceTypes,
-  serviceId: string,
 ): ReadonlyArray<string> => {
   const base = initialLabels
     .filter(l => !l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
     .filter(l => !l.startsWith(`${LabelPrefix.CONDUCTOR}.service_id=`));
 
-  return [
-    ...base,
-    `${LabelPrefix.CONDUCTOR}.type=${conductorType}`,
-    ...(conductorType === 'agent'
-      ? [`${LabelPrefix.CONDUCTOR}.service_id=${serviceId}`]
-      : []),
-  ];
+  return [...base, `${LabelPrefix.CONDUCTOR}.type=${conductorType}`];
 };
 
 /**
@@ -353,11 +346,7 @@ const autoAdoptServices = async (): Promise<{
 
           // already retagged image
           if (isMolo17Image) {
-            const finalLabels = buildFinalLabels(
-              initialLabels,
-              'third-party',
-              id,
-            );
+            const finalLabels = buildFinalLabels(initialLabels, 'third-party');
 
             return {
               id,
@@ -385,7 +374,7 @@ const autoAdoptServices = async (): Promise<{
               ...service,
               ...(retaggedImage && {
                 image: retaggedImage,
-                labels: buildFinalLabels(initialLabels, 'third-party', id),
+                labels: buildFinalLabels(initialLabels, 'third-party'),
               }),
             },
           };
@@ -406,24 +395,20 @@ const autoAdoptServices = async (): Promise<{
           };
         }
 
-        // Decide conductor type
-        const conductorType: ConductorServiceTypes | null = (() => {
-          if (agentEntry.dockerHubRepoName === 'gluesync-core-hub') {
+        // Decide conductor type (agents removed)
+        // - core-hub is detected by image name
+        // - third-party is detected earlier via THIRD_PARTY_SERVICES
+        // - everything else defaults to module
+        const conductorType: ConductorServiceTypes = (() => {
+          if (imageName === 'gluesync-core-hub') {
             return 'core-hub';
           }
 
-          const isTargetValid = typeof agentEntry.isTarget === 'boolean';
-          const isSourceValid = typeof agentEntry.isSource === 'boolean';
-
-          if (isTargetValid && isSourceValid) {
-            if (agentEntry.isTarget || agentEntry.isSource) {
-              return 'agent';
-            }
-            return 'module';
+          if (THIRD_PARTY_SERVICES.has(id)) {
+            return 'third-party';
           }
 
-          // If neither property is a boolean, we consider it unmatched
-          return null;
+          return 'module';
         })();
 
         if (!conductorType) {
@@ -464,16 +449,6 @@ const autoAdoptServices = async (): Promise<{
 
           // Agents: full adjustments. Modules/Core-hub: network only (but network is Windows-only in helpers below).
           const adjustedMap: Record<string, RawComposeService> = (() => {
-            if (conductorType === 'agent') {
-              return applyPlatformAdjustments(
-                singleServiceMap,
-                [id],
-                isWindows,
-                gluesyncHostDefault,
-                networkName,
-              ).services;
-            }
-
             // Network only on Windows
             if (isWindows) {
               return addNetworkToServices(singleServiceMap, [id], networkName)
@@ -486,7 +461,7 @@ const autoAdoptServices = async (): Promise<{
           return adjustedMap[id] ?? cleanedServiceBase;
         })();
 
-        const finalLabels = buildFinalLabels(initialLabels, conductorType, id);
+        const finalLabels = buildFinalLabels(initialLabels, conductorType);
 
         // Normalize environment
         const normalizedEnv = extractKeyValue(

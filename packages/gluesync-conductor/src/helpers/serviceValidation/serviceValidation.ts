@@ -66,15 +66,6 @@ const serviceValidation: ServiceValidation = (
     };
   }
 
-  if (type === 'agent' && !agentType) {
-    return {
-      success: false,
-      errorMessage:
-        'Service of type agent must have an agent type (source, target)',
-      statusCode: 409,
-    };
-  }
-
   if (type === 'module' && agentType) {
     return {
       success: false,

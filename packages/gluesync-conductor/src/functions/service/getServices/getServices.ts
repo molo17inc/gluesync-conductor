@@ -23,6 +23,7 @@ const handler: GetServicesHandler = async (req, reply) => {
 
     const composeJson = await readComposeFile({ raw });
 
+    // If a specific service ID is requested
     if (id?.trim()) {
       const composeService = composeJson.services?.[id];
       if (!composeService) {
@@ -42,15 +43,15 @@ const handler: GetServicesHandler = async (req, reply) => {
       });
     }
 
+    // Filter services: since agents no longer exist, keep only modules
     const services = Object.entries(composeJson.services ?? {})
       .filter(([, service]) =>
         raw
           ? Array.isArray(service.labels) &&
-            (service.labels.includes(`${LabelPrefix.CONDUCTOR}.type=agent`) ||
-              service.labels.includes(`${LabelPrefix.CONDUCTOR}.type=module`))
+            service.labels.includes(`${LabelPrefix.CONDUCTOR}.type=module`)
           : (service.labels?.[`${LabelPrefix.CONDUCTOR}.type`] as
               | ConductorServiceTypes
-              | undefined) === 'agent',
+              | undefined) === 'module',
       )
       .reduce(
         (acc, [name, service]) => ({
@@ -66,11 +67,15 @@ const handler: GetServicesHandler = async (req, reply) => {
     });
   } catch (error: unknown) {
     req.log.error(
-      `Error getting agents: ${error instanceof Error ? error.message : String(error)}`,
+      `Error getting services: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
     return reply.code(500).send({
       success: false,
-      error: `Failed to get agents: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Failed to get services: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     });
   }
 };

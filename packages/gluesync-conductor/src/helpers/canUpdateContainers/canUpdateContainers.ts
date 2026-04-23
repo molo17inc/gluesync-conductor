@@ -95,7 +95,7 @@ const canUpdateContainers: CanUpdateContainers = async (
 
   // Partition by type
   const agentsAndCoreHub = fulfilledInfos.filter(
-    info => info.type === 'agent' || info.type === 'core-hub',
+    info => info.type === 'core-hub',
   );
 
   const modules = fulfilledInfos.filter(

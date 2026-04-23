@@ -96,7 +96,6 @@ const mapVolumes = (
 const createComposeService: CreateComposeService = (
   serviceType,
   {
-    id,
     imageName,
     agentType,
     nickname,
@@ -121,7 +120,6 @@ const createComposeService: CreateComposeService = (
   const basePath = isWindows ? 'C:\\opt\\gluesync' : '/opt/gluesync';
   const sharedPath = isWindows ? `${basePath}\\shared` : `${basePath}/shared`;
   const dataPath = isWindows ? `${basePath}\\data` : `${basePath}/data`;
-  const logsPath = isWindows ? `${basePath}\\logs` : `${basePath}/logs`;
 
   const configDir = (process.env.GLUESYNC_CONFIG_DIR || '.').replace(
     /\/+$/,
@@ -145,22 +143,8 @@ const createComposeService: CreateComposeService = (
         `${configDir}/gluesync.com.jks:${dataPath}${
           isWindows ? '\\' : '/'
         }gluesync.com.jks:ro`,
-        ...(serviceType === 'agent'
-          ? [
-              `./logs/${serviceId}:${logsPath}`,
-              `./data/${serviceId}:${dataPath}`,
-            ]
-          : []),
       ]
-    : [
-        `${configDir}:${sharedPath}:ro`,
-        ...(serviceType === 'agent'
-          ? [
-              `./logs/${serviceId}:${logsPath}`,
-              `./data/${serviceId}:${dataPath}`,
-            ]
-          : []),
-      ];
+    : [`${configDir}:${sharedPath}:ro`];
 
   return {
     image: `molo17/${imageName}:${tag || 'latest'}`,
@@ -178,13 +162,6 @@ const createComposeService: CreateComposeService = (
       ...environment,
       ...(agentType && { TYPE: agentType }),
       TAG: nickname || serviceId,
-      ...(serviceType === 'agent' && {
-        INITIAL_AGENT_ID: id,
-        LOG_CONFIG_FILE: isWindows
-          ? `${sharedPath}\\logback.xml`
-          : '/opt/gluesync/shared/logback.xml',
-        ...(isWindows && { GLUESYNC_HOST: ['gluesync-core-hub'] }),
-      }),
     }).map(([key, value]) => `${key}=${value}`),
     ...(ports && ports.length > 0 && { ports: mapPorts(ports) }),
     volumes: mergeComposeKeyValueField(
