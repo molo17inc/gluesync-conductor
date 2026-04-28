@@ -106,7 +106,10 @@ const envTrue = (value: string | undefined): boolean =>
 const parsePositiveInt = (
   value: string | undefined,
   fallback: number,
-): number => {
+): number | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
   const parsed = Number.parseInt((value || '').trim(), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
@@ -658,7 +661,7 @@ const parseDockerPsLine = (line: string): DockerPsContainer | null => {
 const streamDockerLogsToFile = async (
   container: DockerPsContainer,
   outputDirectory: string,
-  tailLines: number,
+  tailLines?: number,
   logger?: Logger,
 ): Promise<string | null> => {
   const containerId = container.ID || '';
@@ -672,15 +675,22 @@ const streamDockerLogsToFile = async (
   const safeName = containerName.replace(/[\\/:*?"<>|]/g, '_');
   const filePath = join(outputDirectory, `container-${safeName}.log`);
 
-  const child = spawn(
-    'docker',
-    ['logs', '--tail', String(tailLines), containerId],
-    {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env,
-      shell: false,
-    },
-  );
+  // Build args immutably: include --tail only when tailLines is a finite positive number
+  const args = [
+    'logs',
+    ...(typeof tailLines === 'number' &&
+    Number.isFinite(tailLines) &&
+    tailLines > 0
+      ? ['--tail', String(tailLines)]
+      : []),
+    containerId,
+  ];
+
+  const child = spawn('docker', args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: process.env,
+    shell: false,
+  });
 
   const writer = createWriteStream(filePath, { flags: 'w', encoding: 'utf8' });
 
@@ -691,7 +701,7 @@ const streamDockerLogsToFile = async (
       `Status: ${container.Status || 'unknown'}`,
       `Image: ${container.Image || 'unknown'}`,
       `Collected on: ${new Date().toISOString()}`,
-      `Tail lines: ${tailLines}`,
+      `Tail lines: ${typeof tailLines === 'number' ? String(tailLines) : 'all'}`,
       '',
       '================================================================================',
       '',
@@ -729,7 +739,7 @@ const streamDockerLogsToFile = async (
 
 const exportDockerContainerLogs = async (
   outputDirectory: string,
-  tailLines: number,
+  tailLines: number | undefined,
   logger?: Logger,
 ): Promise<ReadonlyArray<string>> => {
   try {
@@ -1200,10 +1210,7 @@ const collectLogsInternally = async (
   const { ticketId, email, localOnly, logger } = options;
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
   const collectLogsFromFiles = envTrue(process.env.COLLECT_LOGS_FROM_FILES);
-  const dockerTailLines = parsePositiveInt(
-    process.env.COLLECT_DOCKER_LOG_TAIL_LINES,
-    10000,
-  );
+  const dockerTailLines = parsePositiveInt(undefined, 10000);
 
   if (!localOnly && (!ticketId || !email)) {
     throw createCollectLogsError(
