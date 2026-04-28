@@ -9,6 +9,8 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import { finished } from 'node:stream/promises';
 import { tmpdir } from 'node:os';
 import {
   basename,
@@ -21,6 +23,7 @@ import {
   dirname,
 } from 'node:path';
 import { AxiosError } from 'axios';
+import { text } from 'stream/consumers';
 import { CollectLogsHandler } from './collectLogs.model';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 import axiosWithRetry from '../../../utils/axiosWithRetry';
@@ -86,19 +89,36 @@ type CompressionCandidate = Readonly<{
   command: string;
   args: ReadonlyArray<string>;
   cwd: string;
-  input?: string;
   successLog: string;
   failLog: string;
 }>;
 
 const MAX_OUTPUT_LINES = 10;
-const SCRIPT_VERSION = '2.1-internal';
+const SCRIPT_VERSION = '2.2-internal';
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const SYSTEM_INFO_SCRIPT_LINUX = 'system-info.sh';
 const SYSTEM_INFO_SCRIPT_WINDOWS = 'system-info.ps1';
 const WEBDAV_PAYLOAD =
   '<?xml version="1.0" encoding="UTF-8"?><propfind xmlns="DAV:"><propname/></propfind>';
 
+const envTrue = (value: string | undefined): boolean =>
+  (value || '').trim().toLowerCase() === 'true';
+
+const parseDockerTailLines = (): number | undefined => {
+  const raw = process.env.COLLECT_DOCKER_LOG_TAIL_LINES;
+
+  if (raw === undefined) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(raw.trim(), 10);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return undefined;
+  }
+
+  return parsed;
+};
 const createCollectLogsError = (
   message: string,
   details?: string,
@@ -133,6 +153,29 @@ const formatOutput = (text: string): string => {
   return `${lines.slice(0, MAX_OUTPUT_LINES).join('\n')}\n...`;
 };
 
+type StreamState = Readonly<{
+  stdout: string;
+  stderr: string;
+}>;
+
+type StreamEvent =
+  | Readonly<{ type: 'stdout'; chunk: string }>
+  | Readonly<{ type: 'stderr'; chunk: string }>;
+
+const appendEvent = (state: StreamState, event: StreamEvent): StreamState => {
+  if (event.type === 'stdout') {
+    return {
+      ...state,
+      stdout: state.stdout + event.chunk,
+    };
+  }
+
+  return {
+    ...state,
+    stderr: state.stderr + event.chunk,
+  };
+};
+
 const runCommandCapture = async (
   command: string,
   args: ReadonlyArray<string>,
@@ -146,65 +189,50 @@ const runCommandCapture = async (
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    const collectStream = (
-      stream?: Readonly<NodeJS.ReadableStream>,
-    ): Promise<string> => {
-      if (!stream) {
-        return Promise.resolve('');
-      }
+    const stdoutPromise = child.stdout
+      ? text(child.stdout)
+      : Promise.resolve('');
+    const stderrPromise = child.stderr
+      ? text(child.stderr)
+      : Promise.resolve('');
 
-      stream.setEncoding('utf8');
+    const initialState: StreamState = { stdout: '', stderr: '' };
 
-      return new Promise<string>(streamResolve => {
-        const accumulate = (
-          acc: ReadonlyArray<string>,
-          chunk: string,
-        ): ReadonlyArray<string> => [...acc, chunk];
-
-        const loop = (acc: ReadonlyArray<string>): void => {
-          stream.once('data', (chunk: string) => {
-            loop(accumulate(acc, chunk));
-          });
-
-          stream.once('end', () => {
-            streamResolve(acc.join(''));
-          });
-        };
-
-        loop([]);
+    child.once('error', err => {
+      Promise.all([stdoutPromise, stderrPromise]).then(([stdout, stderr]) => {
+        const afterStdout = appendEvent(initialState, {
+          type: 'stdout',
+          chunk: stdout,
+        });
+        const finalState = appendEvent(afterStdout, {
+          type: 'stderr',
+          chunk: stderr,
+        });
+        resolve({
+          exitCode: 1,
+          stdout: finalState.stdout,
+          stderr: finalState.stderr || err.message,
+        });
       });
-    };
+    });
 
-    const stdoutPromise = collectStream(child.stdout);
-    const stderrPromise = collectStream(child.stderr);
-
-    const handleError = async (err: Readonly<Error>) => {
-      const [stdout, stderr] = await Promise.all([
-        stdoutPromise,
-        stderrPromise,
-      ]);
-
-      if (stderr.length > 0) {
-        resolve({ exitCode: 1, stdout, stderr });
-        return;
-      }
-
-      resolve({ exitCode: 1, stdout, stderr: err.message });
-    };
-
-    const handleClose = async (code: number | null) => {
-      const [stdout, stderr] = await Promise.all([
-        stdoutPromise,
-        stderrPromise,
-      ]);
-
-      const exitCode = code === null ? 1 : code;
-
-      resolve({ exitCode, stdout, stderr });
-    };
-
-    child.on('error', handleError);
-    child.on('close', handleClose);
+    child.once('close', code => {
+      Promise.all([stdoutPromise, stderrPromise]).then(([stdout, stderr]) => {
+        const afterStdout = appendEvent(initialState, {
+          type: 'stdout',
+          chunk: stdout,
+        });
+        const finalState = appendEvent(afterStdout, {
+          type: 'stderr',
+          chunk: stderr,
+        });
+        resolve({
+          exitCode: code ?? 1,
+          stdout: finalState.stdout,
+          stderr: finalState.stderr,
+        });
+      });
+    });
 
     if (child.stdin) {
       if (typeof options.input === 'string' && options.input.length > 0) {
@@ -681,8 +709,88 @@ const parseDockerPsLine = (line: string): DockerPsContainer | null => {
   }
 };
 
+const streamDockerLogsToFile = async (
+  container: DockerPsContainer,
+  outputDirectory: string,
+  tailLines?: number,
+  logger?: Logger,
+): Promise<string | null> => {
+  const containerId = container.ID || '';
+  const containerName =
+    container.Names || containerId.slice(0, Math.min(12, containerId.length));
+
+  if (!containerId) {
+    return null;
+  }
+
+  const safeName = containerName.replace(/[\\/:*?"<>|]/g, '_');
+  const filePath = join(outputDirectory, `container-${safeName}.log`);
+
+  const args = [
+    'logs',
+    ...(typeof tailLines === 'number' &&
+    Number.isFinite(tailLines) &&
+    tailLines > 0
+      ? ['--tail', String(tailLines)]
+      : []),
+    containerId,
+  ];
+
+  const child = spawn('docker', args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: process.env,
+    shell: false,
+  });
+
+  const writer = createWriteStream(filePath, { flags: 'w', encoding: 'utf8' });
+
+  writer.write(
+    [
+      `Container Logs for: ${containerName}`,
+      `Container ID: ${containerId}`,
+      `Status: ${container.Status || 'unknown'}`,
+      `Image: ${container.Image || 'unknown'}`,
+      `Collected on: ${new Date().toISOString()}`,
+      `Tail lines: ${typeof tailLines === 'number' ? String(tailLines) : 'all'}`,
+      '',
+      '================================================================================',
+      '',
+    ].join('\n'),
+  );
+
+  child.stdout?.pipe(writer, { end: false });
+  child.stderr?.pipe(writer, { end: false });
+
+  const exitCode = await new Promise<number>(resolve => {
+    child.on('error', err => {
+      writer.write(
+        `\n[collect-logs] docker logs spawn error: ${err.message}\n`,
+      );
+      resolve(1);
+    });
+
+    child.on('close', code => {
+      resolve(code ?? 1);
+    });
+  });
+
+  writer.end(`\n[collect-logs] docker logs exit code: ${exitCode}\n`);
+  await finished(writer);
+
+  if (exitCode !== 0) {
+    logger?.warn(
+      { containerId, containerName, exitCode },
+      'docker logs returned non-zero exit code',
+    );
+  }
+
+  return filePath;
+};
+
 const exportDockerContainerLogs = async (
   outputDirectory: string,
+  tailLines: number | undefined,
+  logger?: Logger,
 ): Promise<ReadonlyArray<string>> => {
   try {
     await mkdir(outputDirectory, { recursive: true });
@@ -712,41 +820,9 @@ const exportDockerContainerLogs = async (
     });
 
   const exportedFiles = await Promise.all(
-    containers.map(async container => {
-      const containerId = container.ID || '';
-      const containerName =
-        container.Names ||
-        containerId.slice(0, Math.min(12, containerId.length));
-      const safeName = containerName.replace(/[\\/:*?"<>|]/g, '_');
-      const filePath = join(outputDirectory, `container-${safeName}.log`);
-      const logsResult = await runCommandCapture('docker', [
-        'logs',
-        containerId,
-      ]);
-
-      if (
-        logsResult.exitCode !== 0 &&
-        !logsResult.stdout &&
-        !logsResult.stderr
-      ) {
-        return null;
-      }
-
-      const content = [
-        `Container Logs for: ${containerName}`,
-        `Container ID: ${containerId}`,
-        `Status: ${container.Status || 'unknown'}`,
-        `Image: ${container.Image || 'unknown'}`,
-        `Collected on: ${new Date().toISOString()}`,
-        '',
-        '================================================================================',
-        '',
-        `${logsResult.stdout}${logsResult.stderr}`,
-      ].join('\n');
-
-      await writeFile(filePath, content, 'utf8');
-      return filePath;
-    }),
+    containers.map(container =>
+      streamDockerLogsToFile(container, outputDirectory, tailLines, logger),
+    ),
   );
 
   return exportedFiles.filter(
@@ -1183,6 +1259,8 @@ const collectLogsInternally = async (
 ): Promise<CollectLogsResult> => {
   const { ticketId, email, localOnly, logger } = options;
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
+  const collectLogsFromFiles = envTrue(process.env.COLLECT_LOGS_FROM_FILES);
+  const dockerTailLines = parseDockerTailLines();
 
   if (!localOnly && (!ticketId || !email)) {
     throw createCollectLogsError(
@@ -1240,44 +1318,71 @@ const collectLogsInternally = async (
       writeDockerReport(dockerReportPath),
     ]);
 
-    await exportDockerContainerLogs(containerLogsDir);
+    const dockerLogFiles = await exportDockerContainerLogs(
+      containerLogsDir,
+      dockerTailLines,
+      logger,
+    );
 
-    const [logFiles, diagnosticFiles] = await Promise.all([
-      collectFilesRecursively(
-        searchDir,
-        filePath => {
-          const extension = extname(filePath).toLowerCase();
-          return extension === '.log' || extension === '.err';
-        },
-        { isWindows },
-      ),
-      collectFilesRecursively(extraDir, () => true, { isWindows }),
-    ]);
+    const fileLogFiles = collectLogsFromFiles
+      ? await collectFilesRecursively(
+          searchDir,
+          filePath => {
+            const extension = extname(filePath).toLowerCase();
+            return extension === '.log' || extension === '.err';
+          },
+          {
+            excludeDir: extraDir,
+            isWindows,
+          },
+        )
+      : [];
+
+    const diagnosticFiles = await collectFilesRecursively(
+      extraDir,
+      () => true,
+      { isWindows },
+    );
 
     const candidateFiles = Array.from(
-      new Set([...logFiles, ...diagnosticFiles]),
+      new Set([...dockerLogFiles, ...fileLogFiles, ...diagnosticFiles]),
     );
+
     const readableFiles = await filterReadableFiles(candidateFiles, logger);
 
     if (readableFiles.length === 0) {
       throw createCollectLogsError(
-        'No readable log, error, or diagnostics files found to archive.',
+        'No readable docker logs, diagnostics, or file-based logs found to archive.',
       );
     }
+
     const filesToArchive = await Promise.all(
       readableFiles.map(async file => {
         const rel = relative(searchDir, file);
-        const target = join(snapshotDir, rel);
+        const relExtra = relative(extraDir, file);
+
+        const safeRel = (() => {
+          if (rel && !rel.startsWith('..') && !isAbsolute(rel)) {
+            return rel;
+          }
+
+          if (!relExtra.startsWith('..')) {
+            return join('diagnostics', relExtra);
+          }
+
+          return basename(file);
+        })();
+
+        const target = join(snapshotDir, safeRel);
 
         await mkdir(dirname(target), { recursive: true });
 
-        try {
-          await writeFile(target, await readFile(file));
-        } catch (err) {
-          logger?.warn({ file }, 'Failed to snapshot file');
-        }
-
-        return target;
+        return readFile(file)
+          .then(buf => writeFile(target, buf).then(() => target))
+          .catch(() => {
+            logger?.warn({ file }, 'Failed to snapshot file');
+            return target;
+          });
       }),
     );
 
@@ -1294,7 +1399,10 @@ const collectLogsInternally = async (
         output: formatOutput(
           [
             'Local-only mode enabled. Credential pre-check skipped.',
-            `Collecting logs from: ${searchDir}`,
+            `Collecting logs from Docker (${dockerTailLines} tail lines per container).`,
+            collectLogsFromFiles
+              ? 'File-based log collection enabled via COLLECT_LOGS_FROM_FILES=true.'
+              : 'File-based log collection disabled by default.',
             `Archive created: ${archivePath}`,
             'Upload skipped (local-only mode).',
             `Archive available at: ${archivePath}`,
@@ -1318,7 +1426,10 @@ const collectLogsInternally = async (
       output: formatOutput(
         [
           'Credential pre-check succeeded.',
-          `Collecting logs from: ${searchDir}`,
+          `Collecting logs from Docker (${dockerTailLines} tail lines per container).`,
+          collectLogsFromFiles
+            ? 'File-based log collection enabled via COLLECT_LOGS_FROM_FILES=true.'
+            : 'File-based log collection disabled by default.',
           `Archive created: ${archivePath}`,
           uploadedVia === 'webdav'
             ? 'Archive uploaded successfully via WebDAV.'
@@ -1364,6 +1475,8 @@ const handler: CollectLogsHandler = async (req, reply) => {
         ticketId: ticketId ? 'provided' : 'missing',
         email: email ? 'provided' : 'missing',
         localOnly,
+        collectLogsFromFiles: envTrue(process.env.COLLECT_LOGS_FROM_FILES),
+        dockerTailLines: parseDockerTailLines(),
       },
       'Calling collectLogs internally',
     );
