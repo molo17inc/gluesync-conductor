@@ -93,6 +93,7 @@ type CompressionCandidate = Readonly<{
 
 const MAX_OUTPUT_LINES = 10;
 const SCRIPT_VERSION = '2.1-internal';
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const SYSTEM_INFO_SCRIPT_LINUX = 'system-info.sh';
 const SYSTEM_INFO_SCRIPT_WINDOWS = 'system-info.ps1';
 const WEBDAV_PAYLOAD =
@@ -461,6 +462,52 @@ const tryReadFile = async (filePath: string): Promise<string> => {
   } catch (err) {
     const reason = err instanceof Error ? err.message : 'unknown error';
     return `Unable to read file: ${reason}`;
+  }
+};
+
+const deleteOldLogs = async (
+  searchDir: string,
+  isWindows: boolean,
+  logger?: Logger,
+): Promise<void> => {
+  try {
+    const logFiles = await collectFilesRecursively(
+      searchDir,
+      filePath => {
+        const extension = extname(filePath).toLowerCase();
+        return extension === '.log' || extension === '.err';
+      },
+      { isWindows },
+    );
+
+    const now = Date.now();
+
+    await Promise.all(
+      logFiles.map(async filePath => {
+        try {
+          const fileStat = await stat(filePath);
+          const age = now - fileStat.mtimeMs;
+
+          if (age > THIRTY_DAYS_MS) {
+            logger?.info(
+              {
+                filePath,
+                ageDays: Math.floor(age / (24 * 60 * 60 * 1000)),
+              },
+              'Deleting old log file',
+            );
+            await rm(filePath, { force: true });
+          }
+        } catch (err) {
+          logger?.warn(
+            { filePath, err },
+            'Failed to delete old log file, skipping',
+          );
+        }
+      }),
+    );
+  } catch (err) {
+    logger?.error({ err }, 'Failed to complete old logs deletion process');
   }
 };
 
@@ -1153,6 +1200,10 @@ const collectLogsInternally = async (
   }
 
   const searchDir = await resolveSearchDir(isWindows);
+
+  // Delete old logs (> 30 days) before collecting new ones
+  await deleteOldLogs(searchDir, isWindows, logger);
+
   const outputDir = await resolveOutputDir();
 
   const extraDir = join(
