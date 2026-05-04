@@ -1,0 +1,144 @@
+Docker diagnostics generated on: 2026-05-04T14:50:40.354Z
+
+### docker --version
+Docker version 27.3.1, build ce1223035ac3ab8922717092e63a184cf67b493d
+
+### docker info
+Client:
+ Version:    27.3.1
+ Context:    default
+ Debug Mode: true
+ Plugins:
+  compose: Docker Compose (Docker Inc.)
+    Version:  v2.31.0
+    Path:     /usr/libexec/docker/cli-plugins/docker-compose
+
+Server:
+ Containers: 8
+  Running: 8
+  Paused: 0
+  Stopped: 0
+ Images: 41
+ Server Version: 28.3.2
+ Storage Driver: overlayfs
+  driver-type: io.containerd.snapshotter.v1
+ Logging Driver: json-file
+ Cgroup Driver: cgroupfs
+ Cgroup Version: 2
+ Plugins:
+  Volume: local
+  Network: bridge host ipvlan macvlan null overlay
+  Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog
+ CDI spec directories:
+  /etc/cdi
+  /var/run/cdi
+ Swarm: inactive
+ Runtimes: io.containerd.runc.v2 runc
+ Default Runtime: runc
+ Init Binary: docker-init
+ containerd version: 05044ec0a9a75232cad458027ca83437aae3f4da
+ runc version: v1.2.5-0-g59923ef
+ init version: de40ad0
+ Security Options:
+  seccomp
+   Profile: builtin
+  cgroupns
+ Kernel Version: 6.10.14-linuxkit
+ Operating System: Docker Desktop
+ OSType: linux
+ Architecture: aarch64
+ CPUs: 12
+ Total Memory: 7.653GiB
+ Name: docker-desktop
+ ID: 067d0630-769b-46bb-9bcf-025ec57ec7b6
+ Docker Root Dir: /var/lib/docker
+ Debug Mode: false
+  File Descriptors: 148
+  Goroutines: 216
+  System Time: 2026-05-04T14:50:37.723305675Z
+  EventsListeners: 18
+ HTTP Proxy: http.docker.internal:3128
+ HTTPS Proxy: http.docker.internal:3128
+ No Proxy: hubproxy.docker.internal
+ Labels:
+  com.docker.desktop.address=unix:///Users/alessandrocaregnato/Library/Containers/com.docker.docker/Data/docker-cli.sock
+ Experimental: false
+ Insecure Registries:
+  hubproxy.docker.internal:5555
+  ::1/128
+  127.0.0.0/8
+ Live Restore Enabled: false
+
+WARNING: DOCKER_INSECURE_NO_IPTABLES_RAW is set
+
+### docker ps -a
+CONTAINER ID   IMAGE                             COMMAND                  CREATED         STATUS         PORTS                                                                      NAMES
+e1532ab909a6   gluesync-gluesync-conductor       "docker-entrypoint.s…"   3 minutes ago   Up 3 minutes   0.0.0.0:5017->1717/tcp, [::]:5017->1717/tcp                                gluesync-gluesync-conductor-1
+90f805dac9db   molo17/gluesync-core-hub:latest   "./startup-entrypoin…"   9 minutes ago   Up 9 minutes                                                                              gluesync-gluesync-core-hub-1
+25977ea6488d   molo17/gluesync-chronos:latest    "/app/entrypoint.sh …"   6 days ago      Up 9 minutes   1717/tcp                                                                   gluesync-gluesync-chronos-1
+d2b4f8fb31f0   molo17/prometheus:3.8.0           "/bin/prometheus --c…"   6 days ago      Up 9 minutes   9090/tcp                                                                   gluesync-prometheus-1
+36d4b9659a62   molo17/grafana:12.3.0             "/run.sh"                6 days ago      Up 9 minutes   3000/tcp                                                                   gluesync-grafana-1
+c26c7a001f80   molo17/portainer:2.33.6           "/portainer --admin-…"   6 days ago      Up 9 minutes   0.0.0.0:9443->9443/tcp, :::9443->9443/tcp                                  gluesync-portainer-1
+9caaf1fa8014   molo17/traefik:3.6.2              "/entrypoint.sh trae…"   6 days ago      Up 9 minutes   0.0.0.0:80->80/tcp, :::80->80/tcp, 0.0.0.0:443->443/tcp, :::443->443/tcp   gluesync-reverse-proxy-1
+d44177119d6c   moby/buildkit:buildx-stable-1     "/usr/bin/buildkitd-…"   6 days ago      Up 9 minutes                                                                              buildx_buildkit_compassionate_wozniak0
+
+### docker images
+REPOSITORY                          TAG                 IMAGE ID       CREATED         SIZE
+gluesync-gluesync-conductor         latest              9de31b7e7800   3 minutes ago   389MB
+<none>                              <none>              86da5b6facb7   9 minutes ago   389MB
+<none>                              <none>              aa5bb9f63a45   6 days ago      389MB
+<none>                              <none>              45b9670a7203   6 days ago      389MB
+<none>                              <none>              12bd533d92ca   6 days ago      389MB
+<none>                              <none>              2be6485b7792   6 days ago      389MB
+<none>                              <none>              ae35fd37c6bf   6 days ago      389MB
+<none>                              <none>              2439f56d2051   6 days ago      389MB
+<none>                              <none>              55f3bbb84d3b   6 days ago      389MB
+<none>                              <none>              9f4a9c0309a9   2 weeks ago     389MB
+<none>                              <none>              cbf054aea36b   2 weeks ago     389MB
+<none>                              <none>              22beaddc88a5   2 weeks ago     389MB
+molo17/gluesync-core-hub-internal   2.2.5.2.bdfda2213   ad0fd1c05927   2 weeks ago     2.59GB
+<none>                              <none>              635e3c8cc030   2 weeks ago     389MB
+<none>                              <none>              ad98615c5fb4   3 weeks ago     389MB
+molo17/gluesync-core-hub            2.2.4.4             64769f241eab   3 weeks ago     2.58GB
+molo17/gluesync-core-hub            latest              64769f241eab   3 weeks ago     2.58GB
+molo17/gluesync-conductor           0.7.7.057ef9e9      9a00a1a6360a   3 weeks ago     389MB
+molo17/gluesync-conductor           0.7.7.07550ecb      f2931175c3f7   3 weeks ago     389MB
+molo17/gluesync-conductor           0.7.7.2f7cfe17      ae0df8d788b3   3 weeks ago     389MB
+molo17/gluesync-conductor           0.7.6               647a50b9cad9   3 weeks ago     389MB
+gluesync-test-gluesync-conductor    latest              2bac8056dbd1   3 weeks ago     389MB
+gluesync2-gluesync-conductor        latest              2bac8056dbd1   3 weeks ago     389MB
+molo17/gluesync-core-hub-internal   2.2.5.0.58fb0787a   a03fd093bab4   3 weeks ago     2.58GB
+docker                              cli                 18f5ab0fab73   4 weeks ago     219MB
+molo17/gluesync-core-hub            2.2.4.3             ea4bb6b2ce2d   4 weeks ago     2.58GB
+molo17/gluesync-conductor           0.7.5               57cf9f2fb83f   4 weeks ago     389MB
+molo17/gluesync-core-hub-internal   2.2.5.0.a36eb2877   81608e9e3b02   4 weeks ago     2.58GB
+moby/buildkit                       buildx-stable-1     0039c1d47e87   4 weeks ago     345MB
+molo17/gluesync-core-hub            2.2.3.2             3ace4a03d863   4 weeks ago     2.58GB
+molo17/gluesync-chronos             0.1.49              e63ea346cade   5 weeks ago     386MB
+molo17/gluesync-chronos             latest              e63ea346cade   5 weeks ago     386MB
+molo17/gluesync-chronos             0.0.204             d8f34d8cc557   6 weeks ago     360MB
+gcr.io/k8s-minikube/kicbase         v0.0.50             ffefe6978189   2 months ago    1.88GB
+gcr.io/k8s-minikube/kicbase         <none>              eb4fec00e8ad   2 months ago    1.88GB
+<none>                              <none>              1e110c71d389   3 months ago    334MB
+molo17/portainer                    2.33.6              1f281dd6a994   4 months ago    233MB
+molo17/prometheus                   3.8.0               8a43ddcef384   5 months ago    481MB
+molo17/grafana                      12.3.0              78e166505945   5 months ago    931MB
+molo17/traefik                      3.6.2               724699993fb7   5 months ago    224MB
+curlimages/curl                     8.3.0               961cf9e2a193   2 years ago     27.1MB
+
+### docker stats --no-stream
+CONTAINER ID   NAME                                     CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O         PIDS
+e1532ab909a6   gluesync-gluesync-conductor-1            0.38%     65.38MiB / 7.653GiB   0.83%     26kB / 37.4kB     160kB / 4.1kB     22
+90f805dac9db   gluesync-gluesync-core-hub-1             0.76%     304.4MiB / 7.653GiB   3.88%     206kB / 400kB     65.5kB / 995MB    73
+25977ea6488d   gluesync-gluesync-chronos-1              0.41%     119.5MiB / 7.653GiB   1.52%     28.3kB / 33.4kB   62.4MB / 16.4kB   2
+d2b4f8fb31f0   gluesync-prometheus-1                    0.96%     117MiB / 7.653GiB     1.49%     319kB / 78.4kB    92.3MB / 3.53MB   17
+36d4b9659a62   gluesync-grafana-1                       0.48%     315.5MiB / 7.653GiB   4.03%     23.4MB / 355kB    249MB / 53.4MB    17
+c26c7a001f80   gluesync-portainer-1                     0.00%     83MiB / 7.653GiB      1.06%     3.12kB / 126B     67.3MB / 139kB    10
+9caaf1fa8014   gluesync-reverse-proxy-1                 0.00%     111.6MiB / 7.653GiB   1.42%     3.38kB / 126B     93.2MB / 0B       12
+d44177119d6c   buildx_buildkit_compassionate_wozniak0   0.01%     164MiB / 7.653GiB     2.09%     21.9kB / 18.5kB   256MB / 123MB     30
+
+### docker compose version
+Docker Compose version v2.31.0
+
+### docker-compose --version
+Docker Compose version v2.31.0

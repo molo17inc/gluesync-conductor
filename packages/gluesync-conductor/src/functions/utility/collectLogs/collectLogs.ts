@@ -101,9 +101,6 @@ const SYSTEM_INFO_SCRIPT_WINDOWS = 'system-info.ps1';
 const WEBDAV_PAYLOAD =
   '<?xml version="1.0" encoding="UTF-8"?><propfind xmlns="DAV:"><propname/></propfind>';
 
-const envTrue = (value: string | undefined): boolean =>
-  (value || '').trim().toLowerCase() === 'true';
-
 const parseDockerTailLines = (): number | undefined => {
   const raw = process.env.COLLECT_DOCKER_LOG_TAIL_LINES;
 
@@ -1259,7 +1256,8 @@ const collectLogsInternally = async (
 ): Promise<CollectLogsResult> => {
   const { ticketId, email, localOnly, logger } = options;
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
-  const collectLogsFromFiles = envTrue(process.env.COLLECT_LOGS_FROM_FILES);
+  const collectLogsFromFiles =
+    process.env.COLLECT_LOGS_FROM_FILES?.toLowerCase() !== 'false';
   const dockerTailLines = parseDockerTailLines();
 
   if (!localOnly && (!ticketId || !email)) {
@@ -1401,8 +1399,8 @@ const collectLogsInternally = async (
             'Local-only mode enabled. Credential pre-check skipped.',
             `Collecting logs from Docker (${dockerTailLines} tail lines per container).`,
             collectLogsFromFiles
-              ? 'File-based log collection enabled via COLLECT_LOGS_FROM_FILES=true.'
-              : 'File-based log collection disabled by default.',
+              ? 'File-based log collection enabled (default).'
+              : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
             `Archive created: ${archivePath}`,
             'Upload skipped (local-only mode).',
             `Archive available at: ${archivePath}`,
@@ -1428,8 +1426,8 @@ const collectLogsInternally = async (
           'Credential pre-check succeeded.',
           `Collecting logs from Docker (${dockerTailLines} tail lines per container).`,
           collectLogsFromFiles
-            ? 'File-based log collection enabled via COLLECT_LOGS_FROM_FILES=true.'
-            : 'File-based log collection disabled by default.',
+            ? 'File-based log collection enabled (default).'
+            : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
           `Archive created: ${archivePath}`,
           uploadedVia === 'webdav'
             ? 'Archive uploaded successfully via WebDAV.'
@@ -1475,7 +1473,8 @@ const handler: CollectLogsHandler = async (req, reply) => {
         ticketId: ticketId ? 'provided' : 'missing',
         email: email ? 'provided' : 'missing',
         localOnly,
-        collectLogsFromFiles: envTrue(process.env.COLLECT_LOGS_FROM_FILES),
+        collectLogsFromFiles:
+          process.env.COLLECT_LOGS_FROM_FILES?.toLowerCase() !== 'false',
         dockerTailLines: parseDockerTailLines(),
       },
       'Calling collectLogs internally',

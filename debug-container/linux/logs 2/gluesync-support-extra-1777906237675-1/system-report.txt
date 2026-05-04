@@ -1,0 +1,442 @@
+Gluesync System Report
+Generated on: Mon May  4 14:50:37 UTC 2026 (UTC)
+Hostname: e1532ab909a6
+
+==============================
+Operating System
+==============================
+### uname -a
+Linux e1532ab909a6 6.10.14-linuxkit #1 SMP Sat May 17 08:28:57 UTC 2025 aarch64 Linux
+
+### hostnamectl status
+Command 'hostnamectl' not available on this system.
+
+### /etc/os-release
+NAME="Alpine Linux"
+ID=alpine
+VERSION_ID=3.21.2
+PRETTY_NAME="Alpine Linux v3.21"
+HOME_URL="https://alpinelinux.org/"
+BUG_REPORT_URL="https://gitlab.alpinelinux.org/alpine/aports/-/issues"
+
+### lsb_release -a
+Command 'lsb_release' not available on this system.
+
+### sw_vers
+Command 'sw_vers' not available on this system.
+
+==============================
+CPU
+==============================
+Logical cores: 12
+Physical cores: unknown
+
+### lscpu
+Command 'lscpu' not available on this system.
+
+### sysctl -n machdep.cpu.brand_string
+sysctl: error: 'machdep/cpu/brand_string' is an unknown key
+(command exited with status 1)
+
+### /proc/cpuinfo (first 40 lines)
+processor	: 0
+BogoMIPS	: 48.00
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 asimddp sha512 asimdfhm dit uscat ilrcpc flagm sb paca pacg dcpodp flagm2 frint i8mm bf16 bti afp
+CPU implementer	: 0x61
+CPU architecture: 8
+CPU variant	: 0x0
+CPU part	: 0x000
+CPU revision	: 0
+
+processor	: 1
+BogoMIPS	: 48.00
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 asimddp sha512 asimdfhm dit uscat ilrcpc flagm sb paca pacg dcpodp flagm2 frint i8mm bf16 bti afp
+CPU implementer	: 0x61
+CPU architecture: 8
+CPU variant	: 0x0
+CPU part	: 0x000
+CPU revision	: 0
+
+processor	: 2
+BogoMIPS	: 48.00
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 asimddp sha512 asimdfhm dit uscat ilrcpc flagm sb paca pacg dcpodp flagm2 frint i8mm bf16 bti afp
+CPU implementer	: 0x61
+CPU architecture: 8
+CPU variant	: 0x0
+CPU part	: 0x000
+CPU revision	: 0
+
+processor	: 3
+BogoMIPS	: 48.00
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 asimddp sha512 asimdfhm dit uscat ilrcpc flagm sb paca pacg dcpodp flagm2 frint i8mm bf16 bti afp
+CPU implementer	: 0x61
+CPU architecture: 8
+CPU variant	: 0x0
+CPU part	: 0x000
+CPU revision	: 0
+
+processor	: 4
+BogoMIPS	: 48.00
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 asimddp sha512 asimdfhm dit uscat ilrcpc flagm sb paca pacg dcpodp flagm2 frint i8mm bf16 bti afp
+CPU implementer	: 0x61
+
+==============================
+Virtualization
+==============================
+Virtualization detection tools not available.
+
+### Hypervisor flags from /proc/cpuinfo
+No hypervisor flags detected.
+
+==============================
+Kernel Flags
+==============================
+### uname -r
+6.10.14-linuxkit
+
+### /proc/cmdline
+init=/init loglevel=1 root=/dev/vdb rootfstype=erofs ro vsyscall=emulate panic=0 eth0.dhcp eth1.dhcp linuxkit.unified_cgroup_hierarchy=1 console=hvc0   virtio_net.disable_csum=1 vpnkit.connect=connect://2/1999 com.docker.VMID=32742456-56ce-4f4f-975c-e0b5e6300730
+
+### /proc/sys/kernel/* (selected)
+/proc/sys/kernel/panic=0
+/proc/sys/kernel/panic_on_oops=1
+/proc/sys/kernel/randomize_va_space=2
+/proc/sys/kernel/sysrq=1
+/proc/sys/kernel/printk=1	4	1	7
+
+### sysctl -a | grep '^kernel\.'
+kernel.acct = 4	2	30
+kernel.arch = aarch64
+kernel.auto_msgmni = 0
+kernel.bpf_stats_enabled = 0
+kernel.cad_pid = 0
+kernel.cap_last_cap = 40
+kernel.core_file_note_size_limit = 4194304
+kernel.core_pattern = core
+kernel.core_pipe_limit = 0
+kernel.core_uses_pid = 0
+kernel.ctrl-alt-del = 1
+kernel.dmesg_restrict = 1
+kernel.domainname = (none)
+kernel.ftrace_dump_on_oops = 0
+kernel.ftrace_enabled = 1
+kernel.hostname = e1532ab909a6
+kernel.io_uring_disabled = 0
+kernel.io_uring_group = -1
+kernel.keys.gc_delay = 300
+kernel.keys.maxbytes = 700000
+kernel.keys.maxkeys = 10000
+kernel.keys.persistent_keyring_expiry = 259200
+kernel.keys.root_maxbytes = 25000000
+kernel.keys.root_maxkeys = 1000000
+kernel.kptr_restrict = 0
+kernel.max_lock_depth = 1024
+kernel.max_rcu_stall_to_panic = 0
+kernel.modprobe = /sbin/modprobe
+kernel.modules_disabled = 0
+kernel.msg_next_id = -1
+kernel.msgmax = 8192
+kernel.msgmnb = 16384
+kernel.msgmni = 32000
+kernel.ngroups_max = 65536
+kernel.ns_last_pid = 145
+kernel.oops_all_cpu_backtrace = 0
+kernel.oops_limit = 10000
+kernel.osrelease = 6.10.14-linuxkit
+kernel.ostype = Linux
+kernel.overflowgid = 65534
+kernel.overflowuid = 65534
+kernel.panic = 0
+kernel.panic_on_oops = 1
+kernel.panic_on_rcu_stall = 0
+kernel.panic_on_warn = 0
+kernel.panic_print = 0
+kernel.perf_cpu_time_max_percent = 25
+kernel.perf_event_max_contexts_per_stack = 8
+kernel.perf_event_max_sample_rate = 100000
+kernel.perf_event_max_stack = 127
+kernel.perf_event_mlock_kb = 516
+kernel.perf_event_paranoid = 2
+kernel.pid_max = 99999
+kernel.poweroff_cmd = /sbin/poweroff
+kernel.print-fatal-signals = 0
+kernel.printk = 1	4	1	7
+kernel.printk_delay = 0
+kernel.printk_devkmsg = ratelimit
+kernel.printk_ratelimit = 5
+kernel.printk_ratelimit_burst = 10
+kernel.pty.max = 4096
+kernel.pty.nr = 1
+kernel.pty.reserve = 1024
+kernel.random.boot_id = e34d754b-47aa-4d93-af2a-856cbe405cae
+kernel.random.entropy_avail = 256
+kernel.random.poolsize = 256
+kernel.random.urandom_min_reseed_secs = 60
+kernel.random.uuid = 2c5cb856-d66f-408f-afac-b2560e2fb174
+kernel.random.write_wakeup_threshold = 256
+kernel.randomize_va_space = 2
+kernel.sched_autogroup_enabled = 1
+kernel.sched_cfs_bandwidth_slice_us = 5000
+kernel.sched_deadline_period_max_us = 4194304
+kernel.sched_deadline_period_min_us = 100
+kernel.sched_rr_timeslice_ms = 100
+kernel.sched_rt_period_us = 1000000
+kernel.sched_rt_runtime_us = 950000
+kernel.seccomp.actions_avail = kill_process kill_thread trap errno user_notif trace log allow
+kernel.seccomp.actions_logged = kill_process kill_thread trap errno user_notif trace log
+kernel.sem = 32000	1024000000	500	32000
+kernel.sem_next_id = -1
+kernel.shm_next_id = -1
+kernel.shm_rmid_forced = 0
+kernel.shmall = 18446744073692774399
+kernel.shmmax = 18446744073692774399
+kernel.shmmni = 4096
+kernel.sysctl_writes_strict = 1
+kernel.sysrq = 1
+kernel.tainted = 4096
+kernel.task_delayacct = 0
+kernel.threads-max = 62646
+kernel.timer_migration = 1
+kernel.traceoff_on_warning = 0
+kernel.tracepoint_printk = 0
+kernel.unprivileged_bpf_disabled = 0
+kernel.usermodehelper.bset = 4294967295	511
+kernel.usermodehelper.inheritable = 4294967295	511
+kernel.version = #1 SMP Sat May 17 08:28:57 UTC 2025
+kernel.warn_limit = 0
+
+==============================
+Memory
+==============================
+### free -h
+              total        used        free      shared  buff/cache   available
+Mem:           7.7G        1.4G        1.6G        1.1M        4.7G        6.1G
+Swap:       1024.0M           0     1024.0M
+
+### vm_stat
+Command 'vm_stat' not available on this system.
+
+### sysctl -n hw.memsize
+sysctl: error: 'hw/memsize' is an unknown key
+(command exited with status 1)
+
+### /proc/meminfo (first 40 lines)
+MemTotal:        8025148 kB
+MemFree:         1674088 kB
+MemAvailable:    6373340 kB
+Buffers:          824256 kB
+Cached:          3303472 kB
+SwapCached:            0 kB
+Active:          2188496 kB
+Inactive:        3179456 kB
+Active(anon):    1241312 kB
+Inactive(anon):        0 kB
+Active(file):     947184 kB
+Inactive(file):  3179456 kB
+Unevictable:           0 kB
+Mlocked:               0 kB
+SwapTotal:       1048572 kB
+SwapFree:        1048572 kB
+Zswap:                 0 kB
+Zswapped:              0 kB
+Dirty:               144 kB
+Writeback:             0 kB
+AnonPages:       1103676 kB
+Mapped:           779888 kB
+Shmem:              1088 kB
+KReclaimable:     775580 kB
+Slab:             856788 kB
+SReclaimable:     775580 kB
+SUnreclaim:        81208 kB
+KernelStack:        9568 kB
+PageTables:         9896 kB
+SecPageTables:         0 kB
+NFS_Unstable:          0 kB
+Bounce:                0 kB
+WritebackTmp:          0 kB
+CommitLimit:     5061144 kB
+Committed_AS:    2886772 kB
+VmallocTotal:   135288315904 kB
+VmallocUsed:        5620 kB
+VmallocChunk:          0 kB
+Percpu:             4416 kB
+AnonHugePages:    571392 kB
+
+==============================
+Disk
+==============================
+### df -h
+Filesystem                Size      Used Available Use% Mounted on
+overlay                 452.1G     67.5G    361.6G  16% /
+tmpfs                    64.0M         0     64.0M   0% /dev
+shm                      64.0M         0     64.0M   0% /dev/shm
+/dev/vda1               452.1G     67.5G    361.6G  16% /etc/resolv.conf
+/dev/vda1               452.1G     67.5G    361.6G  16% /etc/hostname
+/dev/vda1               452.1G     67.5G    361.6G  16% /etc/hosts
+/run/host_mark/Users    460.4G    392.3G     68.1G  85% /opt/gluesync-conductor/root-folder
+tmpfs                   783.7M    644.0K    783.1M   0% /run/docker.sock
+/run/host_mark/Users    460.4G    392.3G     68.1G  85% /opt/gluesync/data
+/run/host_mark/Users    460.4G    392.3G     68.1G  85% /opt/gluesync-conductor/docker-compose.yml
+/run/host_mark/Users    460.4G    392.3G     68.1G  85% /opt/gluesync-conductor/logs
+tmpfs                    64.0M         0     64.0M   0% /proc/interrupts
+tmpfs                    64.0M         0     64.0M   0% /proc/kcore
+tmpfs                    64.0M         0     64.0M   0% /proc/keys
+tmpfs                    64.0M         0     64.0M   0% /proc/timer_list
+tmpfs                     3.8G         0      3.8G   0% /proc/scsi
+tmpfs                     3.8G         0      3.8G   0% /sys/firmware
+
+### lsblk -o NAME,SIZE,TYPE,MOUNTPOINT
+Command 'lsblk' not available on this system.
+
+### diskutil list
+Command 'diskutil' not available on this system.
+
+==============================
+Network
+==============================
+### ip addr
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+2: tunl0@NONE: <NOARP> mtu 1480 qdisc noop state DOWN qlen 1000
+    link/ipip 0.0.0.0 brd 0.0.0.0
+3: gre0@NONE: <NOARP> mtu 1476 qdisc noop state DOWN qlen 1000
+    link/gre 0.0.0.0 brd 0.0.0.0
+4: gretap0@NONE: <BROADCAST,MULTICAST> mtu 1462 qdisc noop state DOWN qlen 1000
+    link/ether 00:00:00:00:00:00 brd ff:ff:ff:ff:ff:ff
+5: erspan0@NONE: <BROADCAST,MULTICAST> mtu 1450 qdisc noop state DOWN qlen 1000
+    link/ether 00:00:00:00:00:00 brd ff:ff:ff:ff:ff:ff
+6: ip_vti0@NONE: <NOARP> mtu 1480 qdisc noop state DOWN qlen 1000
+    link/ipip 0.0.0.0 brd 0.0.0.0
+7: ip6_vti0@NONE: <NOARP> mtu 1428 qdisc noop state DOWN qlen 1000
+    link/tunnel6 00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00 brd 00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00
+8: sit0@NONE: <NOARP> mtu 1480 qdisc noop state DOWN qlen 1000
+    link/sit 0.0.0.0 brd 0.0.0.0
+9: ip6tnl0@NONE: <NOARP> mtu 1452 qdisc noop state DOWN qlen 1000
+    link/tunnel6 00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00 brd 00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00
+10: ip6gre0@NONE: <NOARP> mtu 1448 qdisc noop state DOWN qlen 1000
+    link/[823] 00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00 brd 00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00
+11: eth0@if32: <BROADCAST,MULTICAST,UP,LOWER_UP,M-DOWN> mtu 1500 qdisc noqueue state UP 
+    link/ether a2:55:49:58:59:b1 brd ff:ff:ff:ff:ff:ff
+    inet 172.18.0.8/16 brd 172.18.255.255 scope global eth0
+       valid_lft forever preferred_lft forever
+
+### ifconfig -a
+erspan0   Link encap:Ethernet  HWaddr 00:00:00:00:00:00  
+          BROADCAST MULTICAST  MTU:1450  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+eth0      Link encap:Ethernet  HWaddr A2:55:49:58:59:B1  
+          inet addr:172.18.0.8  Bcast:172.18.255.255  Mask:255.255.0.0
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          RX packets:222 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:390 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:25801 (25.1 KiB)  TX bytes:37044 (36.1 KiB)
+
+gre0      Link encap:UNSPEC  HWaddr 00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00  
+          NOARP  MTU:1476  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+gretap0   Link encap:Ethernet  HWaddr 00:00:00:00:00:00  
+          BROADCAST MULTICAST  MTU:1462  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+ip6_vti0  Link encap:UNSPEC  HWaddr 00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00  
+          NOARP  MTU:1428  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+ip6gre0   Link encap:UNSPEC  HWaddr 00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00  
+          NOARP  MTU:1448  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+ip6tnl0   Link encap:UNSPEC  HWaddr 00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00  
+          NOARP  MTU:1452  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+ip_vti0   Link encap:UNSPEC  HWaddr 00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00  
+          NOARP  MTU:1480  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+lo        Link encap:Local Loopback  
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          inet6 addr: ::1/128 Scope:Host
+          UP LOOPBACK RUNNING  MTU:65536  Metric:1
+          RX packets:4 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:4 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:285 (285.0 B)  TX bytes:285 (285.0 B)
+
+sit0      Link encap:IPv6-in-IPv4  
+          NOARP  MTU:1480  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+tunl0     Link encap:UNSPEC  HWaddr 00-00-00-00-00-00-00-00-00-00-00-00-00-00-00-00  
+          NOARP  MTU:1480  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+
+### netstat -rn
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags   MSS Window  irtt Iface
+0.0.0.0         172.18.0.1      0.0.0.0         UG        0 0          0 eth0
+172.18.0.0      0.0.0.0         255.255.0.0     U         0 0          0 eth0
+
+### networksetup -listallhardwareports
+Command 'networksetup' not available on this system.
+
+==============================
+Processes
+==============================
+### ps auxww
+PID   USER     TIME  COMMAND
+    1 root      0:00 node index.js
+   17 root      0:00 /bin/sh
+   31 root      0:00 docker ps -a
+   32 root      0:00 docker images
+   38 root      0:00 docker stats --no-stream
+   78 root      0:00 /bin/bash /opt/gluesync-conductor/system-info.sh root-folder/gluesync-support-extra-1777906237675-1/system-report.txt
+  153 root      0:00 ps auxww
+
+### ps -eo pid,ppid,user,%cpu,%mem,stat,start,time,command --sort=-%cpu
+ps: unrecognized option: sort=-%cpu
+BusyBox v1.37.0 (2024-12-13 21:18:49 UTC) multi-call binary.
+
+Usage: ps [-o COL1,COL2=HEADER] [-T]
+
+Show list of processes
+
+	-o COL1,COL2=HEADER	Select columns for display
+	-T			Show threads
+(command exited with status 1)
+
