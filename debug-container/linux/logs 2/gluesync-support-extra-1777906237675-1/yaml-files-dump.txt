@@ -1,3 +1,77 @@
+Full dump generated on: 2026-05-04T14:50:37.897Z
+
+----- START compose.agents.initial.yml -----
+services:
+  apache_service:
+    image: httpd:latest
+    restart: unless-stopped
+    ports:
+      - 8080:80
+    volumes:
+      - /Users/danielechinazzi/Documents/M17/Repositories/gluesync/gluesync-conductor/debug-container/public-html:/usr/local/apache2/htdocs/
+  gluesync-mssql-cdc-target-agent: # Labels "com.docker.compose.service"
+    image: molo17/gluesync-mssql-cdc:latest # Image
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          cpus: 1.0
+          memory: 2.0G
+        limits:
+          cpus: 2.0
+          memory: 6.0G
+    environment:
+      - type=target
+      - maxRamPercentage=90
+      - LOG_CONFIG_FILE=/opt/gluesync/data/logback.xml
+      - NODE_ENV=production forse
+      - DB_HOST=db
+      - DB_USER=root
+      - DB_PASS=password
+      - privileged=true
+      - start_from=0
+    volumes:
+      - ./gs-license.dat:/opt/gluesync/data/gs-license.dat:ro
+      - ./logback.xml:/opt/gluesync/data/logback.xml:ro
+      - ./security-config.json:/opt/gluesync/data/security-config.json:ro
+      - ./gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro
+      - ./bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro
+      - ./gluesync-mssql-cdc-target-agent:/opt/gluesync/data
+  gluesync-mssql-cdc-source-agent:
+    image: molo17/gluesync-mssql-cdc:latest
+    restart: unless-stopped
+    environment:
+      - type=source
+      - maxRamPercentage=90
+      - LOG_CONFIG_FILE=/opt/gluesync/data/logback.xml
+      - DB_PASS=new_password
+    volumes:
+      - ./gs-license.dat:/opt/gluesync/data/gs-license.dat:ro
+      - ./logback.xml:/opt/gluesync/data/logback.xml:ro
+      - ./security-config.json:/opt/gluesync/data/security-config.json:ro
+      - ./gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro
+      - ./bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro
+      - ./gluesync-mssql-cdc-source-agent:/opt/gluesync/data
+  gluesync-aerospike-target-agent:
+    image: molo17/gluesync-aerospike:latest
+    restart: unless-stopped
+    environment:
+      - type=target
+      - maxRamPercentage=90
+      - LOG_CONFIG_FILE=/opt/gluesync/data/logback.xml
+    ports:
+      - 9090:9090
+    volumes:
+      - ./gs-license.dat:/opt/gluesync/data/gs-license.dat:ro
+      - ./logback.xml:/opt/gluesync/data/logback.xml:ro
+      - ./security-config.json:/opt/gluesync/data/security-config.json:ro
+      - ./gluesync.com.jks:/opt/gluesync/data/gluesync.com.jks:ro
+      - ./bootstrap-core-hub.json:/opt/gluesync/data/bootstrap-core-hub.json:ro
+      - ./gluesync-aerospike-target-agent:/opt/gluesync/data
+
+----- END compose.agents.initial.yml -----
+
+----- START docker-compose.yml -----
 name: gluesync
 services:
   gluesync-core-hub:
@@ -202,3 +276,91 @@ networks:
   gluesync-net:
     name: gluesync-net
     driver: bridge
+
+----- END docker-compose.yml -----
+
+----- START grafana/dashboards/dashboard.yml -----
+apiVersion: 1
+
+providers:
+  - name: dashboards
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    editable: true
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: true
+
+----- END grafana/dashboards/dashboard.yml -----
+
+----- START grafana/datasources/datasource.yml -----
+apiVersion: 1
+
+datasources:
+  - name: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090/prometheus
+    basicAuth: false
+    isDefault: true
+    editable: true
+
+----- END grafana/datasources/datasource.yml -----
+
+----- START prometheus/prometheus.yml -----
+global:
+  scrape_interval: 5s
+scrape_configs:
+  - job_name: prometheus
+    metrics_path: "/prometheus/metrics"
+    static_configs:
+      - targets:
+          - prometheus:9090
+  - job_name: gluesync-core-hub
+    # decomment in case you're using HTTPS
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true # use it in case you're adopting self-signed certs
+    static_configs:
+      - targets:
+          - gluesync-core-hub:1717
+
+----- END prometheus/prometheus.yml -----
+
+----- START proxy/certs.yml -----
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/traefik/gluesync-cert.pem
+        keyFile: /etc/traefik/gluesync-key.pem
+----- END proxy/certs.yml -----
+
+----- START proxy/traefik.yml -----
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+log:
+  level: INFO
+
+providers:
+  docker:
+    exposedByDefault: false
+    endpoint: "unix:///var/run/docker.sock"
+  file:
+    filename: "/etc/traefik/certs.yml"
+    watch: true
+serversTransport:
+  insecureSkipVerify: true
+# api:
+#   dashboard: true
+#   insecure: true
+
+----- END proxy/traefik.yml -----
