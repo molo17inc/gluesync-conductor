@@ -21,6 +21,7 @@ import { ConductorServiceTypes } from '../../models/conductor.model';
 import removeContainerNameFromServices from '../removeContainerNameFromServices/removeContainerNameFromServices';
 import addGluesyncHostToChronos from '../addGluesyncHostToChronos/addGluesyncHostToChronos';
 import applyCoreHubProductionTweaks from '../applyCoreHubProductionTweaks/applyCoreHubProductionTweaks';
+import addEnvToGrafana from '../addEnvToGrafana/addEnvToGrafana';
 
 /**
  * Ensure the given network exists at the root compose level.
@@ -197,12 +198,15 @@ const autoAdoptServices = async (): Promise<{
       'https://gluesync-core-hub:1717',
     );
 
+    const stepGrafana = addEnvToGrafana(cleanedComposeJson.services);
+
     const servicesWithChronosHost = mergeServices([
       cleanedComposeJson.services,
       stepChronos.services,
+      stepGrafana.services,
     ]);
 
-    // Add env_file to ALL services if not windows.
+    // Add env_file to ALL services
     const { services: envFileServices, updatedIds: envFileUpdatedIds } =
       addEnvFileToServices(servicesWithChronosHost, allServiceIds);
 
@@ -268,6 +272,7 @@ const autoAdoptServices = async (): Promise<{
         envFileUpdatedIds.length === 0 &&
         networkAllUpdatedIds.length === 0 &&
         stepChronos.updatedIds.length === 0 &&
+        stepGrafana.updatedIds.length === 0 &&
         coreHubTweakedIds.length === 0
       ) {
         return {
@@ -303,6 +308,7 @@ const autoAdoptServices = async (): Promise<{
           ...envFileUpdatedIds,
           ...networkAllUpdatedIds,
           ...stepChronos.updatedIds,
+          ...stepGrafana.updatedIds,
           ...coreHubTweakedIds,
         ],
         unmatchedIds: [],
