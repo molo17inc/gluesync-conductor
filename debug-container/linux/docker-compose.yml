@@ -1,4 +1,51 @@
+#
+#                   Welcome to the Gluesync trial kit!
+#
+#   This kit contains the necessary minimum set of services to run your trial
+#   a license file valid for 30 days has been included within the present kit for you
+#   to evaluate our product.
+#
+#   Here are some helpful links you might like to checkout first:
+#
+#   Official product documentation available at: https://docs.molo17.com/gluesync/
+#   Product support: https://support.molo17.com
+#   Sales representative: sales@molo17.com
+#
+#   Our product support team is available anytime to support you throughout the product evaluation at no cost.
+#
+#   We wish you a great journey while evaluating our product :-)
+#
+#   Steps to run this kit are the following:
+#     1. Move inside the folder containing the kit (from your terminal: "cd xyz")
+#     2. Hit "docker compose up -d" with your terminal command line
+#     3. Go to https://localhost using your favourite web browser
+#     4. Default control plane credentials are:
+#           username: admin
+#           password: admin
+#
+#   TIP: We've also included monitoring tools for you to manage and observe the Gluesync cluster:
+#
+#   Portainer - Docker management UI
+#   URL: https://localhost:9443
+#   Username: admin
+#   Password: passwordpassword
+#
+#   Grafana - Metrics and monitoring dashboards
+#   URL: https://localhost/grafana
+#   Username: admin
+#   Password: password
+#
+#   Prometheus - Metrics collection and querying
+#   URL: https://localhost/prometheus
+#
+#   To learn more about the Docker compose kit and how to get the most out of it,
+#   we suggest you check out the following link from our online documentation:
+#   https://docs.molo17.com/gluesync/v2.1/deploy-and-run/docker-compose.html.
+#
+#   Enjoy!
+
 name: gluesync
+
 services:
   gluesync-core-hub:
     restart: unless-stopped
@@ -72,6 +119,7 @@ services:
       - gluesync-net
   gluesync-conductor:
     restart: unless-stopped
+    # image: molo17/gluesync-conductor:latest
     build: ../../packages/gluesync-conductor
     labels:
       - traefik.enable=true
@@ -165,6 +213,7 @@ services:
       - traefik.http.services.grafana.loadbalancer.server.port=3000
       - traefik.http.routers.grafana.service=grafana
       - com.molo17.conductor.type=third-party
+      - GF_SECURITY_ALLOW_EMBEDDING=true
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=password
