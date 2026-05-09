@@ -1,3 +1,6 @@
+import { existsSync } from 'fs';
+import { join } from 'path';
+
 import { spawnAsync } from './autoReboot';
 
 type AutoReboot = (
@@ -49,8 +52,18 @@ const autoRebootWindows: AutoReboot = async ({
   // 3. Define the explicit path to the compose file inside the helper
   const internalComposeFile = `${internalPath}/docker-compose.yml`;
 
-  // Minimal fix: automatically use .env if present in root folder
+  // Optional env file: use it only when it exists in the mounted project root.
   const internalEnvFile = `${internalPath}/.env`;
+  const mountedEnvFile = join(hostPath, '.env');
+  const envFileArgs = existsSync(mountedEnvFile)
+    ? `--env-file "${internalEnvFile}"`
+    : '';
+
+  if (!envFileArgs) {
+    log(
+      '[conductor-updater] .env not found in mounted project root, continuing without --env-file',
+    );
+  }
 
   // --- shared proxy env (MATCH restartWindows behavior) ---
   const proxyHttp = process.env.PROXY_HTTP ?? '';
@@ -68,8 +81,8 @@ const autoRebootWindows: AutoReboot = async ({
     `$env:PROXY_HTTP='${proxyHttp}'`,
     `$env:PROXY_HTTPS='${proxyHttps}'`,
 
-    `docker-compose -f "${internalComposeFile}" --env-file "${internalEnvFile}" --project-directory "${hostPath}" pull ${serviceName}`,
-    `docker-compose -f "${internalComposeFile}" --env-file "${internalEnvFile}" --project-directory "${hostPath}" up -d --force-recreate ${serviceName}`,
+    `docker-compose -f "${internalComposeFile}" ${envFileArgs} --project-directory "${hostPath}" pull ${serviceName}`.replace(/\s+/g, ' ').trim(),
+    `docker-compose -f "${internalComposeFile}" ${envFileArgs} --project-directory "${hostPath}" up -d --force-recreate ${serviceName}`.replace(/\s+/g, ' ').trim(),
   ].join('; ');
 
   const args = [
