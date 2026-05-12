@@ -46,14 +46,14 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
           perAttemptTimeoutMs: 800,
         });
         return true;
-      } catch (err) {
-        if (isTransientDockerConnError(err)) {
+      } catch (error) {
+        if (isTransientDockerConnError(error)) {
           req.log.warn(
             '[get-service-version] Docker daemon not ready — falling back to compose.yml',
           );
           return false;
         }
-        throw err;
+        throw error;
       }
     })();
 
@@ -241,9 +241,27 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
     const expectedVersion = getVersionByChannel(serviceInfo, channel);
 
-    const changelogResult = expectedVersion
-      ? await fetchChangelogInfo(shortImageName, expectedVersion)
-      : null;
+    const changelogData = await (async () => {
+      if (!expectedVersion) {
+        return undefined;
+      }
+
+      try {
+        return await fetchChangelogInfo(shortImageName, expectedVersion);
+      } catch (err) {
+        logger.warn(
+          {
+            id,
+            shortImageName,
+            expectedVersion,
+            error: err,
+          },
+          '[get-service-version] failed to fetch changelog',
+        );
+
+        return undefined;
+      }
+    })();
 
     return reply.send({
       success: true,
@@ -254,9 +272,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         latestVersionGA: serviceInfo?.latestVersionGA,
         mandatoryUpdate: mandatoryUpdateResult.mandatoryUpdate,
         servicesToUpdate: mandatoryUpdateResult.servicesToUpdate,
-        changelogData: changelogResult?.success
-          ? changelogResult.data
-          : undefined,
+        changelogData,
       },
     });
   } catch (error: unknown) {

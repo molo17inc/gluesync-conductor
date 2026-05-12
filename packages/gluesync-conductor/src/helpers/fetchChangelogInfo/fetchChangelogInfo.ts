@@ -26,20 +26,19 @@ const fetchChangelogInfo: FetchChangelogInfo = async (
       },
     );
 
-    return {
-      success: true,
-      data,
-    };
+    logger.info(
+      { imageName, versionNumber },
+      '[fetchChangelogInfo] received changelog info',
+    );
+
+    return data;
   } catch (err) {
     logger.warn(
       { imageName, versionNumber, error: err },
       '[fetchChangelogInfo] failed to fetch changelog',
     );
 
-    return {
-      success: false,
-      error: 'Cannot retrieve changelog',
-    };
+    throw new Error('Unable to fetch changelog info');
   }
 };
 

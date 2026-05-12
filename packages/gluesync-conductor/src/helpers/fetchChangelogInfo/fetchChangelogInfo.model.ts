@@ -1,6 +1,4 @@
-import { ErrorResponse, SuccessResponse } from '../../models/common.model';
-
-export type ChangelogResponse = {
+export type ChangelogResponse = Readonly<{
   id: number;
   versionNumber: string;
   releaseDate: string;
@@ -8,13 +6,9 @@ export type ChangelogResponse = {
   changelogSummary: string | null;
   module: string;
   relativePath: string | null;
-};
-
-export type ChangelogResult =
-  | SuccessResponse<ChangelogResponse>
-  | ErrorResponse;
+}>;
 
 export type FetchChangelogInfo = (
   imageName: string,
   versionNumber: string,
-) => Promise<ChangelogResult>;
+) => Promise<ChangelogResponse>;
