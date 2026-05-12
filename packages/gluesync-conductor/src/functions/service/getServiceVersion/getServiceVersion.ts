@@ -105,8 +105,8 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
       try {
         return await attempt();
-      } catch (err) {
-        if (isTransientDockerConnError(err)) {
+      } catch (error) {
+        if (isTransientDockerConnError(error)) {
           logger.warn(
             { service: serviceId },
             '[get-service-version] docker unreachable — falling back to compose.yml',
@@ -115,7 +115,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         }
 
         logger.warn(
-          { service: serviceId, err },
+          { service: serviceId, error },
           '[get-service-version] unexpected error — falling back to compose.yml',
         );
         return fallback();
@@ -212,9 +212,9 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
           try {
             const update = await needsUpdate(svcId);
             return { id: svcId, needsUpdate: update };
-          } catch (err) {
+          } catch (error) {
             logger.warn(
-              { service: svcId, err },
+              { service: svcId, error },
               '[get-service-version] needsUpdate failed',
             );
             return { id: svcId, needsUpdate: false };
@@ -257,12 +257,12 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         logger.debug({ id }, '[get-service-version] changelog fetched');
 
         return data;
-      } catch (err) {
+      } catch (error) {
         logger.warn(
           {
             shortImageName,
             expectedVersion,
-            error: err,
+            error,
           },
           '[get-service-version] failed to fetch changelog',
         );
