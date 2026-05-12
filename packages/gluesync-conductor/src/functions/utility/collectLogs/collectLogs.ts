@@ -1162,26 +1162,28 @@ const uploadArchive = async (
   const fileName = basename(archivePath);
   const encodedName = encodeURIComponent(fileName);
   const webDavTarget = `${resolveWebDavRootUrl()}${encodedName}`;
+  const uploadTimeoutMs = Number(process.env.WEBDAV_UPLOAD_TIMEOUT_MS ?? 600000);
 
   logger?.info(
-    { fileName, webDavTarget },
+    { fileName, webDavTarget, uploadTimeoutMs },
     'Starting archive upload via WebDAV',
   );
 
-  const webDavResult = await readFile(archivePath)
-    .then(async payload => {
+  const webDavResult = await (async () => {
+    const payload = createReadStream(archivePath);
+
+    try {
       await axiosWithRetry<void>(webDavTarget, {
         method: 'PUT',
         headers: { Authorization: basicAuthHeader(ticketId, email) },
         data: payload,
         retries: 3,
-        timeout: 10000,
+        timeout: uploadTimeoutMs,
         backoffMs: 500,
       });
 
       return { ok: true as const, method: 'webdav' as const, detail: '' };
-    })
-    .catch(err => {
+    } catch (err) {
       const axiosErr = err as AxiosError;
       const status = axiosErr.response?.status;
       const statusText = axiosErr.response?.statusText;
@@ -1194,7 +1196,10 @@ const uploadArchive = async (
         method: 'webdav' as const,
         detail,
       };
-    });
+    } finally {
+      payload.destroy();
+    }
+  })();
 
   if (webDavResult.ok) {
     logger?.info('WebDAV upload succeeded');
@@ -1213,11 +1218,40 @@ const uploadArchive = async (
 
   logger?.info('Attempting FTP fallback upload');
   const ftpUrl = `ftp://${ticketId}:${encodeURIComponent(email)}@ftp.molo17.com/${encodedName}`;
-  const ftpResult = await runCommandCapture('curl', [
-    '-T',
-    archivePath,
-    ftpUrl,
-  ]);
+  const ftpConnectTimeoutMs = Number(
+    process.env.FTP_UPLOAD_CONNECT_TIMEOUT_MS ?? 10000,
+  );
+  const ftpMaxTimeMs = Number(process.env.FTP_UPLOAD_MAX_TIME_MS ?? 600000);
+  const ftpRetries = Number(process.env.FTP_UPLOAD_RETRIES ?? 3);
+  const ftpRetryDelaySeconds = Number(
+    process.env.FTP_UPLOAD_RETRY_DELAY_SECONDS ?? 2,
+  );
+  const ftpDisableEpsv = process.env.FTP_UPLOAD_DISABLE_EPSV?.toLowerCase() === 'true';
+
+  const ftpArgs = [
+    '--silent',
+    '--show-error',
+    '--fail',
+    '--ftp-pasv',
+    '--retry',
+    String(ftpRetries),
+    '--retry-delay',
+    String(ftpRetryDelaySeconds),
+    '--retry-all-errors',
+    '--retry-connrefused',
+    '--connect-timeout',
+    String(Math.max(1, Math.ceil(ftpConnectTimeoutMs / 1000))),
+    '--max-time',
+    String(Math.max(1, Math.ceil(ftpMaxTimeMs / 1000))),
+  ];
+
+  if (ftpDisableEpsv) {
+    ftpArgs.push('--disable-epsv');
+  }
+
+  ftpArgs.push('-T', archivePath, ftpUrl);
+
+  const ftpResult = await runCommandCapture('curl', ftpArgs);
 
   if (ftpResult.exitCode !== 0) {
     throw createCollectLogsError(
