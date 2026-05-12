@@ -11,3 +11,8 @@ export type ChangelogResponse = {
 export type ChangelogResult =
   | { success: true; data: ChangelogResponse }
   | { success: false; error: string };
+
+export type FetchChangelogInfo = (
+  imageName: string,
+  versionNumber: string,
+) => Promise<ChangelogResult>;

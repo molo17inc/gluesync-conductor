@@ -1,13 +1,16 @@
 import axiosWithRetry from '../../utils/axiosWithRetry';
 import { getLogger } from '../../utils/logger';
-import { ChangelogResponse, ChangelogResult } from './fetchChangelogInfo.model';
+import {
+  ChangelogResponse,
+  FetchChangelogInfo,
+} from './fetchChangelogInfo.model';
 
 const logger = getLogger();
 
-const fetchChangelogInfo = async (
-  imageName: string,
-  versionNumber: string,
-): Promise<ChangelogResult> => {
+const fetchChangelogInfo: FetchChangelogInfo = async (
+  imageName,
+  versionNumber,
+) => {
   logger.info(
     { imageName, versionNumber },
     '[fetchChangelogInfo] fetching changelog from backoffice',
