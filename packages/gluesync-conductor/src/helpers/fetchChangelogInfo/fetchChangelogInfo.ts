@@ -32,9 +32,9 @@ const fetchChangelogInfo: FetchChangelogInfo = async (
     );
 
     return data;
-  } catch (err) {
+  } catch (error) {
     logger.warn(
-      { imageName, versionNumber, error: err },
+      { imageName, versionNumber, error },
       '[fetchChangelogInfo] failed to fetch changelog',
     );
 
