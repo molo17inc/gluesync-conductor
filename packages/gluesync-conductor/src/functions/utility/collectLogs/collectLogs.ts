@@ -9,7 +9,7 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises';
-import { createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
 import { finished } from 'node:stream/promises';
 import { tmpdir } from 'node:os';
 import {
@@ -1162,7 +1162,9 @@ const uploadArchive = async (
   const fileName = basename(archivePath);
   const encodedName = encodeURIComponent(fileName);
   const webDavTarget = `${resolveWebDavRootUrl()}${encodedName}`;
-  const uploadTimeoutMs = Number(process.env.WEBDAV_UPLOAD_TIMEOUT_MS ?? 600000);
+  const uploadTimeoutMs = Number(
+    process.env.WEBDAV_UPLOAD_TIMEOUT_MS ?? 600000,
+  );
 
   logger?.info(
     { fileName, webDavTarget, uploadTimeoutMs },
@@ -1226,9 +1228,10 @@ const uploadArchive = async (
   const ftpRetryDelaySeconds = Number(
     process.env.FTP_UPLOAD_RETRY_DELAY_SECONDS ?? 2,
   );
-  const ftpDisableEpsv = process.env.FTP_UPLOAD_DISABLE_EPSV?.toLowerCase() === 'true';
+  const ftpDisableEpsv =
+    process.env.FTP_UPLOAD_DISABLE_EPSV?.toLowerCase() === 'true';
 
-  const ftpArgs = [
+  const ftpArgsBase = [
     '--silent',
     '--show-error',
     '--fail',
@@ -1245,11 +1248,13 @@ const uploadArchive = async (
     String(Math.max(1, Math.ceil(ftpMaxTimeMs / 1000))),
   ];
 
-  if (ftpDisableEpsv) {
-    ftpArgs.push('--disable-epsv');
-  }
-
-  ftpArgs.push('-T', archivePath, ftpUrl);
+  const ftpArgs = [
+    ...ftpArgsBase,
+    ...(ftpDisableEpsv ? ['--disable-epsv'] : []),
+    '-T',
+    archivePath,
+    ftpUrl,
+  ];
 
   const ftpResult = await runCommandCapture('curl', ftpArgs);
 
