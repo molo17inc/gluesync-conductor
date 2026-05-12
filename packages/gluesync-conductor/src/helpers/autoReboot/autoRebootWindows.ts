@@ -1,4 +1,4 @@
-import { existsSync } from 'fs';
+import { existsSync } from 'node:fs';
 import { join } from 'path';
 
 import { spawnAsync } from './autoReboot';
@@ -82,10 +82,10 @@ const autoRebootWindows: AutoReboot = async ({
     `$env:PROXY_HTTPS='${proxyHttps}'`,
 
     `docker-compose -f "${internalComposeFile}" ${envFileArgs} --project-directory "${hostPath}" pull ${serviceName}`
-      .replace(/\s+/g, ' ')
+      .replaceAll(/\s+/g, ' ')
       .trim(),
     `docker-compose -f "${internalComposeFile}" ${envFileArgs} --project-directory "${hostPath}" up -d --force-recreate ${serviceName}`
-      .replace(/\s+/g, ' ')
+      .replaceAll(/\s+/g, ' ')
       .trim(),
   ].join('; ');
 
