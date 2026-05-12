@@ -13,6 +13,7 @@ import { THIRD_PARTY_SERVICES } from '../../../helpers/fetchAllServicesInCompose
 import { getLogger } from '../../../utils/logger';
 import waitForDockerDaemon from '../../../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
 import isTransientDockerConnError from '../../../helpers/dockerode/isTransientDockerConnError/isTransientDockerConnError';
+import fetchChangelogInfo from '../../../helpers/fetchChangelogInfo/fetchChangelogInfo';
 
 const logger = getLogger();
 
@@ -45,14 +46,14 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
           perAttemptTimeoutMs: 800,
         });
         return true;
-      } catch (err) {
-        if (isTransientDockerConnError(err)) {
+      } catch (error) {
+        if (isTransientDockerConnError(error)) {
           req.log.warn(
             '[get-service-version] Docker daemon not ready — falling back to compose.yml',
           );
           return false;
         }
-        throw err;
+        throw error;
       }
     })();
 
@@ -104,8 +105,8 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
       try {
         return await attempt();
-      } catch (err) {
-        if (isTransientDockerConnError(err)) {
+      } catch (error) {
+        if (isTransientDockerConnError(error)) {
           logger.warn(
             { service: serviceId },
             '[get-service-version] docker unreachable — falling back to compose.yml',
@@ -114,7 +115,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         }
 
         logger.warn(
-          { service: serviceId, err },
+          { service: serviceId, error },
           '[get-service-version] unexpected error — falling back to compose.yml',
         );
         return fallback();
@@ -211,9 +212,9 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
           try {
             const update = await needsUpdate(svcId);
             return { id: svcId, needsUpdate: update };
-          } catch (err) {
+          } catch (error) {
             logger.warn(
-              { service: svcId, err },
+              { service: svcId, error },
               '[get-service-version] needsUpdate failed',
             );
             return { id: svcId, needsUpdate: false };
@@ -238,6 +239,38 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
     const actualCurrentVersion = currentVersion || fallbackVersion;
 
+    const expectedVersion = getVersionByChannel(serviceInfo, channel);
+
+    const changelogData = await (async () => {
+      if (!expectedVersion) {
+        return undefined;
+      }
+
+      try {
+        const result = await fetchChangelogInfo(
+          shortImageName,
+          expectedVersion,
+        );
+
+        const { id, ...data } = result;
+
+        logger.debug({ id }, '[get-service-version] changelog fetched');
+
+        return data;
+      } catch (error) {
+        logger.warn(
+          {
+            shortImageName,
+            expectedVersion,
+            error,
+          },
+          '[get-service-version] failed to fetch changelog',
+        );
+
+        return undefined;
+      }
+    })();
+
     return reply.send({
       success: true,
       data: {
@@ -247,6 +280,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         latestVersionGA: serviceInfo?.latestVersionGA,
         mandatoryUpdate: mandatoryUpdateResult.mandatoryUpdate,
         servicesToUpdate: mandatoryUpdateResult.servicesToUpdate,
+        changelogData,
       },
     });
   } catch (error: unknown) {
