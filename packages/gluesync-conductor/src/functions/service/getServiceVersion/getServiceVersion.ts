@@ -247,11 +247,19 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       }
 
       try {
-        return await fetchChangelogInfo(shortImageName, expectedVersion);
+        const result = await fetchChangelogInfo(
+          shortImageName,
+          expectedVersion,
+        );
+
+        const { id, ...data } = result;
+
+        logger.debug({ id }, '[get-service-version] changelog fetched');
+
+        return data;
       } catch (err) {
         logger.warn(
           {
-            id,
             shortImageName,
             expectedVersion,
             error: err,
