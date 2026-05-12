@@ -81,8 +81,12 @@ const autoRebootWindows: AutoReboot = async ({
     `$env:PROXY_HTTP='${proxyHttp}'`,
     `$env:PROXY_HTTPS='${proxyHttps}'`,
 
-    `docker-compose -f "${internalComposeFile}" ${envFileArgs} --project-directory "${hostPath}" pull ${serviceName}`.replace(/\s+/g, ' ').trim(),
-    `docker-compose -f "${internalComposeFile}" ${envFileArgs} --project-directory "${hostPath}" up -d --force-recreate ${serviceName}`.replace(/\s+/g, ' ').trim(),
+    `docker-compose -f "${internalComposeFile}" ${envFileArgs} --project-directory "${hostPath}" pull ${serviceName}`
+      .replace(/\s+/g, ' ')
+      .trim(),
+    `docker-compose -f "${internalComposeFile}" ${envFileArgs} --project-directory "${hostPath}" up -d --force-recreate ${serviceName}`
+      .replace(/\s+/g, ' ')
+      .trim(),
   ].join('; ');
 
   const args = [
