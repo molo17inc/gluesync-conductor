@@ -43,6 +43,7 @@ const agentRoutes = async (fastify: Readonly<FastifyInstance>) => {
                   },
                 },
                 releaseChannel: { type: 'string' },
+                changelog: { type: 'string' },
               },
             },
           },

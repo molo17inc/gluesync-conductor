@@ -13,6 +13,7 @@ import { THIRD_PARTY_SERVICES } from '../../../helpers/fetchAllServicesInCompose
 import { getLogger } from '../../../utils/logger';
 import waitForDockerDaemon from '../../../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
 import isTransientDockerConnError from '../../../helpers/dockerode/isTransientDockerConnError/isTransientDockerConnError';
+import fetchChangelogInfo from '../../../helpers/fetchChangelogInfo/fetchChangelogInfo';
 
 const logger = getLogger();
 
@@ -238,6 +239,12 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
     const actualCurrentVersion = currentVersion || fallbackVersion;
 
+    const expectedVersion = getVersionByChannel(serviceInfo, channel);
+
+    const changelogResult = expectedVersion
+      ? await fetchChangelogInfo(shortImageName, expectedVersion)
+      : null;
+
     return reply.send({
       success: true,
       data: {
@@ -247,6 +254,9 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         latestVersionGA: serviceInfo?.latestVersionGA,
         mandatoryUpdate: mandatoryUpdateResult.mandatoryUpdate,
         servicesToUpdate: mandatoryUpdateResult.servicesToUpdate,
+        changelog: changelogResult?.success
+          ? changelogResult.data.changelog
+          : undefined,
       },
     });
   } catch (error: unknown) {
