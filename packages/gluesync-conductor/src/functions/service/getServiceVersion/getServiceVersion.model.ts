@@ -1,6 +1,7 @@
 import { RouteHandlerMethod } from 'fastify';
 import { ErrorResponse, SuccessResponse } from '../../../models/common.model';
 import { ReleaseChannelTypes } from '../../../models/conductor.model';
+import { ChangelogResponse } from '../../../helpers/fetchChangelogInfo/fetchChangelogInfo.model';
 
 export type GetServiceVersionSuccessResponse = Readonly<{
   currentVersion?: Readonly<string>;
@@ -9,7 +10,7 @@ export type GetServiceVersionSuccessResponse = Readonly<{
   latestVersionGA?: Readonly<string>;
   mandatoryUpdate: boolean;
   servicesToUpdate: ReadonlyArray<string>;
-  changelog?: string;
+  changelogData?: Omit<ChangelogResponse, 'id'>;
 }>;
 
 export type GetServiceVersionParams = Readonly<{

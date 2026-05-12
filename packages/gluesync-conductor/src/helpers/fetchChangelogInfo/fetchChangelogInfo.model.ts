@@ -1,3 +1,5 @@
+import { ErrorResponse, SuccessResponse } from '../../models/common.model';
+
 export type ChangelogResponse = {
   id: number;
   versionNumber: string;
@@ -9,8 +11,8 @@ export type ChangelogResponse = {
 };
 
 export type ChangelogResult =
-  | { success: true; data: ChangelogResponse }
-  | { success: false; error: string };
+  | SuccessResponse<ChangelogResponse>
+  | ErrorResponse;
 
 export type FetchChangelogInfo = (
   imageName: string,

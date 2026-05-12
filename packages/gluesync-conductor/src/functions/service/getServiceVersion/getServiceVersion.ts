@@ -254,8 +254,8 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         latestVersionGA: serviceInfo?.latestVersionGA,
         mandatoryUpdate: mandatoryUpdateResult.mandatoryUpdate,
         servicesToUpdate: mandatoryUpdateResult.servicesToUpdate,
-        changelog: changelogResult?.success
-          ? changelogResult.data.changelog
+        changelogData: changelogResult?.success
+          ? changelogResult.data
           : undefined,
       },
     });
