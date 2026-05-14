@@ -50,12 +50,8 @@ const checkModuleUpdate: CheckModuleUpdate = async (
 
   // Always returns either running tag OR compose fallback
   const currentTag =
-    (await getCurrentVersion(
-      docker,
-      composeJson,
-      serviceName,
-      dockerReady,
-    )) || parseImage(service.image).tag;
+    (await getCurrentVersion(docker, composeJson, serviceName, dockerReady)) ||
+    parseImage(service.image).tag;
 
   const { shortImageName } = parseImage(service.image);
 
@@ -67,14 +63,9 @@ const checkModuleUpdate: CheckModuleUpdate = async (
 
   const info = await fetchAgentInfo(shortImageName);
 
-  const availableVersion = getVersionByChannel(
-    info,
-    releaseChannel,
-  );
+  const availableVersion = getVersionByChannel(info, releaseChannel);
 
-  const needsUpdate =
-    !!availableVersion &&
-    currentVersion !== availableVersion;
+  const needsUpdate = !!availableVersion && currentVersion !== availableVersion;
 
   return {
     needsUpdate,
