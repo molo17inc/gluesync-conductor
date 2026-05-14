@@ -13,8 +13,12 @@ import { THIRD_PARTY_SERVICES } from '../../../helpers/fetchAllServicesInCompose
 import { getLogger } from '../../../utils/logger';
 import waitForDockerDaemon from '../../../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
 import isTransientDockerConnError from '../../../helpers/dockerode/isTransientDockerConnError/isTransientDockerConnError';
+import getCurrentVersion from '../../../helpers/getCurrentVersion/getCurrentVersion';
 
 const logger = getLogger();
+
+const normalizeVersion = (version: string | null): string | null =>
+  version ? version.split('-')[0] : null;
 
 const handler: GetServiceVersionHandler = async (req, reply) => {
   try {
@@ -56,71 +60,6 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       }
     })();
 
-    const getCurrentVersion = async (
-      serviceId: string,
-    ): Promise<string | null> => {
-      const fallback = (): string | null => {
-        const svc = composeJson.services?.[serviceId];
-        if (!svc?.image) {
-          return null;
-        }
-        const { tag } = parseImage(svc.image);
-        return tag.split('-')[0];
-      };
-
-      // If Docker never became ready, skip Docker and use docker-compose file
-      if (!dockerReady) {
-        return fallback();
-      }
-
-      const attempt = async (): Promise<string | null> => {
-        const containers = await req.server.docker.listContainers({
-          all: true,
-          filters: {
-            label: [`${LabelPrefix.COMPOSE}.service=${serviceId}`],
-          },
-        });
-
-        if (!containers || containers.length === 0) {
-          return fallback();
-        }
-
-        const running = containers.find(
-          c => (c.State || '').toLowerCase() === 'running',
-        );
-
-        if (!running) {
-          return fallback();
-        }
-
-        const inspect = await req.server.docker
-          .getContainer(running.Id)
-          .inspect();
-
-        const runningImage = inspect.Config.Image;
-        const { tag } = parseImage(runningImage);
-        return tag.split('-')[0];
-      };
-
-      try {
-        return await attempt();
-      } catch (err) {
-        if (isTransientDockerConnError(err)) {
-          logger.warn(
-            { service: serviceId },
-            '[get-service-version] docker unreachable — falling back to compose.yml',
-          );
-          return fallback();
-        }
-
-        logger.warn(
-          { service: serviceId, err },
-          '[get-service-version] unexpected error — falling back to compose.yml',
-        );
-        return fallback();
-      }
-    };
-
     const needsUpdate = async (serviceId: string): Promise<boolean> => {
       const svc = composeJson.services?.[serviceId];
       if (!svc) {
@@ -149,7 +88,12 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
       const [svcInfo, currentVersion] = await Promise.all([
         fetchAgentInfo(imageNameToFetch),
-        getCurrentVersion(serviceId),
+        getCurrentVersion(
+          req.server.docker,
+          composeJson,
+          serviceId,
+          dockerReady,
+        ),
       ]);
 
       const expectedVersion = getVersionByChannel(svcInfo, channel);
@@ -157,7 +101,9 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         return false;
       }
 
-      const versionToCheck = currentVersion || composeTag.split('-')[0];
+      const versionToCheck =
+        normalizeVersion(currentVersion) || normalizeVersion(composeTag);
+
       return expectedVersion !== versionToCheck;
     };
 
@@ -165,8 +111,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     const conductorName = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
     const chronosName = process.env.CHRONOS_NAME || 'gluesync-chronos';
 
-    const { shortImageName, tag } = parseImage(service.image);
-    const fallbackVersion = tag.split('-')[0];
+    const { shortImageName, tag: fallbackVersion } = parseImage(service.image);
 
     logger.info({ id, shortImageName }, 'fetching agent info');
 
@@ -182,11 +127,13 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         svcId => {
           const svc = composeJson.services?.[svcId];
           const labels = svc?.labels;
+
           const serviceType = Array.isArray(labels)
             ? labels
                 .find(l => l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
                 ?.split('=')[1]
             : labels?.[`${LabelPrefix.CONDUCTOR}.type`];
+
           return serviceType === 'module';
         },
       );
@@ -210,13 +157,21 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         servicesToCheck.map(async svcId => {
           try {
             const update = await needsUpdate(svcId);
-            return { id: svcId, needsUpdate: update };
+
+            return {
+              id: svcId,
+              needsUpdate: update,
+            };
           } catch (err) {
             logger.warn(
               { service: svcId, err },
               '[get-service-version] needsUpdate failed',
             );
-            return { id: svcId, needsUpdate: false };
+
+            return {
+              id: svcId,
+              needsUpdate: false,
+            };
           }
         }),
       );
@@ -232,16 +187,17 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     })();
 
     const [currentVersion, serviceInfo] = await Promise.all([
-      getCurrentVersion(id),
+      getCurrentVersion(req.server.docker, composeJson, id, dockerReady),
       fetchAgentInfo(shortImageName),
     ]);
 
-    const actualCurrentVersion = currentVersion || fallbackVersion;
+    const actualCurrentVersion =
+      normalizeVersion(currentVersion) || normalizeVersion(fallbackVersion);
 
     return reply.send({
       success: true,
       data: {
-        currentVersion: actualCurrentVersion,
+        currentVersion: actualCurrentVersion || fallbackVersion,
         latestVersionAlpha: serviceInfo?.latestVersionAlpha,
         latestVersionBeta: serviceInfo?.latestVersionBeta,
         latestVersionGA: serviceInfo?.latestVersionGA,
