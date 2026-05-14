@@ -63,6 +63,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         v.split('-')[0].split('.').slice(0, 3).join('.'); // take first 3 parts
 
       const conductorInfo = await checkModuleUpdate(
+        req.server.docker,
         composeJson,
         releaseChannel,
         CONDUCTOR_NAME,
@@ -73,6 +74,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       );
 
       const chronosInfo = await checkModuleUpdate(
+        req.server.docker,
         composeJson,
         releaseChannel,
         CHRONOS_NAME,
@@ -82,6 +84,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       const coreHubNeedsMigration: boolean = await (async () => {
         try {
           const coreHubInfo = await checkModuleUpdate(
+            req.server.docker,
             composeJson,
             releaseChannel,
             CORE_HUB_NAME,
