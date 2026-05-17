@@ -27,6 +27,7 @@ import { text } from 'stream/consumers';
 import { CollectLogsHandler } from './collectLogs.model';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 import axiosWithRetry from '../../../utils/axiosWithRetry';
+import collectLogsByScript from '../../../helpers/collectLogsByScript/collectLogsByScript';
 
 type Logger = Readonly<{
   debug: (
@@ -1423,13 +1424,48 @@ const collectLogsInternally = async (
       }),
     );
 
-    const archivePath = await createArchive(
-      snapshotDir,
-      outputDir,
-      filesToArchive,
-      isWindows,
-      logger,
-    );
+    let archivePath: string;
+
+    try {
+      archivePath = await createArchive(
+        snapshotDir,
+        outputDir,
+        filesToArchive,
+        isWindows,
+        logger,
+      );
+    } catch (err) {
+      logger?.warn(
+        { err },
+        'Internal archive creation failed, falling back to legacy script',
+      );
+
+      if (localOnly) {
+        throw err;
+      }
+
+      const legacyResult = await collectLogsByScript({
+        ticketId: ticketId || '',
+        email: email || '',
+      });
+
+      if (legacyResult.success) {
+        return {
+          output: formatOutput(
+            [
+              'Internal archive creation failed.',
+              'Legacy collect logs script completed successfully.',
+              legacyResult.output,
+            ].join('\n'),
+          ),
+        };
+      }
+
+      throw createCollectLogsError(
+        'Archive creation failed and legacy fallback also failed.',
+        legacyResult.output,
+      );
+    }
 
     if (localOnly) {
       return {
@@ -1449,32 +1485,63 @@ const collectLogsInternally = async (
       };
     }
 
-    const uploadedVia = await uploadArchive(
-      archivePath,
-      ticketId || '',
-      email || '',
-      isWindows,
-      logger,
-    );
+    try {
+      const uploadedVia = await uploadArchive(
+        archivePath,
+        ticketId || '',
+        email || '',
+        isWindows,
+        logger,
+      );
 
-    await rm(archivePath, { force: true });
+      await rm(archivePath, { force: true });
 
-    return {
-      output: formatOutput(
-        [
-          'Credential pre-check succeeded.',
-          `Collecting logs from Docker (${dockerTailLines} tail lines per container).`,
-          collectLogsFromFiles
-            ? 'File-based log collection enabled (default).'
-            : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
-          `Archive created: ${archivePath}`,
-          uploadedVia === 'webdav'
-            ? 'Archive uploaded successfully via WebDAV.'
-            : 'Archive uploaded successfully via FTP fallback.',
-          'Local archive removed after successful upload.',
-        ].join('\n'),
-      ),
-    };
+      return {
+        output: formatOutput(
+          [
+            'Credential pre-check succeeded.',
+            `Collecting logs from Docker (${dockerTailLines} tail lines per container).`,
+            collectLogsFromFiles
+              ? 'File-based log collection enabled (default).'
+              : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
+            `Archive created: ${archivePath}`,
+            uploadedVia === 'webdav'
+              ? 'Archive uploaded successfully via WebDAV.'
+              : 'Archive uploaded successfully via FTP fallback.',
+            'Local archive removed after successful upload.',
+          ].join('\n'),
+        ),
+      };
+    } catch (uploadErr) {
+      logger?.warn(
+        { err: uploadErr },
+        'Internal upload failed, falling back to legacy collect logs script',
+      );
+
+      await rm(archivePath, { force: true });
+
+      const legacyResult = await collectLogsByScript({
+        ticketId: ticketId || '',
+        email: email || '',
+      });
+
+      if (legacyResult.success) {
+        return {
+          output: formatOutput(
+            [
+              'Internal collector upload failed.',
+              'Legacy collect logs script completed successfully.',
+              legacyResult.output,
+            ].join('\n'),
+          ),
+        };
+      }
+
+      throw createCollectLogsError(
+        'Internal collector upload failed and legacy fallback also failed.',
+        legacyResult.output,
+      );
+    }
   } finally {
     await rm(extraDir, { recursive: true, force: true });
     await rm(snapshotDir, { recursive: true, force: true });
