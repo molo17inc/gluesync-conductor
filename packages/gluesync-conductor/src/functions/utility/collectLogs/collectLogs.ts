@@ -97,10 +97,43 @@ type CompressionCandidate = Readonly<{
 const MAX_OUTPUT_LINES = 10;
 const SCRIPT_VERSION = '2.2-internal';
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const DEFAULT_LOG_LOOKBACK_DAYS = 3;
 const SYSTEM_INFO_SCRIPT_LINUX = 'system-info.sh';
 const SYSTEM_INFO_SCRIPT_WINDOWS = 'system-info.ps1';
 const WEBDAV_PAYLOAD =
   '<?xml version="1.0" encoding="UTF-8"?><propfind xmlns="DAV:"><propname/></propfind>';
+
+const parseLogLookbackDays = (): number => {
+  const raw = process.env.COLLECT_LOG_LOOKBACK_DAYS;
+
+  if (raw === undefined) {
+    return DEFAULT_LOG_LOOKBACK_DAYS;
+  }
+
+  const parsed = Number.parseInt(raw.trim(), 10);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_LOG_LOOKBACK_DAYS;
+  }
+
+  return parsed;
+};
+
+const parseDockerLogSinceHours = (lookbackDays: number): number => {
+  const raw = process.env.COLLECT_DOCKER_LOG_SINCE_HOURS;
+
+  if (raw === undefined) {
+    return lookbackDays * 24;
+  }
+
+  const parsed = Number.parseInt(raw.trim(), 10);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return lookbackDays * 24;
+  }
+
+  return parsed;
+};
 
 const parseDockerTailLines = (): number | undefined => {
   const raw = process.env.COLLECT_DOCKER_LOG_TAIL_LINES;
@@ -710,6 +743,7 @@ const parseDockerPsLine = (line: string): DockerPsContainer | null => {
 const streamDockerLogsToFile = async (
   container: DockerPsContainer,
   outputDirectory: string,
+  sinceHours: number,
   tailLines?: number,
   logger?: Logger,
 ): Promise<string | null> => {
@@ -726,6 +760,8 @@ const streamDockerLogsToFile = async (
 
   const args = [
     'logs',
+    '--since',
+    `${sinceHours}h`,
     ...(typeof tailLines === 'number' &&
     Number.isFinite(tailLines) &&
     tailLines > 0
@@ -749,6 +785,7 @@ const streamDockerLogsToFile = async (
       `Status: ${container.Status || 'unknown'}`,
       `Image: ${container.Image || 'unknown'}`,
       `Collected on: ${new Date().toISOString()}`,
+      `Since: last ${sinceHours} hours`,
       `Tail lines: ${typeof tailLines === 'number' ? String(tailLines) : 'all'}`,
       '',
       '================================================================================',
@@ -787,6 +824,7 @@ const streamDockerLogsToFile = async (
 
 const exportDockerContainerLogs = async (
   outputDirectory: string,
+  sinceHours: number,
   tailLines: number | undefined,
   logger?: Logger,
 ): Promise<ReadonlyArray<string>> => {
@@ -819,7 +857,13 @@ const exportDockerContainerLogs = async (
 
   const exportedFiles = await Promise.all(
     containers.map(container =>
-      streamDockerLogsToFile(container, outputDirectory, tailLines, logger),
+      streamDockerLogsToFile(
+        container,
+        outputDirectory,
+        sinceHours,
+        tailLines,
+        logger,
+      ),
     ),
   );
 
@@ -1300,6 +1344,9 @@ const collectLogsInternally = async (
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
   const collectLogsFromFiles =
     process.env.COLLECT_LOGS_FROM_FILES?.toLowerCase() !== 'false';
+  const logLookbackDays = parseLogLookbackDays();
+  const fileLogsCutoffMs = Date.now() - logLookbackDays * 24 * 60 * 60 * 1000;
+  const dockerSinceHours = parseDockerLogSinceHours(logLookbackDays);
   const dockerTailLines = parseDockerTailLines();
 
   if (!localOnly && (!ticketId || !email)) {
@@ -1362,6 +1409,7 @@ const collectLogsInternally = async (
     // Docker logs
     const dockerLogFiles = await exportDockerContainerLogs(
       containerLogsDir,
+      dockerSinceHours,
       dockerTailLines,
       logger,
     );
@@ -1381,6 +1429,21 @@ const collectLogsInternally = async (
         )
       : [];
 
+    const recentFileLogCandidates = await Promise.all(
+      fileLogFiles.map(async filePath => {
+        try {
+          const fileStats = await stat(filePath);
+          return fileStats.mtimeMs >= fileLogsCutoffMs ? filePath : null;
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    const recentFileLogs = recentFileLogCandidates.filter(
+      (filePath): filePath is string => filePath !== null,
+    );
+
     // Diagnostics from extraDir
     const diagnosticFiles = await collectFilesRecursively(
       extraDir,
@@ -1390,7 +1453,7 @@ const collectLogsInternally = async (
 
     // Unique candidate files
     const candidateFiles = Array.from(
-      new Set([...dockerLogFiles, ...fileLogFiles, ...diagnosticFiles]),
+      new Set([...dockerLogFiles, ...recentFileLogs, ...diagnosticFiles]),
     );
 
     // Filter readable
@@ -1522,7 +1585,8 @@ const collectLogsInternally = async (
         output: formatOutput(
           [
             'Local-only mode enabled. Credential pre-check skipped.',
-            `Collecting logs from Docker (${dockerTailLines} tail lines per container).`,
+            `Collecting logs from last ${logLookbackDays} day(s).`,
+            `Collecting logs from Docker (since ${dockerSinceHours}h, ${typeof dockerTailLines === 'number' ? `${dockerTailLines} tail lines` : 'all lines'} per container).`,
             collectLogsFromFiles
               ? 'File-based log collection enabled (default).'
               : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
@@ -1601,7 +1665,8 @@ const collectLogsInternally = async (
       output: formatOutput(
         [
           'Credential pre-check succeeded.',
-          `Collecting logs from Docker (${dockerTailLines} tail lines per container).`,
+          `Collecting logs from last ${logLookbackDays} day(s).`,
+          `Collecting logs from Docker (since ${dockerSinceHours}h, ${typeof dockerTailLines === 'number' ? `${dockerTailLines} tail lines` : 'all lines'} per container).`,
           collectLogsFromFiles
             ? 'File-based log collection enabled (default).'
             : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
@@ -1653,6 +1718,8 @@ const handler: CollectLogsHandler = async (req, reply) => {
         localOnly,
         collectLogsFromFiles:
           process.env.COLLECT_LOGS_FROM_FILES?.toLowerCase() !== 'false',
+        logLookbackDays: parseLogLookbackDays(),
+        dockerSinceHours: parseDockerLogSinceHours(parseLogLookbackDays()),
         dockerTailLines: parseDockerTailLines(),
       },
       'Calling collectLogs internally',
