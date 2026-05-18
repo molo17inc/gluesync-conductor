@@ -1295,6 +1295,8 @@ const collectLogsInternally = async (
   options: CollectLogsOptions,
 ): Promise<CollectLogsResult> => {
   const { ticketId, email, localOnly, logger } = options;
+  const ticket = ticketId ?? '';
+  const emailAddr = email ?? '';
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
   const collectLogsFromFiles =
     process.env.COLLECT_LOGS_FROM_FILES?.toLowerCase() !== 'false';
@@ -1343,6 +1345,7 @@ const collectLogsInternally = async (
   const containerLogsDir = join(extraDir, 'container-logs');
 
   try {
+    // Parallel writes
     await Promise.all([
       writeSystemReport(systemReportPath, isWindows),
       writeFileDump(yamlDumpPath, searchDir, ['.yaml', '.yml'], {
@@ -1356,12 +1359,14 @@ const collectLogsInternally = async (
       writeDockerReport(dockerReportPath),
     ]);
 
+    // Docker logs
     const dockerLogFiles = await exportDockerContainerLogs(
       containerLogsDir,
       dockerTailLines,
       logger,
     );
 
+    // Optional file-based logs
     const fileLogFiles = collectLogsFromFiles
       ? await collectFilesRecursively(
           searchDir,
@@ -1376,16 +1381,19 @@ const collectLogsInternally = async (
         )
       : [];
 
+    // Diagnostics from extraDir
     const diagnosticFiles = await collectFilesRecursively(
       extraDir,
       () => true,
       { isWindows },
     );
 
+    // Unique candidate files
     const candidateFiles = Array.from(
       new Set([...dockerLogFiles, ...fileLogFiles, ...diagnosticFiles]),
     );
 
+    // Filter readable
     const readableFiles = await filterReadableFiles(candidateFiles, logger);
 
     if (readableFiles.length === 0) {
@@ -1394,6 +1402,7 @@ const collectLogsInternally = async (
       );
     }
 
+    // Snapshot files (copy into snapshotDir) and return list of targets
     const filesToArchive = await Promise.all(
       readableFiles.map(async file => {
         const rel = relative(searchDir, file);
@@ -1424,36 +1433,76 @@ const collectLogsInternally = async (
       }),
     );
 
-    let archivePath: string;
+    // Create archive with fallback to legacy script
+    const archiveCreationResult: {
+      archivePath?: string;
+      legacyFallback?: boolean;
+      output?: string;
+    } = await (async () => {
+      try {
+        const archivePath = await createArchive(
+          snapshotDir,
+          outputDir,
+          filesToArchive,
+          isWindows,
+          logger,
+        );
+        return { archivePath };
+      } catch (err) {
+        logger?.warn(
+          { err },
+          'Internal archive creation failed, falling back to legacy script',
+        );
 
-    try {
-      archivePath = await createArchive(
-        snapshotDir,
-        outputDir,
-        filesToArchive,
-        isWindows,
-        logger,
-      );
-    } catch (err) {
-      logger?.warn(
-        { err },
-        'Internal archive creation failed, falling back to legacy script',
-      );
+        if (localOnly) {
+          throw err;
+        }
 
-      if (localOnly) {
-        throw err;
+        const legacyResult = await collectLogsByScript({
+          ticketId: ticket,
+          email: emailAddr,
+        });
+
+        if (legacyResult.success) {
+          return {
+            legacyFallback: true,
+            output: formatOutput(
+              [
+                'Internal archive creation failed.',
+                'Legacy collect logs script completed successfully.',
+                legacyResult.output,
+              ].join('\n'),
+            ),
+          };
+        }
+
+        throw createCollectLogsError(
+          'Archive creation failed and legacy fallback also failed.',
+          legacyResult.output,
+        );
       }
+    })();
 
+    // If legacy fallback succeeded, return immediately
+    if (archiveCreationResult.legacyFallback) {
+      return { output: archiveCreationResult.output! };
+    }
+
+    const { archivePath } = archiveCreationResult;
+
+    // Ensure archivePath exists before proceeding to upload if not do legacy
+    if (!archivePath) {
+      // Try legacy collector if internal archive didn't produce a path
       const legacyResult = await collectLogsByScript({
-        ticketId: ticketId || '',
-        email: email || '',
+        ticketId: ticket,
+        email: emailAddr,
       });
 
       if (legacyResult.success) {
         return {
           output: formatOutput(
             [
-              'Internal archive creation failed.',
+              'Internal archive creation did not produce an archive path.',
               'Legacy collect logs script completed successfully.',
               legacyResult.output,
             ].join('\n'),
@@ -1462,11 +1511,12 @@ const collectLogsInternally = async (
       }
 
       throw createCollectLogsError(
-        'Archive creation failed and legacy fallback also failed.',
+        'Archive creation did not produce an archive path and legacy fallback failed.',
         legacyResult.output,
       );
     }
 
+    // Local-only branch: return without upload
     if (localOnly) {
       return {
         output: formatOutput(
@@ -1485,64 +1535,86 @@ const collectLogsInternally = async (
       };
     }
 
-    try {
-      const uploadedVia = await uploadArchive(
-        archivePath,
-        ticketId || '',
-        email || '',
-        isWindows,
-        logger,
-      );
+    // Upload with fallback to legacy script
+    const uploadResult: {
+      uploadedVia?: 'webdav' | 'ftp';
+      legacyFallback?: boolean;
+      output?: string;
+    } = await (async () => {
+      try {
+        // uploadArchive expects string args; use normalized ticket/email
+        const uploadedVia = await uploadArchive(
+          archivePath,
+          ticket,
+          emailAddr,
+          isWindows,
+          logger,
+        );
 
-      await rm(archivePath, { force: true });
+        // only attempt to remove the archive if archivePath is a non-empty string
+        if (archivePath) {
+          await rm(archivePath, { force: true });
+        }
 
-      return {
-        output: formatOutput(
-          [
-            'Credential pre-check succeeded.',
-            `Collecting logs from Docker (${dockerTailLines} tail lines per container).`,
-            collectLogsFromFiles
-              ? 'File-based log collection enabled (default).'
-              : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
-            `Archive created: ${archivePath}`,
-            uploadedVia === 'webdav'
-              ? 'Archive uploaded successfully via WebDAV.'
-              : 'Archive uploaded successfully via FTP fallback.',
-            'Local archive removed after successful upload.',
-          ].join('\n'),
-        ),
-      };
-    } catch (uploadErr) {
-      logger?.warn(
-        { err: uploadErr },
-        'Internal upload failed, falling back to legacy collect logs script',
-      );
+        return { uploadedVia };
+      } catch (uploadErr) {
+        logger?.warn(
+          { err: uploadErr },
+          'Internal upload failed, falling back to legacy collect logs script',
+        );
 
-      await rm(archivePath, { force: true });
+        if (archivePath) {
+          await rm(archivePath, { force: true });
+        }
 
-      const legacyResult = await collectLogsByScript({
-        ticketId: ticketId || '',
-        email: email || '',
-      });
+        const legacyResult = await collectLogsByScript({
+          ticketId: ticket,
+          email: emailAddr,
+        });
 
-      if (legacyResult.success) {
-        return {
-          output: formatOutput(
-            [
-              'Internal collector upload failed.',
-              'Legacy collect logs script completed successfully.',
-              legacyResult.output,
-            ].join('\n'),
-          ),
-        };
+        if (legacyResult.success) {
+          return {
+            legacyFallback: true,
+            output: formatOutput(
+              [
+                'Internal collector upload failed.',
+                'Legacy collect logs script completed successfully.',
+                legacyResult.output,
+              ].join('\n'),
+            ),
+          };
+        }
+
+        throw createCollectLogsError(
+          'Internal collector upload failed and legacy fallback also failed.',
+          legacyResult.output,
+        );
       }
+    })();
 
-      throw createCollectLogsError(
-        'Internal collector upload failed and legacy fallback also failed.',
-        legacyResult.output,
-      );
+    if (uploadResult.legacyFallback) {
+      return { output: uploadResult.output! };
     }
+
+    // Successful upload path
+    return {
+      output: formatOutput(
+        [
+          'Credential pre-check succeeded.',
+          `Collecting logs from Docker (${dockerTailLines} tail lines per container).`,
+          collectLogsFromFiles
+            ? 'File-based log collection enabled (default).'
+            : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
+          `Archive created: ${archivePath}`,
+          uploadResult.uploadedVia === 'webdav'
+            ? 'Archive uploaded successfully via WebDAV.'
+            : 'Archive uploaded successfully via FTP fallback.',
+          'Local archive removed after successful upload.',
+        ].join('\n'),
+      ),
+    };
   } finally {
+    // cleanup (still uses await inside finally)
     await rm(extraDir, { recursive: true, force: true });
     await rm(snapshotDir, { recursive: true, force: true });
   }
