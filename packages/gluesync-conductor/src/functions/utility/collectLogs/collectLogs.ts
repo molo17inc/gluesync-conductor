@@ -9,7 +9,7 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises';
-import { createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
 import { finished } from 'node:stream/promises';
 import { tmpdir } from 'node:os';
 import {
@@ -27,6 +27,7 @@ import { text } from 'stream/consumers';
 import { CollectLogsHandler } from './collectLogs.model';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 import axiosWithRetry from '../../../utils/axiosWithRetry';
+import collectLogsByScript from '../../../helpers/collectLogsByScript/collectLogsByScript';
 
 type Logger = Readonly<{
   debug: (
@@ -96,10 +97,43 @@ type CompressionCandidate = Readonly<{
 const MAX_OUTPUT_LINES = 10;
 const SCRIPT_VERSION = '2.2-internal';
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const DEFAULT_LOG_LOOKBACK_DAYS = 3;
 const SYSTEM_INFO_SCRIPT_LINUX = 'system-info.sh';
 const SYSTEM_INFO_SCRIPT_WINDOWS = 'system-info.ps1';
 const WEBDAV_PAYLOAD =
   '<?xml version="1.0" encoding="UTF-8"?><propfind xmlns="DAV:"><propname/></propfind>';
+
+const parseLogLookbackDays = (): number => {
+  const raw = process.env.COLLECT_LOG_LOOKBACK_DAYS;
+
+  if (raw === undefined) {
+    return DEFAULT_LOG_LOOKBACK_DAYS;
+  }
+
+  const parsed = Number.parseInt(raw.trim(), 10);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_LOG_LOOKBACK_DAYS;
+  }
+
+  return parsed;
+};
+
+const parseDockerLogSinceHours = (lookbackDays: number): number => {
+  const raw = process.env.COLLECT_DOCKER_LOG_SINCE_HOURS;
+
+  if (raw === undefined) {
+    return lookbackDays * 24;
+  }
+
+  const parsed = Number.parseInt(raw.trim(), 10);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return lookbackDays * 24;
+  }
+
+  return parsed;
+};
 
 const parseDockerTailLines = (): number | undefined => {
   const raw = process.env.COLLECT_DOCKER_LOG_TAIL_LINES;
@@ -709,6 +743,7 @@ const parseDockerPsLine = (line: string): DockerPsContainer | null => {
 const streamDockerLogsToFile = async (
   container: DockerPsContainer,
   outputDirectory: string,
+  sinceHours: number,
   tailLines?: number,
   logger?: Logger,
 ): Promise<string | null> => {
@@ -725,6 +760,8 @@ const streamDockerLogsToFile = async (
 
   const args = [
     'logs',
+    '--since',
+    `${sinceHours}h`,
     ...(typeof tailLines === 'number' &&
     Number.isFinite(tailLines) &&
     tailLines > 0
@@ -748,6 +785,7 @@ const streamDockerLogsToFile = async (
       `Status: ${container.Status || 'unknown'}`,
       `Image: ${container.Image || 'unknown'}`,
       `Collected on: ${new Date().toISOString()}`,
+      `Since: last ${sinceHours} hours`,
       `Tail lines: ${typeof tailLines === 'number' ? String(tailLines) : 'all'}`,
       '',
       '================================================================================',
@@ -786,6 +824,7 @@ const streamDockerLogsToFile = async (
 
 const exportDockerContainerLogs = async (
   outputDirectory: string,
+  sinceHours: number,
   tailLines: number | undefined,
   logger?: Logger,
 ): Promise<ReadonlyArray<string>> => {
@@ -818,7 +857,13 @@ const exportDockerContainerLogs = async (
 
   const exportedFiles = await Promise.all(
     containers.map(container =>
-      streamDockerLogsToFile(container, outputDirectory, tailLines, logger),
+      streamDockerLogsToFile(
+        container,
+        outputDirectory,
+        sinceHours,
+        tailLines,
+        logger,
+      ),
     ),
   );
 
@@ -1162,26 +1207,30 @@ const uploadArchive = async (
   const fileName = basename(archivePath);
   const encodedName = encodeURIComponent(fileName);
   const webDavTarget = `${resolveWebDavRootUrl()}${encodedName}`;
+  const uploadTimeoutMs = Number(
+    process.env.WEBDAV_UPLOAD_TIMEOUT_MS ?? 600000,
+  );
 
   logger?.info(
-    { fileName, webDavTarget },
+    { fileName, webDavTarget, uploadTimeoutMs },
     'Starting archive upload via WebDAV',
   );
 
-  const webDavResult = await readFile(archivePath)
-    .then(async payload => {
+  const webDavResult = await (async () => {
+    const payload = createReadStream(archivePath);
+
+    try {
       await axiosWithRetry<void>(webDavTarget, {
         method: 'PUT',
         headers: { Authorization: basicAuthHeader(ticketId, email) },
         data: payload,
         retries: 3,
-        timeout: 10000,
+        timeout: uploadTimeoutMs,
         backoffMs: 500,
       });
 
       return { ok: true as const, method: 'webdav' as const, detail: '' };
-    })
-    .catch(err => {
+    } catch (err) {
       const axiosErr = err as AxiosError;
       const status = axiosErr.response?.status;
       const statusText = axiosErr.response?.statusText;
@@ -1194,7 +1243,10 @@ const uploadArchive = async (
         method: 'webdav' as const,
         detail,
       };
-    });
+    } finally {
+      payload.destroy();
+    }
+  })();
 
   if (webDavResult.ok) {
     logger?.info('WebDAV upload succeeded');
@@ -1213,11 +1265,43 @@ const uploadArchive = async (
 
   logger?.info('Attempting FTP fallback upload');
   const ftpUrl = `ftp://${ticketId}:${encodeURIComponent(email)}@ftp.molo17.com/${encodedName}`;
-  const ftpResult = await runCommandCapture('curl', [
+  const ftpConnectTimeoutMs = Number(
+    process.env.FTP_UPLOAD_CONNECT_TIMEOUT_MS ?? 10000,
+  );
+  const ftpMaxTimeMs = Number(process.env.FTP_UPLOAD_MAX_TIME_MS ?? 600000);
+  const ftpRetries = Number(process.env.FTP_UPLOAD_RETRIES ?? 3);
+  const ftpRetryDelaySeconds = Number(
+    process.env.FTP_UPLOAD_RETRY_DELAY_SECONDS ?? 2,
+  );
+  const ftpDisableEpsv =
+    process.env.FTP_UPLOAD_DISABLE_EPSV?.toLowerCase() === 'true';
+
+  const ftpArgsBase = [
+    '--silent',
+    '--show-error',
+    '--fail',
+    '--ftp-pasv',
+    '--retry',
+    String(ftpRetries),
+    '--retry-delay',
+    String(ftpRetryDelaySeconds),
+    '--retry-all-errors',
+    '--retry-connrefused',
+    '--connect-timeout',
+    String(Math.max(1, Math.ceil(ftpConnectTimeoutMs / 1000))),
+    '--max-time',
+    String(Math.max(1, Math.ceil(ftpMaxTimeMs / 1000))),
+  ];
+
+  const ftpArgs = [
+    ...ftpArgsBase,
+    ...(ftpDisableEpsv ? ['--disable-epsv'] : []),
     '-T',
     archivePath,
     ftpUrl,
-  ]);
+  ];
+
+  const ftpResult = await runCommandCapture('curl', ftpArgs);
 
   if (ftpResult.exitCode !== 0) {
     throw createCollectLogsError(
@@ -1255,9 +1339,14 @@ const collectLogsInternally = async (
   options: CollectLogsOptions,
 ): Promise<CollectLogsResult> => {
   const { ticketId, email, localOnly, logger } = options;
+  const ticket = ticketId ?? '';
+  const emailAddr = email ?? '';
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
   const collectLogsFromFiles =
     process.env.COLLECT_LOGS_FROM_FILES?.toLowerCase() !== 'false';
+  const logLookbackDays = parseLogLookbackDays();
+  const fileLogsCutoffMs = Date.now() - logLookbackDays * 24 * 60 * 60 * 1000;
+  const dockerSinceHours = parseDockerLogSinceHours(logLookbackDays);
   const dockerTailLines = parseDockerTailLines();
 
   if (!localOnly && (!ticketId || !email)) {
@@ -1303,6 +1392,7 @@ const collectLogsInternally = async (
   const containerLogsDir = join(extraDir, 'container-logs');
 
   try {
+    // Parallel writes
     await Promise.all([
       writeSystemReport(systemReportPath, isWindows),
       writeFileDump(yamlDumpPath, searchDir, ['.yaml', '.yml'], {
@@ -1316,12 +1406,15 @@ const collectLogsInternally = async (
       writeDockerReport(dockerReportPath),
     ]);
 
+    // Docker logs
     const dockerLogFiles = await exportDockerContainerLogs(
       containerLogsDir,
+      dockerSinceHours,
       dockerTailLines,
       logger,
     );
 
+    // Optional file-based logs
     const fileLogFiles = collectLogsFromFiles
       ? await collectFilesRecursively(
           searchDir,
@@ -1336,16 +1429,34 @@ const collectLogsInternally = async (
         )
       : [];
 
+    const recentFileLogCandidates = await Promise.all(
+      fileLogFiles.map(async filePath => {
+        try {
+          const fileStats = await stat(filePath);
+          return fileStats.mtimeMs >= fileLogsCutoffMs ? filePath : null;
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    const recentFileLogs = recentFileLogCandidates.filter(
+      (filePath): filePath is string => filePath !== null,
+    );
+
+    // Diagnostics from extraDir
     const diagnosticFiles = await collectFilesRecursively(
       extraDir,
       () => true,
       { isWindows },
     );
 
+    // Unique candidate files
     const candidateFiles = Array.from(
-      new Set([...dockerLogFiles, ...fileLogFiles, ...diagnosticFiles]),
+      new Set([...dockerLogFiles, ...recentFileLogs, ...diagnosticFiles]),
     );
 
+    // Filter readable
     const readableFiles = await filterReadableFiles(candidateFiles, logger);
 
     if (readableFiles.length === 0) {
@@ -1354,6 +1465,7 @@ const collectLogsInternally = async (
       );
     }
 
+    // Snapshot files (copy into snapshotDir) and return list of targets
     const filesToArchive = await Promise.all(
       readableFiles.map(async file => {
         const rel = relative(searchDir, file);
@@ -1384,20 +1496,97 @@ const collectLogsInternally = async (
       }),
     );
 
-    const archivePath = await createArchive(
-      snapshotDir,
-      outputDir,
-      filesToArchive,
-      isWindows,
-      logger,
-    );
+    // Create archive with fallback to legacy script
+    const archiveCreationResult: {
+      archivePath?: string;
+      legacyFallback?: boolean;
+      output?: string;
+    } = await (async () => {
+      try {
+        const archivePath = await createArchive(
+          snapshotDir,
+          outputDir,
+          filesToArchive,
+          isWindows,
+          logger,
+        );
+        return { archivePath };
+      } catch (err) {
+        logger?.warn(
+          { err },
+          'Internal archive creation failed, falling back to legacy script',
+        );
 
+        if (localOnly) {
+          throw err;
+        }
+
+        const legacyResult = await collectLogsByScript({
+          ticketId: ticket,
+          email: emailAddr,
+        });
+
+        if (legacyResult.success) {
+          return {
+            legacyFallback: true,
+            output: formatOutput(
+              [
+                'Internal archive creation failed.',
+                'Legacy collect logs script completed successfully.',
+                legacyResult.output,
+              ].join('\n'),
+            ),
+          };
+        }
+
+        throw createCollectLogsError(
+          'Archive creation failed and legacy fallback also failed.',
+          legacyResult.output,
+        );
+      }
+    })();
+
+    // If legacy fallback succeeded, return immediately
+    if (archiveCreationResult.legacyFallback) {
+      return { output: archiveCreationResult.output! };
+    }
+
+    const { archivePath } = archiveCreationResult;
+
+    // Ensure archivePath exists before proceeding to upload if not do legacy
+    if (!archivePath) {
+      // Try legacy collector if internal archive didn't produce a path
+      const legacyResult = await collectLogsByScript({
+        ticketId: ticket,
+        email: emailAddr,
+      });
+
+      if (legacyResult.success) {
+        return {
+          output: formatOutput(
+            [
+              'Internal archive creation did not produce an archive path.',
+              'Legacy collect logs script completed successfully.',
+              legacyResult.output,
+            ].join('\n'),
+          ),
+        };
+      }
+
+      throw createCollectLogsError(
+        'Archive creation did not produce an archive path and legacy fallback failed.',
+        legacyResult.output,
+      );
+    }
+
+    // Local-only branch: return without upload
     if (localOnly) {
       return {
         output: formatOutput(
           [
             'Local-only mode enabled. Credential pre-check skipped.',
-            `Collecting logs from Docker (${dockerTailLines} tail lines per container).`,
+            `Collecting logs from last ${logLookbackDays} day(s).`,
+            `Collecting logs from Docker (since ${dockerSinceHours}h, ${typeof dockerTailLines === 'number' ? `${dockerTailLines} tail lines` : 'all lines'} per container).`,
             collectLogsFromFiles
               ? 'File-based log collection enabled (default).'
               : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
@@ -1410,26 +1599,79 @@ const collectLogsInternally = async (
       };
     }
 
-    const uploadedVia = await uploadArchive(
-      archivePath,
-      ticketId || '',
-      email || '',
-      isWindows,
-      logger,
-    );
+    // Upload with fallback to legacy script
+    const uploadResult: {
+      uploadedVia?: 'webdav' | 'ftp';
+      legacyFallback?: boolean;
+      output?: string;
+    } = await (async () => {
+      try {
+        // uploadArchive expects string args; use normalized ticket/email
+        const uploadedVia = await uploadArchive(
+          archivePath,
+          ticket,
+          emailAddr,
+          isWindows,
+          logger,
+        );
 
-    await rm(archivePath, { force: true });
+        // only attempt to remove the archive if archivePath is a non-empty string
+        if (archivePath) {
+          await rm(archivePath, { force: true });
+        }
 
+        return { uploadedVia };
+      } catch (uploadErr) {
+        logger?.warn(
+          { err: uploadErr },
+          'Internal upload failed, falling back to legacy collect logs script',
+        );
+
+        if (archivePath) {
+          await rm(archivePath, { force: true });
+        }
+
+        const legacyResult = await collectLogsByScript({
+          ticketId: ticket,
+          email: emailAddr,
+        });
+
+        if (legacyResult.success) {
+          return {
+            legacyFallback: true,
+            output: formatOutput(
+              [
+                'Internal collector upload failed.',
+                'Legacy collect logs script completed successfully.',
+                legacyResult.output,
+              ].join('\n'),
+            ),
+          };
+        }
+
+        throw createCollectLogsError(
+          'Internal collector upload failed and legacy fallback also failed.',
+          legacyResult.output,
+        );
+      }
+    })();
+
+    if (uploadResult.legacyFallback) {
+      return { output: uploadResult.output! };
+    }
+
+    // Successful upload path
     return {
       output: formatOutput(
         [
           'Credential pre-check succeeded.',
-          `Collecting logs from Docker (${dockerTailLines} tail lines per container).`,
+          `Collecting logs from last ${logLookbackDays} day(s).`,
+          `Collecting logs from Docker (since ${dockerSinceHours}h, ${typeof dockerTailLines === 'number' ? `${dockerTailLines} tail lines` : 'all lines'} per container).`,
           collectLogsFromFiles
             ? 'File-based log collection enabled (default).'
             : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
           `Archive created: ${archivePath}`,
-          uploadedVia === 'webdav'
+          uploadResult.uploadedVia === 'webdav'
             ? 'Archive uploaded successfully via WebDAV.'
             : 'Archive uploaded successfully via FTP fallback.',
           'Local archive removed after successful upload.',
@@ -1437,6 +1679,7 @@ const collectLogsInternally = async (
       ),
     };
   } finally {
+    // cleanup (still uses await inside finally)
     await rm(extraDir, { recursive: true, force: true });
     await rm(snapshotDir, { recursive: true, force: true });
   }
@@ -1475,6 +1718,8 @@ const handler: CollectLogsHandler = async (req, reply) => {
         localOnly,
         collectLogsFromFiles:
           process.env.COLLECT_LOGS_FROM_FILES?.toLowerCase() !== 'false',
+        logLookbackDays: parseLogLookbackDays(),
+        dockerSinceHours: parseDockerLogSinceHours(parseLogLookbackDays()),
         dockerTailLines: parseDockerTailLines(),
       },
       'Calling collectLogs internally',

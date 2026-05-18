@@ -1,4 +1,4 @@
-import { existsSync } from 'fs';
+import { existsSync } from 'node:fs';
 import { join } from 'path';
 
 import { AddEnvFile } from './AddEnvFileToServices.model';
