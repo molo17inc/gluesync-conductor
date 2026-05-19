@@ -67,7 +67,7 @@ COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\agents
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\collect-logs.ps1 collect-logs.ps1
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\system-info.ps1 system-info.ps1
 # Copy lmigration scripts FROM build output
-COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\copy-agent-data.ps1 copy-agent-data.ps1
+# COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\copy-agent-data.ps1 copy-agent-data.ps1
 
 COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\public\gluesync-conductor.svg static\logo.svg
 # COPY --from=builder C:\opt\gluesync-conductor\packages\gluesync-conductor\build\static\ static
