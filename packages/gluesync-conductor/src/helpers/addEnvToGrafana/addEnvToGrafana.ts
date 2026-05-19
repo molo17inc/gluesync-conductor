@@ -11,17 +11,10 @@ const addEnvToGrafana: AddEnvToGrafana = services => {
     return { services, updatedIds: [] };
   }
 
-  console.log('[addEnvToGrafana] grafana service found');
-
   // normalize environment array -> object
   const normalizedEnv = extractKeyValue(
     composeServiceFieldConfig.environment.separator,
     service.environment ?? [],
-  );
-
-  console.log(
-    '[addEnvToGrafana] current env keys:',
-    Object.keys(normalizedEnv),
   );
 
   // Only add if missing
