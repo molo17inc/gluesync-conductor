@@ -304,6 +304,23 @@ $env:CI_REGISTRY_PASSWORD | docker login -u $env:CI_REGISTRY_USER --password-std
 if ($LASTEXITCODE -ne 0) { throw "❌ Docker login failed" }
 Write-Host "✅ Docker login successful"
 
+# --- Install Trivy ---
+$trivyRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/aquasecurity/trivy/releases/latest"
+$trivyVersion = $trivyRelease.tag_name.TrimStart('v')
+if ([string]::IsNullOrWhiteSpace($trivyVersion)) {
+  throw "❌ Unable to resolve latest Trivy version"
+}
+
+$trivyZip = "$env:TEMP\trivy.zip"
+$trivyExtractPath = "$env:TEMP\trivy"
+Invoke-WebRequest -Uri "https://github.com/aquasecurity/trivy/releases/download/v$trivyVersion/trivy_${trivyVersion}_Windows-64bit.zip" -OutFile $trivyZip
+if (Test-Path $trivyExtractPath) {
+  Remove-Item -Path $trivyExtractPath -Recurse -Force
+}
+Expand-Archive -Path $trivyZip -DestinationPath $trivyExtractPath -Force
+$env:PATH = "$trivyExtractPath;$env:PATH"
+trivy --version
+
 # --- Build Windows Docker image ---
 Write-Host "Building Docker image for $($WindowsTag) using default Server Core..."
 docker build --file ${DOCKER_FILE} `
@@ -314,6 +331,12 @@ docker build --file ${DOCKER_FILE} `
 
 if ($LASTEXITCODE -ne 0) { throw "❌ Docker build failed" }
 Write-Host "✅ Docker build completed successfully for $($WindowsTag)"
+
+# --- Scan image before publish ---
+Write-Host "Running Trivy scan on $VERSION_TAG_WINDOWS before publish..."
+trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --no-progress "$VERSION_TAG_WINDOWS"
+if ($LASTEXITCODE -ne 0) { throw "❌ Trivy scan failed" }
+Write-Host "✅ Trivy scan passed"
 
 $tarDirectory = Join-Path (Get-Location) "docker-images-windows"
 New-Item -ItemType Directory -Force -Path $tarDirectory | Out-Null

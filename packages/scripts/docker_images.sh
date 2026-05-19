@@ -16,6 +16,14 @@ sanitize_segment() {
   echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/_/g'
 }
 
+build_candidate_tag() {
+  local tag="$1"
+  local suffix="${CI_PIPELINE_ID:-local}"
+  local safe_tag
+  safe_tag=$(sanitize_segment "$tag")
+  echo "${tag}-candidate-${suffix}-${safe_tag}"
+}
+
 arch_alias_from_platform() {
   local platform="$1"
   local arch="${platform##*/}"
@@ -191,12 +199,21 @@ while [ "$#" -gt 0 ]; do
     echo "Platform: $PLATFORM"
     echo "Tags: ${TAGS[*]}"
 
-    # Build docker buildx command with multiple tags
+    # Build docker buildx command with candidate tags
     DOCKER_CMD="docker buildx build --platform $PLATFORM --progress=plain --no-cache"
+    declare -a RELEASE_IMAGES=()
+    declare -a CANDIDATE_IMAGES=()
+
     for TAG in "${TAGS[@]}"; do
       FULL_IMAGE="$CI_REGISTRY_IMAGE/$IMAGE_NAME:$TAG"
-      DOCKER_CMD="$DOCKER_CMD -t $FULL_IMAGE"
-      echo " -> Tagging as $FULL_IMAGE"
+      CANDIDATE_TAG=$(build_candidate_tag "$TAG")
+      CANDIDATE_IMAGE="$CI_REGISTRY_IMAGE/$IMAGE_NAME:$CANDIDATE_TAG"
+
+      RELEASE_IMAGES+=("$FULL_IMAGE")
+      CANDIDATE_IMAGES+=("$CANDIDATE_IMAGE")
+
+      DOCKER_CMD="$DOCKER_CMD -t $CANDIDATE_IMAGE"
+      echo " -> Candidate tag: $CANDIDATE_IMAGE"
     done
 
     # Retry up to 3 times in case of error
@@ -218,9 +235,18 @@ while [ "$#" -gt 0 ]; do
       exit 1
     fi
 
-    for TAG in "${TAGS[@]}"; do
-      FULL_IMAGE="$CI_REGISTRY_IMAGE/$IMAGE_NAME:$TAG"
-      upload_docker_tar "$FULL_IMAGE" "$IMAGE_NAME" "$TAG"
+    for i in "${!TAGS[@]}"; do
+      TAG="${TAGS[$i]}"
+      RELEASE_IMAGE="${RELEASE_IMAGES[$i]}"
+      CANDIDATE_IMAGE="${CANDIDATE_IMAGES[$i]}"
+
+      echo "Running Trivy scan on candidate image $CANDIDATE_IMAGE"
+      trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --no-progress "$CANDIDATE_IMAGE"
+
+      echo "Promoting $CANDIDATE_IMAGE -> $RELEASE_IMAGE"
+      docker buildx imagetools create -t "$RELEASE_IMAGE" "$CANDIDATE_IMAGE"
+
+      upload_docker_tar "$RELEASE_IMAGE" "$IMAGE_NAME" "$TAG"
     done
   ) &
 

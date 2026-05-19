@@ -86,6 +86,16 @@ docker_images:
     - echo "Running build and push docker images..."
     - apk add --no-cache bash curl
     - |
+      TRIVY_VERSION=$(curl -sfL https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep -oE '"tag_name"\s*:\s*"v[^"]+"' | head -1 | sed -E 's/.*"v([^"]+)"/\1/')
+      if [ -z "$TRIVY_VERSION" ]; then
+        echo "❌ Unable to resolve latest Trivy version"
+        exit 1
+      fi
+      curl -sfL --retry 3 --retry-delay 2 "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -o /tmp/trivy.tar.gz
+      tar -xzf /tmp/trivy.tar.gz -C /tmp trivy
+      install -m 0755 /tmp/trivy /usr/local/bin/trivy
+      trivy --version
+    - |
       if [ -z "${FTP_SITE:-}" ] || [ -z "${FTP_USER:-}" ] || [ -z "${FTP_PASSWORD:-}" ]; then
         echo "[ERROR] FTP credentials (FTP_SITE, FTP_USER, FTP_PASSWORD) must be set"
         exit 1
