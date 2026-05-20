@@ -1,3 +1,4 @@
+import type Docker from 'dockerode';
 import type { ReleaseChannelTypes } from '../../models/conductor.model';
 
 export type CheckModuleUpdateResult = Readonly<{
@@ -13,6 +14,7 @@ export type CheckModuleUpdateParams = Readonly<{
 }>;
 
 export type CheckModuleUpdate = (
+  docker: Readonly<Docker>,
   composeJson: Readonly<Record<string, unknown>>,
   releaseChannel: ReleaseChannelTypes,
   serviceName: string,

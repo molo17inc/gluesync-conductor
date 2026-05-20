@@ -1,4 +1,3 @@
-// src/index.ts
 import fastify from 'fastify';
 import cors from '@fastify/cors';
 import Docker from 'dockerode';
@@ -6,7 +5,9 @@ import Docker from 'dockerode';
 import dockerPlugin from './plugins/docker';
 import swaggerPlugin from './plugins/swagger';
 import gluesyncPlugin from './plugins/gluesync';
-import apiBlockerAsUpdatingPlugin from './plugins/apiBlockerAsUpdating';
+import apiBlockerAsUpdatingPlugin, {
+  disableUpdateMode,
+} from './plugins/apiBlockerAsUpdating';
 import tzFix from './plugins/tzFix';
 
 import httpsRedirectMiddleware from './middleware/httpsRedirect';
@@ -30,6 +31,8 @@ import getRootPath from './helpers/getRootPath/getRootPath';
 import healConductorConf from './helpers/healConductorConf/healConductorConf';
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
 import migrateRoutes from './routes/migrate';
+import updateModeEmitter from './plugins/updateModeEmitter';
+import { startUpdateWatchdog } from './helpers/updateWatchdog/updateWatchdog';
 
 type FastifyServices = {
   docker: Docker;
@@ -47,9 +50,13 @@ declare module 'fastify' {
 const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
 const host: string = process.env.HOST || '0.0.0.0';
 
+/*
+  We use a Map to hold the watchdog-running boolean.
+*/
+const watchdogCell = new Map<string, boolean>([['value', false]]);
+
 const startServer = async (): Promise<void> => {
   const serverOptions = createFastifyHttpsOptions();
-
   const server = fastify(serverOptions);
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
 
@@ -92,6 +99,80 @@ const startServer = async (): Promise<void> => {
   });
 
   // Register route modules
+  const onUpdateEnabled = async (): Promise<void> => {
+    if (watchdogCell.get('value') ?? false) {
+      getLogger().info(
+        '[watchdog] watchdog already running, ignoring duplicate updateModeEnabled event',
+      );
+      return;
+    }
+
+    watchdogCell.set('value', true);
+
+    getLogger().info(
+      '[watchdog] update mode enabled event received — starting watchdog',
+    );
+
+    try {
+      const result = await startUpdateWatchdog(server.docker, {
+        serviceName: process.env.CONDUCTOR_NAME || 'gluesync-conductor',
+        helperImageOrName: process.env.HELPER_IMAGE_BASE || undefined,
+        pollIntervalMs: 5000,
+        timeoutMs: 5 * 60 * 1000,
+        updateModeGraceMs: 45_000,
+        recoveryFunction: async (serviceName: string) => {
+          try {
+            await autoReboot({
+              hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
+              serviceName,
+              helperImage:
+                process.env.IS_WINDOWS?.toLowerCase() === 'true'
+                  ? process.env.HELPER_IMAGE_BASE || ''
+                  : 'docker:cli',
+              log: msg => getLogger().info({ msg }, '[watchdog-recovery]'),
+            });
+            return true;
+          } catch (err) {
+            getLogger().error({ err }, '[watchdog-recovery] autoReboot failed');
+            return false;
+          }
+        },
+      });
+
+      if (result.ok) {
+        getLogger().info(
+          { reason: result.reason },
+          '[watchdog] service healthy or recovered — disabling update mode',
+        );
+        disableUpdateMode();
+      } else {
+        getLogger().error(
+          { reason: result.reason },
+          '[watchdog] watchdog failed/timed out — disabling update mode to avoid permanent lock',
+        );
+        disableUpdateMode();
+      }
+    } catch (err) {
+      getLogger().error({ err }, '[watchdog] unexpected error');
+      disableUpdateMode();
+    } finally {
+      watchdogCell.set('value', false);
+    }
+  };
+
+  const onUpdateDisabled = (): void => {
+    getLogger().info('[watchdog] update mode disabled event received');
+  };
+
+  updateModeEmitter.on('updateModeEnabled', onUpdateEnabled);
+  updateModeEmitter.on('updateModeDisabled', onUpdateDisabled);
+
+  // Remove listeners on server close to avoid leaks
+  server.addHook('onClose', async () => {
+    updateModeEmitter.off('updateModeEnabled', onUpdateEnabled);
+    updateModeEmitter.off('updateModeDisabled', onUpdateDisabled);
+  });
+
   await server.register(systemRoutes);
   await server.register(serviceRoutes);
   await server.register(containerRoutes);
@@ -151,31 +232,32 @@ const startServer = async (): Promise<void> => {
   const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
 
   if (rebootNeeded) {
-    const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
+    const shouldUseWindows =
+      process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
     autoReboot({
       hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
       serviceName: 'gluesync-conductor',
-      helperImage: isWindows ? helperImageWindows : 'docker:cli',
+      helperImage: shouldUseWindows ? helperImageWindows : 'docker:cli',
       log: msg => logger.info({ msg }, '[conductor-healer] self-heal log'),
     });
   }
 };
 
 // Handle unhandled rejections
-process.on('unhandledRejection', (err: unknown) => {
-  getLogger().error({ err }, 'Unhandled Promise Rejection');
+process.on('unhandledRejection', (error: unknown) => {
+  getLogger().error({ error }, 'Unhandled Promise Rejection');
   process.exit(1);
 });
 
 // Handle uncaught exceptions
-process.on('uncaughtException', (err: unknown) => {
-  getLogger().error({ err }, 'Uncaught Exception');
+process.on('uncaughtException', (error: unknown) => {
+  getLogger().error({ error }, 'Uncaught Exception');
   process.exit(1);
 });
 
 // Start the fastify server
-startServer().catch((err: unknown) => {
-  getLogger().error({ err }, 'Failed to start server');
+startServer().catch((error: unknown) => {
+  getLogger().error({ error }, 'Failed to start server');
   process.exit(1);
 });
