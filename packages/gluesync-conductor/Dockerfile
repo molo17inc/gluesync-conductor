@@ -45,8 +45,8 @@ COPY build/system-info.sh system-info.sh
 RUN chmod +x collect-logs.sh system-info.sh
 
 # Dockerfile snippet
-# COPY build/copy-agent-data.sh copy-agent-data.sh
-# RUN chmod +x copy-agent-data.sh
+COPY build/copy-agent-data.sh copy-agent-data.sh
+RUN chmod +x copy-agent-data.sh
 
 COPY public/gluesync-conductor.svg static/logo.svg
 

@@ -60,6 +60,7 @@ const startServer = async (): Promise<void> => {
   const server = fastify(serverOptions);
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
 
+  // Register TZ fix FIRST (so later plugins/routes see the normalized TZ for windows).
   if (isWindows) {
     await server.register(tzFix, {
       fallbackIana: undefined,
@@ -72,6 +73,7 @@ const startServer = async (): Promise<void> => {
   logSslInfo();
   httpsRedirectMiddleware(server);
 
+  // Register CORS before routes
   await server.register(cors, {
     origin: true,
     credentials: true,
@@ -79,10 +81,16 @@ const startServer = async (): Promise<void> => {
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
+  // Register Swagger plugins first
   await server.register(swaggerPlugin);
+
+  // Register Docker plugin
   await server.register(dockerPlugin);
+
+  // Register Gluesync plugin
   await server.register(gluesyncPlugin);
 
+  // Register api blocker when updating plugin, routes after this will be blocked when updating
   await server.register(apiBlockerAsUpdatingPlugin, {
     statusCode: 503,
     message: 'Conductor is updating. Try again later',
@@ -90,6 +98,7 @@ const startServer = async (): Promise<void> => {
     bypassMethods: ['POST'],
   });
 
+  // Register route modules
   const onUpdateEnabled = async (): Promise<void> => {
     if (watchdogCell.get('value') ?? false) {
       getLogger().info(
@@ -203,6 +212,7 @@ const startServer = async (): Promise<void> => {
         );
       }
 
+      // Start only the adopted/updated services (Linux + Windows)
       await upAdoptedServices(server.docker, updatedIds);
     } else if (updatedIds.length === 0 && unmatchedIds.length > 0) {
       logger.warn(
@@ -234,17 +244,20 @@ const startServer = async (): Promise<void> => {
   }
 };
 
-process.on('unhandledRejection', (err: unknown) => {
-  getLogger().error({ err }, 'Unhandled Promise Rejection');
+// Handle unhandled rejections
+process.on('unhandledRejection', (error: unknown) => {
+  getLogger().error({ error }, 'Unhandled Promise Rejection');
   process.exit(1);
 });
 
-process.on('uncaughtException', (err: unknown) => {
-  getLogger().error({ err }, 'Uncaught Exception');
+// Handle uncaught exceptions
+process.on('uncaughtException', (error: unknown) => {
+  getLogger().error({ error }, 'Uncaught Exception');
   process.exit(1);
 });
 
-startServer().catch((err: unknown) => {
-  getLogger().error({ err }, 'Failed to start server');
+// Start the fastify server
+startServer().catch((error: unknown) => {
+  getLogger().error({ error }, 'Failed to start server');
   process.exit(1);
 });
