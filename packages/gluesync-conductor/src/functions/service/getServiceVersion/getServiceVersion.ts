@@ -235,12 +235,19 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         changelogData,
       },
     });
-  } catch (error: unknown) {
+  } catch (error: any) {
     logger.error({ error }, '[get-service-version] unexpected error');
+
+    if (error?.response) {
+      return reply.code(error.response.status).send({
+        success: false,
+        ...error.response.data,
+      });
+    }
 
     return reply.code(502).send({
       success: false,
-      error: 'Unable to retrieve agent version',
+      error: 'Unable to retrieve service version',
       details: error instanceof Error ? error.message : String(error),
     });
   }

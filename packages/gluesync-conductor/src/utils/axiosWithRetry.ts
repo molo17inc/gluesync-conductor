@@ -139,7 +139,7 @@ export const axiosWithRetry: AxiosWithRetry = async <T>(
           '[axiosWithRetry] giving up after max retries',
         );
 
-        throw new Error('Network request failed');
+        throw error;
       }
 
       const delay = backoffMs * 2 ** (attempt - 1);
