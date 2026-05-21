@@ -34,14 +34,13 @@ const fetchAgentInfo = async (
     );
 
     return data;
-  } catch (err) {
+  } catch (error) {
     logger.error(
-      { imageName, error: err },
+      { imageName, error },
       '[fetchAgentInfo] failed to fetch agent info',
     );
 
-    // Clean, generic error for callers (handlers will map to HTTP)
-    throw new Error('Unable to fetch agent info');
+    throw error;
   }
 };
 
