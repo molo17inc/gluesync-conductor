@@ -15,20 +15,6 @@ export const releaseChannelTypes = ['alpha', 'beta', 'ga'] as const;
 
 export type ReleaseChannelTypes = (typeof releaseChannelTypes)[number];
 
-export const normalizeReleaseChannel = (
-  value?: string,
-): ReleaseChannelTypes | undefined => {
-  if (!value) {
-    return undefined;
-  }
-
-  const normalized = value.toLowerCase();
-
-  return releaseChannelTypes.includes(normalized as ReleaseChannelTypes)
-    ? (normalized as ReleaseChannelTypes)
-    : undefined;
-};
-
 export const containerActions = [
   'kill',
   'pull',
