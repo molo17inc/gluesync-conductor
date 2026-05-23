@@ -15,6 +15,7 @@
  * Copyright (C) 2025 MOLO17. All rights reserved.
  */
 
+import { EventEmitter } from 'node:events';
 import { GluesyncClient } from 'gluesync-sdk';
 import { Logger } from 'pino';
 import settings, { updateCoreHubUrl } from './config';
@@ -22,7 +23,7 @@ import settings, { updateCoreHubUrl } from './config';
 /**
  * Singleton class for managing the Gluesync SDK client connection
  */
-export class GluesyncSDKClient {
+export class GluesyncSDKClient extends EventEmitter {
   private static _instance: GluesyncSDKClient;
 
   private _token: string | null = null;
@@ -31,18 +32,34 @@ export class GluesyncSDKClient {
 
   private _isInitialized = false;
 
-  private readonly _reconnectTimer: NodeJS.Timeout | null = null;
+  /** Handle for the pending reconnect `setTimeout`; null when idle. */
+  private _reconnectTimerHandle: NodeJS.Timeout | null = null;
+
+  /** Set to `true` by `shutdown()` to suppress auto-reconnect after an intentional close. */
+  private _intentionalClose = false;
+
+  /** Prevents concurrent reconnect goroutines. */
+  private _reconnecting = false;
+
+  /** Monotonically increasing counter of consecutive failed reconnect attempts. */
+  private _reconnectAttempt = 0;
+
+  /** Whether mid-session auto-reconnect is enabled (default: `true`). */
+  private readonly _autoReconnect: boolean;
 
   private _logger: Logger | Console = console;
 
   /**
    * Constructor - private to enforce singleton pattern
    * @param logger Optional logger instance (defaults to console)
+   * @param autoReconnect Enable mid-session auto-reconnect (default: `true`)
    */
-  private constructor(logger?: Logger) {
+  private constructor(logger?: Logger, autoReconnect = true) {
+    super();
     if (logger) {
       this._logger = logger;
     }
+    this._autoReconnect = autoReconnect;
   }
 
   /**
@@ -77,9 +94,17 @@ export class GluesyncSDKClient {
    * Get the singleton instance with optional logger
    * @param logger Optional logger instance
    */
-  public static getInstance(logger?: Logger): GluesyncSDKClient {
+  /**
+   * @param logger Optional Pino logger; falls back to `console`.
+   * @param autoReconnect Enable mid-session auto-reconnect (default `true`).
+   *        Set to `false` to opt out of automatic reconnection.
+   */
+  public static getInstance(
+    logger?: Logger,
+    autoReconnect = true,
+  ): GluesyncSDKClient {
     if (!GluesyncSDKClient._instance) {
-      GluesyncSDKClient._instance = new GluesyncSDKClient(logger);
+      GluesyncSDKClient._instance = new GluesyncSDKClient(logger, autoReconnect);
     } else if (logger && GluesyncSDKClient._instance._logger === console) {
       // Update logger if instance exists but is using default console logger
       GluesyncSDKClient._instance._logger = logger;
@@ -414,9 +439,16 @@ export class GluesyncSDKClient {
   };
 
   /**
-   * Shutdown the Gluesync client
+   * Shutdown the Gluesync client.
+   * Sets `_intentionalClose` before disconnecting so the `disconnected` event
+   * handler does not schedule an auto-reconnect.
    */
   public shutdown = async (): Promise<void> => {
+    this._intentionalClose = true;
+    if (this._reconnectTimerHandle !== null) {
+      clearTimeout(this._reconnectTimerHandle);
+      this._reconnectTimerHandle = null;
+    }
     if (this._client && (this._client as any).isConnected) {
       this._log('info', 'Disconnecting from CoreHub...');
       await this._client.disconnect();
@@ -435,13 +467,101 @@ export class GluesyncSDKClient {
   };
 
   /**
-   * Handle the disconnected event
+   * Handle the disconnected event.
+   * If the disconnect was not intentional and auto-reconnect is enabled,
+   * schedules a reconnect with exponential back-off + full jitter.
    * @param reason The reason for disconnection
    */
   private readonly _onDisconnected = (reason: string): void => {
     this._token = null;
     this._isInitialized = false;
     this._log('info', `Disconnected from CoreHub: ${reason}`);
+
+    if (!this._intentionalClose && this._autoReconnect) {
+      this._scheduleReconnect();
+    }
+  };
+
+  /**
+   * Schedule the next reconnect attempt.
+   * Backoff: `min(maxDelayMs, baseDelayMs * 2^attempt) * random(0.5, 1.5)`
+   * Defaults: baseDelayMs=1000, maxDelayMs=60_000, maxAttempts=Infinity.
+   * Idempotent: a second call while a timer or reconnect is in-flight is a no-op.
+   */
+  private readonly _scheduleReconnect = (): void => {
+    if (this._reconnecting || this._reconnectTimerHandle !== null) {
+      return; // already in-flight – do not double-schedule
+    }
+
+    const baseDelayMs = 1_000;
+    const maxDelayMs = 60_000;
+    const rawDelay = Math.min(
+      maxDelayMs,
+      baseDelayMs * Math.pow(2, this._reconnectAttempt),
+    );
+    // full jitter: uniform in [0.5 × raw, 1.5 × raw]
+    const delay = rawDelay * (0.5 + Math.random());
+
+    this._log(
+      'info',
+      `Scheduling reconnect attempt ${this._reconnectAttempt + 1} in ${Math.round(delay)}ms`,
+    );
+
+    this._reconnectTimerHandle = setTimeout(() => {
+      this._reconnectTimerHandle = null;
+      void this._doReconnect();
+    }, delay);
+  };
+
+  /**
+   * Execute one reconnect attempt by calling `initialize()` again.
+   * On success: resets attempt counter and emits `reconnected`.
+   * On failure: schedules the next attempt via `_scheduleReconnect()`.
+   * Circuit-breaker: logs a warning every 10 consecutive failures.
+   */
+  private readonly _doReconnect = async (): Promise<void> => {
+    if (this._reconnecting) {
+      return; // concurrent guard
+    }
+    this._reconnecting = true;
+    this._reconnectAttempt += 1;
+
+    if (this._reconnectAttempt % 10 === 0) {
+      this._log(
+        'warn',
+        `Reconnect circuit-breaker: ${this._reconnectAttempt} consecutive failed attempts — still retrying`,
+      );
+    }
+
+    try {
+      this._log(
+        'info',
+        `Reconnect attempt ${this._reconnectAttempt} starting...`,
+      );
+      await this.initialize();
+
+      const completedAttempts = this._reconnectAttempt;
+      this._reconnectAttempt = 0;
+      this._reconnecting = false;
+
+      this._log(
+        'info',
+        `Reconnected to CoreHub successfully after ${completedAttempts} attempt(s)`,
+      );
+      this.emit('reconnected');
+    } catch (error: unknown) {
+      this._reconnecting = false;
+      this._log(
+        'warn',
+        `Reconnect attempt ${this._reconnectAttempt} failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+
+      if (!this._intentionalClose) {
+        this._scheduleReconnect();
+      }
+    }
   };
 
   /**
