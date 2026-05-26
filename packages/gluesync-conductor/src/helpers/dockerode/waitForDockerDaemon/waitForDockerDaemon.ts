@@ -51,27 +51,59 @@ const waitForDockerDaemon: WaitForDockerDaemon = async (docker, log, opts) => {
     try {
       await tryPing();
       return undefined; // <-- fixes consistent-return
-    } catch (err) {
+    } catch (error) {
       // Non‑transient error → fail immediately
-      if (!isTransientDockerConnError(err)) {
-        throw err;
+      if (!isTransientDockerConnError(error)) {
+        throw error;
       }
 
       // Transient → retry with exponential backoff
+      const now = Date.now();
+      const remainingMs = Math.max(0, deadline - now);
       const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** attempt);
-      const cappedDelay = Math.min(delay, Math.max(0, deadline - Date.now()));
+      const cappedDelay = Math.min(delay, remainingMs);
+
+      // inline safe extractor for unknown error shapes
+      const errInfo = (() => {
+        if (error instanceof Error) {
+          const anyErr = error as unknown as Record<string, unknown>;
+          return {
+            message: error.message,
+            stack: error.stack,
+            code:
+              typeof anyErr.code === 'string' ? String(anyErr.code) : undefined,
+            errno:
+              typeof anyErr.errno === 'string' ||
+              typeof anyErr.errno === 'number'
+                ? anyErr.errno
+                : undefined,
+          };
+        }
+
+        return {
+          message: typeof error === 'string' ? error : undefined,
+          stack: undefined,
+          code: undefined,
+          errno: undefined,
+        };
+      })();
 
       log.warn(
         {
           attempt: attempt + 1,
           delayMs: cappedDelay,
-          remainingMs: deadline - Date.now(),
-          code: (err as any)?.code,
-          errno: (err as any)?.errno,
-          message: (err as any)?.message,
+          remainingMs,
+          code: errInfo.code,
+          errno: errInfo.errno,
+          message: errInfo.message,
         },
         'Docker not ready yet; retrying ping',
       );
+
+      // stack trace at debug level to reduce noise
+      if (errInfo.stack) {
+        log.debug({ stack: errInfo.stack }, 'Docker ping error stack');
+      }
 
       if (cappedDelay <= 0) {
         throw new Error(`Docker daemon not ready within ${totalTimeoutMs}ms`);

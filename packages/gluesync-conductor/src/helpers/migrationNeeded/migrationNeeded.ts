@@ -24,8 +24,8 @@ export const markMigrationCompleted = async (): Promise<void> => {
       JSON.stringify(payload, null, 2),
       'utf-8',
     );
-  } catch (err) {
-    console.error('[migration-complete] Error:', err);
+  } catch (error) {
+    console.error('[migration-complete] Error:', error);
   }
 };
 
@@ -46,10 +46,10 @@ export const migrationNeeded = async (): Promise<boolean> => {
         console.log('[migration-check] Migration already completed → skipping');
         return false;
       }
-    } catch (fileErr) {
+    } catch (error) {
       console.log(
         '[migration-check] migration file does not exist or unreadable:',
-        fileErr,
+        error,
       );
     }
 
@@ -81,8 +81,8 @@ export const migrationNeeded = async (): Promise<boolean> => {
     await markMigrationCompleted();
 
     return false;
-  } catch (err) {
-    console.error('[migration-check] Fatal error:', err);
+  } catch (error) {
+    console.error('[migration-check] Fatal error:', error);
     return false;
   }
 };

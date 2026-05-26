@@ -34,9 +34,11 @@ export const spawnAsync = (
       console.log(`[conductor-updater] stderr: ${data.toString().trimEnd()}`);
     });
 
-    child.on('error', err => {
-      console.log(`[conductor-updater] error: ${err.message}`);
-      reject(err);
+    child.on('error', error => {
+      console.log(
+        `[conductor-updater] error: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      reject(error);
     });
 
     child.on('close', code => {

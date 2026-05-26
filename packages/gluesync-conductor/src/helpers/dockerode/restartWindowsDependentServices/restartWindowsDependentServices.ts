@@ -34,9 +34,9 @@ const restartWindowsDependentServices: RestartWindowsDependentServices = async (
       { service: coreHubServiceId },
       '[core-hub-updater] core-hub is ready',
     );
-  } catch (err) {
+  } catch (error) {
     logger.warn(
-      { service: coreHubServiceId, error: err },
+      { service: coreHubServiceId, error },
       '[core-hub-updater] core-hub readiness check failed, proceeding anyway',
     );
   }

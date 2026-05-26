@@ -55,8 +55,8 @@ const getCurrentVersion: GetCurrentVersion = async (
 
   try {
     return await attempt();
-  } catch (err) {
-    if (isTransientDockerConnError(err)) {
+  } catch (error) {
+    if (isTransientDockerConnError(error)) {
       logger.warn(
         { service: serviceId },
         '[getCurrentVersion] docker unreachable — falling back to compose.yml',
@@ -65,7 +65,7 @@ const getCurrentVersion: GetCurrentVersion = async (
     }
 
     logger.warn(
-      { service: serviceId, err },
+      { service: serviceId, error },
       '[getCurrentVersion] unexpected error — falling back to compose.yml',
     );
     return fallback();

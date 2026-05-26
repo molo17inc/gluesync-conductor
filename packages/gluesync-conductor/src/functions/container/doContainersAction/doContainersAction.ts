@@ -98,9 +98,9 @@ const handler: DoContainersActionHandler = async (req, reply) => {
           );
 
           return semver.gte(semVerVersion, MIN_CORE_HUB_VERSION);
-        } catch (err) {
+        } catch (error) {
           req.log.warn(
-            `[update-handler] Failed to fetch core-hub version → assuming migration needed ${err instanceof Error ? err.message : String(err)}`,
+            `[update-handler] Failed to fetch core-hub version → assuming migration needed ${error instanceof Error ? error.message : String(error)}`,
           );
           return false;
         }
@@ -138,11 +138,11 @@ const handler: DoContainersActionHandler = async (req, reply) => {
               },
             });
             return;
-          } catch (err) {
+          } catch (error) {
             reply.code(500).send({
               success: false,
               error: 'Migration failed',
-              details: err instanceof Error ? err.message : String(err),
+              details: error instanceof Error ? error.message : String(error),
             });
             return;
           }
@@ -193,8 +193,8 @@ const handler: DoContainersActionHandler = async (req, reply) => {
               }
             : {};
         })
-        .catch((err: unknown) => ({
-          pruneError: err instanceof Error ? err.message : String(err),
+        .catch((error: unknown) => ({
+          pruneError: error instanceof Error ? error.message : String(error),
         }));
 
       reply.code(200);
