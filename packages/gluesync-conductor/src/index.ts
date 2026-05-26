@@ -37,6 +37,7 @@ import migrateRoutes from './routes/migrate';
 import envRoutes from './routes/env';
 import updateModeEmitter from './plugins/updateModeEmitter';
 import { startUpdateWatchdog } from './helpers/updateWatchdog/updateWatchdog';
+import errorHandlerPlugin from './plugins/errorHandlerPlugin';
 
 type FastifyServices = {
   docker: Docker;
@@ -76,6 +77,9 @@ const startServer = async (): Promise<void> => {
 
   logSslInfo();
   httpsRedirectMiddleware(server);
+
+  // Register error hangler plugin so all error follows ErrorResponse structure
+  await server.register(errorHandlerPlugin);
 
   // Register CORS before routes
   await server.register(cors, {
