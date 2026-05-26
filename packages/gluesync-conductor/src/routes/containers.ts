@@ -5,7 +5,9 @@ import {
   containerActions,
   conductorServiceTypes,
   releaseChannelTypes,
+  ContainerActions,
 } from '../models/conductor.model';
+import normalizeReleaseChannel from '../helpers/normalizeReleaseChannel/normalizeReleaseChannerl';
 
 const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
   // Register ComposeFile schema
@@ -359,6 +361,33 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
           additionalProperties: false,
         },
       },
+    },
+    preValidation: async (request, reply) => {
+      const body = request.body as {
+        action: ContainerActions;
+        ids: ReadonlyArray<string>;
+        releaseChannel?: string;
+      };
+
+      const normalizedReleaseChannel = normalizeReleaseChannel(
+        body.releaseChannel,
+      );
+
+      if (body.releaseChannel && !normalizedReleaseChannel) {
+        reply.code(500).send({
+          success: false,
+          error: 'Invalid releaseChannel',
+          details: `Allowed values: ${releaseChannelTypes.join(', ')}`,
+        });
+
+        return;
+      }
+
+      // eslint-disable-next-line functional/immutable-data
+      request.body = {
+        ...body,
+        releaseChannel: normalizedReleaseChannel,
+      };
     },
     handler: doContainersAction,
   });
