@@ -55,9 +55,9 @@ const restartWindowsDependentServices: RestartWindowsDependentServices = async (
       );
       return 'restarted';
     })
-    .catch(err => {
+    .catch(error => {
       logger.warn(
-        { service: chronosService, error: err },
+        { service: chronosService, error },
         `[core-hub-updater] failed to restart ${chronosService}`,
       );
       return 'restart failed';

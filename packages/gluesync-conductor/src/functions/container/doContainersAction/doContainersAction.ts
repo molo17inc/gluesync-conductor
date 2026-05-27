@@ -253,11 +253,8 @@ const handler: DoContainersActionHandler = async (req, reply) => {
           restartFn({
             hostProjectDir,
             helperImage: isWindows ? helperImageWindows : 'docker:28',
-          }).catch(err => {
-            req.log.error(
-              { error: err },
-              '[conductor-restart] full restart failed',
-            );
+          }).catch(error => {
+            req.log.error({ error }, '[conductor-restart] full restart failed');
           });
         });
 
@@ -301,11 +298,8 @@ const handler: DoContainersActionHandler = async (req, reply) => {
             helperImage: isWindows ? helperImageWindows : 'docker:cli',
             log: msg =>
               req.log.info({ msg }, '[conductor-restart] restart log'),
-          }).catch(err => {
-            req.log.error(
-              { error: err },
-              '[conductor-restart] autoReboot failed',
-            );
+          }).catch(error => {
+            req.log.error({ error }, '[conductor-restart] autoReboot failed');
           });
         });
       } else {
@@ -378,11 +372,8 @@ const handler: DoContainersActionHandler = async (req, reply) => {
               helperImage: isWindows ? helperImageWindows : 'docker:cli',
               log: msg =>
                 req.log.info({ msg }, '[conductor-restart] restart log'),
-            }).catch(err => {
-              req.log.error(
-                { error: err },
-                '[conductor-restart] autoReboot failed',
-              );
+            }).catch(error => {
+              req.log.error({ error }, '[conductor-restart] autoReboot failed');
             });
           });
         } else {

@@ -83,8 +83,8 @@ const migrationWithUpdate: MigrationWithUpdate = async (
     restartFn({
       hostProjectDir,
       helperImage: isWindows ? helperImageWindows : 'docker:28',
-    }).catch(err => {
-      logger.error({ err }, '[migration] restart failed');
+    }).catch(error => {
+      logger.error({ error }, '[migration] restart failed');
     });
   });
 };

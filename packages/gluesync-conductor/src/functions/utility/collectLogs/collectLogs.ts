@@ -229,7 +229,7 @@ const runCommandCapture = async (
 
     const initialState: StreamState = { stdout: '', stderr: '' };
 
-    child.once('error', err => {
+    child.once('error', error => {
       Promise.all([stdoutPromise, stderrPromise]).then(([stdout, stderr]) => {
         const afterStdout = appendEvent(initialState, {
           type: 'stdout',
@@ -242,7 +242,7 @@ const runCommandCapture = async (
         resolve({
           exitCode: 1,
           stdout: finalState.stdout,
-          stderr: finalState.stderr || err.message,
+          stderr: finalState.stderr || error.message,
         });
       });
     });
@@ -797,9 +797,9 @@ const streamDockerLogsToFile = async (
   child.stderr?.pipe(writer, { end: false });
 
   const exitCode = await new Promise<number>(resolve => {
-    child.on('error', err => {
+    child.on('error', error => {
       writer.write(
-        `\n[collect-logs] docker logs spawn error: ${err.message}\n`,
+        `\n[collect-logs] docker logs spawn error: ${error.message}\n`,
       );
       resolve(1);
     });
@@ -1151,9 +1151,9 @@ const validateCredentialConnectivity = async (
     backoffMs: 300,
   })
     .then(() => ({ ok: true as const, detail: '' }))
-    .catch(err => ({
+    .catch(error => ({
       ok: false as const,
-      detail: `WebDAV credential pre-check failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+      detail: `WebDAV credential pre-check failed: ${error instanceof Error ? error.message : 'unknown error'}`,
     }));
 
   if (webDavAttempt.ok) {

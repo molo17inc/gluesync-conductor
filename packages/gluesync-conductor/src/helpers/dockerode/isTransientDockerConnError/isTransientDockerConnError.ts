@@ -7,12 +7,12 @@
  *  - Connection reset / EOF
  *  - Timeouts
  */
-const isTransientDockerConnError = (err: unknown): boolean => {
-  if (!err || typeof err !== 'object') {
+const isTransientDockerConnError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
     return false;
   }
 
-  const e = err as any;
+  const e = error as any;
   const code = String(e.code ?? '');
   const errno = String(e.errno ?? '');
   const message = String(e.message ?? '').toLowerCase();
