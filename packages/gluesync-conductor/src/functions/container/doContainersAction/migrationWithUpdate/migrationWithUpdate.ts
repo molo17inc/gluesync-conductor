@@ -78,10 +78,11 @@ const migrationWithUpdate: MigrationWithUpdate = async (
     const hostProjectDir = getRootPath({ basePath: process.env.BASE_PATH });
     const restartFn = isWindows ? restartWindows : restartLinux;
 
+    logger.info(`[migration-restart]}`);
+
     restartFn({
       hostProjectDir,
       helperImage: isWindows ? helperImageWindows : 'docker:28',
-      log: msg => logger.info(`[migration-restart] ${msg}`),
     }).catch(err => {
       logger.error({ err }, '[migration] restart failed');
     });

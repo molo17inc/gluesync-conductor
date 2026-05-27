@@ -19,9 +19,11 @@ import restartLinux from '../../../helpers/restartAllServices/linuxRestart';
 import migrationWithUpdate from './migrationWithUpdate/migrationWithUpdate';
 import updateNormalBulk from './handleUpdate/updateNormalBulk';
 import { migrationNeeded } from '../../../helpers/migrationNeeded/migrationNeeded';
+import { getLogger } from '../../../utils/logger';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
+const logger = getLogger();
 
 const handler: DoContainersActionHandler = async (req, reply) => {
   try {
@@ -48,7 +50,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     }
 
     if (containerAction === 'update') {
-      console.log('[update-handler] Update action triggered');
+      logger.info('[update-handler] Update action triggered');
 
       const composeJson = await readComposeFile({ raw: true });
       req.log.debug(
@@ -114,12 +116,15 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       ) {
         const needsMigration = await migrationNeeded();
 
-        console.log(
+        logger.debug(
+          { needsMigration },
           '[update-handler] migrationNeeded() returned:',
           needsMigration,
         );
+
         if (needsMigration) {
-          console.log('[update-handler] Entering MIGRATION FLOW');
+          logger.debug('[update-handler] Entering MIGRATION FLOW');
+
           try {
             await migrationWithUpdate(
               requestIds,
@@ -149,7 +154,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         }
       }
 
-      console.log('[update-handler] Entering NORMAL UPDATE FLOW');
+      logger.debug('[update-handler] Entering  NORMAL UPDATE FLOW');
 
       const branchResult =
         conductorInfo?.needsUpdate &&
@@ -248,8 +253,6 @@ const handler: DoContainersActionHandler = async (req, reply) => {
           restartFn({
             hostProjectDir,
             helperImage: isWindows ? helperImageWindows : 'docker:28',
-            log: msg =>
-              req.log.info({ msg }, '[conductor-restart] full restart log'),
           }).catch(err => {
             req.log.error(
               { error: err },

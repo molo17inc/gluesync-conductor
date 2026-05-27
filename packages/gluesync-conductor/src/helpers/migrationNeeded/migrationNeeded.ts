@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import { LabelPrefix } from '../../models/composeFile.model';
+import { getLogger } from '../../utils/logger';
 
 const LINUX_ROOT = '/opt/gluesync-conductor/root-folder';
 const WINDOWS_ROOT = 'C:\\opt\\gluesync-conductor\\root-folder';
@@ -11,6 +12,8 @@ const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
 const ROOT_PATH = isWindows ? WINDOWS_ROOT : LINUX_ROOT;
 
 const MIGRATION_FILE = path.join(ROOT_PATH, '.migration-to-v2.json');
+
+const logger = getLogger();
 
 export const markMigrationCompleted = async (): Promise<void> => {
   try {
@@ -25,40 +28,45 @@ export const markMigrationCompleted = async (): Promise<void> => {
       'utf-8',
     );
   } catch (error) {
-    console.error('[migration-complete] Error:', error);
+    logger.error({ error }, '[migration-complete] Error:');
   }
 };
 
 export const migrationNeeded = async (): Promise<boolean> => {
-  console.log('[migration-check] Starting migration check');
-  console.log('[migration-check] MIGRATION_FILE path:', MIGRATION_FILE);
+  logger.debug('[migration-check] Starting migration check');
+  logger.debug(
+    { file: MIGRATION_FILE },
+    '[migration-check] MIGRATION_FILE path:',
+  );
 
   try {
     // Check migration file
     try {
       const file = await fs.readFile(MIGRATION_FILE, 'utf-8');
-      console.log('[migration-check] migration file contents:', file);
+      logger.debug({ file }, '[migration-check] migration file contents');
 
       const parsed = JSON.parse(file);
-      console.log('[migration-check] parsed migration file:', parsed);
+      logger.debug({ parsed }, '[migration-check] parsed migration file');
 
       if (parsed?.completed === true) {
-        console.log('[migration-check] Migration already completed → skipping');
+        logger.debug(
+          '[migration-check] Migration already completed → skipping',
+        );
         return false;
       }
     } catch (error) {
-      console.log(
-        '[migration-check] migration file does not exist or unreadable:',
-        error,
+      logger.error(
+        { error },
+        '[migration-check] migration file does not exist or unreadable',
       );
     }
 
-    console.log('[migration-check] Reading compose file...');
+    logger.debug('[migration-check] Reading compose file...');
     const composeJson = await readComposeFile({ raw: true });
 
-    console.log(
-      '[migration-check] Compose services keys:',
-      Object.keys(composeJson?.services || {}),
+    logger.debug(
+      { keys: Object.keys(composeJson?.services || {}) },
+      '[migration-check] Compose services keys',
     );
 
     const hasAgents = Object.entries(composeJson.services ?? {}).some(
@@ -68,14 +76,14 @@ export const migrationNeeded = async (): Promise<boolean> => {
           : service.labels?.[`${LabelPrefix.CONDUCTOR}.type`] === 'agent',
     );
 
-    console.log('[migration-check] hasAgents =', hasAgents);
+    logger.debug({ hasAgents }, '[migration-check] hasAgents');
 
     if (hasAgents) {
-      console.log('[migration-check] Migration required → returning true');
+      logger.debug('[migration-check] Migration required → returning true');
       return true;
     }
 
-    console.log(
+    logger.debug(
       '[migration-check] No agents found → marking migration complete',
     );
     await markMigrationCompleted();

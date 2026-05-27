@@ -4,8 +4,10 @@ import { join } from 'path';
 import { AddEnvFile } from './AddEnvFileToServices.model';
 import buildEnvFileConf from '../buildEnvFileConf/buildEnvFileConf';
 import { EnvFileElement } from '../../models/composeFile.model';
+import { getLogger } from '../../utils/logger';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
+const logger = getLogger();
 
 const ROOT_FOLDER_PATH = isWindows
   ? 'C:\\opt\\gluesync-conductor\\root-folder'
@@ -75,7 +77,7 @@ const addEnvFileToServices: AddEnvFile = (services, serviceIds) => {
   const rootFolderMounted = existsSync(ROOT_FOLDER_PATH);
 
   if (!rootFolderMounted) {
-    console.log(
+    logger.info(
       `addEnvFileToServices: root-folder not mounted at ${ROOT_FOLDER_PATH}, skipping env_file`,
     );
     return { services: {}, updatedIds: [] };
@@ -97,7 +99,7 @@ const addEnvFileToServices: AddEnvFile = (services, serviceIds) => {
 
       const envFile = clone(buildEnvFileConf());
 
-      console.log(
+      logger.info(
         `addEnvFileToServices: adding env_file for ${id}: ${ENV_FILE_NAME} + ${join(
           ROOT_FOLDER_PATH,
           ENV_FILE_NAME,

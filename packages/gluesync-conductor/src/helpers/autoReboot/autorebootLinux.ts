@@ -1,3 +1,4 @@
+import { getLogger } from '../../utils/logger';
 import { spawnAsync } from './autoReboot';
 
 type AutoReboot = (
@@ -5,9 +6,10 @@ type AutoReboot = (
     hostProjectDir: string;
     serviceName: string;
     helperImage: string;
-    log: (msg: Readonly<string>) => void;
   }>,
 ) => Promise<boolean>;
+
+const logger = getLogger();
 
 /**
  * Runs a helper container that performs:
@@ -17,7 +19,6 @@ const autoRebootLinux: AutoReboot = async ({
   hostProjectDir,
   serviceName = 'gluesync-conductor',
   helperImage = 'docker:28', // image with docker CLI + compose plugin
-  log = msg => console.log(msg),
 }) => {
   if (!hostProjectDir) {
     throw new Error('hostProjectDir is required');
@@ -42,7 +43,7 @@ const autoRebootLinux: AutoReboot = async ({
     innerCmd,
   ];
 
-  log(`[conductor-updater] docker ${args.join(' ')}`);
+  logger.info(`[conductor-updater] docker ${args.join(' ')}`);
 
   await spawnAsync('docker', args);
   return true;

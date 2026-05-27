@@ -83,8 +83,8 @@ const restartWindowsDependentServices: RestartWindowsDependentServices = async (
       helperImage: helperImageWindows,
       log: msg =>
         logger.info({ msg }, '[core-hub-updater] conductor restart log'),
-    }).catch(err => {
-      logger.error({ error: err }, '[core-hub-updater] autoReboot failed');
+    }).catch(error => {
+      logger.error({ error }, '[core-hub-updater] autoReboot failed');
     });
   });
 
