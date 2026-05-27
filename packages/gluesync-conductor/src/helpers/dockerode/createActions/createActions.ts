@@ -142,9 +142,11 @@ const createActions: CreateActions = ({
             helperImage: isWindows ? helperImageWindows : 'docker:cli',
             log: msg =>
               logger.info({ msg }, '[conductor-updater] self-update log'),
-          }).catch(err => {
+          }).catch(error => {
             logger.error(
-              { error: err },
+              {
+                error,
+              },
               '[conductor-updater] autoReboot failed',
             );
           });

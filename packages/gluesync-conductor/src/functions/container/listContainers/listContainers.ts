@@ -41,8 +41,8 @@ const handler: ListContainersHandler = async (req, reply) => {
     const [systemInfo, containerList] = await (async () => {
       try {
         return await safeFetch();
-      } catch (err) {
-        if (isTransientDockerConnError(err)) {
+      } catch (error) {
+        if (isTransientDockerConnError(error)) {
           req.log.warn('[list-containers] docker pipe busy — retrying');
 
           await waitForDockerDaemon(req.server.docker, logger, {
@@ -52,7 +52,7 @@ const handler: ListContainersHandler = async (req, reply) => {
 
           return safeFetch();
         }
-        throw err;
+        throw error;
       }
     })();
 

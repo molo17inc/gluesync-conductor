@@ -159,10 +159,10 @@ const createCollectLogsError = (
     isCollectLogsError: true as const,
   });
 
-const isCollectLogsError = (err: unknown): err is CollectLogsError =>
-  err instanceof Error &&
-  'isCollectLogsError' in err &&
-  err.isCollectLogsError === true;
+const isCollectLogsError = (error: unknown): error is CollectLogsError =>
+  error instanceof Error &&
+  'isCollectLogsError' in error &&
+  error.isCollectLogsError === true;
 
 const sanitizeLines = (text: string): ReadonlyArray<string> =>
   text
@@ -229,7 +229,7 @@ const runCommandCapture = async (
 
     const initialState: StreamState = { stdout: '', stderr: '' };
 
-    child.once('error', err => {
+    child.once('error', error => {
       Promise.all([stdoutPromise, stderrPromise]).then(([stdout, stderr]) => {
         const afterStdout = appendEvent(initialState, {
           type: 'stdout',
@@ -242,7 +242,7 @@ const runCommandCapture = async (
         resolve({
           exitCode: 1,
           stdout: finalState.stdout,
-          stderr: finalState.stderr || err.message,
+          stderr: finalState.stderr || error.message,
         });
       });
     });
@@ -518,8 +518,8 @@ const collectFilesRecursively = async (
 const tryReadFile = async (filePath: string): Promise<string> => {
   try {
     return await readFile(filePath, 'utf8');
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : 'unknown error';
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'unknown error';
     return `Unable to read file: ${reason}`;
   }
 };
@@ -557,16 +557,16 @@ const deleteOldLogs = async (
             );
             await rm(filePath, { force: true });
           }
-        } catch (err) {
+        } catch (error) {
           logger?.warn(
-            { filePath, err },
+            { filePath, error },
             'Failed to delete old log file, skipping',
           );
         }
       }),
     );
-  } catch (err) {
-    logger?.error({ err }, 'Failed to complete old logs deletion process');
+  } catch (error) {
+    logger?.error({ error }, 'Failed to complete old logs deletion process');
   }
 };
 
@@ -797,9 +797,9 @@ const streamDockerLogsToFile = async (
   child.stderr?.pipe(writer, { end: false });
 
   const exitCode = await new Promise<number>(resolve => {
-    child.on('error', err => {
+    child.on('error', error => {
       writer.write(
-        `\n[collect-logs] docker logs spawn error: ${err.message}\n`,
+        `\n[collect-logs] docker logs spawn error: ${error.message}\n`,
       );
       resolve(1);
     });
@@ -1151,9 +1151,9 @@ const validateCredentialConnectivity = async (
     backoffMs: 300,
   })
     .then(() => ({ ok: true as const, detail: '' }))
-    .catch(err => ({
+    .catch(error => ({
       ok: false as const,
-      detail: `WebDAV credential pre-check failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+      detail: `WebDAV credential pre-check failed: ${error instanceof Error ? error.message : 'unknown error'}`,
     }));
 
   if (webDavAttempt.ok) {
@@ -1230,8 +1230,8 @@ const uploadArchive = async (
       });
 
       return { ok: true as const, method: 'webdav' as const, detail: '' };
-    } catch (err) {
-      const axiosErr = err as AxiosError;
+    } catch (error) {
+      const axiosErr = error as AxiosError;
       const status = axiosErr.response?.status;
       const statusText = axiosErr.response?.statusText;
       const detail = status
@@ -1511,14 +1511,14 @@ const collectLogsInternally = async (
           logger,
         );
         return { archivePath };
-      } catch (err) {
+      } catch (error) {
         logger?.warn(
-          { err },
+          { error },
           'Internal archive creation failed, falling back to legacy script',
         );
 
         if (localOnly) {
-          throw err;
+          throw error;
         }
 
         const legacyResult = await collectLogsByScript({
@@ -1621,9 +1621,9 @@ const collectLogsInternally = async (
         }
 
         return { uploadedVia };
-      } catch (uploadErr) {
+      } catch (error) {
         logger?.warn(
-          { err: uploadErr },
+          { error },
           'Internal upload failed, falling back to legacy collect logs script',
         );
 
@@ -1737,14 +1737,14 @@ const handler: CollectLogsHandler = async (req, reply) => {
       output: result.output,
       ...(result.archivePath ? { archivePath: result.archivePath } : {}),
     });
-  } catch (err) {
-    req.log.error({ err }, 'failed to collect logs internally');
+  } catch (error) {
+    req.log.error({ error }, 'failed to collect logs internally');
 
-    if (isCollectLogsError(err)) {
+    if (isCollectLogsError(error)) {
       return reply.code(500).send({
         success: false,
-        error: err.message,
-        details: err.details ? formatOutput(err.details) : undefined,
+        error: error.message,
+        details: error.details ? formatOutput(error.details) : undefined,
       });
     }
 

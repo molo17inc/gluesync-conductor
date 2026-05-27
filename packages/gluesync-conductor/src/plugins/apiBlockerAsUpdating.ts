@@ -1,16 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 import updateModeEmitter from './updateModeEmitter';
+import { getLogger } from '../utils/logger';
 
 // isUpdateMode state
 const cell = new Map<string, boolean>([['value', false]]);
+const logger = getLogger();
 
 export const enableUpdateMode = (): void => {
   // if (cell.get('value') ?? true) {
   //   return;
   // }
 
-  console.log('[CONDUCTOR-UPDATE] enableUpdateMode called');
+  logger.info('[CONDUCTOR-UPDATE] enableUpdateMode called');
   cell.set('value', true);
   updateModeEmitter.emit('updateModeEnabled');
 };
@@ -20,7 +22,7 @@ export const disableUpdateMode = (): void => {
   //   return;
   // }
 
-  console.log('[CONDUCTOR-UPDATE] disableUpdateMode called');
+  logger.info('[CONDUCTOR-UPDATE] disableUpdateMode called');
   cell.set('value', false);
   updateModeEmitter.emit('updateModeDisabled');
 };

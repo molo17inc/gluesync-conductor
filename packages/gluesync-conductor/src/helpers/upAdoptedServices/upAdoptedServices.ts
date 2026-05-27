@@ -42,8 +42,11 @@ const upAdoptedServices: StartUpdatedServicesArgs = async (
         .then(() => {
           logger.info(`Service ${id} started`);
         })
-        .catch(err => {
-          logger.error({ err, service: id }, 'Failed to start adopted service');
+        .catch(error => {
+          logger.error(
+            { error, service: id },
+            'Failed to start adopted service',
+          );
         });
     });
 

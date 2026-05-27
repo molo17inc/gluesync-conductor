@@ -19,9 +19,11 @@ import restartLinux from '../../../helpers/restartAllServices/linuxRestart';
 import migrationWithUpdate from './migrationWithUpdate/migrationWithUpdate';
 import updateNormalBulk from './handleUpdate/updateNormalBulk';
 import { migrationNeeded } from '../../../helpers/migrationNeeded/migrationNeeded';
+import { getLogger } from '../../../utils/logger';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
+const logger = getLogger();
 
 const handler: DoContainersActionHandler = async (req, reply) => {
   try {
@@ -48,7 +50,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     }
 
     if (containerAction === 'update') {
-      console.log('[update-handler] Update action triggered');
+      logger.info('[update-handler] Update action triggered');
 
       const composeJson = await readComposeFile({ raw: true });
       req.log.debug(
@@ -98,9 +100,9 @@ const handler: DoContainersActionHandler = async (req, reply) => {
           );
 
           return semver.gte(semVerVersion, MIN_CORE_HUB_VERSION);
-        } catch (err) {
+        } catch (error) {
           req.log.warn(
-            `[update-handler] Failed to fetch core-hub version → assuming migration needed ${err instanceof Error ? err.message : String(err)}`,
+            `[update-handler] Failed to fetch core-hub version → assuming migration needed ${error instanceof Error ? error.message : String(error)}`,
           );
           return false;
         }
@@ -114,12 +116,15 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       ) {
         const needsMigration = await migrationNeeded();
 
-        console.log(
+        logger.debug(
+          { needsMigration },
           '[update-handler] migrationNeeded() returned:',
           needsMigration,
         );
+
         if (needsMigration) {
-          console.log('[update-handler] Entering MIGRATION FLOW');
+          logger.debug('[update-handler] Entering MIGRATION FLOW');
+
           try {
             await migrationWithUpdate(
               requestIds,
@@ -138,18 +143,18 @@ const handler: DoContainersActionHandler = async (req, reply) => {
               },
             });
             return;
-          } catch (err) {
+          } catch (error) {
             reply.code(500).send({
               success: false,
               error: 'Migration failed',
-              details: err instanceof Error ? err.message : String(err),
+              details: error instanceof Error ? error.message : String(error),
             });
             return;
           }
         }
       }
 
-      console.log('[update-handler] Entering NORMAL UPDATE FLOW');
+      logger.debug('[update-handler] Entering  NORMAL UPDATE FLOW');
 
       const branchResult =
         conductorInfo?.needsUpdate &&
@@ -193,8 +198,8 @@ const handler: DoContainersActionHandler = async (req, reply) => {
               }
             : {};
         })
-        .catch((err: unknown) => ({
-          pruneError: err instanceof Error ? err.message : String(err),
+        .catch((error: unknown) => ({
+          pruneError: error instanceof Error ? error.message : String(error),
         }));
 
       reply.code(200);
@@ -248,13 +253,8 @@ const handler: DoContainersActionHandler = async (req, reply) => {
           restartFn({
             hostProjectDir,
             helperImage: isWindows ? helperImageWindows : 'docker:28',
-            log: msg =>
-              req.log.info({ msg }, '[conductor-restart] full restart log'),
-          }).catch(err => {
-            req.log.error(
-              { error: err },
-              '[conductor-restart] full restart failed',
-            );
+          }).catch(error => {
+            req.log.error({ error }, '[conductor-restart] full restart failed');
           });
         });
 
@@ -298,11 +298,8 @@ const handler: DoContainersActionHandler = async (req, reply) => {
             helperImage: isWindows ? helperImageWindows : 'docker:cli',
             log: msg =>
               req.log.info({ msg }, '[conductor-restart] restart log'),
-          }).catch(err => {
-            req.log.error(
-              { error: err },
-              '[conductor-restart] autoReboot failed',
-            );
+          }).catch(error => {
+            req.log.error({ error }, '[conductor-restart] autoReboot failed');
           });
         });
       } else {
@@ -375,11 +372,8 @@ const handler: DoContainersActionHandler = async (req, reply) => {
               helperImage: isWindows ? helperImageWindows : 'docker:cli',
               log: msg =>
                 req.log.info({ msg }, '[conductor-restart] restart log'),
-            }).catch(err => {
-              req.log.error(
-                { error: err },
-                '[conductor-restart] autoReboot failed',
-              );
+            }).catch(error => {
+              req.log.error({ error }, '[conductor-restart] autoReboot failed');
             });
           });
         } else {

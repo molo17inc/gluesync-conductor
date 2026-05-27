@@ -4,7 +4,6 @@ type RestartWindows = (
   options: Readonly<{
     hostProjectDir: string; // host path to project (as seen by the Docker daemon)
     helperImage: string; // Windows image with pwsh
-    log?: (msg: Readonly<string>) => void;
   }>,
 ) => Promise<boolean>;
 
@@ -33,7 +32,6 @@ type RestartWindows = (
 const restartWindows: RestartWindows = async ({
   hostProjectDir,
   helperImage,
-  log = msg => console.log(msg),
 }) => {
   if (!hostProjectDir) {
     throw new Error('hostProjectDir is required');
@@ -93,7 +91,7 @@ const restartWindows: RestartWindows = async ({
     psCommand,
   ];
 
-  log(`[conductor-updater] docker (windows helper) ${args.join(' ')}`);
+  console.info(`[windows-restart] docker (windows helper) ${args.join(' ')}`);
 
   await spawnAsync('docker', args);
   return true;

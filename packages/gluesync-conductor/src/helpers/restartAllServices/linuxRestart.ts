@@ -1,10 +1,10 @@
+import { getLogger } from '../../utils/logger';
 import { spawnAsync } from '../autoReboot/autoReboot';
 
 type RestartLinux = (
   options: Readonly<{
     hostProjectDir: string;
     helperImage?: string; // image with docker CLI + compose plugin
-    log?: (msg: Readonly<string>) => void;
   }>,
 ) => Promise<boolean>;
 
@@ -20,12 +20,11 @@ type RestartLinux = (
 const restartLinux: RestartLinux = async ({
   hostProjectDir,
   helperImage = 'docker:28',
-  log = msg => console.log(msg),
 }) => {
   if (!hostProjectDir) {
     throw new Error('hostProjectDir is required');
   }
-
+  const logger = getLogger();
   const composeCandidates = ['docker compose', 'docker-compose'] as const;
 
   const composeCmd = await composeCandidates.reduce<Promise<string | null>>(
@@ -36,7 +35,7 @@ const restartLinux: RestartLinux = async ({
       } // already found
       try {
         await spawnAsync('sh', ['-c', `${candidate} version >/dev/null 2>&1`]);
-        log(`[conductor-updater] Using ${candidate}`);
+        logger.info(`[conductor-updater] Using ${candidate}`);
         return candidate;
       } catch {
         return null;
@@ -72,7 +71,7 @@ const restartLinux: RestartLinux = async ({
     innerCmd,
   ];
 
-  log(`[conductor-updater] docker ${args.join(' ')}`);
+  logger.info(`[linux-restart] docker ${args.join(' ')}`);
 
   await spawnAsync('docker', args);
   return true;

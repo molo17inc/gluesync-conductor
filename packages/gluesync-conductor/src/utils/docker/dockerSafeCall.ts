@@ -12,9 +12,12 @@ const dockerSafeCall = async <T>(
 
   try {
     return await fn(getDocker());
-  } catch (err) {
-    if (isTransientDockerConnError(err)) {
-      logger.warn({ err }, 'Docker pipe error, rebuilding client and retrying');
+  } catch (error) {
+    if (isTransientDockerConnError(error)) {
+      logger.warn(
+        { error },
+        'Docker pipe error, rebuilding client and retrying',
+      );
 
       const docker = rebuildDocker();
 
@@ -26,7 +29,7 @@ const dockerSafeCall = async <T>(
       return fn(docker);
     }
 
-    throw err;
+    throw error;
   }
 };
 

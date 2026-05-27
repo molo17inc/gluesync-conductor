@@ -18,6 +18,7 @@
 import { GluesyncClient } from 'gluesync-sdk';
 import { Logger } from 'pino';
 import settings, { updateCoreHubUrl } from './config';
+import logger from './logger';
 
 /**
  * Singleton class for managing the Gluesync SDK client connection
@@ -33,7 +34,7 @@ export class GluesyncSDKClient {
 
   private readonly _reconnectTimer: NodeJS.Timeout | null = null;
 
-  private _logger: Logger | Console = console;
+  private _logger: Logger = logger;
 
   /**
    * Constructor - private to enforce singleton pattern
@@ -80,8 +81,7 @@ export class GluesyncSDKClient {
   public static getInstance(logger?: Logger): GluesyncSDKClient {
     if (!GluesyncSDKClient._instance) {
       GluesyncSDKClient._instance = new GluesyncSDKClient(logger);
-    } else if (logger && GluesyncSDKClient._instance._logger === console) {
-      // Update logger if instance exists but is using default console logger
+    } else if (logger) {
       GluesyncSDKClient._instance._logger = logger;
     }
     return GluesyncSDKClient._instance;
@@ -252,7 +252,8 @@ export class GluesyncSDKClient {
       this._client.on('connected', this._onConnected);
       this._client.on('disconnected', this._onDisconnected);
       this._client.on('error', this._onError);
-      console.log(
+      this._log(
+        'info',
         'Security config file not found, using environment variables',
       );
 
@@ -449,7 +450,7 @@ export class GluesyncSDKClient {
    * @param error The exception that occurred
    */
   private readonly _onError = (error: Error): void => {
-    console.error(`Error in connection: ${error.message}`);
+    this._logger.error({ error }, 'Error in connection');
   };
 }
 

@@ -37,9 +37,9 @@ const runMigrationScript: RunMigrationScript = async () => {
       { SCRIPT_PATH },
       'Migration script copied/replaced successfully',
     );
-  } catch (err) {
+  } catch (error) {
     logger.error(
-      { err, ROOT_SCRIPT_PATH, SCRIPT_PATH },
+      { error, ROOT_SCRIPT_PATH, SCRIPT_PATH },
       'Failed to copy migration script',
     );
     return {
@@ -104,8 +104,8 @@ const runMigrationScript: RunMigrationScript = async () => {
       error: `Migration script failed with exit code ${exitCode}`,
       details: [stdoutText, stderrText].filter(Boolean).join('\n').trim(),
     };
-  } catch (err) {
-    logger.error({ err }, 'Internal error running migration script');
+  } catch (error) {
+    logger.error({ error }, 'Internal error running migration script');
     return {
       success: false,
       error: 'Internal server error',

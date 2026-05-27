@@ -34,9 +34,9 @@ const restartWindowsDependentServices: RestartWindowsDependentServices = async (
       { service: coreHubServiceId },
       '[core-hub-updater] core-hub is ready',
     );
-  } catch (err) {
+  } catch (error) {
     logger.warn(
-      { service: coreHubServiceId, error: err },
+      { service: coreHubServiceId, error },
       '[core-hub-updater] core-hub readiness check failed, proceeding anyway',
     );
   }
@@ -55,9 +55,9 @@ const restartWindowsDependentServices: RestartWindowsDependentServices = async (
       );
       return 'restarted';
     })
-    .catch(err => {
+    .catch(error => {
       logger.warn(
-        { service: chronosService, error: err },
+        { service: chronosService, error },
         `[core-hub-updater] failed to restart ${chronosService}`,
       );
       return 'restart failed';
@@ -83,8 +83,8 @@ const restartWindowsDependentServices: RestartWindowsDependentServices = async (
       helperImage: helperImageWindows,
       log: msg =>
         logger.info({ msg }, '[core-hub-updater] conductor restart log'),
-    }).catch(err => {
-      logger.error({ error: err }, '[core-hub-updater] autoReboot failed');
+    }).catch(error => {
+      logger.error({ error }, '[core-hub-updater] autoReboot failed');
     });
   });
 

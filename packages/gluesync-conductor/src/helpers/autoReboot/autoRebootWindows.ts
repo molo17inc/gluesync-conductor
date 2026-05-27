@@ -2,15 +2,17 @@ import { existsSync } from 'node:fs';
 import { join } from 'path';
 
 import { spawnAsync } from './autoReboot';
+import { getLogger } from '../../utils/logger';
 
 type AutoReboot = (
   options: Readonly<{
     hostProjectDir: string; // host path to project (as seen by the Docker daemon)
     serviceName: string;
     helperImage: string; // Windows image with pwsh
-    log?: (msg: Readonly<string>) => void;
   }>,
 ) => Promise<boolean>;
+
+const logger = getLogger();
 
 /**
  * Runs a helper Windows container (ephemeral) from inside the current
@@ -31,7 +33,6 @@ const autoRebootWindows: AutoReboot = async ({
   hostProjectDir,
   serviceName = 'gluesync-conductor',
   helperImage,
-  log = msg => console.log(msg),
 }) => {
   if (!hostProjectDir) {
     throw new Error('hostProjectDir is required');
@@ -60,7 +61,7 @@ const autoRebootWindows: AutoReboot = async ({
     : '';
 
   if (!envFileArgs) {
-    log(
+    logger.info(
       '[conductor-updater] .env not found in mounted project root, continuing without --env-file',
     );
   }
@@ -122,7 +123,7 @@ const autoRebootWindows: AutoReboot = async ({
     psCommand,
   ];
 
-  log(
+  logger.info(
     `[conductor-updater] Rebooting service "${serviceName}" on drive ${hostPath[0]}:`,
   );
   await spawnAsync('docker', args);
