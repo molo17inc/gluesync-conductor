@@ -33,7 +33,7 @@ RUN Invoke-WebRequest -Uri https://download.docker.com/win/static/stable/x86_64/
   Copy-Item 'C:/docker/docker/docker.exe' 'C:/Windows/System32/docker.exe'; `
   Remove-Item 'C:/docker' -Recurse -Force; `
   Remove-Item 'C:/docker.zip' -Force; `
-  Invoke-WebRequest -Uri https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-windows-x86_64.exe -OutFile C:/Windows/System32/docker-compose.exe
+  Invoke-WebRequest -Uri https://github.com/docker/compose/releases/download/v5.1.4/docker-compose-windows-x86_64.exe -OutFile C:/Windows/System32/docker-compose.exe
 
 # Environment variables (one per line)
 ENV NODE_ENV=production
