@@ -17,8 +17,8 @@ const migrateToTwoHandler: MigrateToTwoHandler = async (req, reply) => {
       error: result.error,
       details: result.details,
     });
-  } catch (err) {
-    req.log.error({ err }, 'Internal error running migration script');
+  } catch (error) {
+    req.log.error({ error }, 'Internal error running migration script');
     return reply.status(500).send({
       success: false,
       error: 'Internal server error',

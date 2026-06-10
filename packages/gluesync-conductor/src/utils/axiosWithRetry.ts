@@ -32,11 +32,18 @@ const getProxyConfig = (): string | undefined => {
     logger.info({ proxyObj }, 'Parsed proxy config');
 
     return proxyUrl;
-  } catch (e: any) {
-    logger.error(
-      { proxyUrl, error: e.message },
-      'Failed to parse proxy URL - falling back to direct',
-    );
+  } catch (error: unknown) {
+    if (error instanceof AxiosError || error instanceof Error) {
+      logger.error(
+        { proxyUrl, error: error.message },
+        'Failed to parse proxy URL - falling back to direct',
+      );
+    } else {
+      logger.error(
+        { proxyUrl, error },
+        'Failed to parse proxy URL - falling back to direct (non-Error thrown)',
+      );
+    }
 
     return undefined;
   }
@@ -120,38 +127,53 @@ export const axiosWithRetry: AxiosWithRetry = async <T>(
       );
 
       return response.data as T;
-    } catch (err) {
-      const error = err as AxiosError;
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        const axiosError = error;
 
-      logger.warn(
-        {
-          url,
-          attempt,
-          message: error.message,
-          status: error.response?.status,
-        },
-        '[axiosWithRetry] request failed',
-      );
-
-      if (attempt >= retries + 1) {
-        logger.error(
-          { url, attempts: attempt },
-          '[axiosWithRetry] giving up after max retries',
+        logger.warn(
+          {
+            url,
+            attempt,
+            message: axiosError.message,
+            status: axiosError.response?.status,
+          },
+          '[axiosWithRetry] request failed',
         );
 
+        if (attempt > retries) {
+          logger.error(
+            { url, attempts: attempt },
+            '[axiosWithRetry] giving up after max retries',
+          );
+          throw axiosError;
+        }
+
+        const jitter = Math.floor(Math.random() * 100);
+        const delay = Math.min(15_000, backoffMs * 2 ** (attempt - 1) + jitter);
+
+        logger.info(
+          { url, attempt, delay },
+          '[axiosWithRetry] retrying after delay',
+        );
+
+        await sleep(delay);
+
+        return attemptRequest(attempt + 1);
+      }
+
+      // non-Axios Error objects
+      if (error instanceof Error) {
+        logger.warn(
+          { url, attempt, message: error.message },
+          '[axiosWithRetry] non-axios error',
+        );
         throw error;
       }
 
-      const delay = backoffMs * 2 ** (attempt - 1);
-
-      logger.info(
-        { url, attempt, delay },
-        '[axiosWithRetry] retrying after delay',
-      );
-
-      await sleep(delay);
-
-      return attemptRequest(attempt + 1);
+      // unknown error shape
+      logger.warn({ url, attempt, error }, '[axiosWithRetry] unknown error');
+      throw new Error(String(error));
     }
   };
 

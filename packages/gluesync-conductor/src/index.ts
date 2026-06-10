@@ -132,8 +132,11 @@ const startServer = async (): Promise<void> => {
               log: msg => getLogger().info({ msg }, '[watchdog-recovery]'),
             });
             return true;
-          } catch (err) {
-            getLogger().error({ err }, '[watchdog-recovery] autoReboot failed');
+          } catch (error) {
+            getLogger().error(
+              { error },
+              '[watchdog-recovery] autoReboot failed',
+            );
             return false;
           }
         },
@@ -152,8 +155,8 @@ const startServer = async (): Promise<void> => {
         );
         disableUpdateMode();
       }
-    } catch (err) {
-      getLogger().error({ err }, '[watchdog] unexpected error');
+    } catch (error) {
+      getLogger().error({ error }, '[watchdog] unexpected error');
       disableUpdateMode();
     } finally {
       watchdogCell.set('value', false);

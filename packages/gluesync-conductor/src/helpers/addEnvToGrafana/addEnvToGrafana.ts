@@ -1,13 +1,15 @@
 import { composeServiceFieldConfig } from '../../models/composeFile.model';
+import { getLogger } from '../../utils/logger';
 import extractKeyValue from '../composeFile/extractKeyValue/extractKeyValue';
 import { AddEnvToGrafana } from './addEnvToGrafana.model';
 
 const addEnvToGrafana: AddEnvToGrafana = services => {
   const grafanaServiceName = 'grafana';
+  const logger = getLogger();
 
   const service = services[grafanaServiceName];
   if (!service) {
-    console.log('[addEnvToGrafana] grafana service NOT found');
+    logger.info('[addEnvToGrafana] grafana service NOT found');
     return { services, updatedIds: [] };
   }
 

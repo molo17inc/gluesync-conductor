@@ -150,12 +150,12 @@ const collectLogsByScript: CollectLogsByScript = async options => {
       success: false,
       output: formatOutput(stderr || stdout),
     };
-  } catch (err) {
-    logger?.error({ err }, 'Failed to execute legacy collect logs script');
+  } catch (error) {
+    logger?.error({ error }, 'Failed to execute legacy collect logs script');
 
     return {
       success: false,
-      output: err instanceof Error ? err.message : 'Unknown error',
+      output: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 };

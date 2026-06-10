@@ -34,8 +34,8 @@ const checkModuleUpdate: CheckModuleUpdate = async (
       });
 
       return true;
-    } catch (err) {
-      if (isTransientDockerConnError(err)) {
+    } catch (error) {
+      if (isTransientDockerConnError(error)) {
         logger.warn(
           { service: serviceName },
           '[checkModuleUpdate] Docker daemon not ready — falling back to compose.yml',
@@ -44,7 +44,7 @@ const checkModuleUpdate: CheckModuleUpdate = async (
         return false;
       }
 
-      throw err;
+      throw error;
     }
   })();
 

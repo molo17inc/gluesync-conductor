@@ -6,10 +6,10 @@ import { RetryCmd } from './retryHelper.model';
  * Determines if a Docker error should trigger retry (container conflicts + connection issues)
  */
 export const shouldRetryError = (
-  err: Readonly<unknown>,
+  error: Readonly<unknown>,
   message: Readonly<string>,
 ): boolean => {
-  if (isTransientDockerConnError(err)) {
+  if (isTransientDockerConnError(error)) {
     return true;
   }
 

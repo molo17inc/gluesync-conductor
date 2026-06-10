@@ -28,3 +28,4 @@ export {
   cleanupSSLFiles,
   type SSLConfig,
 } from './https-utils';
+export { default as logger } from './logger';

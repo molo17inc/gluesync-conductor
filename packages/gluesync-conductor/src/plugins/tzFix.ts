@@ -96,8 +96,8 @@ const tzFixPlugin = async (
     if (log) {
       fastify.log.warn({ tz }, '[tz-fix] mapping missing; keeping original TZ');
     }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
 
     if (fallbackIana) {
       // eslint-disable-next-line functional/immutable-data

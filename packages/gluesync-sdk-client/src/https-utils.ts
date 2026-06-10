@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import settings from './config';
+import logger from './logger';
 
 // Temporary directory for extracted certificates
 const tempDir = path.join(process.cwd(), 'temp-certs');
@@ -31,7 +32,7 @@ export const setupHttpsRedirect = (app: any): void => {
         const hostname = host.includes(':') ? host.split(':')[0] : host;
         const httpsUrl = `https://${hostname}:${settings.port.toString()}${request.url}`;
 
-        console.log(`Redirecting browser from HTTP to HTTPS: ${httpsUrl}`);
+        logger.info({ httpsUrl }, 'Redirecting browser from HTTP to HTTPS');
         reply.status(307).redirect(httpsUrl);
         return;
       } catch (error) {
@@ -61,7 +62,7 @@ export const extractFromPkcs12 = (): {
         keyPassword = securityConfig.ssl.certificateKeyPassword || certPassword;
       }
     } catch (error) {
-      console.error('Error reading security config:', error);
+      logger.error({ error }, 'Error reading security config');
     }
   }
 
@@ -71,8 +72,13 @@ export const extractFromPkcs12 = (): {
 
   if (!keyPassword) keyPassword = certPassword;
 
-  console.log(
-    `Using PKCS12 file: ${p12Path} with password: ${'*'.repeat(certPassword.length)} and key password: ${'*'.repeat(keyPassword.length)}`,
+  logger.info(
+    {
+      p12Path,
+      certPasswordMasked: '*'.repeat(certPassword.length),
+      keyPasswordMasked: '*'.repeat(keyPassword.length),
+    },
+    'Using PKCS12 file for SSL extraction',
   );
 
   try {
@@ -94,12 +100,13 @@ export const extractFromPkcs12 = (): {
       { stdio: 'pipe' },
     );
 
-    console.log(
-      `Successfully extracted certificate and key from PKCS12 file: ${p12Path}`,
+    logger.info(
+      { p12Path, certPath: tempCertPath, keyPath: tempKeyPath },
+      'Successfully extracted certificate and key from PKCS12 file',
     );
     return { certPath: tempCertPath, keyPath: tempKeyPath };
   } catch (error) {
-    console.error('Failed to extract certificate from PKCS12:', error);
+    logger.error({ error }, 'Failed to extract certificate from PKCS12');
     return { certPath: null, keyPath: null };
   }
 };
@@ -120,7 +127,7 @@ export const getSSLConfig = (): SSLConfig | null => {
       process.env.SSL_CERT_FILE = certPath;
       process.env.SSL_KEY_FILE = keyPath;
     } else {
-      console.warn(
+      logger.warn(
         'SSL not available - could not find certificate and key files',
       );
       settings.useSSL = false;
@@ -133,7 +140,7 @@ export const getSSLConfig = (): SSLConfig | null => {
     const cert = fs.readFileSync(certFile);
     return { key, cert };
   } catch (error) {
-    console.error('Error reading SSL certificate files:', error);
+    logger.error({ error }, 'Error reading SSL certificate files');
     settings.useSSL = false;
     return null;
   }
@@ -143,18 +150,21 @@ export const cleanupSSLFiles = (): void => {
   if (tempCertPath && fs.existsSync(tempCertPath)) {
     try {
       fs.unlinkSync(tempCertPath);
-      console.log(`Removed temporary certificate file: ${tempCertPath}`);
+      logger.info({ tempCertPath }, 'Removed temporary certificate file');
     } catch (error) {
-      console.error(`Failed to remove temporary certificate file: ${error}`);
+      logger.error(
+        { error, tempCertPath },
+        'Failed to remove certificate file',
+      );
     }
   }
 
   if (tempKeyPath && fs.existsSync(tempKeyPath)) {
     try {
       fs.unlinkSync(tempKeyPath);
-      console.log(`Removed temporary key file: ${tempKeyPath}`);
+      logger.info({ tempKeyPath }, 'Removed temporary key file');
     } catch (error) {
-      console.error(`Failed to remove temporary key file: ${error}`);
+      logger.error({ error, tempKeyPath }, 'Failed to remove key file');
     }
   }
 
@@ -163,10 +173,10 @@ export const cleanupSSLFiles = (): void => {
       const files = fs.readdirSync(tempDir);
       if (files.length === 0) {
         fs.rmdirSync(tempDir);
-        console.log(`Removed temporary directory: ${tempDir}`);
+        logger.info({ tempDir }, 'Removed temporary directory');
       }
     } catch (error) {
-      console.error(`Failed to remove temporary directory: ${error}`);
+      logger.error({ error, tempDir }, 'Failed to remove temporary directory');
     }
   }
 };

@@ -57,9 +57,9 @@ const waitForContainerReady: WaitForContainerReady = async (
         `Container is running (no health check)`,
       );
       return { ready: true, shouldRetry: false };
-    } catch (err) {
+    } catch (error) {
       logger.debug(
-        { container: containerName, attempt: attempt + 1, error: err },
+        { container: containerName, attempt: attempt + 1, error },
         `Error checking container status, retrying...`,
       );
       return { ready: false, shouldRetry: true };

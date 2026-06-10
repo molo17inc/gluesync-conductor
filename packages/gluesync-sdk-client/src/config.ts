@@ -17,6 +17,7 @@
 
 import path from 'path';
 import fs from 'fs';
+import logger from './logger';
 
 /**
  * Gluesync SDK configuration settings
@@ -95,12 +96,17 @@ export const updateCoreHubUrl = (url: string | null): void => {
       parseInt(parsedUrl.port, 10) ||
       (parsedUrl.protocol === 'https:' ? 443 : 80);
     settings.useSSL = parsedUrl.protocol === 'https:';
-    console.log(`CoreHub URL: ${url}`);
-    console.log(`CoreHub Host: ${settings.coreHubHost}`);
-    console.log(`CoreHub Port: ${settings.coreHubPort}`);
-    console.log(`Use SSL: ${settings.useSSL}`);
+    logger.info(
+      {
+        url,
+        host: settings.coreHubHost,
+        port: settings.coreHubPort,
+        useSSL: settings.useSSL,
+      },
+      'CoreHub URL, host, port, and SSL settings',
+    );
   } catch (error) {
-    console.error(`Invalid CoreHub URL: ${url}`, error);
+    logger.error({ url, error }, 'Invalid CoreHub URL');
   }
 };
 
@@ -112,9 +118,9 @@ export const ensureDirectories = (): void => {
   if (!fs.existsSync(dataDir)) {
     try {
       fs.mkdirSync(dataDir, { recursive: true });
-      console.log(`Created data directory: ${dataDir}`);
+      logger.info({ dataDir }, 'Created data directory');
     } catch (error) {
-      console.error(`Failed to create data directory: ${error}`);
+      logger.error({ error, dataDir }, 'Failed to create data directory');
     }
   }
 };

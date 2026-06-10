@@ -2,8 +2,10 @@ import { spawn } from 'node:child_process';
 import autoRebootWindows from './autoRebootWindows';
 import autoRebootLinux from './autorebootLinux';
 import { disableUpdateMode } from '../../plugins/apiBlockerAsUpdating';
+import { getLogger } from '../../utils/logger';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
+const logger = getLogger();
 
 type AutoReboot = (
   options: Readonly<{
@@ -27,16 +29,18 @@ export const spawnAsync = (
     });
 
     child.stdout.on('data', data => {
-      console.log(`[conductor-updater] stdout: ${data.toString().trimEnd()}`);
+      logger.info(`[conductor-updater] stdout: ${data.toString().trimEnd()}`);
     });
 
     child.stderr.on('data', data => {
-      console.log(`[conductor-updater] stderr: ${data.toString().trimEnd()}`);
+      logger.info(`[conductor-updater] stderr: ${data.toString().trimEnd()}`);
     });
 
-    child.on('error', err => {
-      console.log(`[conductor-updater] error: ${err.message}`);
-      reject(err);
+    child.on('error', error => {
+      logger.info(
+        `[conductor-updater] error: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      reject(error);
     });
 
     child.on('close', code => {
