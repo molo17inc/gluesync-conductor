@@ -21,6 +21,9 @@ const logger = getLogger();
 const normalizeVersion = (version: string | null): string | null =>
   version ? version.split('-')[0] : null;
 
+const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
+const windowsYear = process.env.WINDOWS_YEAR;
+
 const handler: GetServiceVersionHandler = async (req, reply) => {
   try {
     const { id, releaseChannel } = castObject<GetServiceVersionParams>(
@@ -68,9 +71,6 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       }
 
       const { shortImageName, tag: composeTag } = parseImage(svc.image);
-
-      const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
-      const windowsYear = process.env.WINDOWS_YEAR;
 
       const { labels } = svc;
 
@@ -183,9 +183,24 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       };
     })();
 
+    const { labels } = service;
+
+    const serviceType = Array.isArray(labels)
+      ? labels
+          .find(l => l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
+          ?.split('=')[1]
+      : labels?.[`${LabelPrefix.CONDUCTOR}.type`];
+
+    const isThirdParty = serviceType === 'third-party';
+
+    const imageNameToFetch =
+      isWindows && isThirdParty && windowsYear
+        ? `${shortImageName}-win-${windowsYear}`
+        : shortImageName;
+
     const [currentVersion, serviceInfo] = await Promise.all([
       getCurrentVersion(req.server.docker, composeJson, id, dockerReady),
-      fetchAgentInfo(shortImageName),
+      fetchAgentInfo(imageNameToFetch),
     ]);
 
     const actualCurrentVersion =
