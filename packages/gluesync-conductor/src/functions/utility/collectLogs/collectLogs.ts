@@ -1419,8 +1419,65 @@ const collectLogsInternally = async (
       logger,
     );
 
-    // Optional file-based logs
-    const fileLogFiles = collectLogsFromFiles
+    // Optional file-based logs.
+    //
+    // We scan from `searchDir` (the project root) AND from the well-known
+    // mount points declared by the trial assembler's docker-compose template:
+    //   - ./logs/core-hub  -> Logback file appender (C:\opt\gluesync\logs)
+    //   - ./logs/chronos   -> Chronos service logs
+    //   - ./logs           -> Conductor's own logs + catch-all
+    // Hitting them explicitly is a safety net for environments where
+    // `searchDir` resolves to a different parent than expected.
+    const wellKnownLogDirs = collectLogsFromFiles
+      ? Array.from(
+          new Set([
+            join(searchDir, 'logs'),
+            join(searchDir, 'logs', 'core-hub'),
+            join(searchDir, 'logs', 'chronos'),
+          ]),
+        )
+      : [];
+
+    const wellKnownLogDirsScanned: Array<
+      Readonly<{ path: string; exists: boolean; matched: number }>
+    > = [];
+
+    const collectFromDirSafe = async (
+      dir: string,
+    ): Promise<ReadonlyArray<string>> => {
+      try {
+        const dirStat = await stat(dir);
+        if (!dirStat.isDirectory()) {
+          wellKnownLogDirsScanned.push({ path: dir, exists: false, matched: 0 });
+          return [];
+        }
+      } catch {
+        wellKnownLogDirsScanned.push({ path: dir, exists: false, matched: 0 });
+        return [];
+      }
+
+      const matched = await collectFilesRecursively(
+        dir,
+        filePath => {
+          const extension = extname(filePath).toLowerCase();
+          return extension === '.log' || extension === '.err';
+        },
+        { excludeDir: extraDir, isWindows },
+      );
+
+      wellKnownLogDirsScanned.push({
+        path: dir,
+        exists: true,
+        matched: matched.length,
+      });
+      return matched;
+    };
+
+    const wellKnownLogFiles = (
+      await Promise.all(wellKnownLogDirs.map(collectFromDirSafe))
+    ).flat();
+
+    const recursiveLogFiles = collectLogsFromFiles
       ? await collectFilesRecursively(
           searchDir,
           filePath => {
@@ -1438,6 +1495,10 @@ const collectLogsInternally = async (
           },
         )
       : [];
+
+    const fileLogFiles = Array.from(
+      new Set([...wellKnownLogFiles, ...recursiveLogFiles]),
+    );
 
     const recentFileLogCandidates = await Promise.all(
       fileLogFiles.map(async filePath => {
@@ -1476,13 +1537,94 @@ const collectLogsInternally = async (
     }
 
     // Snapshot files (copy into snapshotDir) and return list of targets.
-    // On Windows, active log files may be locked; we snapshot via readFile so
-    // the archive always reads from a safe copy rather than the live file.
+    //
+    // Strategy (per file, in order):
+    //   1. On Windows: robocopy /B (backup mode) — uses the Windows backup
+    //      API and bypasses share-mode restrictions on files that are open
+    //      for writing by another process (e.g. Logback file appender or
+    //      the Docker daemon). On Linux: plain `cp -p` — preserves mtimes
+    //      and streams without loading into memory.
+    //   2. Fallback: Node readFile + writeFile. Slower / not lock-friendly
+    //      on Windows but works when robocopy/cp are not on PATH.
+    //
     // Failed snapshots are excluded from the archive and recorded in the
     // collection report so support can see exactly what was dropped and why.
     type SnapshotResult =
-      | Readonly<{ ok: true; target: string; source: string }>
+      | Readonly<{ ok: true; target: string; source: string; method: 'robocopy' | 'cp' | 'node' }>
       | Readonly<{ ok: false; source: string; reason: string }>;
+
+    const safeCopyWithRobocopy = async (
+      sourceFile: string,
+      targetFile: string,
+    ): Promise<Readonly<{ ok: true } | { ok: false; reason: string }>> => {
+      const sourceDirName = dirname(sourceFile);
+      const sourceFileName = basename(sourceFile);
+      const targetDirName = dirname(targetFile);
+      const targetFileName = basename(targetFile);
+
+      // /B          backup mode — opens via the Windows backup API,
+      //             bypasses share-mode locks on files open for writing
+      // /R:1 /W:1   one retry, one second wait (don't hang forever)
+      // /NJH /NJS   no job header / summary noise in stdout
+      // /NP /NDL    no progress / no directory list
+      // /COPY:DAT   data + attributes + timestamps; skip ACL/owner/audit
+      const args = [
+        sourceDirName,
+        targetDirName,
+        sourceFileName,
+        '/B',
+        '/R:1',
+        '/W:1',
+        '/NJH',
+        '/NJS',
+        '/NP',
+        '/NDL',
+        '/COPY:DAT',
+      ];
+
+      const result = await runCommandCapture('robocopy', args);
+
+      // robocopy exit codes 0..7 are "success-ish" (0/1 = no/files copied,
+      // 2/4 = extras/mismatched, 8+ = real failure). We accept 0..7.
+      if (result.exitCode >= 0 && result.exitCode <= 7) {
+        // robocopy preserves the original filename; rename if target differs.
+        if (sourceFileName !== targetFileName) {
+          const copied = join(targetDirName, sourceFileName);
+          try {
+            const buf = await readFile(copied);
+            await writeFile(targetFile, buf);
+            await rm(copied, { force: true });
+          } catch (err) {
+            return {
+              ok: false,
+              reason: `robocopy rename failed: ${err instanceof Error ? err.message : 'unknown'}`,
+            };
+          }
+        }
+        return { ok: true };
+      }
+
+      return {
+        ok: false,
+        reason: `robocopy exit ${result.exitCode}: ${(result.stderr || result.stdout).trim().slice(0, 300)}`,
+      };
+    };
+
+    const safeCopyWithCp = async (
+      sourceFile: string,
+      targetFile: string,
+    ): Promise<Readonly<{ ok: true } | { ok: false; reason: string }>> => {
+      const result = await runCommandCapture('cp', ['-p', sourceFile, targetFile]);
+
+      if (result.exitCode === 0) {
+        return { ok: true };
+      }
+
+      return {
+        ok: false,
+        reason: `cp exit ${result.exitCode}: ${(result.stderr || result.stdout).trim().slice(0, 300)}`,
+      };
+    };
 
     const snapshotResults = await Promise.all(
       readableFiles.map(async (file): Promise<SnapshotResult> => {
@@ -1505,11 +1647,39 @@ const collectLogsInternally = async (
 
         try {
           await mkdir(dirname(target), { recursive: true });
-          const buf = await readFile(file);
-          await writeFile(target, buf);
-          return { ok: true, target, source: file };
         } catch (err) {
           const reason = err instanceof Error ? err.message : 'unknown error';
+          logger?.warn({ file, reason }, 'Failed to create snapshot directory, excluding from archive');
+          return { ok: false, source: file, reason };
+        }
+
+        // 1) Try platform-native safe copy (robocopy /B on Windows, cp on Linux).
+        const nativeCopy = isWindows
+          ? await safeCopyWithRobocopy(file, target)
+          : await safeCopyWithCp(file, target);
+
+        if (nativeCopy.ok) {
+          return {
+            ok: true,
+            target,
+            source: file,
+            method: isWindows ? 'robocopy' : 'cp',
+          };
+        }
+
+        logger?.debug(
+          { file, reason: nativeCopy.reason },
+          'Native safe-copy failed, falling back to Node readFile/writeFile',
+        );
+
+        // 2) Fallback to Node-level readFile/writeFile.
+        try {
+          const buf = await readFile(file);
+          await writeFile(target, buf);
+          return { ok: true, target, source: file, method: 'node' };
+        } catch (err) {
+          const nodeReason = err instanceof Error ? err.message : 'unknown error';
+          const reason = `native-copy: ${nativeCopy.reason} | node-copy: ${nodeReason}`;
           logger?.warn({ file, reason }, 'Failed to snapshot file, excluding from archive');
           return { ok: false, source: file, reason };
         }
@@ -1556,10 +1726,37 @@ const collectLogsInternally = async (
       reportLines.push('');
     }
 
+    const successfulSnapshots = snapshotResults.filter(
+      (r): r is Extract<SnapshotResult, { ok: true }> => r.ok,
+    );
+
+    const methodCounts = successfulSnapshots.reduce<Record<string, number>>(
+      (acc, r) => ({ ...acc, [r.method]: (acc[r.method] ?? 0) + 1 }),
+      {},
+    );
+
+    reportLines.push('--- Search roots ---');
+    reportLines.push(`  searchDir: ${searchDir}`);
+    if (wellKnownLogDirsScanned.length > 0) {
+      reportLines.push('  Well-known mount points:');
+      wellKnownLogDirsScanned.forEach(d => {
+        reportLines.push(
+          `    ${d.exists ? 'PRESENT' : 'MISSING'}  ${d.path}  (matched ${d.matched})`,
+        );
+      });
+    }
+    reportLines.push('');
+
+    reportLines.push('--- Snapshot method breakdown ---');
+    reportLines.push(`  robocopy: ${methodCounts['robocopy'] ?? 0}`);
+    reportLines.push(`  cp:       ${methodCounts['cp'] ?? 0}`);
+    reportLines.push(`  node:     ${methodCounts['node'] ?? 0}`);
+    reportLines.push('');
+
     reportLines.push('--- Files included in archive ---');
-    snapshotResults
-      .filter((r): r is Extract<SnapshotResult, { ok: true }> => r.ok)
-      .forEach(r => reportLines.push(`  OK  ${r.source}`));
+    successfulSnapshots.forEach(r =>
+      reportLines.push(`  OK  [${r.method}]  ${r.source}`),
+    );
     reportLines.push('');
 
     await writeFile(collectionReportPath, reportLines.join('\n'), 'utf8');
