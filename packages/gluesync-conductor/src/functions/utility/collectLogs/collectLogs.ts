@@ -1475,9 +1475,17 @@ const collectLogsInternally = async (
       );
     }
 
-    // Snapshot files (copy into snapshotDir) and return list of targets
-    const filesToArchive = await Promise.all(
-      readableFiles.map(async file => {
+    // Snapshot files (copy into snapshotDir) and return list of targets.
+    // On Windows, active log files may be locked; we snapshot via readFile so
+    // the archive always reads from a safe copy rather than the live file.
+    // Failed snapshots are excluded from the archive and recorded in the
+    // collection report so support can see exactly what was dropped and why.
+    type SnapshotResult =
+      | Readonly<{ ok: true; target: string; source: string }>
+      | Readonly<{ ok: false; source: string; reason: string }>;
+
+    const snapshotResults = await Promise.all(
+      readableFiles.map(async (file): Promise<SnapshotResult> => {
         const rel = relative(searchDir, file);
         const relExtra = relative(extraDir, file);
 
@@ -1495,16 +1503,67 @@ const collectLogsInternally = async (
 
         const target = join(snapshotDir, safeRel);
 
-        await mkdir(dirname(target), { recursive: true });
-
-        return readFile(file)
-          .then(buf => writeFile(target, buf).then(() => target))
-          .catch(() => {
-            logger?.warn({ file }, 'Failed to snapshot file');
-            return target;
-          });
+        try {
+          await mkdir(dirname(target), { recursive: true });
+          const buf = await readFile(file);
+          await writeFile(target, buf);
+          return { ok: true, target, source: file };
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : 'unknown error';
+          logger?.warn({ file, reason }, 'Failed to snapshot file, excluding from archive');
+          return { ok: false, source: file, reason };
+        }
       }),
     );
+
+    const filesToArchive = snapshotResults
+      .filter((r): r is Extract<SnapshotResult, { ok: true }> => r.ok)
+      .map(r => r.target);
+
+    const snapshotFailures = snapshotResults.filter(
+      (r): r is Extract<SnapshotResult, { ok: false }> => !r.ok,
+    );
+
+    // Write collection report into snapshotDir so it is always included in the archive.
+    const collectionReportPath = join(snapshotDir, 'collection-report.txt');
+    const reportLines = [
+      'Gluesync Log Collection Report',
+      `Generated on: ${new Date().toISOString()}`,
+      `Platform: ${isWindows ? 'Windows' : 'Linux'}`,
+      `Log lookback: ${logLookbackDays} day(s)`,
+      `Docker log window: last ${dockerSinceHours}h`,
+      `Docker tail lines: ${
+        typeof dockerTailLines === 'number' ? String(dockerTailLines) : 'all'
+      }`,
+      `File-based log collection: ${
+        collectLogsFromFiles ? 'enabled' : 'disabled'
+      }`,
+      '',
+      '--- Enumerated candidates ---',
+      `Total candidates found:   ${candidateFiles.length}`,
+      `Readable (passed access check): ${readableFiles.length}`,
+      `Successfully snapshotted: ${filesToArchive.length}`,
+      `Failed to snapshot:       ${snapshotFailures.length}`,
+      '',
+    ];
+
+    if (snapshotFailures.length > 0) {
+      reportLines.push('--- Snapshot failures (files excluded from archive) ---');
+      snapshotFailures.forEach(f => {
+        reportLines.push(`  FAILED  ${f.source}`);
+        reportLines.push(`    reason: ${f.reason}`);
+      });
+      reportLines.push('');
+    }
+
+    reportLines.push('--- Files included in archive ---');
+    snapshotResults
+      .filter((r): r is Extract<SnapshotResult, { ok: true }> => r.ok)
+      .forEach(r => reportLines.push(`  OK  ${r.source}`));
+    reportLines.push('');
+
+    await writeFile(collectionReportPath, reportLines.join('\n'), 'utf8');
+    filesToArchive.push(collectionReportPath);
 
     // Create archive with fallback to legacy script
     const archiveCreationResult: {
