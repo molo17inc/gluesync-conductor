@@ -43,10 +43,7 @@ const applyCpuCompatibilityToImage: ApplyCpuCompatibilityToImage = (
       const { imageName } = parseImage(service.image);
 
       // Only core-hub and chronos need compatibility suffix
-      if (
-        imageName !== 'gluesync-core-hub' &&
-        imageName !== 'gluesync-chronos'
-      ) {
+      if (imageName !== 'gluesync-core-hub') {
         return acc;
       }
 
