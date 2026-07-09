@@ -97,7 +97,7 @@ type CompressionCandidate = Readonly<{
 const MAX_OUTPUT_LINES = 10;
 const SCRIPT_VERSION = '2.2-internal';
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-const DEFAULT_LOG_LOOKBACK_DAYS = 3;
+const DEFAULT_LOG_LOOKBACK_DAYS = 5;
 const SYSTEM_INFO_SCRIPT_LINUX = 'system-info.sh';
 const SYSTEM_INFO_SCRIPT_WINDOWS = 'system-info.ps1';
 const WEBDAV_PAYLOAD =
@@ -534,7 +534,9 @@ const deleteOldLogs = async (
       searchDir,
       filePath => {
         const extension = extname(filePath).toLowerCase();
-        return extension === '.log' || extension === '.err';
+        return (
+          extension === '.log' || extension === '.err' || extension === '.gz'
+        );
       },
       { isWindows },
     );
@@ -1420,7 +1422,11 @@ const collectLogsInternally = async (
           searchDir,
           filePath => {
             const extension = extname(filePath).toLowerCase();
-            return extension === '.log' || extension === '.err';
+            return (
+              extension === '.log' ||
+              extension === '.err' ||
+              extension === '.gz'
+            );
           },
           {
             excludeDir: extraDir,
