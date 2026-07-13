@@ -29,9 +29,6 @@ const applyCpuCompatibilityToImage: ApplyCpuCompatibilityToImage = (
   }
 
   const cpuSupportsV3 = detectCpuSupportsX8664V3();
-  if (cpuSupportsV3) {
-    return { services, updatedIds: [] };
-  }
 
   const result = serviceIds.reduce(
     (acc, id) => {
@@ -47,17 +44,39 @@ const applyCpuCompatibilityToImage: ApplyCpuCompatibilityToImage = (
         return acc;
       }
 
-      // Avoid double suffix
-      if (service.image.includes('-debian')) {
+      const hasDebianSuffix = service.image.includes('-debian');
+
+      if (!cpuSupportsV3) {
+        // CPU does NOT support v3 → add -debian if not already present
+        if (hasDebianSuffix) {
+          return acc;
+        }
+
+        const parts = service.image.split(':');
+        const nextImage =
+          parts.length === 2
+            ? `${parts[0]}:${parts[1]}-debian`
+            : `${service.image}-debian`;
+
+        return {
+          updatedServices: {
+            ...acc.updatedServices,
+            [id]: { ...service, image: nextImage },
+          },
+          updatedIds: [...acc.updatedIds, id],
+        };
+      }
+
+      // CPU supports v3 → remove -debian if present
+      if (!hasDebianSuffix) {
         return acc;
       }
 
-      const nextImage = (() => {
-        const parts = service.image.split(':');
-        return parts.length === 2
-          ? `${parts[0]}:${parts[1]}-debian`
-          : `${service.image}-debian`;
-      })();
+      const parts = service.image.split(':');
+      const nextImage =
+        parts.length === 2
+          ? `${parts[0]}:${parts[1].replace(/-debian$/, '')}`
+          : `${service.image.replace(/-debian$/, '')}`;
 
       return {
         updatedServices: {
