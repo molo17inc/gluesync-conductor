@@ -22,6 +22,7 @@ import removeContainerNameFromServices from '../removeContainerNameFromServices/
 import addGluesyncHostToChronos from '../addGluesyncHostToChronos/addGluesyncHostToChronos';
 import applyCoreHubProductionTweaks from '../applyCoreHubProductionTweaks/applyCoreHubProductionTweaks';
 import addEnvToGrafana from '../addEnvToGrafana/addEnvToGrafana';
+import applyCpuCompatibilityToImage from '../applyCpuCompatibilityToImage/applyCpuCompatibilityToImage';
 
 /**
  * Ensure the given network exists at the root compose level.
@@ -248,6 +249,16 @@ const autoAdoptServices = async (): Promise<{
         isWindows,
       );
 
+    // CPU compatibility (Linux only) - apply to already-labeled services
+    const {
+      services: cpuCompatibleLabeledServices,
+      updatedIds: cpuCompatibilityLabeledIds,
+    } = applyCpuCompatibilityToImage(
+      coreHubTweakedServices,
+      adjustedIds,
+      isWindows,
+    );
+
     // Add network to ALL services present in compose (except conductor)
     // NOTE: compute this early so we can:
     // - include it in the early-exit guard
@@ -273,7 +284,8 @@ const autoAdoptServices = async (): Promise<{
         networkAllUpdatedIds.length === 0 &&
         stepChronos.updatedIds.length === 0 &&
         stepGrafana.updatedIds.length === 0 &&
-        coreHubTweakedIds.length === 0
+        coreHubTweakedIds.length === 0 &&
+        cpuCompatibilityLabeledIds.length === 0
       ) {
         return {
           success: true,
@@ -291,6 +303,7 @@ const autoAdoptServices = async (): Promise<{
             envFileServices,
             networkAllServices,
             coreHubTweakedServices,
+            cpuCompatibleLabeledServices,
           ]),
         },
         networkName,
@@ -310,6 +323,7 @@ const autoAdoptServices = async (): Promise<{
           ...stepChronos.updatedIds,
           ...stepGrafana.updatedIds,
           ...coreHubTweakedIds,
+          ...cpuCompatibilityLabeledIds,
         ],
         unmatchedIds: [],
       };
@@ -554,10 +568,19 @@ const autoAdoptServices = async (): Promise<{
       id => !alreadyLabeledIds.includes(id),
     );
 
+    // Merge base services with newly adopted services
+    const mergedServices = mergeServices([baseServices, updatedServices]);
+
+    // CPU compatibility (Linux only) - apply to all services
+    const {
+      services: cpuCompatibleServices,
+      updatedIds: cpuCompatibilityUpdatedIds,
+    } = applyCpuCompatibilityToImage(mergedServices, allServiceIds, isWindows);
+
     const updatedComposeFile = ensureNetworkDefinition(
       {
         ...composeJson,
-        services: mergeServices([baseServices, updatedServices]),
+        services: cpuCompatibleServices,
       },
       networkName,
       isWindows,
@@ -573,6 +596,7 @@ const autoAdoptServices = async (): Promise<{
         ...newlyAdopted,
         ...envFileUpdatedIds,
         ...networkAllUpdatedIds,
+        ...cpuCompatibilityUpdatedIds,
       ],
       unmatchedIds,
     };
