@@ -1,4 +1,4 @@
-FROM node:22.13.1-alpine
+FROM node:24.16.0-alpine
 
 # Install Docker CLI and tzdata for timezone support
 RUN apk add --no-cache docker-cli docker-cli-compose curl bash zip tar tzdata yq zstd xz pigz

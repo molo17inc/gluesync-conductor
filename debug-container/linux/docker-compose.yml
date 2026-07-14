@@ -44,7 +44,7 @@
 #
 #   Enjoy!
 
-name: gluesync
+name: gluesync-local-debug
 
 services:
   gluesync-core-hub:

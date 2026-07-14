@@ -27,7 +27,7 @@ variables:
 
 build_artifacts:
   stage: build
-  image: node:22.13.1-alpine
+  image: node:24.16.0-alpine
   script:
     - echo "Building artifacts..."
     - corepack enable
@@ -51,7 +51,7 @@ build_artifacts:
 
 quality:
   stage: quality
-  image: node:22.13.1-alpine
+  image: node:24.16.0-alpine
   needs:
     - job: build_artifacts
       artifacts: true

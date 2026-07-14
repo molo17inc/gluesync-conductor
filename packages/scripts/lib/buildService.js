@@ -41,7 +41,7 @@ const build = async (
       entryPoints: [entryPoint],
       platform: 'node',
       format: 'cjs',
-      target: 'node22.13.1',
+      target: 'node24.16.0',
       loader: { '.json': 'json' },
       minify: true,
       sourcemap: true,

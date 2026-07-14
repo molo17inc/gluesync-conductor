@@ -534,8 +534,11 @@ const deleteOldLogs = async (
       searchDir,
       filePath => {
         const extension = extname(filePath).toLowerCase();
+        const name = basename(filePath).toLowerCase();
         return (
-          extension === '.log' || extension === '.err' || extension === '.gz'
+          extension === '.log' ||
+          extension === '.err' ||
+          name.endsWith('.log.gz')
         );
       },
       { isWindows },
@@ -1422,10 +1425,11 @@ const collectLogsInternally = async (
           searchDir,
           filePath => {
             const extension = extname(filePath).toLowerCase();
+            const name = basename(filePath).toLowerCase();
             return (
               extension === '.log' ||
               extension === '.err' ||
-              extension === '.gz'
+              name.endsWith('.log.gz')
             );
           },
           {
