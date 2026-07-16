@@ -1438,22 +1438,25 @@ const collectLogsInternally = async (
         )
       : [];
 
-    const wellKnownLogDirsScanned: Array<
-      Readonly<{ path: string; exists: boolean; matched: number }>
-    > = [];
-
     const collectFromDirSafe = async (
       dir: string,
-    ): Promise<ReadonlyArray<string>> => {
+    ): Promise<{
+      files: ReadonlyArray<string>;
+      scan: Readonly<{ path: string; exists: boolean; matched: number }>;
+    }> => {
       try {
         const dirStat = await stat(dir);
         if (!dirStat.isDirectory()) {
-          wellKnownLogDirsScanned.push({ path: dir, exists: false, matched: 0 });
-          return [];
+          return {
+            files: [],
+            scan: { path: dir, exists: false, matched: 0 },
+          };
         }
       } catch {
-        wellKnownLogDirsScanned.push({ path: dir, exists: false, matched: 0 });
-        return [];
+        return {
+          files: [],
+          scan: { path: dir, exists: false, matched: 0 },
+        };
       }
 
       const matched = await collectFilesRecursively(
@@ -1465,17 +1468,17 @@ const collectLogsInternally = async (
         { excludeDir: extraDir, isWindows },
       );
 
-      wellKnownLogDirsScanned.push({
-        path: dir,
-        exists: true,
-        matched: matched.length,
-      });
-      return matched;
+      return {
+        files: matched,
+        scan: { path: dir, exists: true, matched: matched.length },
+      };
     };
 
-    const wellKnownLogFiles = (
-      await Promise.all(wellKnownLogDirs.map(collectFromDirSafe))
-    ).flat();
+    const dirScanResults = await Promise.all(
+      wellKnownLogDirs.map(collectFromDirSafe),
+    );
+    const wellKnownLogDirsScanned = dirScanResults.map(r => r.scan);
+    const wellKnownLogFiles = dirScanResults.flatMap(r => r.files);
 
     const recursiveLogFiles = collectLogsFromFiles
       ? await collectFilesRecursively(
@@ -1550,7 +1553,12 @@ const collectLogsInternally = async (
     // Failed snapshots are excluded from the archive and recorded in the
     // collection report so support can see exactly what was dropped and why.
     type SnapshotResult =
-      | Readonly<{ ok: true; target: string; source: string; method: 'robocopy' | 'cp' | 'node' }>
+      | Readonly<{
+          ok: true;
+          target: string;
+          source: string;
+          method: 'robocopy' | 'cp' | 'node';
+        }>
       | Readonly<{ ok: false; source: string; reason: string }>;
 
     const safeCopyWithRobocopy = async (
@@ -1614,7 +1622,11 @@ const collectLogsInternally = async (
       sourceFile: string,
       targetFile: string,
     ): Promise<Readonly<{ ok: true } | { ok: false; reason: string }>> => {
-      const result = await runCommandCapture('cp', ['-p', sourceFile, targetFile]);
+      const result = await runCommandCapture('cp', [
+        '-p',
+        sourceFile,
+        targetFile,
+      ]);
 
       if (result.exitCode === 0) {
         return { ok: true };
@@ -1649,7 +1661,10 @@ const collectLogsInternally = async (
           await mkdir(dirname(target), { recursive: true });
         } catch (err) {
           const reason = err instanceof Error ? err.message : 'unknown error';
-          logger?.warn({ file, reason }, 'Failed to create snapshot directory, excluding from archive');
+          logger?.warn(
+            { file, reason },
+            'Failed to create snapshot directory, excluding from archive',
+          );
           return { ok: false, source: file, reason };
         }
 
@@ -1678,9 +1693,13 @@ const collectLogsInternally = async (
           await writeFile(target, buf);
           return { ok: true, target, source: file, method: 'node' };
         } catch (err) {
-          const nodeReason = err instanceof Error ? err.message : 'unknown error';
+          const nodeReason =
+            err instanceof Error ? err.message : 'unknown error';
           const reason = `native-copy: ${nativeCopy.reason} | node-copy: ${nodeReason}`;
-          logger?.warn({ file, reason }, 'Failed to snapshot file, excluding from archive');
+          logger?.warn(
+            { file, reason },
+            'Failed to snapshot file, excluding from archive',
+          );
           return { ok: false, source: file, reason };
         }
       }),
@@ -1696,6 +1715,15 @@ const collectLogsInternally = async (
 
     // Write collection report into snapshotDir so it is always included in the archive.
     const collectionReportPath = join(snapshotDir, 'collection-report.txt');
+    const successfulSnapshots = snapshotResults.filter(
+      (r): r is Extract<SnapshotResult, { ok: true }> => r.ok,
+    );
+
+    const methodCounts = successfulSnapshots.reduce<Record<string, number>>(
+      (acc, r) => ({ ...acc, [r.method]: (acc[r.method] ?? 0) + 1 }),
+      {},
+    );
+
     const reportLines = [
       'Gluesync Log Collection Report',
       `Generated on: ${new Date().toISOString()}`,
@@ -1715,52 +1743,40 @@ const collectLogsInternally = async (
       `Successfully snapshotted: ${filesToArchive.length}`,
       `Failed to snapshot:       ${snapshotFailures.length}`,
       '',
+      ...(snapshotFailures.length > 0
+        ? [
+            '--- Snapshot failures (files excluded from archive) ---',
+            ...snapshotFailures.flatMap(f => [
+              `  FAILED  ${f.source}`,
+              `    reason: ${f.reason}`,
+            ]),
+            '',
+          ]
+        : []),
+      '--- Search roots ---',
+      `  searchDir: ${searchDir}`,
+      ...(wellKnownLogDirsScanned.length > 0
+        ? [
+            '  Well-known mount points:',
+            ...wellKnownLogDirsScanned.map(
+              d =>
+                `    ${d.exists ? 'PRESENT' : 'MISSING'}  ${d.path}  (matched ${d.matched})`,
+            ),
+          ]
+        : []),
+      '',
+      '--- Snapshot method breakdown ---',
+      `  robocopy: ${methodCounts.robocopy ?? 0}`,
+      `  cp:       ${methodCounts.cp ?? 0}`,
+      `  node:     ${methodCounts.node ?? 0}`,
+      '',
+      '--- Files included in archive ---',
+      ...successfulSnapshots.map(r => `  OK  [${r.method}]  ${r.source}`),
+      '',
     ];
 
-    if (snapshotFailures.length > 0) {
-      reportLines.push('--- Snapshot failures (files excluded from archive) ---');
-      snapshotFailures.forEach(f => {
-        reportLines.push(`  FAILED  ${f.source}`);
-        reportLines.push(`    reason: ${f.reason}`);
-      });
-      reportLines.push('');
-    }
-
-    const successfulSnapshots = snapshotResults.filter(
-      (r): r is Extract<SnapshotResult, { ok: true }> => r.ok,
-    );
-
-    const methodCounts = successfulSnapshots.reduce<Record<string, number>>(
-      (acc, r) => ({ ...acc, [r.method]: (acc[r.method] ?? 0) + 1 }),
-      {},
-    );
-
-    reportLines.push('--- Search roots ---');
-    reportLines.push(`  searchDir: ${searchDir}`);
-    if (wellKnownLogDirsScanned.length > 0) {
-      reportLines.push('  Well-known mount points:');
-      wellKnownLogDirsScanned.forEach(d => {
-        reportLines.push(
-          `    ${d.exists ? 'PRESENT' : 'MISSING'}  ${d.path}  (matched ${d.matched})`,
-        );
-      });
-    }
-    reportLines.push('');
-
-    reportLines.push('--- Snapshot method breakdown ---');
-    reportLines.push(`  robocopy: ${methodCounts['robocopy'] ?? 0}`);
-    reportLines.push(`  cp:       ${methodCounts['cp'] ?? 0}`);
-    reportLines.push(`  node:     ${methodCounts['node'] ?? 0}`);
-    reportLines.push('');
-
-    reportLines.push('--- Files included in archive ---');
-    successfulSnapshots.forEach(r =>
-      reportLines.push(`  OK  [${r.method}]  ${r.source}`),
-    );
-    reportLines.push('');
-
     await writeFile(collectionReportPath, reportLines.join('\n'), 'utf8');
-    filesToArchive.push(collectionReportPath);
+    const allFilesToArchive = [...filesToArchive, collectionReportPath];
 
     // Create archive with fallback to legacy script
     const archiveCreationResult: {
@@ -1772,7 +1788,7 @@ const collectLogsInternally = async (
         const archivePath = await createArchive(
           snapshotDir,
           outputDir,
-          filesToArchive,
+          allFilesToArchive,
           isWindows,
           logger,
         );
