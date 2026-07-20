@@ -3,6 +3,7 @@ import addServices from '../functions/service/addServices/addServices';
 import editServices from '../functions/service/editServices/editServices';
 import getServices from '../functions/service/getServices/getServices';
 import getAgentVersion from '../functions/service/getServiceVersion/getServiceVersion';
+import { requireManage } from '../security';
 
 const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.post('/services', {
@@ -154,6 +155,7 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
         },
       },
     },
+    preHandler: [requireManage()],
     handler: addServices,
   });
 
@@ -305,6 +307,7 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
         },
       },
     },
+    preHandler: [requireManage()],
     handler: editServices,
   });
 

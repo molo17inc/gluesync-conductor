@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import collectLogs from '../functions/utility/collectLogs/collectLogs';
+import { requireManage } from '../security';
 
 const utilityRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.post('/collect-logs', {
@@ -67,6 +68,7 @@ const utilityRoutes = async (fastify: Readonly<FastifyInstance>) => {
         },
       },
     },
+    preHandler: [requireManage()],
     handler: collectLogs,
   });
 };
