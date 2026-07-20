@@ -1609,6 +1609,14 @@ const collectLogsInternally = async (
             };
           }
         }
+        try {
+          await access(targetFile, constants.F_OK);
+        } catch {
+          return {
+            ok: false,
+            reason: `robocopy reported success (exit ${result.exitCode}) but target file was not created — robocopy may not be available`,
+          };
+        }
         return { ok: true };
       }
 
