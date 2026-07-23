@@ -1,26 +1,25 @@
 import axios, { type AxiosInstance, AxiosError } from 'axios';
 import * as https from 'https';
 
-import { type CurrentUser, createIntrospectionError } from './types';
+import { type CurrentUser } from './types';
 import { UserRole, parseRole } from './userRole';
 import { getGluesyncSdkClient } from '../gluesyncSdkClient';
 import { getLogger } from '../utils/logger';
 
-// eslint-disable-next-line functional/no-mixed-types
 interface IntrospectOptions {
   readonly cookieHeader: string | undefined;
   readonly authorizationHeader: string | undefined;
 }
 
-// eslint-disable-next-line functional/no-mixed-types
-interface IntrospectorConfig {
-  readonly corehubUrlProvider: () => string | null;
-  readonly cacheTtlSeconds?: number;
-  readonly timeoutMs?: number;
-  readonly verifySsl?: boolean;
-}
+type IntrospectorConfig = Readonly<{
+  corehubUrlProvider: () => string | null;
+}> &
+  Readonly<{
+    cacheTtlSeconds?: number;
+    timeoutMs?: number;
+    verifySsl?: boolean;
+  }>;
 
-// eslint-disable-next-line functional/no-mixed-types
 interface CacheEntry {
   readonly user: CurrentUser;
   readonly expiresAt: number;
@@ -90,14 +89,14 @@ export const createIntrospector = (config: Readonly<IntrospectorConfig>) => {
     config.timeoutMs ?? envInt('CONDUCTOR_AUTH_TIMEOUT_MS', 5000);
   const verifySsl = config.verifySsl ?? shouldVerifySsl();
 
-  // eslint-disable-next-line functional/no-let
-  let cache: ReadonlyMap<string, CacheEntry> = new Map();
-  // eslint-disable-next-line functional/no-let
-  let client: AxiosInstance | null = null;
+  const cache = new Map<string, CacheEntry>();
+  const clientMap = new Map<string, AxiosInstance>();
+  const CLIENT_KEY = 'default';
 
   const getClient = (): AxiosInstance => {
-    if (client) {
-      return client;
+    const existing = clientMap.get(CLIENT_KEY);
+    if (existing) {
+      return existing;
     }
     const created = axios.create({
       timeout: timeoutMs,
@@ -105,8 +104,7 @@ export const createIntrospector = (config: Readonly<IntrospectorConfig>) => {
         ? undefined
         : new https.Agent({ rejectUnauthorized: false }),
     });
-    // eslint-disable-next-line functional/immutable-data
-    client = created;
+    clientMap.set(CLIENT_KEY, created);
     return created;
   };
 
@@ -116,10 +114,7 @@ export const createIntrospector = (config: Readonly<IntrospectorConfig>) => {
       return null;
     }
     if (entry.expiresAt <= Date.now() / 1000) {
-      // eslint-disable-next-line functional/immutable-data
-      const newCache = new Map(cache);
-      newCache.delete(key);
-      cache = newCache;
+      cache.delete(key);
       return null;
     }
     return entry.user;
@@ -127,10 +122,7 @@ export const createIntrospector = (config: Readonly<IntrospectorConfig>) => {
 
   const putCached = (key: string, user: CurrentUser): void => {
     const expiresAt = Date.now() / 1000 + cacheTtl;
-    // eslint-disable-next-line functional/immutable-data
-    const newCache = new Map(cache);
-    newCache.set(key, { user, expiresAt });
-    cache = newCache;
+    cache.set(key, { user, expiresAt });
   };
 
   const introspect = async (
@@ -148,66 +140,58 @@ export const createIntrospector = (config: Readonly<IntrospectorConfig>) => {
 
     const base = config.corehubUrlProvider();
     if (!base) {
-      throw createIntrospectionError(
+      throw new Error(
         'CoreHub URL not yet discovered; auth cannot be verified',
       );
     }
 
     const url = base.replace(/\/+$/, '') + AUTH_ME_PATH;
-    // eslint-disable-next-line functional/immutable-data, dot-notation
-    const headers: Record<string, string> = {};
-    if (opts.authorizationHeader) {
-      // eslint-disable-next-line functional/immutable-data
-      headers.Authorization = opts.authorizationHeader;
-    }
-    if (opts.cookieHeader) {
-      // eslint-disable-next-line functional/immutable-data
-      headers.Cookie = opts.cookieHeader;
-    }
+    const headers: Readonly<Record<string, string>> = {
+      ...(opts.authorizationHeader
+        ? { Authorization: opts.authorizationHeader }
+        : {}),
+      ...(opts.cookieHeader ? { Cookie: opts.cookieHeader } : {}),
+    };
 
     const httpClient = getClient();
-    // eslint-disable-next-line functional/no-let
-    let status: number;
-    // eslint-disable-next-line functional/no-let, @typescript-eslint/no-explicit-any
-    let body: any;
-    try {
-      const response = await httpClient.get(url, { headers });
-      status = response.status;
-      body = response.data;
-    } catch (error: unknown) {
-      const axiosError = error as AxiosError;
-      if (axiosError.response) {
-        status = axiosError.response.status;
-        body = axiosError.response.data;
-      } else {
+    const { status, body }: { status: number; body: any } = await (async () => {
+      try {
+        const response = await httpClient.get(url, { headers });
+        return { status: response.status, body: response.data };
+      } catch (error: unknown) {
+        const axiosError = error as AxiosError;
+        if (axiosError.response) {
+          return {
+            status: axiosError.response.status,
+            body: axiosError.response.data,
+          };
+        }
         const logger = getLogger();
         logger.warn(
           { error: error instanceof Error ? error.message : String(error) },
           'Conductor auth introspection failed: CoreHub /auth/me unreachable',
         );
-        throw createIntrospectionError(
+        throw new Error(
           `CoreHub /auth/me unreachable: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-    }
+    })();
 
     if (status === 401 || status === 403) {
       return null;
     }
     if (status >= 500) {
-      throw createIntrospectionError(`CoreHub /auth/me returned ${status}`);
+      throw new Error(`CoreHub /auth/me returned ${status}`);
     }
     if (status !== 200) {
-      throw createIntrospectionError(
-        `CoreHub /auth/me returned unexpected status ${status}`,
-      );
+      throw new Error(`CoreHub /auth/me returned unexpected status ${status}`);
     }
 
     const username: string | undefined = body?.username;
     const roleStr: string | undefined = body?.role;
     const role: UserRole | null = parseRole(roleStr);
     if (!username || role === null) {
-      throw createIntrospectionError(
+      throw new Error(
         `CoreHub /auth/me response missing username/role (role=${roleStr ?? 'undefined'})`,
       );
     }
@@ -218,31 +202,13 @@ export const createIntrospector = (config: Readonly<IntrospectorConfig>) => {
   };
 
   const invalidate = (): void => {
-    cache = new Map();
+    cache.clear();
   };
 
   return { introspect, invalidate };
 };
 
 export type Introspector = ReturnType<typeof createIntrospector>;
-
-// eslint-disable-next-line functional/no-let
-let singleton: Introspector | null = null;
-
-export const getIntrospector = (): Introspector => {
-  if (singleton === null) {
-    // eslint-disable-next-line no-use-before-define
-    singleton = buildDefaultIntrospector();
-  }
-  return singleton;
-};
-
-export const setIntrospector = (
-  // eslint-disable-next-line functional/prefer-immutable-types
-  introspector: Introspector | null,
-): void => {
-  singleton = introspector;
-};
 
 const buildDefaultIntrospector = (): Introspector => {
   const urlProvider = (): string | null => {
@@ -261,4 +227,24 @@ const buildDefaultIntrospector = (): Introspector => {
     corehubUrlProvider: urlProvider,
     verifySsl: shouldVerifySsl(),
   });
+};
+
+const SINGLETON_KEY = 'default';
+const singletonMap = new Map<string, Introspector>();
+
+export const getIntrospector = (): Introspector => {
+  if (!singletonMap.has(SINGLETON_KEY)) {
+    singletonMap.set(SINGLETON_KEY, buildDefaultIntrospector());
+  }
+  return singletonMap.get(SINGLETON_KEY) as Introspector;
+};
+
+export const setIntrospector = (
+  introspector: Readonly<Introspector> | null,
+): void => {
+  if (introspector === null) {
+    singletonMap.delete(SINGLETON_KEY);
+  } else {
+    singletonMap.set(SINGLETON_KEY, introspector);
+  }
 };

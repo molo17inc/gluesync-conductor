@@ -1,9 +1,9 @@
-export { type CurrentUser, createIntrospectionError } from './types';
+export { type CurrentUser } from './types';
 export {
   UserRole,
   parseRole,
-  canManageSchedules,
-  canControlSchedules,
+  canManage,
+  canControl,
   canModifyConfiguration,
 } from './userRole';
 export {

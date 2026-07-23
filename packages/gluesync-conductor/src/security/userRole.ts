@@ -1,3 +1,10 @@
+import type {
+  CanControl,
+  CanManage,
+  CanModifyConfiguration,
+  ParseRole,
+} from './userRole.model';
+
 export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
   MANAGER = 'MANAGER',
@@ -6,7 +13,7 @@ export enum UserRole {
   EXTERNAL_MODULE = 'EXTERNAL_MODULE',
 }
 
-export function parseRole(value: string | undefined | null): UserRole | null {
+export const parseRole: ParseRole = value => {
   if (!value) {
     return null;
   }
@@ -15,25 +22,18 @@ export function parseRole(value: string | undefined | null): UserRole | null {
     return value as UserRole;
   }
   return null;
-}
+};
 
-export function canManageSchedules(role: UserRole): boolean {
-  return (
-    role === UserRole.SUPER_ADMIN ||
-    role === UserRole.MANAGER ||
-    role === UserRole.EXTERNAL_MODULE
-  );
-}
+export const canManage: CanManage = role =>
+  role === UserRole.SUPER_ADMIN ||
+  role === UserRole.MANAGER ||
+  role === UserRole.EXTERNAL_MODULE;
 
-export function canControlSchedules(role: UserRole): boolean {
-  return (
-    role === UserRole.SUPER_ADMIN ||
-    role === UserRole.MANAGER ||
-    role === UserRole.MONITOR ||
-    role === UserRole.EXTERNAL_MODULE
-  );
-}
+export const canControl: CanControl = role =>
+  role === UserRole.SUPER_ADMIN ||
+  role === UserRole.MANAGER ||
+  role === UserRole.MONITOR ||
+  role === UserRole.EXTERNAL_MODULE;
 
-export function canModifyConfiguration(role: UserRole): boolean {
-  return role === UserRole.SUPER_ADMIN || role === UserRole.MANAGER;
-}
+export const canModifyConfiguration: CanModifyConfiguration = role =>
+  role === UserRole.SUPER_ADMIN || role === UserRole.MANAGER;

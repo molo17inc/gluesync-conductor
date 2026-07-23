@@ -4,8 +4,8 @@ import fp from 'fastify-plugin';
 import { type CurrentUser } from './types';
 import {
   UserRole,
-  canManageSchedules,
-  canControlSchedules,
+  canManage,
+  canControl,
   canModifyConfiguration,
 } from './userRole';
 import { getIntrospector } from './corehubIntrospect';
@@ -23,7 +23,7 @@ const BYPASS_PATHS: ReadonlySet<string> = new Set([
 const failOpenEnabled = (): boolean =>
   process.env.CONDUCTOR_AUTH_FAIL_OPEN?.toLowerCase() === 'true';
 
-const isBypassPath = (url: string): boolean => {
+const isBypassPath = (url: Readonly<string>): boolean => {
   const path = url.split('?')[0];
   if (BYPASS_PATHS.has(path)) {
     return true;
@@ -34,7 +34,6 @@ const isBypassPath = (url: string): boolean => {
   return found;
 };
 
-// eslint-disable-next-line functional/no-mixed-types
 export interface AuthenticatedRequest extends FastifyRequest {
   currentUser?: CurrentUser;
 }
@@ -44,8 +43,10 @@ const authPlugin = async (
 ): Promise<void> => {
   fastify.addHook(
     'onRequest',
-    // eslint-disable-next-line functional/prefer-immutable-types
-    async (req: AuthenticatedRequest, reply: FastifyReply) => {
+    async (
+      req: Readonly<AuthenticatedRequest>,
+      reply: Readonly<FastifyReply>,
+    ) => {
       if (isBypassPath(req.url)) {
         return undefined;
       }
@@ -56,11 +57,10 @@ const authPlugin = async (
           'CONDUCTOR_AUTH_FAIL_OPEN is enabled — bypassing authentication. ' +
             'This MUST NOT be set in production.',
         );
-        // eslint-disable-next-line functional/immutable-data
-        req.currentUser = {
+        Reflect.set(req, 'currentUser', {
           username: '__fail_open__',
           role: UserRole.SUPER_ADMIN,
-        };
+        });
         return undefined;
       }
 
@@ -68,19 +68,23 @@ const authPlugin = async (
       const authorizationHeader = req.headers.authorization;
 
       const introspector = getIntrospector();
-      // eslint-disable-next-line functional/no-let
-      let user: CurrentUser | null;
-      try {
-        user = await introspector.introspect({
-          cookieHeader,
-          authorizationHeader,
-        });
-      } catch (error: unknown) {
-        const logger = getLogger();
-        logger.warn(
-          { error: error instanceof Error ? error.message : String(error) },
-          'Conductor auth introspection failed',
-        );
+      const user = await (async (): Promise<CurrentUser | null | undefined> => {
+        try {
+          return await introspector.introspect({
+            cookieHeader,
+            authorizationHeader,
+          });
+        } catch (error: unknown) {
+          const logger = getLogger();
+          logger.warn(
+            { error: error instanceof Error ? error.message : String(error) },
+            'Conductor auth introspection failed',
+          );
+          return undefined;
+        }
+      })();
+
+      if (user === undefined) {
         return reply.code(401).send({
           success: false,
           error: 'Authentication verification failed',
@@ -94,8 +98,7 @@ const authPlugin = async (
         });
       }
 
-      // eslint-disable-next-line functional/immutable-data
-      req.currentUser = user;
+      Reflect.set(req, 'currentUser', user);
       return undefined;
     },
   );
@@ -107,8 +110,11 @@ export default fp(authPlugin, {
 });
 
 export const requireManage =
-  // eslint-disable-next-line functional/prefer-immutable-types
-  () => async (req: AuthenticatedRequest, reply: FastifyReply) => {
+  () =>
+  async (
+    req: Readonly<AuthenticatedRequest>,
+    reply: Readonly<FastifyReply>,
+  ) => {
     const user = req.currentUser;
     if (!user) {
       return reply.code(401).send({
@@ -116,18 +122,21 @@ export const requireManage =
         error: 'Not authenticated',
       });
     }
-    if (!canManageSchedules(user.role)) {
+    if (!canManage(user.role)) {
       return reply.code(403).send({
         success: false,
-        error: `Role ${user.role} cannot manage schedules`,
+        error: `Role ${user.role} cannot manage`,
       });
     }
     return undefined;
   };
 
 export const requireControl =
-  // eslint-disable-next-line functional/prefer-immutable-types
-  () => async (req: AuthenticatedRequest, reply: FastifyReply) => {
+  () =>
+  async (
+    req: Readonly<AuthenticatedRequest>,
+    reply: Readonly<FastifyReply>,
+  ) => {
     const user = req.currentUser;
     if (!user) {
       return reply.code(401).send({
@@ -135,18 +144,21 @@ export const requireControl =
         error: 'Not authenticated',
       });
     }
-    if (!canControlSchedules(user.role)) {
+    if (!canControl(user.role)) {
       return reply.code(403).send({
         success: false,
-        error: `Role ${user.role} cannot control schedules`,
+        error: `Role ${user.role} cannot control`,
       });
     }
     return undefined;
   };
 
 export const requireConfig =
-  // eslint-disable-next-line functional/prefer-immutable-types
-  () => async (req: AuthenticatedRequest, reply: FastifyReply) => {
+  () =>
+  async (
+    req: Readonly<AuthenticatedRequest>,
+    reply: Readonly<FastifyReply>,
+  ) => {
     const user = req.currentUser;
     if (!user) {
       return reply.code(401).send({
