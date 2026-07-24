@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import migrateToTwoHandler from '../functions/migrateToTwo/migrateToTwo';
+import { requireConfig } from '../security';
 
 const migrateRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.post('/migrate-to-two', {
@@ -30,6 +31,7 @@ const migrateRoutes = async (fastify: Readonly<FastifyInstance>) => {
         },
       },
     },
+    preHandler: [requireConfig()],
     handler: migrateToTwoHandler,
   });
 };
