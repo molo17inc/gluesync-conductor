@@ -11,6 +11,7 @@ import apiBlockerAsUpdatingPlugin, {
 import tzFix from './plugins/tzFix';
 
 import httpsRedirectMiddleware from './middleware/httpsRedirect';
+import { authPlugin } from './security';
 
 import {
   createFastifyHttpsOptions,
@@ -89,6 +90,9 @@ const startServer = async (): Promise<void> => {
 
   // Register Gluesync plugin
   await server.register(gluesyncPlugin);
+
+  // Register auth plugin (after gluesync so CoreHub URL is available, before routes)
+  await server.register(authPlugin);
 
   // Register api blocker when updating plugin, routes after this will be blocked when updating
   await server.register(apiBlockerAsUpdatingPlugin, {

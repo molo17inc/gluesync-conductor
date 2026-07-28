@@ -18,6 +18,11 @@ import {
 import waitForDockerDaemon from '../../../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
 import isTransientDockerConnError from '../../../helpers/dockerode/isTransientDockerConnError/isTransientDockerConnError';
 import { getLogger } from '../../../utils/logger';
+import {
+  type AuthenticatedRequest,
+  canModifyConfiguration,
+} from '../../../security';
+import { redactService } from '../../../helpers/redactedServices/redactedServices';
 
 const handler: ListContainersHandler = async (req, reply) => {
   try {
@@ -113,10 +118,22 @@ const handler: ListContainersHandler = async (req, reply) => {
       return currentType === type;
     });
 
+    const user = (req as AuthenticatedRequest).currentUser;
+    const canViewSensitive = Boolean(user && canModifyConfiguration(user.role));
+
+    const redactedContainers = canViewSensitive
+      ? filteredContainers
+      : filteredContainers.map(({ service, ...container }) => ({
+          ...container,
+          service: redactService(
+            service as Record<string, unknown>,
+          ) as NonNullable<typeof service>,
+        }));
+
     reply.code(200).send({
       success: true,
       data: {
-        containers: filteredContainers,
+        containers: redactedContainers,
         systemInfo,
       },
     });

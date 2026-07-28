@@ -23,6 +23,7 @@ import addGluesyncHostToChronos from '../addGluesyncHostToChronos/addGluesyncHos
 import applyCoreHubProductionTweaks from '../applyCoreHubProductionTweaks/applyCoreHubProductionTweaks';
 import addEnvToGrafana from '../addEnvToGrafana/addEnvToGrafana';
 import applyCpuCompatibilityToImage from '../applyCpuCompatibilityToImage/applyCpuCompatibilityToImage';
+import addPortToCoreHub from '../addPortToCoreHub/addPortToCoreHub';
 
 /**
  * Ensure the given network exists at the root compose level.
@@ -276,6 +277,11 @@ const autoAdoptServices = async (): Promise<{
 
     // Nothing new to label: only write file if we actually mutated labeled services
     if (unlabeledIds.length === 0) {
+      const {
+        services: portAddedLabeledServices,
+        updatedIds: portAddedLabeledIds,
+      } = addPortToCoreHub(cpuCompatibleLabeledServices, adjustedIds);
+
       if (
         removedDependsOnIds.length === 0 &&
         removedContainerNameIds.length === 0 &&
@@ -285,7 +291,8 @@ const autoAdoptServices = async (): Promise<{
         stepChronos.updatedIds.length === 0 &&
         stepGrafana.updatedIds.length === 0 &&
         coreHubTweakedIds.length === 0 &&
-        cpuCompatibilityLabeledIds.length === 0
+        cpuCompatibilityLabeledIds.length === 0 &&
+        portAddedLabeledIds.length === 0
       ) {
         return {
           success: true,
@@ -304,6 +311,7 @@ const autoAdoptServices = async (): Promise<{
             networkAllServices,
             coreHubTweakedServices,
             cpuCompatibleLabeledServices,
+            portAddedLabeledServices,
           ]),
         },
         networkName,
@@ -324,6 +332,7 @@ const autoAdoptServices = async (): Promise<{
           ...stepGrafana.updatedIds,
           ...coreHubTweakedIds,
           ...cpuCompatibilityLabeledIds,
+          ...portAddedLabeledIds,
         ],
         unmatchedIds: [],
       };
@@ -577,10 +586,13 @@ const autoAdoptServices = async (): Promise<{
       updatedIds: cpuCompatibilityUpdatedIds,
     } = applyCpuCompatibilityToImage(mergedServices, allServiceIds, isWindows);
 
+    const { services: portAddedServices, updatedIds: portAddedIds } =
+      addPortToCoreHub(cpuCompatibleServices, allServiceIds);
+
     const updatedComposeFile = ensureNetworkDefinition(
       {
         ...composeJson,
-        services: cpuCompatibleServices,
+        services: portAddedServices,
       },
       networkName,
       isWindows,
@@ -597,6 +609,7 @@ const autoAdoptServices = async (): Promise<{
         ...envFileUpdatedIds,
         ...networkAllUpdatedIds,
         ...cpuCompatibilityUpdatedIds,
+        ...portAddedIds,
       ],
       unmatchedIds,
     };

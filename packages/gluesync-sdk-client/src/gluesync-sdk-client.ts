@@ -432,6 +432,7 @@ export class GluesyncSDKClient {
    */
   private readonly _onConnected = (token: string): void => {
     this._token = token;
+    this._isInitialized = true;
     this._log('info', 'Connected to CoreHub successfully! Token received.');
   };
 
