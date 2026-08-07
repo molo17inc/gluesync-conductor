@@ -1213,7 +1213,7 @@ const uploadArchive = async (
   const encodedName = encodeURIComponent(fileName);
   const webDavTarget = `${resolveWebDavRootUrl()}${encodedName}`;
   const uploadTimeoutMs = Number(
-    process.env.WEBDAV_UPLOAD_TIMEOUT_MS ?? 600000,
+    process.env.WEBDAV_UPLOAD_TIMEOUT_MS ?? 3600000,
   );
 
   logger?.info(
@@ -1222,35 +1222,56 @@ const uploadArchive = async (
   );
 
   const webDavResult = await (async () => {
-    const payload = createReadStream(archivePath);
+    const maxRetries = 3;
+    const backoffBaseMs = 500;
 
-    try {
-      await axiosWithRetry<void>(webDavTarget, {
-        method: 'PUT',
-        headers: { Authorization: basicAuthHeader(ticketId, email) },
-        data: payload,
-        retries: 3,
-        timeout: uploadTimeoutMs,
-        backoffMs: 500,
-      });
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const payload = createReadStream(archivePath);
 
-      return { ok: true as const, method: 'webdav' as const, detail: '' };
-    } catch (error) {
-      const axiosErr = error as AxiosError;
-      const status = axiosErr.response?.status;
-      const statusText = axiosErr.response?.statusText;
-      const detail = status
-        ? `WebDAV upload failed with HTTP ${status} ${statusText}`
-        : `WebDAV upload network error: ${axiosErr.message}`;
+      try {
+        await axiosWithRetry<void>(webDavTarget, {
+          method: 'PUT',
+          headers: { Authorization: basicAuthHeader(ticketId, email) },
+          data: payload,
+          retries: 0,
+          timeout: uploadTimeoutMs,
+          backoffMs: backoffBaseMs,
+        });
 
-      return {
-        ok: false as const,
-        method: 'webdav' as const,
-        detail,
-      };
-    } finally {
-      payload.destroy();
+        return { ok: true as const, method: 'webdav' as const, detail: '' };
+      } catch (error) {
+        const axiosErr = error as AxiosError;
+        const status = axiosErr.response?.status;
+        const statusText = axiosErr.response?.statusText;
+        const detail = status
+          ? `WebDAV upload failed with HTTP ${status} ${statusText}`
+          : `WebDAV upload network error: ${axiosErr.message}`;
+
+        if (attempt < maxRetries) {
+          const jitter = Math.floor(Math.random() * 100);
+          const delay = Math.min(
+            15_000,
+            backoffBaseMs * 2 ** (attempt - 1) + jitter,
+          );
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+        return {
+          ok: false as const,
+          method: 'webdav' as const,
+          detail,
+        };
+      } finally {
+        payload.destroy();
+      }
     }
+
+    return {
+      ok: false as const,
+      method: 'webdav' as const,
+      detail: 'WebDAV upload exhausted all retries',
+    };
   })();
 
   if (webDavResult.ok) {
