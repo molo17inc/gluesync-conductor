@@ -429,14 +429,21 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     if (axios.isAxiosError(error)) {
       const axiosError = error as AxiosError;
       const responseData = axiosError.response?.data;
-      const details =
-        typeof responseData === 'string'
-          ? responseData
-          : responseData && typeof responseData === 'object'
-            ? ((responseData as any).message ??
-              (responseData as any).error ??
-              JSON.stringify(responseData))
-            : axiosError.message;
+      const details = ((): string => {
+        if (typeof responseData === 'string') {
+          return responseData;
+        }
+
+        if (responseData && typeof responseData === 'object') {
+          return (
+            (responseData as any).message ??
+            (responseData as any).error ??
+            JSON.stringify(responseData)
+          );
+        }
+
+        return axiosError.message;
+      })();
 
       reply.code(axiosError.response?.status ?? 500);
       reply.send({

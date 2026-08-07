@@ -1225,7 +1225,12 @@ const uploadArchive = async (
     const maxRetries = 3;
     const backoffBaseMs = 500;
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const tryUpload = async (
+      attempt: number,
+    ): Promise<
+      | { ok: true; method: 'webdav'; detail: '' }
+      | { ok: false; method: 'webdav'; detail: string }
+    > => {
       const payload = createReadStream(archivePath);
 
       try {
@@ -1238,7 +1243,7 @@ const uploadArchive = async (
           backoffMs: backoffBaseMs,
         });
 
-        return { ok: true as const, method: 'webdav' as const, detail: '' };
+        return { ok: true, method: 'webdav', detail: '' };
       } catch (error) {
         const axiosErr = error as AxiosError;
         const status = axiosErr.response?.status;
@@ -1253,25 +1258,19 @@ const uploadArchive = async (
             15_000,
             backoffBaseMs * 2 ** (attempt - 1) + jitter,
           );
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
+          await new Promise(resolve => {
+            setTimeout(resolve, delay);
+          });
+          return tryUpload(attempt + 1);
         }
 
-        return {
-          ok: false as const,
-          method: 'webdav' as const,
-          detail,
-        };
+        return { ok: false, method: 'webdav', detail };
       } finally {
         payload.destroy();
       }
-    }
-
-    return {
-      ok: false as const,
-      method: 'webdav' as const,
-      detail: 'WebDAV upload exhausted all retries',
     };
+
+    return tryUpload(1);
   })();
 
   if (webDavResult.ok) {
