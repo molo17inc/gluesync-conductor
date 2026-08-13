@@ -1,4 +1,5 @@
 import { copyFile, stat } from 'fs/promises';
+import { basename, dirname } from 'path';
 import { isDeepStrictEqual } from 'util';
 
 import writeYmlFile from '../../file/writeYmlFile/writeYmlFile';
@@ -23,8 +24,13 @@ const writeComposeFile: WriteComposeFile = async (
   filename = dkrComposeFile,
 ) => {
   const targetPath = getRootPath({ filename });
-  const backupFilename = `${filename}.bak`;
-  const backupPath = getRootPath({ filename: backupFilename });
+  const targetName = basename(filename);
+  const backupName = `${targetName}.bak`;
+  const backupBase = process.env.BASE_PATH || dirname(targetPath);
+  const backupPath = getRootPath({
+    basePath: backupBase,
+    filename: backupName,
+  });
   const isMainCompose = filename === dkrComposeFile;
 
   if (!isMainCompose) {
@@ -57,10 +63,10 @@ const writeComposeFile: WriteComposeFile = async (
         }
       }
 
-      await writeYmlFile(json, backupFilename);
+      await writeYmlFile(json, backupPath);
 
       const reRead = await readComposeFile({
-        filename: backupFilename,
+        filename: backupPath,
         raw: true,
       });
 
