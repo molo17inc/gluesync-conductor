@@ -1,5 +1,5 @@
-import { copyFile, stat } from 'fs/promises';
-import { basename, dirname } from 'path';
+import { copyFile, mkdir, rename, rm, stat } from 'fs/promises';
+import { basename, dirname, join } from 'path';
 import { isDeepStrictEqual } from 'util';
 
 import writeYmlFile from '../../file/writeYmlFile/writeYmlFile';
@@ -26,17 +26,35 @@ const writeComposeFile: WriteComposeFile = async (
   const targetPath = getRootPath({ filename });
   const targetName = basename(filename);
   const backupName = `${targetName}.bak`;
-  const backupBase = process.env.BASE_PATH || dirname(targetPath);
-  const backupPath = getRootPath({
-    basePath: backupBase,
-    filename: backupName,
-  });
+  const newName = `${targetName}.new`;
+  const basePath = dirname(targetPath);
+  const backupPath = join(basePath, backupName);
+  const newPath = join(basePath, newName);
   const isMainCompose = filename === dkrComposeFile;
+
+  await mkdir(basePath, { recursive: true });
 
   if (!isMainCompose) {
     await writeYmlFile(json, filename);
     return;
   }
+
+  const targetExisted = await (async (): Promise<boolean> => {
+    try {
+      await stat(targetPath);
+      await copyFile(targetPath, backupPath);
+      return true;
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      ) {
+        return false;
+      }
+      throw error;
+    }
+  })();
 
   const attemptWrite = async (attempt: number): Promise<void> => {
     if (attempt > 1) {
@@ -48,25 +66,10 @@ const writeComposeFile: WriteComposeFile = async (
     }
 
     try {
-      try {
-        await stat(targetPath);
-        await copyFile(targetPath, backupPath);
-      } catch (error) {
-        if (
-          error instanceof Error &&
-          'code' in error &&
-          error.code === 'ENOENT'
-        ) {
-          // Live file does not exist; nothing to back up.
-        } else {
-          throw error;
-        }
-      }
-
-      await writeYmlFile(json, backupPath);
+      await writeYmlFile(json, newPath);
 
       const reRead = await readComposeFile({
-        filename: backupPath,
+        filename: newPath,
         raw: true,
       });
 
@@ -76,7 +79,24 @@ const writeComposeFile: WriteComposeFile = async (
         );
       }
 
-      await copyFile(backupPath, targetPath);
+      try {
+        await rename(newPath, targetPath);
+      } catch (renameError) {
+        if (
+          renameError instanceof Error &&
+          'code' in renameError &&
+          renameError.code === 'EEXIST'
+        ) {
+          await copyFile(newPath, targetPath);
+          try {
+            await rm(newPath, { force: true });
+          } catch {
+            // Ignore cleanup failure; live file is already updated.
+          }
+        } else {
+          throw renameError;
+        }
+      }
     } catch (error) {
       if (attempt >= maxRetries) {
         throw error;
@@ -85,7 +105,26 @@ const writeComposeFile: WriteComposeFile = async (
     }
   };
 
-  await attemptWrite(1);
+  try {
+    await attemptWrite(1);
+  } catch (error) {
+    try {
+      await rm(newPath, { force: true });
+    } catch {
+      // Ignore cleanup failure.
+    }
+
+    if (targetExisted) {
+      try {
+        await stat(backupPath);
+        await copyFile(backupPath, targetPath);
+      } catch {
+        // No backup available to restore.
+      }
+    }
+
+    throw error;
+  }
 };
 
 export default writeComposeFile;
