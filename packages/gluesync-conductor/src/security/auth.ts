@@ -68,37 +68,44 @@ const authPlugin = async (
       const authorizationHeader = req.headers.authorization;
 
       const introspector = getIntrospector();
-      const user = await (async (): Promise<CurrentUser | null | undefined> => {
+      const authResult = await (async (): Promise<
+        { error: string } | { user: CurrentUser | null }
+      > => {
         try {
-          return await introspector.introspect({
-            cookieHeader,
-            authorizationHeader,
-          });
+          return {
+            user: await introspector.introspect({
+              cookieHeader,
+              authorizationHeader,
+            }),
+          };
         } catch (error: unknown) {
           const logger = getLogger();
+          const message =
+            error instanceof Error ? error.message : String(error);
           logger.warn(
-            { error: error instanceof Error ? error.message : String(error) },
+            { error: message },
             'Conductor auth introspection failed',
           );
-          return undefined;
+          return { error: message };
         }
       })();
 
-      if (user === undefined) {
-        return reply.code(401).send({
+      if ('error' in authResult) {
+        return reply.code(503).send({
           success: false,
-          error: 'Authentication verification failed',
+          error: 'CoreHub unavailable',
+          details: authResult.error,
         });
       }
 
-      if (user === null) {
+      if (authResult.user === null) {
         return reply.code(401).send({
           success: false,
           error: 'Not authenticated',
         });
       }
 
-      Reflect.set(req, 'currentUser', user);
+      Reflect.set(req, 'currentUser', authResult.user);
       return undefined;
     },
   );
