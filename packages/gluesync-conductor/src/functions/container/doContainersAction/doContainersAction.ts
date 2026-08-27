@@ -1,3 +1,4 @@
+import axios, { AxiosError } from 'axios';
 import semver from 'semver';
 import {
   DoContainersActionHandler,
@@ -39,6 +40,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         error: 'Conductor is updating',
         details: 'Only restart operations are allowed during update mode',
       });
+      return;
     }
 
     const actions = createActions({ docker: req.server.docker });
@@ -422,6 +424,34 @@ const handler: DoContainersActionHandler = async (req, reply) => {
           pingError instanceof Error ? pingError.message : String(pingError)
         }`,
       );
+    }
+
+    if (axios.isAxiosError(error)) {
+      const axiosError = error as AxiosError;
+      const responseData = axiosError.response?.data;
+      const details = ((): string => {
+        if (typeof responseData === 'string') {
+          return responseData;
+        }
+
+        if (responseData && typeof responseData === 'object') {
+          return (
+            (responseData as any).message ??
+            (responseData as any).error ??
+            JSON.stringify(responseData)
+          );
+        }
+
+        return axiosError.message;
+      })();
+
+      reply.code(axiosError.response?.status ?? 500);
+      reply.send({
+        success: false,
+        error: 'Failed to do containers action',
+        details,
+      });
+      return;
     }
 
     reply.code(500);

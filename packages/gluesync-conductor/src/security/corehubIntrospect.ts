@@ -128,6 +128,13 @@ export const createIntrospector = (config: Readonly<IntrospectorConfig>) => {
   const introspect = async (
     opts: Readonly<IntrospectOptions>,
   ): Promise<CurrentUser | null> => {
+    getLogger().debug(
+      {
+        hasAuthorization: !!opts.authorizationHeader,
+        hasCookie: !!opts.cookieHeader,
+      },
+      'Conductor auth introspection called',
+    );
     const cacheKey = createCacheKey(opts);
     if (cacheKey === null) {
       return null;
