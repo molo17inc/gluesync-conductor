@@ -89,20 +89,21 @@ async function gluesyncPlugin(
     }
   });
 
-  // Don't block server startup - initialize in the background
-  fastify.log.info('Initializing Gluesync SDK client in the background...');
-  sdkClient
-    .initialize()
-    .then(() => {
-      fastify.log.info('Gluesync SDK client initialized successfully');
-    })
-    .catch(error => {
-      fastify.log.error(
-        `Failed to initialize Gluesync SDK client: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    });
+  // Block server startup until the SDK has the token, matching the scheduler.
+  fastify.log.info('Initializing Gluesync SDK client...');
+  try {
+    await sdkClient.initialize();
+    fastify.log.info('Gluesync SDK client initialized successfully');
+    fastify.log.info(`CoreHub URL: ${sdkClient.coreHubUrl ?? 'not set'}`);
+    fastify.log.info(`SDK token present: ${sdkClient.token ? 'yes' : 'no'}`);
+  } catch (error) {
+    fastify.log.error(
+      `Failed to initialize Gluesync SDK client: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    done(error instanceof Error ? error : new Error(String(error)));
+    return;
+  }
 
-  // Allow server to start without waiting for CoreHub discovery
   done();
 }
 
