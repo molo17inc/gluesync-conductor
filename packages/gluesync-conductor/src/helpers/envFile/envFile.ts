@@ -81,7 +81,7 @@ const isActiveLegacyUpdateLine = (line: string): boolean => {
   const trimmed = line.trim();
 
   return (
-    !trimmed.startsWith('#') && trimmed.startsWith(`${LEGACY_UPDATE_KEY}=1`)
+    !trimmed.startsWith('#') && trimmed.startsWith(`${LEGACY_UPDATE_KEY}=`)
   );
 };
 
@@ -111,18 +111,16 @@ const isLegacyUpdateEnabled: IsLegacyUpdateEnabled = lines =>
 
 const enableLegacyUpdate: EnableLegacyUpdate = lines => {
   if (lines.length === 0) {
-    return [`${LEGACY_UPDATE_KEY}=1`];
+    return [`${LEGACY_UPDATE_KEY}=2`];
   }
 
   const index = lines.findIndex(isActiveLegacyUpdateLine);
 
   if (index >= 0) {
-    return lines.map((line, i) =>
-      i === index ? `${LEGACY_UPDATE_KEY}=1` : line,
-    );
+    return lines;
   }
 
-  return [...lines, `${LEGACY_UPDATE_KEY}=1`];
+  return [...lines, `${LEGACY_UPDATE_KEY}=2`];
 };
 
 const disableLegacyUpdate: DisableLegacyUpdate = lines =>
