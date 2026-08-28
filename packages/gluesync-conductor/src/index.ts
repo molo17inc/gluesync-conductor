@@ -32,6 +32,7 @@ import getRootPath from './helpers/getRootPath/getRootPath';
 import healConductorConf from './helpers/healConductorConf/healConductorConf';
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
 import migrateRoutes from './routes/migrate';
+import envRoutes from './routes/env';
 import updateModeEmitter from './plugins/updateModeEmitter';
 import { startUpdateWatchdog } from './helpers/updateWatchdog/updateWatchdog';
 
@@ -186,6 +187,7 @@ const startServer = async (): Promise<void> => {
   await server.register(agentRoutes);
   await server.register(supportRoutes);
   await server.register(migrateRoutes);
+  await server.register(envRoutes);
 
   await server.ready();
   await server.listen({ host, port });
