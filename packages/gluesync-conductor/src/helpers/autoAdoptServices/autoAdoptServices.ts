@@ -22,6 +22,7 @@ import removeContainerNameFromServices from '../removeContainerNameFromServices/
 import addGluesyncHostToChronos from '../addGluesyncHostToChronos/addGluesyncHostToChronos';
 import applyCoreHubProductionTweaks from '../applyCoreHubProductionTweaks/applyCoreHubProductionTweaks';
 import addEnvToGrafana from '../addEnvToGrafana/addEnvToGrafana';
+import splitGrafanaProvisioningMount from '../splitGrafanaProvisioningMount/splitGrafanaProvisioningMount';
 import applyCpuCompatibilityToImage from '../applyCpuCompatibilityToImage/applyCpuCompatibilityToImage';
 import addPortToCoreHub from '../addPortToCoreHub/addPortToCoreHub';
 
@@ -202,10 +203,15 @@ const autoAdoptServices = async (): Promise<{
 
     const stepGrafana = addEnvToGrafana(cleanedComposeJson.services);
 
+    const stepGrafanaMount = splitGrafanaProvisioningMount(
+      stepGrafana.services,
+    );
+
     const servicesWithChronosHost = mergeServices([
       cleanedComposeJson.services,
       stepChronos.services,
       stepGrafana.services,
+      stepGrafanaMount.services,
     ]);
 
     // Add env_file to ALL services
@@ -290,6 +296,7 @@ const autoAdoptServices = async (): Promise<{
         networkAllUpdatedIds.length === 0 &&
         stepChronos.updatedIds.length === 0 &&
         stepGrafana.updatedIds.length === 0 &&
+        stepGrafanaMount.updatedIds.length === 0 &&
         coreHubTweakedIds.length === 0 &&
         cpuCompatibilityLabeledIds.length === 0 &&
         portAddedLabeledIds.length === 0
@@ -330,6 +337,7 @@ const autoAdoptServices = async (): Promise<{
           ...networkAllUpdatedIds,
           ...stepChronos.updatedIds,
           ...stepGrafana.updatedIds,
+          ...stepGrafanaMount.updatedIds,
           ...coreHubTweakedIds,
           ...cpuCompatibilityLabeledIds,
           ...portAddedLabeledIds,
@@ -562,7 +570,8 @@ const autoAdoptServices = async (): Promise<{
       removedDependsOnIds.length === 0 &&
       envFileUpdatedIds.length === 0 &&
       networkAllUpdatedIds.length === 0 &&
-      removedContainerNameIds.length === 0
+      removedContainerNameIds.length === 0 &&
+      stepGrafanaMount.updatedIds.length === 0
     ) {
       return {
         success: true,
@@ -610,6 +619,7 @@ const autoAdoptServices = async (): Promise<{
         ...networkAllUpdatedIds,
         ...cpuCompatibilityUpdatedIds,
         ...portAddedIds,
+        ...stepGrafanaMount.updatedIds,
       ],
       unmatchedIds,
     };
