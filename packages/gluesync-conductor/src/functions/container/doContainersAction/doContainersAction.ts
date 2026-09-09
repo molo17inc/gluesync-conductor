@@ -20,6 +20,7 @@ import restartLinux from '../../../helpers/restartAllServices/linuxRestart';
 import migrationWithUpdate from './migrationWithUpdate/migrationWithUpdate';
 import updateNormalBulk from './handleUpdate/updateNormalBulk';
 import { migrationNeeded } from '../../../helpers/migrationNeeded/migrationNeeded';
+import handleGrafanaEmbeddedDashboard from '../../../helpers/handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard';
 import { getLogger } from '../../../utils/logger';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
@@ -180,6 +181,18 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         `Container action ${containerAction}: ${JSON.stringify(results)}`,
       );
 
+      // If the grafana image carries the new embedded-dashboard tag, strip its
+      // host bind mounts and recreate the container so the baked-in
+      // dashboards/datasources are used. Idempotent no-op otherwise.
+      const grafanaEmbedded = await handleGrafanaEmbeddedDashboard();
+
+      if (grafanaEmbedded.applied) {
+        req.log.info(
+          { service: grafanaEmbedded.serviceId },
+          '[update-handler] grafana recreated with embedded dashboard',
+        );
+      }
+
       const pruneOutcome = await req.server.docker
         .pruneImages({
           force: true,
@@ -204,19 +217,35 @@ const handler: DoContainersActionHandler = async (req, reply) => {
           pruneError: error instanceof Error ? error.message : String(error),
         }));
 
-      reply.code(200);
-      reply.send({
-        success: true,
-        data: {
-          ...pruneOutcome,
-          containers: results.map((result, index) => ({
+      const containers: ReadonlyArray<DoContainersActionItem> = [
+        ...results.map(
+          (result, index): DoContainersActionItem => ({
             id: ids[index],
             status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
             message:
               result.status === 'fulfilled'
                 ? result.value
                 : result?.reason?.err,
-          })),
+          }),
+        ),
+        ...(grafanaEmbedded.applied
+          ? [
+              {
+                id: grafanaEmbedded.serviceId,
+                status: 'OK' as const,
+                message:
+                  'Grafana recreated with embedded dashboard (volumes removed).',
+              },
+            ]
+          : []),
+      ];
+
+      reply.code(200);
+      reply.send({
+        success: true,
+        data: {
+          ...pruneOutcome,
+          containers,
         },
       });
     } else if (containerAction === 'restart') {
