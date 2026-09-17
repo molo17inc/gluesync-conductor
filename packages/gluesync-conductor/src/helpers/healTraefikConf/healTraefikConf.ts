@@ -15,7 +15,7 @@ import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile'
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
 const ROOT_FOLDER_PATH = isWindows
-  ? 'C:\\opt\\gluesync-conductor\\root-folder'
+  ? String.raw`C:\opt\gluesync-conductor\root-folder`
   : '/opt/gluesync-conductor/root-folder';
 
 const DEFAULT_TRAEFIK_CONF_PATH = join(
@@ -57,9 +57,9 @@ const findProxyServiceName = (
  */
 const volumeSourceForTraefikConf = (volume: string): string | null => {
   const normalized = volume.replace(/\\+/g, '/');
-  const match = normalized.match(/:(?:[a-zA-Z]:)?(\/etc\/traefik[^:]*)/);
+  const match = /:(?:[a-zA-Z]:)?(\/etc\/traefik[^:]*)/.exec(normalized);
 
-  if (!match || match.index === undefined) {
+  if (match?.index === undefined) {
     return null;
   }
 
