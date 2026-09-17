@@ -24,6 +24,7 @@ import applyCoreHubProductionTweaks from '../applyCoreHubProductionTweaks/applyC
 import addEnvToGrafana from '../addEnvToGrafana/addEnvToGrafana';
 import applyCpuCompatibilityToImage from '../applyCpuCompatibilityToImage/applyCpuCompatibilityToImage';
 import addPortToCoreHub from '../addPortToCoreHub/addPortToCoreHub';
+import healTraefikConf from '../healTraefikConf/healTraefikConf';
 
 /**
  * Ensure the given network exists at the root compose level.
@@ -152,6 +153,10 @@ const autoAdoptServices = async (): Promise<{
         unmatchedIds: [],
       };
     }
+
+    const healedProxyId = await healTraefikConf(composeJson);
+
+    const traefikUpdatedIds = healedProxyId ? [healedProxyId] : [];
 
     const gluesyncHostDefault =
       process.env.GLUESYNC_HOST ?? 'gluesync-core-hub';
@@ -292,7 +297,8 @@ const autoAdoptServices = async (): Promise<{
         stepGrafana.updatedIds.length === 0 &&
         coreHubTweakedIds.length === 0 &&
         cpuCompatibilityLabeledIds.length === 0 &&
-        portAddedLabeledIds.length === 0
+        portAddedLabeledIds.length === 0 &&
+        traefikUpdatedIds.length === 0
       ) {
         return {
           success: true,
@@ -333,6 +339,7 @@ const autoAdoptServices = async (): Promise<{
           ...coreHubTweakedIds,
           ...cpuCompatibilityLabeledIds,
           ...portAddedLabeledIds,
+          ...traefikUpdatedIds,
         ],
         unmatchedIds: [],
       };
@@ -562,7 +569,8 @@ const autoAdoptServices = async (): Promise<{
       removedDependsOnIds.length === 0 &&
       envFileUpdatedIds.length === 0 &&
       networkAllUpdatedIds.length === 0 &&
-      removedContainerNameIds.length === 0
+      removedContainerNameIds.length === 0 &&
+      traefikUpdatedIds.length === 0
     ) {
       return {
         success: true,
@@ -610,6 +618,7 @@ const autoAdoptServices = async (): Promise<{
         ...networkAllUpdatedIds,
         ...cpuCompatibilityUpdatedIds,
         ...portAddedIds,
+        ...traefikUpdatedIds,
       ],
       unmatchedIds,
     };
