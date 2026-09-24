@@ -40,6 +40,9 @@ const resolveLegacyScriptPath = async (
     isWindows
       ? `C:\\opt\\gluesync-conductor\\${scriptName}`
       : `/opt/gluesync-conductor/${scriptName}`,
+    isWindows
+      ? `C:\\opt\\gluesync-conductor\\root-folder\\${scriptName}`
+      : `/opt/gluesync-conductor/root-folder/${scriptName}`,
   ];
 
   const checks = candidates.map(candidate => {
