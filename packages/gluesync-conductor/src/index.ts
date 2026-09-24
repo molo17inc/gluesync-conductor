@@ -30,6 +30,7 @@ import autoAdoptServices from './helpers/autoAdoptServices/autoAdoptServices';
 import { autoReboot } from './helpers/autoReboot/autoReboot';
 import getRootPath from './helpers/getRootPath/getRootPath';
 import healConductorConf from './helpers/healConductorConf/healConductorConf';
+import syncCollectLogsScripts from './helpers/syncCollectLogsScripts/syncCollectLogsScripts';
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
 import migrateRoutes from './routes/migrate';
 import envRoutes from './routes/env';
@@ -230,6 +231,16 @@ const startServer = async (): Promise<void> => {
     }
   } else {
     logger.error('Failed to apply Conductor labels at startup');
+  }
+
+  const syncResult = await syncCollectLogsScripts();
+
+  if (syncResult.synced) {
+    logger.info('[collect-logs-sync] script synced to root folder');
+  } else if (syncResult.success) {
+    logger.info('[collect-logs-sync] already up to date');
+  } else {
+    logger.warn('[collect-logs-sync] sync failed');
   }
 
   const rebootNeeded = await healConductorConf();
