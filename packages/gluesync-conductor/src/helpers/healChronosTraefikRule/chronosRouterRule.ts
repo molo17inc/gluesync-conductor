@@ -30,45 +30,36 @@ export const sanitizeChronosRouterLabels = <T extends Record<string, any>>(
   return { ...labels, [CHRONOS_ROUTER_RULE_KEY]: healed };
 };
 
-const rewriteLabelCollection = (
-  labels: ReadonlyArray<string> | Record<string, any>,
-): {
-  labels: ReadonlyArray<string> | Record<string, any>;
-  changed: boolean;
-} => {
-  if (Array.isArray(labels)) {
-    let changed = false;
+const rewriteArrayLabels = (
+  labels: ReadonlyArray<string>,
+): { labels: ReadonlyArray<string>; changed: boolean } => {
+  const next = labels.map(label => {
+    const eq = label.indexOf('=');
 
-    const next = labels.map(label => {
-      if (typeof label !== 'string') {
-        return label;
-      }
+    if (eq <= 0) {
+      return label;
+    }
 
-      const eq = label.indexOf('=');
+    const key = label.slice(0, eq).trim();
 
-      if (eq <= 0) {
-        return label;
-      }
+    if (key !== CHRONOS_ROUTER_RULE_KEY) {
+      return label;
+    }
 
-      const key = label.slice(0, eq).trim();
+    const healed = rewriteChronosRouterRuleValue(label.slice(eq + 1));
 
-      if (key !== CHRONOS_ROUTER_RULE_KEY) {
-        return label;
-      }
+    return healed ? `${key}=${healed}` : label;
+  });
 
-      const healed = rewriteChronosRouterRuleValue(label.slice(eq + 1));
+  return {
+    labels: next,
+    changed: next.some((label, index) => label !== labels[index]),
+  };
+};
 
-      if (!healed) {
-        return label;
-      }
-
-      changed = true;
-      return `${key}=${healed}`;
-    });
-
-    return { labels: next, changed };
-  }
-
+const rewriteRecordLabels = (
+  labels: Record<string, any>,
+): { labels: Record<string, any>; changed: boolean } => {
   const current = labels[CHRONOS_ROUTER_RULE_KEY];
 
   if (typeof current !== 'string') {
@@ -100,11 +91,8 @@ export const rewriteChronosRouterLabels = (
 } => {
   const source = services ?? {};
   const chronosName = process.env.CHRONOS_NAME || 'gluesync-chronos';
-  const updatedIds: string[] = [];
 
-  const next = Object.entries(source).reduce<
-    Record<string, RawComposeService>
-  >((acc, [name, service]) => {
+  const reviewed = Object.entries(source).map(([name, service]) => {
     const image = String(service?.image ?? '');
     const labelStrings = toLabelStrings(service?.labels);
     const isChronos =
@@ -115,22 +103,30 @@ export const rewriteChronosRouterLabels = (
       );
 
     if (!isChronos || !service?.labels) {
-      return { ...acc, [name]: service };
+      return { name, service, changed: false as const };
     }
 
-    const rewritten = rewriteLabelCollection(service.labels);
+    const rewritten = Array.isArray(service.labels)
+      ? rewriteArrayLabels(service.labels)
+      : rewriteRecordLabels(service.labels);
 
     if (!rewritten.changed) {
-      return { ...acc, [name]: service };
+      return { name, service, changed: false as const };
     }
 
-    updatedIds.push(name);
-
     return {
-      ...acc,
-      [name]: { ...service, labels: rewritten.labels },
+      name,
+      service: { ...service, labels: rewritten.labels },
+      changed: true as const,
     };
-  }, {});
+  });
 
-  return { services: next, updatedIds };
+  return {
+    services: Object.fromEntries(
+      reviewed.map(({ name, service }) => [name, service]),
+    ),
+    updatedIds: reviewed
+      .filter(({ changed }) => changed)
+      .map(({ name }) => name),
+  };
 };
