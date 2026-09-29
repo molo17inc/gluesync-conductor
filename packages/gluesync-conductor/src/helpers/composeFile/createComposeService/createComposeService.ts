@@ -3,6 +3,7 @@ import {
   ComposeVolume,
   LabelPrefix,
 } from '../../../models/composeFile.model';
+import { sanitizeChronosRouterLabels } from '../../healChronosTraefikRule/chronosRouterRule';
 import buildEnvFileConf from '../../buildEnvFileConf/buildEnvFileConf';
 import mergeComposeKeyValueField from '../mergeKeyValueStrings/mergeKeyValueStrings';
 import { CreateComposeService } from './createComposeService.model';
@@ -111,6 +112,8 @@ const createComposeService: CreateComposeService = (
     dependsOn,
   },
 ) => {
+  const labelsForCompose = sanitizeChronosRouterLabels(labels);
+
   const defaultLabels = {
     [`${LabelPrefix.CONDUCTOR}.service_id`]: serviceId,
     [`${LabelPrefix.CONDUCTOR}.type`]: serviceType,
@@ -170,7 +173,10 @@ const createComposeService: CreateComposeService = (
       Object.keys(resources.reservations || {}).length > 0
         ? { resources }
         : undefined,
-    labels: Object.entries({ ...labels, ...defaultLabels }).reduce<string[]>(
+    labels: Object.entries({
+      ...labelsForCompose,
+      ...defaultLabels,
+    }).reduce<string[]>(
       (acc, [key, value]) => (value ? [...acc, `${key}=${value}`] : acc),
       [],
     ),

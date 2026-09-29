@@ -25,6 +25,8 @@ import addEnvToGrafana from '../addEnvToGrafana/addEnvToGrafana';
 import applyCpuCompatibilityToImage from '../applyCpuCompatibilityToImage/applyCpuCompatibilityToImage';
 import addPortToCoreHub from '../addPortToCoreHub/addPortToCoreHub';
 import healTraefikConf from '../healTraefikConf/healTraefikConf';
+import recreateChronosContainers from '../healChronosTraefikRule/healChronosTraefikRule';
+import { rewriteChronosRouterLabels } from '../healChronosTraefikRule/chronosRouterRule';
 
 /**
  * Ensure the given network exists at the root compose level.
@@ -144,7 +146,17 @@ const autoAdoptServices = async (): Promise<{
   unmatchedIds: readonly string[];
 }> => {
   try {
-    const composeJson = await readComposeFile({ raw: true });
+    const readComposeJson = await readComposeFile({ raw: true });
+    const chronosRuleHeal = rewriteChronosRouterLabels(
+      readComposeJson.services,
+    );
+    const composeJson =
+      chronosRuleHeal.updatedIds.length > 0 && readComposeJson.services
+        ? {
+            ...readComposeJson,
+            services: chronosRuleHeal.services,
+          }
+        : readComposeJson;
 
     if (!composeJson.services) {
       return {
@@ -298,6 +310,7 @@ const autoAdoptServices = async (): Promise<{
         coreHubTweakedIds.length === 0 &&
         cpuCompatibilityLabeledIds.length === 0 &&
         portAddedLabeledIds.length === 0 &&
+        chronosRuleHeal.updatedIds.length === 0 &&
         traefikUpdatedIds.length === 0
       ) {
         return {
@@ -326,6 +339,10 @@ const autoAdoptServices = async (): Promise<{
 
       await writeComposeFile(updatedComposeFile);
 
+      if (chronosRuleHeal.updatedIds.length > 0) {
+        await recreateChronosContainers(chronosRuleHeal.updatedIds);
+      }
+
       return {
         success: true,
         updatedIds: [
@@ -339,6 +356,7 @@ const autoAdoptServices = async (): Promise<{
           ...coreHubTweakedIds,
           ...cpuCompatibilityLabeledIds,
           ...portAddedLabeledIds,
+          ...chronosRuleHeal.updatedIds,
           ...traefikUpdatedIds,
         ],
         unmatchedIds: [],
@@ -570,6 +588,7 @@ const autoAdoptServices = async (): Promise<{
       envFileUpdatedIds.length === 0 &&
       networkAllUpdatedIds.length === 0 &&
       removedContainerNameIds.length === 0 &&
+      chronosRuleHeal.updatedIds.length === 0 &&
       traefikUpdatedIds.length === 0
     ) {
       return {
@@ -608,6 +627,10 @@ const autoAdoptServices = async (): Promise<{
 
     await writeComposeFile(updatedComposeFile);
 
+    if (chronosRuleHeal.updatedIds.length > 0) {
+      await recreateChronosContainers(chronosRuleHeal.updatedIds);
+    }
+
     return {
       success: true,
       updatedIds: [
@@ -618,6 +641,7 @@ const autoAdoptServices = async (): Promise<{
         ...networkAllUpdatedIds,
         ...cpuCompatibilityUpdatedIds,
         ...portAddedIds,
+        ...chronosRuleHeal.updatedIds,
         ...traefikUpdatedIds,
       ],
       unmatchedIds,
