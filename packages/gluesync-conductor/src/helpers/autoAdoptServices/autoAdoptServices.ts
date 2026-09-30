@@ -24,7 +24,9 @@ import applyCoreHubProductionTweaks from '../applyCoreHubProductionTweaks/applyC
 import addEnvToGrafana from '../addEnvToGrafana/addEnvToGrafana';
 import applyCpuCompatibilityToImage from '../applyCpuCompatibilityToImage/applyCpuCompatibilityToImage';
 import addPortToCoreHub from '../addPortToCoreHub/addPortToCoreHub';
-import healTraefikConf from '../healTraefikConf/healTraefikConf';
+import healTraefikConf, {
+  findProxyServiceName,
+} from '../healTraefikConf/healTraefikConf';
 import recreateChronosContainers from '../healChronosTraefikRule/healChronosTraefikRule';
 import { rewriteChronosRouterLabels } from '../healChronosTraefikRule/chronosRouterRule';
 
@@ -340,7 +342,10 @@ const autoAdoptServices = async (): Promise<{
       await writeComposeFile(updatedComposeFile);
 
       if (chronosRuleHeal.updatedIds.length > 0) {
-        await recreateChronosContainers(chronosRuleHeal.updatedIds);
+        await recreateChronosContainers(
+          chronosRuleHeal.updatedIds,
+          findProxyServiceName(composeJson),
+        );
       }
 
       return {
@@ -628,7 +633,10 @@ const autoAdoptServices = async (): Promise<{
     await writeComposeFile(updatedComposeFile);
 
     if (chronosRuleHeal.updatedIds.length > 0) {
-      await recreateChronosContainers(chronosRuleHeal.updatedIds);
+      await recreateChronosContainers(
+        chronosRuleHeal.updatedIds,
+        findProxyServiceName(composeJson),
+      );
     }
 
     return {
