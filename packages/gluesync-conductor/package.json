@@ -7,6 +7,7 @@
     "lint": "eslint .",
     "lint:fix": "yarn lint --fix",
     "type-check": "yarn tsc --noEmit --incremental --tsBuildInfoFile .tsbuildinfo",
+    "test": "tsx --test src/helpers/healChronosTraefikRule/chronosRouterRule.spec.ts",
     "dev": "tsx watch src/index.ts",
     "build": "buildService",
     "start": "node build/index.js",
