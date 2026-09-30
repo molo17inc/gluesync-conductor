@@ -34,7 +34,7 @@ type TraefikStaticConf = Readonly<{
   [key: string]: any;
 }>;
 
-const findProxyServiceName = (
+export const findProxyServiceName = (
   composeJson: Partial<RawComposeFile>,
 ): string | null => {
   const services = composeJson.services ?? {};
@@ -115,7 +115,9 @@ const withHttpsRedirect = (conf: TraefikStaticConf): TraefikStaticConf => ({
   },
 });
 
-const restartProxyContainer = async (serviceName: string): Promise<void> => {
+export const restartProxyContainer = async (
+  serviceName: string,
+): Promise<void> => {
   const docker = getDocker();
 
   const labeled = await docker.listContainers({
