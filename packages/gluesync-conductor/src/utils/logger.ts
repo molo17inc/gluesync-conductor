@@ -29,6 +29,19 @@ const resolveLogFilename = (): string =>
 const resolveRotationSize = (): FileSize =>
   (process.env.GLUESYNC_LOG_ROTATION_SIZE || DEFAULT_ROTATION_SIZE) as FileSize;
 
+// An axios error carries its request config, and that config holds the proxy
+// agent with `user:password` in `proxy.auth` / `proxy.href`. Logging an error
+// object (`{ error }`) would write the password to the log files that support
+// collects, so those fields are masked wherever an error is logged.
+const LOG_REDACTION = {
+  paths: [
+    '*.config.httpsAgent.proxy.auth',
+    '*.config.httpsAgent.proxy.href',
+    '*.config.httpsAgent.proxy.path',
+  ],
+  censor: '[Redacted]',
+};
+
 const loggerCache = { current: null as Logger | null };
 
 const ensureLogDirectory = (): string | null => {
@@ -83,6 +96,7 @@ const buildLogger = (): Logger => {
   const options: LoggerOptions = {
     level: (process.env.LOG_LEVEL || 'info').toLowerCase(),
     timestamp: buildTimestamp,
+    redact: LOG_REDACTION,
   };
 
   if (!directory) {
@@ -125,6 +139,7 @@ export const getLoggerOptions = () => {
   if (!directory) {
     return {
       level: (process.env.LOG_LEVEL || 'info').toLowerCase(),
+      redact: LOG_REDACTION,
     };
   }
 
@@ -137,6 +152,7 @@ export const getLoggerOptions = () => {
 
     return {
       level: (process.env.LOG_LEVEL || 'info').toLowerCase(),
+      redact: LOG_REDACTION,
       stream: fileStream,
     };
   } catch (error) {
@@ -145,6 +161,7 @@ export const getLoggerOptions = () => {
     );
     return {
       level: (process.env.LOG_LEVEL || 'info').toLowerCase(),
+      redact: LOG_REDACTION,
     };
   }
 };

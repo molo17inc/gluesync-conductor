@@ -15,6 +15,8 @@ import waitForDockerDaemon from '../../../helpers/dockerode/waitForDockerDaemon/
 import isTransientDockerConnError from '../../../helpers/dockerode/isTransientDockerConnError/isTransientDockerConnError';
 import fetchChangelogInfo from '../../../helpers/fetchChangelogInfo/fetchChangelogInfo';
 import getCurrentVersion from '../../../helpers/getCurrentVersion/getCurrentVersion';
+import buildOutboundErrorReply from '../../../diagnosis/buildOutboundErrorReply';
+import normalizeUpstreamErrorBody from '../../../helpers/normalizeUpstreamErrorBody/normalizeUpstreamErrorBody';
 
 const logger = getLogger();
 
@@ -253,10 +255,20 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
   } catch (error: any) {
     logger.error({ error }, '[get-service-version] unexpected error');
 
+    // Failures reaching MOLO17's own services are diagnosed (who is at fault, what to do).
+    const outbound = await buildOutboundErrorReply(error);
+
+    if (outbound) {
+      return reply.code(outbound.statusCode).send(outbound.body);
+    }
+
     if (error?.response) {
       return reply.code(error.response.status).send({
         success: false,
-        ...error.response.data,
+        ...normalizeUpstreamErrorBody(
+          error.response.data,
+          'Unable to retrieve service version',
+        ),
       });
     }
 

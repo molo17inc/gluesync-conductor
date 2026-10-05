@@ -9,6 +9,7 @@ import {
 import containerInfoMapper from '../../../helpers/dockerode/containerInfoMapper/containerInfoMapper';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import getSystemInfo from '../../../helpers/dockerode/getSystemInfo/getSystemInfo';
+import buildDiagnosis from '../../../diagnosis/buildDiagnosis';
 import { castObject } from '../../../helpers/composeFile/extractKeyValue/extractKeyValue';
 import parseServiceType from '../../../helpers/composeFile/parseServiceType/parseServiceType';
 import {
@@ -152,6 +153,9 @@ const handler: ListContainersHandler = async (req, reply) => {
         ? 'Docker daemon not ready yet'
         : 'Failed to list containers',
       details: error instanceof Error ? error.message : String(error),
+      ...(transient
+        ? { diagnosis: buildDiagnosis({ code: 'DOCKER_NOT_READY' }) }
+        : {}),
     });
   }
 };

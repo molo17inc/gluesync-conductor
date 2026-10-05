@@ -22,6 +22,8 @@ import updateNormalBulk from './handleUpdate/updateNormalBulk';
 import { migrationNeeded } from '../../../helpers/migrationNeeded/migrationNeeded';
 import handleGrafanaEmbeddedDashboard from '../../../helpers/handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard';
 import { getLogger } from '../../../utils/logger';
+import buildDiagnosis from '../../../diagnosis/buildDiagnosis';
+import buildOutboundErrorReply from '../../../diagnosis/buildOutboundErrorReply';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
@@ -40,6 +42,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         success: false,
         error: 'Conductor is updating',
         details: 'Only restart operations are allowed during update mode',
+        diagnosis: buildDiagnosis({ code: 'CONDUCTOR_UPDATING' }),
       });
       return;
     }
@@ -453,6 +456,23 @@ const handler: DoContainersActionHandler = async (req, reply) => {
           pingError instanceof Error ? pingError.message : String(pingError)
         }`,
       );
+    }
+
+    // Failures reaching MOLO17's own services (backoffice) are diagnosed:
+    // who is at fault and what to do, instead of a bare upstream status.
+    const outbound = await buildOutboundErrorReply(error);
+
+    if (outbound) {
+      reply.code(outbound.statusCode);
+      reply.send({
+        ...outbound.body,
+        // Keeps the established title for this action while `diagnosis` carries the cause.
+        error: 'Failed to do containers action',
+        details: [outbound.body.diagnosis.fallback.title, outbound.body.details]
+          .filter(Boolean)
+          .join(' - '),
+      });
+      return;
     }
 
     if (axios.isAxiosError(error)) {
