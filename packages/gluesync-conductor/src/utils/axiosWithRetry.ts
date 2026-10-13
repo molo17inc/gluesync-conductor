@@ -5,10 +5,25 @@ import { AxiosWithRetry, AxiosRequestOptions } from './axisWithRetry.model';
 
 const logger = getLogger();
 
+// Proxy URLs carry credentials (http://user:password@host:port): never log them.
+const withoutCredentials = (url: string | undefined): string | undefined => {
+  if (!url) {
+    return url;
+  }
+  try {
+    const parsed = new URL(url);
+    return parsed.username || parsed.password
+      ? url.replace(/\/\/[^@/]*@/, '//***:***@')
+      : url;
+  } catch {
+    return '[unparseable proxy URL]';
+  }
+};
+
 const getProxyConfig = (): string | undefined => {
   const proxyUrl = process.env.PROXY_HTTPS || process.env.PROXY_HTTP;
 
-  logger.info({ proxyUrl }, 'Proxy URL from env');
+  logger.info({ proxy: withoutCredentials(proxyUrl) }, 'Proxy URL from env');
 
   if (!proxyUrl) {
     logger.info('No proxy URL found, using direct connection');
@@ -29,18 +44,27 @@ const getProxyConfig = (): string | undefined => {
         : undefined,
     };
 
-    logger.info({ proxyObj }, 'Parsed proxy config');
+    logger.info(
+      {
+        proxy: {
+          host: proxyObj.host,
+          port: proxyObj.port,
+          authenticated: !!proxyObj.auth,
+        },
+      },
+      'Parsed proxy config',
+    );
 
     return proxyUrl;
   } catch (error: unknown) {
     if (error instanceof AxiosError || error instanceof Error) {
       logger.error(
-        { proxyUrl, error: error.message },
+        { proxy: withoutCredentials(proxyUrl), error: error.message },
         'Failed to parse proxy URL - falling back to direct',
       );
     } else {
       logger.error(
-        { proxyUrl, error },
+        { proxy: withoutCredentials(proxyUrl), error },
         'Failed to parse proxy URL - falling back to direct (non-Error thrown)',
       );
     }

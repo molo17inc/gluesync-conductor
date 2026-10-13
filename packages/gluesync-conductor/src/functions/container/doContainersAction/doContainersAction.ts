@@ -22,12 +22,36 @@ import updateNormalBulk from './handleUpdate/updateNormalBulk';
 import { migrationNeeded } from '../../../helpers/migrationNeeded/migrationNeeded';
 import handleGrafanaEmbeddedDashboard from '../../../helpers/handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard';
 import { getLogger } from '../../../utils/logger';
+import describeFailure from '../../../helpers/describeFailure/describeFailure';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
 const logger = getLogger();
 
+// One container action at a time. Two updates running together (double click,
+// two tabs, UI plus Chronos) recreated the same containers concurrently and
+// failed with "container name already in use", and self-updated twice.
+const actionLock = new Map<
+  string,
+  Readonly<{ action: string; since: string }>
+>();
+
 const handler: DoContainersActionHandler = async (req, reply) => {
+  const running = actionLock.get('current');
+  if (running) {
+    reply.code(409);
+    reply.send({
+      success: false,
+      error: 'Another container action is in progress',
+      details: `"${running.action}" started at ${running.since}; try again when it has finished`,
+    });
+    return;
+  }
+  actionLock.set('current', {
+    action: req.body.action,
+    since: new Date().toISOString(),
+  });
+
   try {
     const containerAction = req.body.action;
     const requestIds: readonly string[] = req.body.ids || [];
@@ -59,6 +83,17 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       req.log.debug(
         `Checking for conductor update, ids length=${requestIds.length}`,
       );
+
+      // Images before this update, so failed services can be rolled back.
+      const updateAction = createActions({
+        docker: req.server.docker,
+        previousImages: Object.fromEntries(
+          Object.entries(composeJson.services ?? {}).map(([id, service]) => [
+            id,
+            service?.image,
+          ]),
+        ),
+      }).update;
 
       const CONDUCTOR_NAME = 'gluesync-conductor';
       const CHRONOS_NAME = 'gluesync-chronos';
@@ -163,9 +198,9 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         conductorInfo?.needsUpdate &&
         (requestIds.length === 0 ||
           (requestIds.length === 1 && requestIds[0] === CONDUCTOR_NAME))
-          ? await updateConductorOnly(action, conductorInfo, composeJson)
+          ? await updateConductorOnly(updateAction, conductorInfo, composeJson)
           : await updateNormalBulk(
-              action,
+              updateAction,
               composeJson,
               requestIds.length === 0 && chronosInfo?.needsUpdate
                 ? [CHRONOS_NAME]
@@ -225,7 +260,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
             message:
               result.status === 'fulfilled'
                 ? result.value
-                : result?.reason?.err,
+                : describeFailure(result.reason),
           }),
         ),
         ...(grafanaEmbedded.applied
@@ -367,7 +402,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
             message:
               result.status === 'fulfilled'
                 ? result.value
-                : result?.reason?.err,
+                : describeFailure(result.reason),
           }));
 
         // If conductor needs restart, add it to response and trigger restart
@@ -432,7 +467,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
             message:
               result.status === 'fulfilled'
                 ? result.value
-                : result?.reason?.err,
+                : describeFailure(result.reason),
           })),
         },
       });
@@ -489,6 +524,8 @@ const handler: DoContainersActionHandler = async (req, reply) => {
       error: 'Failed to do containers action',
       details: error instanceof Error ? error.message : String(error),
     });
+  } finally {
+    actionLock.delete('current');
   }
 };
 

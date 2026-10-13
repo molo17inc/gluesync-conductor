@@ -17,5 +17,6 @@ export {
   requireManage,
   requireControl,
   requireConfig,
+  requireContainerAction,
 } from './auth';
 export { default as authPlugin } from './auth';
