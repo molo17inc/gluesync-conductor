@@ -1,5 +1,5 @@
-import { readFile, writeFile } from 'fs/promises';
-import { isDeepStrictEqual } from 'util';
+import { readFile, writeFile } from 'node:fs/promises';
+import { isDeepStrictEqual } from 'node:util';
 import {
   Document,
   isMap,

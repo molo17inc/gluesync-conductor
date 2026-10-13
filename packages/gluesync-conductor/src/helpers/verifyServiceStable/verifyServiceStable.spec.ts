@@ -34,10 +34,12 @@ const fast = { windowMs: 30, maxWaitMs: 500, pollMs: 5 };
 
 describe('verifyServiceStable', () => {
   it('passes once the container stayed up for the window', async () => {
-    await verifyServiceStable(
-      dockerSeeing([{ state: running, restarts: 0 }]),
-      'grafana',
-      fast,
+    await assert.doesNotReject(
+      verifyServiceStable(
+        dockerSeeing([{ state: running, restarts: 0 }]),
+        'grafana',
+        fast,
+      ),
     );
   });
 

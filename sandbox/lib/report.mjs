@@ -51,20 +51,20 @@ export const writeReport = (dir, run) => {
   };
   writeJson(path.join(dir, 'report.json'), { ...run, summary, findings: all });
 
-  const lines = [];
-  lines.push(`# Conductor sandbox run ${path.basename(dir)}`, '');
-  lines.push(
-    `Seed ${run.seed}. ${its.length} iteration(s): **${summary.pass} pass, ${summary.warn} warn, ${summary.fail} fail**. ` +
-      `Started ${run.startedAt}${run.finishedAt ? `, finished ${run.finishedAt}` : ' (in progress)'}.`,
+  const finished = run.finishedAt ? `, finished ${run.finishedAt}` : ' (in progress)';
+  const lines = [
+    `# Conductor sandbox run ${path.basename(dir)}`,
     '',
-  );
-  lines.push(
+    `Seed ${run.seed}. ${its.length} iteration(s): **${summary.pass} pass, ${summary.warn} warn, ${summary.fail} fail**. ` +
+      `Started ${run.startedAt}${finished}.`,
+    '',
     `Conductor self-update downtime: median ${secs(summary.conductorSelfUpdate.p50)}, worst ${secs(summary.conductorSelfUpdate.max)}. ` +
       `Full update (all rounds): median ${secs(summary.updateDuration.p50)}, worst ${secs(summary.updateDuration.max)}.`,
     '',
-  );
-  lines.push(`Conductor memory per iteration (MiB): ${summary.memMiB.map(v => v ?? '—').join(', ')}`);
-  lines.push(`Conductor open file descriptors: ${summary.fds.map(v => v ?? '—').join(', ')}`, '');
+    `Conductor memory per iteration (MiB): ${summary.memMiB.map(v => v ?? '—').join(', ')}`,
+    `Conductor open file descriptors: ${summary.fds.map(v => v ?? '—').join(', ')}`,
+    '',
+  ];
 
   if (run.baseline && run.baseline.liveCommentLines < run.baseline.templateCommentLines) {
     lines.push(
@@ -72,9 +72,12 @@ export const writeReport = (dir, run) => {
       '',
     );
   }
-  lines.push('## Iterations', '');
-  lines.push('| # | Profile | Expect | Outcome | Rounds | Self-update | Duration | Failed checks |');
-  lines.push('|---|---|---|---|---|---|---|---|');
+  lines.push(
+    '## Iterations',
+    '',
+    '| # | Profile | Expect | Outcome | Rounds | Self-update | Duration | Failed checks |',
+    '|---|---|---|---|---|---|---|---|',
+  );
   its.forEach((it, k) => {
     const failed = it.checks.filter(c => c.severity === 'fail').map(c => c.id);
     lines.push(
@@ -83,9 +86,7 @@ export const writeReport = (dir, run) => {
         .join(' → ')} | ${secs(it.metrics?.conductorSelfUpdateMs)} | ${secs(it.durationMs)} | ${failed.join(', ') || '—'} |`,
     );
   });
-  lines.push('');
-
-  lines.push('## Findings', '');
+  lines.push('', '## Findings', '');
   AREAS.forEach(area => {
     const inArea = all.filter(f => f.area === area);
     if (!inArea.length) return;

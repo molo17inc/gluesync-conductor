@@ -199,7 +199,9 @@ export const requireContainerAction =
     req: Readonly<AuthenticatedRequest>,
     reply: Readonly<FastifyReply>,
   ) => {
-    const action = String((req.body as { action?: unknown })?.action ?? '');
+    // A non-string action matches no operational action, so it needs manage.
+    const requested = (req.body as { action?: unknown } | undefined)?.action;
+    const action = typeof requested === 'string' ? requested : '';
     const guard = OPERATIONAL_CONTAINER_ACTIONS.has(action)
       ? requireControl()
       : requireManage();

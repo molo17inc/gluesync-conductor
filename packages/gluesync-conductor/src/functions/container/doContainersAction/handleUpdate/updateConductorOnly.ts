@@ -39,6 +39,9 @@ const updateConductorOnly: UpdateConductorOnly = async (
       recreate: false,
     });
   }
+  const restoredNote = previousImage
+    ? ` Compose file restored to ${previousImage}.`
+    : '';
   return {
     id,
     results: results.map(r =>
@@ -46,7 +49,7 @@ const updateConductorOnly: UpdateConductorOnly = async (
         ? ({
             status: 'rejected',
             reason: {
-              err: `${describeFailure(r.reason)}${previousImage ? ` Compose file restored to ${previousImage}.` : ''}`,
+              err: `${describeFailure(r.reason)}${restoredNote}`,
             },
           } as PromiseRejectedResult)
         : r,

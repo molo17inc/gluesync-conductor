@@ -12,7 +12,7 @@ const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
 // The kits mount ./logs here, so the log survives container recreation
 // (updates, restarts) and is picked up by collect-logs.
 const MOUNTED_LOG_DIR = isWindows
-  ? 'C:\\opt\\gluesync-conductor\\logs'
+  ? String.raw`C:\opt\gluesync-conductor\logs`
   : '/opt/gluesync-conductor/logs';
 const LEGACY_LOG_DIR = '/opt/gluesync/logs';
 const DEFAULT_LOG_FILENAME = 'gluesync-conductor.log';
