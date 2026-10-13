@@ -1,12 +1,35 @@
 import fs from 'fs';
 import path from 'path';
 import pino, { Logger, LoggerOptions } from 'pino';
-import { createStream, FileSize } from 'rotating-file-stream';
+import {
+  createStream,
+  FileSize,
+  RotatingFileStream,
+} from 'rotating-file-stream';
 
-const DEFAULT_LOG_DIR = '/opt/gluesync/logs';
+const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
+
+// The kits mount ./logs here, so the log survives container recreation
+// (updates, restarts) and is picked up by collect-logs.
+const MOUNTED_LOG_DIR = isWindows
+  ? 'C:\\opt\\gluesync-conductor\\logs'
+  : '/opt/gluesync-conductor/logs';
+const LEGACY_LOG_DIR = '/opt/gluesync/logs';
 const DEFAULT_LOG_FILENAME = 'gluesync-conductor.log';
 const DEFAULT_ROTATION_SIZE = '1G';
 const FALLBACK_LOG_DIR = path.resolve(process.cwd(), 'logs');
+
+// Values that must never reach a log line.
+const REDACT_PATHS = [
+  'proxyUrl',
+  'proxyObj.auth.password',
+  'req.headers.authorization',
+  'req.headers.cookie',
+  'headers.authorization',
+  'headers.cookie',
+  'authorizationHeader',
+  'cookieHeader',
+];
 
 const resolveConfiguredLogDirectory = (): string | null =>
   process.env.GLUESYNC_LOG_DIR?.trim() || null;
@@ -14,7 +37,8 @@ const resolveConfiguredLogDirectory = (): string | null =>
 const getCandidateDirectories = (): string[] => {
   const directories = [
     resolveConfiguredLogDirectory(),
-    DEFAULT_LOG_DIR,
+    MOUNTED_LOG_DIR,
+    LEGACY_LOG_DIR,
     FALLBACK_LOG_DIR,
   ].filter(Boolean) as string[];
 
@@ -29,7 +53,10 @@ const resolveLogFilename = (): string =>
 const resolveRotationSize = (): FileSize =>
   (process.env.GLUESYNC_LOG_ROTATION_SIZE || DEFAULT_ROTATION_SIZE) as FileSize;
 
-const loggerCache = { current: null as Logger | null };
+const loggerCache = {
+  current: null as Logger | null,
+  stream: null as RotatingFileStream | null,
+};
 
 const ensureLogDirectory = (): string | null => {
   const directories = getCandidateDirectories();
@@ -75,15 +102,47 @@ const buildTimestamp = (): string => {
   return `,"time":"${localTime}"`;
 };
 
+/**
+ * Error objects have no enumerable fields, so `{ error }` used to be logged as
+ * `"error":{}`. Keep what explains the failure and drop the rest (an
+ * AxiosError carries its whole request config).
+ */
+export const serializeError = (error: unknown): unknown => {
+  if (!(error instanceof Error)) {
+    return error;
+  }
+  const e = error as Error & {
+    code?: unknown;
+    errno?: unknown;
+    response?: { status?: number };
+    config?: { url?: string; method?: string };
+  };
+  return {
+    type: e.name,
+    message: e.message,
+    ...(e.code !== undefined ? { code: e.code } : {}),
+    ...(e.errno !== undefined ? { errno: e.errno } : {}),
+    ...(e.response?.status !== undefined ? { status: e.response.status } : {}),
+    ...(e.config?.url ? { url: e.config.url, method: e.config.method } : {}),
+    stack: e.stack,
+  };
+};
+
+const buildOptions = (): LoggerOptions => ({
+  level: (process.env.LOG_LEVEL || 'info').toLowerCase(),
+  timestamp: buildTimestamp,
+  serializers: {
+    error: serializeError,
+    err: serializeError,
+  },
+  redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
+});
+
 const buildLogger = (): Logger => {
   const directory = ensureLogDirectory();
   const filename = resolveLogFilename();
   const rotationSize = resolveRotationSize();
-
-  const options: LoggerOptions = {
-    level: (process.env.LOG_LEVEL || 'info').toLowerCase(),
-    timestamp: buildTimestamp,
-  };
+  const options = buildOptions();
 
   if (!directory) {
     console.error(
@@ -98,6 +157,8 @@ const buildLogger = (): Logger => {
       teeToStdout: true,
       path: directory,
     });
+    // eslint-disable-next-line functional/immutable-data
+    loggerCache.stream = fileStream;
 
     return pino(options, fileStream);
   } catch (error) {
@@ -108,6 +169,10 @@ const buildLogger = (): Logger => {
   }
 };
 
+/**
+ * The single logger of the process. Fastify uses it too (loggerInstance), so
+ * there is one file stream, one rotation and one timestamp format.
+ */
 export const getLogger = (): Logger => {
   if (!loggerCache.current) {
     // eslint-disable-next-line functional/immutable-data
@@ -117,34 +182,44 @@ export const getLogger = (): Logger => {
   return loggerCache.current;
 };
 
-export const getLoggerOptions = () => {
-  const directory = ensureLogDirectory();
-  const filename = resolveLogFilename();
-  const rotationSize = resolveRotationSize();
-
-  if (!directory) {
-    return {
-      level: (process.env.LOG_LEVEL || 'info').toLowerCase(),
-    };
-  }
-
+/**
+ * Logs a fatal error and exits once it is written.
+ *
+ * The file stream is asynchronous, so a bare `process.exit()` right after
+ * `logger.error()` loses the line explaining why the process stopped. The
+ * line is written synchronously to stderr first (docker logs), then to the
+ * file, and the process exits after the stream has had time to flush.
+ */
+export const logFatalAndExit = (
+  msg: string,
+  error: unknown,
+  exitCode = 1,
+): void => {
+  const line = JSON.stringify({
+    level: 60,
+    time: Date.now(),
+    pid: process.pid,
+    msg,
+    error: serializeError(error),
+  });
   try {
-    const fileStream = createStream(filename, {
-      size: rotationSize,
-      teeToStdout: true,
-      path: directory,
-    });
-
-    return {
-      level: (process.env.LOG_LEVEL || 'info').toLowerCase(),
-      stream: fileStream,
-    };
-  } catch (error) {
-    console.error(
-      `Failed to create rotating file stream at ${directory}/${filename}: ${String(error)}`,
-    );
-    return {
-      level: (process.env.LOG_LEVEL || 'info').toLowerCase(),
-    };
+    fs.writeSync(2, `${line}\n`);
+  } catch {
+    /* stderr closed: nothing else to try */
+  }
+  try {
+    getLogger().fatal({ error }, msg);
+  } catch {
+    /* logger unusable: the stderr line above is the record */
+  }
+  const exit = (): void => process.exit(exitCode);
+  const { stream } = loggerCache;
+  if (stream && !stream.writableNeedDrain) {
+    setTimeout(exit, 250);
+  } else if (stream) {
+    stream.once('drain', () => setTimeout(exit, 50));
+    setTimeout(exit, 2000);
+  } else {
+    setTimeout(exit, 50);
   }
 };

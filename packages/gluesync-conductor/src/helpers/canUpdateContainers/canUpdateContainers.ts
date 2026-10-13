@@ -17,12 +17,26 @@ const getWindowsYearFromTag = (tag: string): '2019' | '2022' | null => {
   return null;
 };
 
+const reasonOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 const canUpdateContainers: CanUpdateContainers = async (
   containerIds,
   composeJson,
   releaseChannel,
 ) => {
   const isWindows = (process.env.IS_WINDOWS || '').toLowerCase() === 'true';
+
+  // Labels can be a list ("k=v") or a map; both are normalised to "k=v".
+  const serviceTypeOf = (id: string): ConductorServiceTypes | undefined => {
+    const labels = composeJson.services?.[id]?.labels;
+    const labelStrings: ReadonlyArray<string> = Array.isArray(labels)
+      ? labels
+      : Object.entries(labels || {}).map(([k, v]) => `${k}=${v}`);
+    return labelStrings
+      .find(label => label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
+      ?.split('=')[1] as ConductorServiceTypes | undefined;
+  };
 
   // Build promises tagged with service type
   const taggedPromises = containerIds.map(id => {
@@ -32,16 +46,7 @@ const canUpdateContainers: CanUpdateContainers = async (
     }
 
     const parsed = parseImage(service.image);
-
-    const serviceTypeArray: ReadonlyArray<string> = Array.isArray(
-      service?.labels,
-    )
-      ? service.labels
-      : Object.entries(service?.labels || {});
-
-    const serviceType = serviceTypeArray
-      .find(label => label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
-      ?.split('=')[1] as ConductorServiceTypes | undefined;
+    const serviceType = serviceTypeOf(id);
 
     // Append Windows year ONLY for third-party services
     const isThirdParty = serviceType === 'third-party';
@@ -59,25 +64,44 @@ const canUpdateContainers: CanUpdateContainers = async (
     }));
   });
 
+  const settledResults = await Promise.allSettled(taggedPromises);
+
   // Explicitly fetch core-hub info
   const coreHubVersionInfo = await fetchAgentInfo(
     parseImage('gluesync-core-hub').shortImageName,
-  );
+  ).catch((error: unknown) => {
+    throw new Error(
+      `Could not get the latest core-hub version from the backoffice: ${reasonOf(error)}`,
+    );
+  });
 
-  const settledResults = await Promise.allSettled(taggedPromises);
+  // Agents and core-hub move together, so any of them failing stops the
+  // update. A module (chronos, grafana, ...) that cannot be looked up is only
+  // skipped: it used to block every other service with an anonymous error.
+  const failures = settledResults.flatMap((result, index) => {
+    if (result.status === 'fulfilled') {
+      return [];
+    }
+    const id = containerIds[index];
+    const known = !!composeJson.services?.[id];
+    return [
+      {
+        id,
+        blocking:
+          !known || ['agent', 'core-hub'].includes(serviceTypeOf(id) ?? ''),
+        reason: known
+          ? `Could not get the latest version of ${id} from the backoffice: ${reasonOf(result.reason)}`
+          : reasonOf(result.reason),
+      },
+    ];
+  });
 
-  const errors = settledResults.map(result =>
-    result.status === 'rejected'
-      ? result.reason?.message || String(result.reason)
-      : null,
-  );
-
-  if (errors.some(e => e !== null)) {
-    const errorMessages = errors.filter(Boolean).join('\n');
+  const blocking = failures.filter(f => f.blocking).map(f => f.reason);
+  if (blocking.length > 0) {
     return {
       success: false,
-      errors,
-      message: errorMessages,
+      errors: blocking,
+      message: blocking.join('\n'),
     };
   }
 
@@ -103,9 +127,10 @@ const canUpdateContainers: CanUpdateContainers = async (
   );
 
   // Collect agent versions
-  const agentVersions = agentsAndCoreHub.map(info =>
-    getVersionByChannel(info.agentInfo, releaseChannel),
-  );
+  const agentVersions = agentsAndCoreHub.map(info => ({
+    id: info.id,
+    version: getVersionByChannel(info.agentInfo, releaseChannel),
+  }));
 
   // Include core-hub version in the agent consistency
   const coreHubVersion = getVersionByChannel(
@@ -114,19 +139,22 @@ const canUpdateContainers: CanUpdateContainers = async (
   );
 
   const allAgentVersions = coreHubVersion
-    ? [...agentVersions, coreHubVersion]
+    ? [...agentVersions, { id: 'core-hub (latest)', version: coreHubVersion }]
     : agentVersions;
 
   // Check all agent versions (including core-hub) are equal
   const allEqual =
     allAgentVersions.length === 0 ||
-    !allAgentVersions.some(v => v !== allAgentVersions[0]);
+    !allAgentVersions.some(v => v.version !== allAgentVersions[0].version);
 
   if (!allEqual) {
+    const message = `Agent versions mismatch (including core-hub): ${allAgentVersions
+      .map(v => `${v.id} ${v.version ?? 'none'}`)
+      .join(', ')}`;
     return {
       success: false,
-      errors: ['Agent versions mismatch (including core-hub)'],
-      message: 'Agent versions mismatch (including core-hub)',
+      errors: [message],
+      message,
     };
   }
 
@@ -135,11 +163,12 @@ const canUpdateContainers: CanUpdateContainers = async (
     errors: [] as (string | null)[],
     message: '',
     data: {
-      agentVersion: allAgentVersions[0] ?? null,
+      agentVersion: allAgentVersions[0]?.version ?? null,
       modules: modules.map(info => ({
         id: info.id,
         version: getVersionByChannel(info.agentInfo, releaseChannel) ?? null,
       })),
+      skipped: failures.map(f => ({ id: f.id, reason: f.reason })),
     },
   };
 };

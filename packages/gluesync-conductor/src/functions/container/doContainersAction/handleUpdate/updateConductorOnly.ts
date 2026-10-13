@@ -1,5 +1,7 @@
 import editUpdateImagesInComposeFile from '../../../../helpers/editUpdatedImagesInComposeFile/editUpdateImagesInComposeFile';
 import { enableUpdateMode } from '../../../../plugins/apiBlockerAsUpdating';
+import rollbackServiceImages from '../../../../helpers/rollbackServiceImages/rollbackServiceImages';
+import describeFailure from '../../../../helpers/describeFailure/describeFailure';
 import { UpdateConductorOnly } from './updateConductorOnly.model';
 
 const updateConductorOnly: UpdateConductorOnly = async (
@@ -26,9 +28,30 @@ const updateConductorOnly: UpdateConductorOnly = async (
 
   if (allFulfilled) {
     enableUpdateMode();
+    return { id, results };
   }
 
-  return { id, results };
+  // The pull failed: the conductor still runs its old image, so only the
+  // compose file goes back (recreating would restart this very process).
+  const previousImage = composeJson.services?.[id]?.image;
+  if (previousImage) {
+    await rollbackServiceImages([{ id, image: previousImage }], {
+      recreate: false,
+    });
+  }
+  return {
+    id,
+    results: results.map(r =>
+      r.status === 'rejected'
+        ? ({
+            status: 'rejected',
+            reason: {
+              err: `${describeFailure(r.reason)}${previousImage ? ` Compose file restored to ${previousImage}.` : ''}`,
+            },
+          } as PromiseRejectedResult)
+        : r,
+    ),
+  };
 };
 
 export default updateConductorOnly;
