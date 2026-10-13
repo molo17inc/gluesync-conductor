@@ -240,9 +240,12 @@ const buildDefaultIntrospector = (): Introspector => {
     if (!configured) {
       return null;
     }
-    return /^https?:\/\//.test(configured)
-      ? configured
-      : `${process.env.SSL_ENABLED?.toLowerCase() === 'true' ? 'https' : 'http'}://${configured}:1717`;
+    if (/^https?:\/\//.test(configured)) {
+      return configured;
+    }
+    const scheme =
+      process.env.SSL_ENABLED?.toLowerCase() === 'true' ? 'https' : 'http';
+    return `${scheme}://${configured}:1717`;
   };
 
   return createIntrospector({

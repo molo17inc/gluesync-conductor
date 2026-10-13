@@ -3,7 +3,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import YAML from 'yaml';
 import { env } from './env.mjs';
-import { docker, now, request, sleep, waitFor } from './util.mjs';
+import { describeState, docker, now, request, sleep, waitFor } from './util.mjs';
 
 // ---------------------------------------------------------------- HTTP clients
 
@@ -119,7 +119,8 @@ export const snapshot = async () => {
   const list = await containers();
   const byService = {};
   list.forEach(c => {
-    (byService[c.service] ||= []).push(c);
+    byService[c.service] ||= [];
+    byService[c.service].push(c);
   });
   return {
     ts: now(),
@@ -174,7 +175,7 @@ export const settle = async (ctx, token, { timeoutMs = 180000, ignore = [] } = {
     const h = await health();
     const svc = h.status === 200 ? await callConductor(null, 'settle', 'GET', '/services', { token, timeoutMs: 10000 }) : null;
     last = {
-      unsettled: unsettled.map(c => `${c.service}:${c.state}${c.health ? `/${c.health}` : ''}`),
+      unsettled: unsettled.map(c => `${c.service}:${describeState(c)}`),
       health: h.status || h.error,
       services: svc?.status,
     };

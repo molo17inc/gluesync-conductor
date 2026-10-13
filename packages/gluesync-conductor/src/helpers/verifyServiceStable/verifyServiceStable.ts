@@ -61,8 +61,10 @@ const verifyServiceStable: VerifyServiceStable = async (
     };
   };
 
-  const describe = (o: Observation): string =>
-    `${o.state}${o.health ? `/${o.health}` : ''}, exit code ${o.exitCode}, restarts ${o.restartCount}`;
+  const describe = (o: Observation): string => {
+    const health = o.health ? `/${o.health}` : '';
+    return `${o.state}${health}, exit code ${o.exitCode}, restarts ${o.restartCount}`;
+  };
 
   const poll = async (
     baseline: number | null,

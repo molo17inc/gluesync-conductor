@@ -11,11 +11,10 @@
 //   node sandbox/run.mjs down [--purge]          remove the sandbox daemon (and run/ with --purge)
 
 import { env } from './lib/env.mjs';
-import { down, up, dindRunning } from './lib/setup.mjs';
+import { backofficeAdmin, down, up, dindRunning } from './lib/setup.mjs';
 import { snapshot, corehub, dockerProxy } from './lib/stack.mjs';
-import { backofficeAdmin } from './lib/setup.mjs';
 import { iterate } from './lib/iterate.mjs';
-import { say } from './lib/util.mjs';
+import { describeState, say } from './lib/util.mjs';
 
 const [, , command = 'help', ...rest] = process.argv;
 const flag = name => rest.includes(`--${name}`);
@@ -32,7 +31,7 @@ const status = async () => {
   const snap = await snapshot();
   snap.containers
     .sort((a, b) => a.service.localeCompare(b.service))
-    .forEach(c => say(`${c.service.padEnd(40)} ${c.tag.padEnd(12)} ${c.state}${c.health ? `/${c.health}` : ''} restarts=${c.restartCount}`));
+    .forEach(c => say(`${c.service.padEnd(40)} ${c.tag.padEnd(12)} ${describeState(c)} restarts=${c.restartCount}`));
   if (snap.strays.length) say('stray containers', snap.strays);
   say('fake corehub', (await corehub.admin('/__sandbox/state')).json);
   say('backoffice', (await backofficeAdmin('/__sandbox/state')).json);
@@ -65,7 +64,9 @@ const main = async () => {
   }
 };
 
-main().catch(e => {
+try {
+  await main();
+} catch (e) {
   say(`FAILED: ${e.message}`);
   process.exitCode = 1;
-});
+}

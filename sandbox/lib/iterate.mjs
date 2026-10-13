@@ -7,7 +7,7 @@ import { PROFILES, resetChaos } from './scenarios.mjs';
 import { sessionSuite } from './sessions.mjs';
 import { runChecks } from './checks.mjs';
 import { writeReport } from './report.mjs';
-import { docker, now, rng, say, setLogFile, shuffle, sleep, waitFor, writeJson } from './util.mjs';
+import { describeState, docker, now, rng, say, setLogFile, shuffle, sleep, waitFor, writeJson } from './util.mjs';
 
 const stateFile = () => path.join(env.stateDir, 'iterations.json');
 
@@ -44,7 +44,8 @@ const fileLogInfo = async conductorId => {
 
 const resources = async conductorId => {
   const stats = await docker(['stats', '--no-stream', '--format', '{{.MemUsage}}', conductorId]);
-  const m = /([\d.]+)\s*(KiB|MiB|GiB)/.exec(stats.out || '');
+  // "45.3MiB / 7.6GiB": the usage comes first. Anchored, so the match cannot backtrack.
+  const m = /^([\d.]+)\s*(KiB|MiB|GiB)/.exec(stats.out || '');
   const mib = m ? +m[1] * { KiB: 1 / 1024, MiB: 1, GiB: 1024 }[m[2]] : null;
   const fds = await docker(['exec', conductorId, 'sh', '-c', 'ls /proc/1/fd | wc -l']);
   return { memMiB: mib ? +mib.toFixed(1) : null, fds: fds.code === 0 ? Number(fds.out) : null };
@@ -61,88 +62,105 @@ const baseline = () => {
 
 const tags = list => Object.fromEntries(list.filter(c => c.state === 'running').map(c => [c.service, c.tag]));
 
+// The conductor updates itself first, then Chronos, then everything else.
+const phaseFor = (before, target, lagging) => {
+  const behind = s => before[s] !== target[s] && !lagging.has(s);
+  if (behind('gluesync-conductor')) return 'conductor';
+  if (behind('gluesync-chronos')) return 'chronos';
+  return 'bulk';
+};
+
+// After the conductor updated itself: waits for the new container and, for a bad
+// release, for the rollback. Returns whether the user keeps clicking.
+const followSelfUpdate = async (it, entry, target, plan, oldId) => {
+  const back = await waitConductor({ notId: oldId, timeoutMs: 300000 });
+  entry.conductorBackMs = back.ms;
+  entry.conductorBack = back.ok;
+  if (!back.ok) {
+    it.notes.push('conductor did not come back within 5 minutes of its self-update');
+    return false;
+  }
+  // Wait out the self-update helper's verification (it rolls back a bad
+  // release within ~2 minutes), then see which version stuck.
+  if (plan.crashImages?.includes('gluesync-conductor')) {
+    const settledBack = await waitFor(
+      'conductor rollback',
+      async () => {
+        const c = await conductorContainer();
+        return c && c.tag !== target['gluesync-conductor'] && (await health()).status === 200 ? c : false;
+      },
+      { timeoutMs: 240000, intervalMs: 5000 },
+    );
+    it.notes.push(
+      settledBack.ok
+        ? `conductor rolled itself back to ${settledBack.value.tag} after ${Math.round(settledBack.ms / 1000)}s`
+        : 'conductor did not roll itself back within 4 minutes',
+    );
+    return false;
+  }
+  return true;
+};
+
+// One "update all" click (sent `plan.concurrent` times in parallel). Returns whether
+// the user clicks again. `state` carries the retry and no-progress counters across rounds.
+const driveRound = async (ctx, it, target, plan, state, round) => {
+  const ready = await waitConductor({ timeoutMs: 240000 });
+  if (!ready.ok) {
+    it.rounds.push({ round, error: 'conductor not reachable', waitedMs: ready.ms });
+    return false;
+  }
+  const before = tags(await containers());
+  const phase = phaseFor(before, target, state.lagging);
+  ctx.inflight = { round, phase, conductorId: ready.value.id, startedAt: Date.now() };
+  const send = () =>
+    callConductor(it, `update round ${round}`, 'POST', '/containers', {
+      token: state.token,
+      body: { action: 'update', ids: [], releaseChannel: 'ga' },
+      timeoutMs: 600000,
+    });
+  const responses = await Promise.all(Array.from({ length: plan.concurrent || 1 }, send));
+  ctx.inflight = null;
+  const items = responses.flatMap(r => r.json?.data?.containers || []);
+  const entry = {
+    round,
+    phase,
+    statuses: responses.map(r => r.status || r.error),
+    ms: Math.max(...responses.map(r => r.ms)),
+    items: items.map(c => `${c.id}:${c.status}`),
+  };
+  it.rounds.push(entry);
+  say(`  round ${round} (${phase}) -> ${entry.statuses.join(',')} in ${Math.round(entry.ms / 1000)}s ${entry.items.join(' ')}`);
+
+  // CoreHub or the conductor briefly unavailable: a user waits and clicks
+  // again. These retries do not count as update rounds (up to 12 of them).
+  if (responses.every(r => r.status === 503 || r.status === 0) && state.retries < 12) {
+    state.retries += 1;
+    await sleep(10000);
+    return true;
+  }
+  if (!responses.some(r => r.status === 200)) return false;
+  if (items.some(c => c.id === 'gluesync-conductor')) {
+    return followSelfUpdate(it, entry, target, plan, ready.value.id);
+  }
+  // Keep clicking until everything is current: lagging services are allowed to stay
+  // behind, but the bulk update must still be attempted so its refusal is tested.
+  const after = tags(await containers());
+  if (Object.keys(SERVICES).every(s => after[s] === target[s])) return false;
+  state.noProgress = JSON.stringify(after) === JSON.stringify(before) ? state.noProgress + 1 : 0;
+  return state.noProgress < 2;
+};
+
 // Drives the update the way a persistent user does in the UI: "update all", wait,
 // click again, until everything is current or the conductor stops making progress.
 const drive = async (ctx, it, target, plan) => {
-  const token = plan.freshToken ? await corehub.login('admin') : ctx.adminToken;
-  const lagging = new Set(plan.lagging || []);
-  let noProgress = 0;
-  let retries = 0;
-  for (let round = 1; round <= 6 + retries; round += 1) {
-    const ready = await waitConductor({ timeoutMs: 240000 });
-    if (!ready.ok) {
-      it.rounds.push({ round, error: 'conductor not reachable', waitedMs: ready.ms });
-      break;
-    }
-    const before = tags(await containers());
-    const phase =
-      before['gluesync-conductor'] !== target['gluesync-conductor'] && !lagging.has('gluesync-conductor')
-        ? 'conductor'
-        : before['gluesync-chronos'] !== target['gluesync-chronos'] && !lagging.has('gluesync-chronos')
-          ? 'chronos'
-          : 'bulk';
-    ctx.inflight = { round, phase, conductorId: ready.value.id, startedAt: Date.now() };
-    const send = () =>
-      callConductor(it, `update round ${round}`, 'POST', '/containers', {
-        token,
-        body: { action: 'update', ids: [], releaseChannel: 'ga' },
-        timeoutMs: 600000,
-      });
-    const responses = await Promise.all(Array.from({ length: plan.concurrent || 1 }, send));
-    ctx.inflight = null;
-    const items = responses.flatMap(r => r.json?.data?.containers || []);
-    const entry = {
-      round,
-      phase,
-      statuses: responses.map(r => r.status || r.error),
-      ms: Math.max(...responses.map(r => r.ms)),
-      items: items.map(c => `${c.id}:${c.status}`),
-    };
-    it.rounds.push(entry);
-    say(`  round ${round} (${phase}) -> ${entry.statuses.join(',')} in ${Math.round(entry.ms / 1000)}s ${entry.items.join(' ')}`);
-
-    // CoreHub or the conductor briefly unavailable: a user waits and clicks
-    // again. These retries do not count as update rounds (up to 12 of them).
-    if (responses.every(r => r.status === 503 || r.status === 0) && retries < 12) {
-      retries += 1;
-      await sleep(10000);
-      continue;
-    }
-    if (!responses.some(r => r.status === 200)) break;
-    if (items.some(c => c.id === 'gluesync-conductor')) {
-      const back = await waitConductor({ notId: ready.value.id, timeoutMs: 300000 });
-      entry.conductorBackMs = back.ms;
-      entry.conductorBack = back.ok;
-      if (!back.ok) {
-        it.notes.push('conductor did not come back within 5 minutes of its self-update');
-        break;
-      }
-      // Wait out the self-update helper's verification (it rolls back a bad
-      // release within ~2 minutes), then see which version stuck.
-      if (plan.crashImages?.includes('gluesync-conductor')) {
-        const settledBack = await waitFor(
-          'conductor rollback',
-          async () => {
-            const c = await conductorContainer();
-            return c && c.tag !== target['gluesync-conductor'] && (await health()).status === 200 ? c : false;
-          },
-          { timeoutMs: 240000, intervalMs: 5000 },
-        );
-        it.notes.push(
-          settledBack.ok
-            ? `conductor rolled itself back to ${settledBack.value.tag} after ${Math.round(settledBack.ms / 1000)}s`
-            : 'conductor did not roll itself back within 4 minutes',
-        );
-        break;
-      }
-      continue;
-    }
-    // Keep clicking until everything is current: lagging services are allowed to stay
-    // behind, but the bulk update must still be attempted so its refusal is tested.
-    const after = tags(await containers());
-    if (Object.keys(SERVICES).every(s => after[s] === target[s])) break;
-    noProgress = JSON.stringify(after) === JSON.stringify(before) ? noProgress + 1 : 0;
-    if (noProgress >= 2) break;
+  const state = {
+    token: plan.freshToken ? await corehub.login('admin') : ctx.adminToken,
+    lagging: new Set(plan.lagging || []),
+    noProgress: 0,
+    retries: 0,
+  };
+  for (let round = 1; round <= 6 + state.retries; round += 1) {
+    if (!(await driveRound(ctx, it, target, plan, state, round))) break;
   }
   ctx.inflight = null;
 };
@@ -155,6 +173,11 @@ const recoverConductor = async (it, goodTag) => {
   await kitCompose(['up', '-d', 'gluesync-conductor']);
   const back = await waitConductor({ timeoutMs: 240000 });
   it.notes.push(`runner restored conductor ${goodTag} by hand: ${back.ok ? 'ok' : 'failed'}`);
+};
+
+const outcomeOf = (it, failed, warned) => {
+  if (it.error || failed.length) return 'fail';
+  return warned.length ? 'warn' : 'pass';
 };
 
 const runIteration = async (ctx, i, profile, k) => {
@@ -178,7 +201,7 @@ const runIteration = async (ctx, i, profile, k) => {
 
   try {
     await ensureImages(target, { skip: plan.skipImages || [], crash: plan.crashImages || [] });
-    const catalogVersions = { ...target, ...(plan.catalog || {}) };
+    const catalogVersions = { ...target, ...plan.catalog };
     await backofficeAdmin('/__sandbox/catalog', catalogFor(catalogVersions));
 
     const corehubBefore = (await corehub.admin('/__sandbox/state')).json;
@@ -232,7 +255,7 @@ const runIteration = async (ctx, i, profile, k) => {
       }),
       ...sessions,
     ];
-    it.final = Object.fromEntries(Object.entries(post.byService).map(([s, c]) => [s, `${c.tag} ${c.state}${c.health ? `/${c.health}` : ''}`]));
+    it.final = Object.fromEntries(Object.entries(post.byService).map(([s, c]) => [s, `${c.tag} ${describeState(c)}`]));
     fs.writeFileSync(path.join(iterDir, 'conductor.log'), conductorLogs.map(l => `${l.ts} [${l.incarnation}] ${l.line}`).join('\n'));
     fs.writeFileSync(
       path.join(iterDir, 'corehub.log'),
@@ -247,13 +270,11 @@ const runIteration = async (ctx, i, profile, k) => {
   it.durationMs = Date.parse(it.finishedAt) - Date.parse(it.startedAt);
   const failed = it.checks.filter(c => c.severity === 'fail');
   const warned = it.checks.filter(c => c.severity === 'warn');
-  it.outcome = it.error || failed.length ? 'fail' : warned.length ? 'warn' : 'pass';
+  it.outcome = outcomeOf(it, failed, warned);
   writeJson(path.join(iterDir, 'iteration.json'), it);
-  say(
-    `  -> ${it.outcome.toUpperCase()} in ${Math.round(it.durationMs / 1000)}s` +
-      `${failed.length ? ` | fail: ${failed.map(c => c.id).join(', ')}` : ''}` +
-      `${warned.length ? ` | warn: ${warned.map(c => c.id).join(', ')}` : ''}`,
-  );
+  const failList = failed.length ? ` | fail: ${failed.map(c => c.id).join(', ')}` : '';
+  const warnList = warned.length ? ` | warn: ${warned.map(c => c.id).join(', ')}` : '';
+  say(`  -> ${it.outcome.toUpperCase()} in ${Math.round(it.durationMs / 1000)}s${failList}${warnList}`);
   return it;
 };
 

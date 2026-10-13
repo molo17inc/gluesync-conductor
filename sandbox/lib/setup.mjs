@@ -90,7 +90,7 @@ const prepareKitFiles = async () => {
       'cd /out',
       'openssl req -x509 -newkey rsa:2048 -nodes -keyout ca-key.pem -out sandbox-ca.pem -days 3650 -subj "/CN=Conductor Sandbox CA" 2>/dev/null',
       'openssl req -newkey rsa:2048 -nodes -keyout gluesync-key.pem -out srv.csr -subj "/CN=gluesync-core-hub" 2>/dev/null',
-      'printf "subjectAltName=DNS:gluesync-core-hub,DNS:gluesync-chronos,DNS:gluesync-conductor,DNS:api.backoffice.molo17.com,DNS:localhost,IP:127.0.0.1\\nbasicConstraints=CA:FALSE\\nkeyUsage=digitalSignature,keyEncipherment\\nextendedKeyUsage=serverAuth,clientAuth\\n" > ext.cnf',
+      String.raw`printf "subjectAltName=DNS:gluesync-core-hub,DNS:gluesync-chronos,DNS:gluesync-conductor,DNS:api.backoffice.molo17.com,DNS:localhost,IP:127.0.0.1\nbasicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth,clientAuth\n" > ext.cnf`,
       'openssl x509 -req -in srv.csr -CA sandbox-ca.pem -CAkey ca-key.pem -CAcreateserial -out gluesync-cert.pem -days 3650 -extfile ext.cnf 2>/dev/null',
       'rm -f srv.csr ext.cnf sandbox-ca.srl',
       'chmod 644 *.pem',
@@ -134,7 +134,7 @@ const loadPushed = () => {
   }
 };
 
-const savePushed = set => writeJson(pushedFile(), [...set].sort());
+const savePushed = set => writeJson(pushedFile(), [...set].sort((a, b) => a.localeCompare(b)));
 
 const buildBases = async () => {
   say('building fake service base image');

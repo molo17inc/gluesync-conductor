@@ -8,13 +8,17 @@ export const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 export const now = () => new Date().toISOString();
 
+// "running/healthy", or just "running" for a container without a healthcheck.
+export const describeState = c => (c.health ? `${c.state}/${c.health}` : c.state);
+
 let logStream = null;
 export const setLogFile = file => {
   logStream = fs.createWriteStream(file, { flags: 'a' });
 };
 
 export const say = (msg, extra) => {
-  const line = `[${new Date().toISOString().slice(11, 19)}] ${msg}${extra ? ` ${JSON.stringify(extra)}` : ''}`;
+  const details = extra ? ` ${JSON.stringify(extra)}` : '';
+  const line = `[${new Date().toISOString().slice(11, 19)}] ${msg}${details}`;
   process.stdout.write(`${line}\n`);
   logStream?.write(`${line}\n`);
 };
@@ -24,7 +28,7 @@ export const say = (msg, extra) => {
 export const run = (cmd, args, opts = {}) =>
   new Promise(resolve => {
     const started = Date.now();
-    const childEnv = { ...process.env, ...(opts.env || {}) };
+    const childEnv = { ...process.env, ...opts.env };
     if (opts.docker) childEnv.DOCKER_HOST = env.dockerHost;
     const child = spawn(cmd, args, {
       cwd: opts.cwd,

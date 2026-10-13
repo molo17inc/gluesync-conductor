@@ -2,31 +2,83 @@
 // severity: fail (a real defect), warn (degraded / risky), info (worth knowing).
 
 import { env, SERVICES } from './env.mjs';
+import { describeState } from './util.mjs';
 
-const result = (area, id, ok, detail, severity = 'fail', evidence) => ({
+// severity is what a failure means; it defaults to 'fail'.
+const result = (area, id, ok, detail, severity, evidence) => ({
   area,
   id,
   ok,
-  severity: ok ? 'pass' : severity,
+  severity: ok ? 'pass' : (severity ?? 'fail'),
   detail,
   ...(evidence ? { evidence } : {}),
 });
 
-const stable = v =>
-  Array.isArray(v)
-    ? `[${v.map(stable).join(',')}]`
-    : v && typeof v === 'object'
-      ? `{${Object.keys(v)
-          .sort()
-          .map(k => `${JSON.stringify(k)}:${stable(v[k])}`)
-          .join(',')}}`
-      : JSON.stringify(v);
+// JSON with sorted keys, so two values compare equal regardless of key order.
+const stable = v => {
+  if (Array.isArray(v)) return `[${v.map(stable).join(',')}]`;
+  if (!v || typeof v !== 'object') return JSON.stringify(v);
+  const fields = Object.keys(v)
+    .sort((a, b) => a.localeCompare(b))
+    .map(k => `${JSON.stringify(k)}:${stable(v[k])}`);
+  return `{${fields.join(',')}}`;
+};
 
 const commentLines = text => text.split('\n').filter(l => l.trim().startsWith('#')).length;
 
 const updateCalls = it => it.api.filter(a => a.label.startsWith('update round'));
 
 // ---------------------------------------------------------------- stack + compose
+
+// A release that crashes on start must end up back on the previous version, running.
+const badReleaseChecks = (pre, post, plan) =>
+  (plan.crashImages || []).map(s => {
+    const before = pre.byService[s];
+    const now = post.byService[s];
+    const ok = !!now && now.state === 'running' && now.tag === before?.tag;
+    const where = now ? `${now.state} on ${now.tag}, restarts ${now.restartCount}` : 'gone';
+    return result(
+      'stack',
+      'stack.bad-release-rolled-back',
+      ok,
+      ok ? `${s} rolled back to ${now.tag} and is running` : `${s} is ${where} (previous version ${before?.tag})`,
+    );
+  });
+
+// Compose fields other than the image that the update changed, per service and top level.
+const composeDrift = (pre, post, preServices, services) => {
+  const drift = Object.keys(preServices)
+    .filter(s => services[s])
+    .flatMap(s => {
+      const keys = new Set([...Object.keys(preServices[s]), ...Object.keys(services[s])]);
+      keys.delete('image');
+      return [...keys]
+        .filter(k => stable(preServices[s][k]) !== stable(services[s][k]))
+        .map(k => ({ service: s, key: k, before: preServices[s][k], after: services[s][k] }));
+    });
+  const topBefore = { ...pre.compose.parsed };
+  const topAfter = { ...post.compose.parsed };
+  delete topBefore.services;
+  delete topAfter.services;
+  if (stable(topBefore) !== stable(topAfter)) drift.push({ service: '(top level)', key: 'name/networks/volumes', before: topBefore, after: topAfter });
+  return drift;
+};
+
+// The env var, label and comment a customer added before the update must survive it.
+const customizationChecks = post => {
+  const keep = ['CUSTOMER_SETTING=keep-me', 'customer.note=costs $$5 per month'];
+  const missing = keep.filter(k => !post.compose.text.includes(k));
+  return [
+    result('compose', 'compose.customer-edits-kept', missing.length === 0, missing.length ? `customer edits lost: ${missing.join(', ')}` : 'customer env var and label kept'),
+    result(
+      'compose',
+      'compose.customer-comment-kept',
+      post.compose.text.includes('# customer note'),
+      post.compose.text.includes('# customer note') ? 'customer comment kept' : 'customer comment dropped by the rewrite',
+      'warn',
+    ),
+  ];
+};
 
 const stackChecks = x => {
   const { pre, post, target, plan } = x;
@@ -58,7 +110,7 @@ const stackChecks = x => {
   );
 
   const unpublished = Object.entries(services)
-    .filter(([, svc]) => svc.image && svc.image.startsWith(env.registry) && !x.pushedRefs.has(svc.image))
+    .filter(([, svc]) => svc.image?.startsWith(env.registry) && !x.pushedRefs.has(svc.image))
     .map(([s, svc]) => `${s} -> ${svc.image}`);
   out.push(
     result(
@@ -78,26 +130,9 @@ const stackChecks = x => {
       return c.state === 'restarting' || (before && c.restartCount > before.restartCount);
     })
     .map(c => `${c.service} (${c.state}, restarts ${c.restartCount})`);
-  // A release that crashes on start must end up back on the previous version, running.
-  (plan.crashImages || []).forEach(s => {
-    const before = pre.byService[s];
-    const now = post.byService[s];
-    const ok = !!now && now.state === 'running' && now.tag === before?.tag;
-    out.push(
-      result(
-        'stack',
-        'stack.bad-release-rolled-back',
-        ok,
-        ok
-          ? `${s} rolled back to ${now.tag} and is running`
-          : `${s} is ${now ? `${now.state} on ${now.tag}, restarts ${now.restartCount}` : 'gone'} (previous version ${before?.tag})`,
-      ),
-    );
-  });
-
-  out.push(result('stack', 'stack.no-crash-loops', looping.length === 0, looping.length ? looping.join('; ') : 'no unexpected restarts'));
-
   out.push(
+    ...badReleaseChecks(pre, post, plan),
+    result('stack', 'stack.no-crash-loops', looping.length === 0, looping.length ? looping.join('; ') : 'no unexpected restarts'),
     result(
       'stack',
       'stack.no-duplicate-containers',
@@ -107,18 +142,16 @@ const stackChecks = x => {
   );
 
   const strays = post.strays.filter(s => !pre.strays.some(p => p.id === s.id));
+  const strayList = strays.map(s => `${s.name} (${s.image}, ${s.status})`).join('; ');
   out.push(
     result(
       'stack',
       'stack.no-leftover-helpers',
       strays.length === 0,
-      strays.length ? `helper containers left behind: ${strays.map(s => `${s.name} (${s.image}, ${s.status})`).join('; ')}` : 'no leftover helper containers',
+      strays.length ? `helper containers left behind: ${strayList}` : 'no leftover helper containers',
       'warn',
     ),
-  );
-
-  // ---- compose fidelity
-  out.push(
+    // ---- compose fidelity
     result(
       'compose',
       'compose.valid',
@@ -139,26 +172,14 @@ const stackChecks = x => {
     ),
   );
 
-  const drift = Object.keys(preServices)
-    .filter(s => services[s])
-    .flatMap(s => {
-      const keys = new Set([...Object.keys(preServices[s]), ...Object.keys(services[s])]);
-      keys.delete('image');
-      return [...keys]
-        .filter(k => stable(preServices[s][k]) !== stable(services[s][k]))
-        .map(k => ({ service: s, key: k, before: preServices[s][k], after: services[s][k] }));
-    });
-  const topBefore = { ...(pre.compose.parsed || {}) };
-  const topAfter = { ...(post.compose.parsed || {}) };
-  delete topBefore.services;
-  delete topAfter.services;
-  if (stable(topBefore) !== stable(topAfter)) drift.push({ service: '(top level)', key: 'name/networks/volumes', before: topBefore, after: topAfter });
+  const drift = composeDrift(pre, post, preServices, services);
+  const driftList = drift.map(d => `${d.service}.${d.key}`).join(', ');
   out.push(
     result(
       'compose',
       'compose.no-unrelated-changes',
       drift.length === 0,
-      drift.length ? `fields other than image changed: ${drift.map(d => `${d.service}.${d.key}`).join(', ')}` : 'only image tags changed',
+      drift.length ? `fields other than image changed: ${driftList}` : 'only image tags changed',
       'warn',
       drift.length ? drift : undefined,
     ),
@@ -186,22 +207,7 @@ const stackChecks = x => {
     ),
   );
 
-  if (plan.customization) {
-    const keep = ['CUSTOMER_SETTING=keep-me', 'customer.note=costs $$5 per month'];
-    const missing = keep.filter(k => !post.compose.text.includes(k));
-    out.push(
-      result('compose', 'compose.customer-edits-kept', missing.length === 0, missing.length ? `customer edits lost: ${missing.join(', ')}` : 'customer env var and label kept'),
-    );
-    out.push(
-      result(
-        'compose',
-        'compose.customer-comment-kept',
-        post.compose.text.includes('# customer note'),
-        post.compose.text.includes('# customer note') ? 'customer comment kept' : 'customer comment dropped by the rewrite',
-        'warn',
-      ),
-    );
-  }
+  if (plan.customization) out.push(...customizationChecks(post));
   return out;
 };
 
@@ -213,7 +219,7 @@ const apiChecks = x => {
 
   const badShape = it.api
     .filter(a => a.status >= 400)
-    .filter(a => !(a.json && a.json.success === false && typeof a.json.error === 'string'))
+    .filter(a => !(a.json?.success === false && typeof a.json.error === 'string'))
     .map(a => `${a.label} -> ${a.status} ${a.contentType || ''} ${JSON.stringify(a.json ?? a.text).slice(0, 160)}`);
   out.push(
     result('errors', 'errors.consistent-shape', badShape.length === 0, badShape.length ? badShape.join(' | ') : 'every error response is {success:false, error}'),
@@ -237,11 +243,12 @@ const apiChecks = x => {
     .filter(c => c.status === 'OK' && SERVICES[c.id] && c.id !== 'gluesync-conductor')
     .filter(c => {
       const now = post.byService[c.id];
-      return !now || now.state !== 'running' || now.health === 'unhealthy' || now.tag !== target[c.id] || (plan.crashImages || []).includes(c.id);
+      return now?.state !== 'running' || now.health === 'unhealthy' || now.tag !== target[c.id] || (plan.crashImages || []).includes(c.id);
     })
     .map(c => {
       const now = post.byService[c.id];
-      return `${c.id} reported OK ("${c.message}") but is ${now ? `${now.state}${now.health ? `/${now.health}` : ''} on ${now.tag}, restarts ${now.restartCount}` : 'gone'}`;
+      const where = now ? `${describeState(now)} on ${now.tag}, restarts ${now.restartCount}` : 'gone';
+      return `${c.id} reported OK ("${c.message}") but is ${where}`;
     });
   out.push(result('errors', 'errors.ok-means-ok', lies.length === 0, lies.length ? [...new Set(lies)].join(' | ') : 'OK items match reality'));
 
@@ -271,6 +278,18 @@ const apiChecks = x => {
 
 // ---------------------------------------------------------------- resilience
 
+// How often Docker restarted the conductor this iteration (a recreated container counts from zero).
+const conductorRestarts = (cPre, cPost) => {
+  if (!cPost) return 0;
+  return cPre?.id === cPost.id ? cPost.restartCount - cPre.restartCount : cPost.restartCount;
+};
+
+const conductorCrashDetail = (cPost, restarts, expected) => {
+  if (!cPost) return 'conductor is not running at the end of the iteration';
+  if (restarts <= expected) return `conductor restarts by Docker: ${restarts} (expected ${expected})`;
+  return `conductor process died and Docker restarted it ${restarts} time(s) (expected ${expected})`;
+};
+
 const resilienceChecks = x => {
   const { pre, post, plan, settled, corehubBefore, corehubAfter, it } = x;
   const out = [];
@@ -299,7 +318,7 @@ const resilienceChecks = x => {
 
   const cPre = pre.byService['gluesync-conductor'];
   const cPost = post.byService['gluesync-conductor'];
-  const restarts = cPost ? (cPre && cPre.id === cPost.id ? cPost.restartCount - cPre.restartCount : cPost.restartCount) : 0;
+  const restarts = conductorRestarts(cPre, cPost);
   const expected = plan.expectConductorRestarts || 0;
   // The lines right before each restart of the same container: what it was doing when it died.
   // stdout and stderr of the startup banner can arrive out of order, so banner lines
@@ -315,11 +334,7 @@ const resilienceChecks = x => {
       'resilience',
       'resilience.conductor-no-crash',
       restarts <= expected && (!!cPost || plan.conductorMayDie),
-      !cPost
-        ? 'conductor is not running at the end of the iteration'
-        : restarts <= expected
-          ? `conductor restarts by Docker: ${restarts} (expected ${expected})`
-          : `conductor process died and Docker restarted it ${restarts} time(s) (expected ${expected})`,
+      conductorCrashDetail(cPost, restarts, expected),
       'fail',
       lastWords.length ? lastWords : undefined,
     ),
@@ -361,12 +376,20 @@ const resilienceChecks = x => {
 // ---------------------------------------------------------------- logging
 
 const SECRET_PATTERNS = () => [
-  ['proxy password', new RegExp(env.proxyPass.replace(/[-]/g, '\\-'))],
+  ['proxy password', new RegExp(env.proxyPass.replaceAll('-', String.raw`\-`))],
   ['license content', new RegExp(env.licenseText)],
   ['user session token', /sess-[0-9a-f]{8}-[0-9a-f]{4}/],
   ['CoreHub module token', /mod-conductor-\d{10,}/],
   ['Authorization header value', /Bearer\s+[A-Za-z0-9._-]{8,}/],
 ];
+
+const fileLogDetail = (fileLog, replaced, resetOnRecreate) => {
+  if (resetOnRecreate) {
+    return `conductor file log ${fileLog.path} restarted at ${fileLog.firstTs} after the container was recreated: earlier history is gone`;
+  }
+  if (!fileLog.exists) return `no conductor file log at ${fileLog.path}`;
+  return `file log ${fileLog.path}: ${fileLog.lines} lines${replaced ? ', kept across the recreate' : ''}`;
+};
 
 const loggingChecks = x => {
   const { it, conductorLogs } = x;
@@ -379,12 +402,13 @@ const loggingChecks = x => {
       return hits.length ? { what, count: hits.length, sample: hits[0].line.replace(re, '<REDACTED>').slice(0, 240) } : null;
     })
     .filter(Boolean);
+  const leakList = leaks.map(l => `${l.what} x${l.count}`).join(', ');
   out.push(
     result(
       'logging',
       'logging.no-secrets',
       leaks.length === 0,
-      leaks.length ? `secrets in conductor logs: ${leaks.map(l => `${l.what} x${l.count}`).join(', ')}` : 'no secrets found in logs',
+      leaks.length ? `secrets in conductor logs: ${leakList}` : 'no secrets found in logs',
       'fail',
       leaks.length ? leaks : undefined,
     ),
@@ -426,7 +450,8 @@ const loggingChecks = x => {
 
   const errors = {};
   json.filter(j => j.level >= 50).forEach(j => {
-    const key = `${j.msg}${j.url ? ` ${j.url}` : ''}`.slice(0, 160);
+    const urlSuffix = j.url ? ` ${j.url}` : '';
+    const key = `${j.msg}${urlSuffix}`.slice(0, 160);
     errors[key] = (errors[key] || 0) + 1;
   });
   const top = Object.entries(errors).sort((a, b) => b[1] - a[1]);
@@ -476,11 +501,7 @@ const loggingChecks = x => {
         'logging',
         'logging.file-log-survives-recreate',
         !resetOnRecreate && x.fileLog.exists,
-        resetOnRecreate
-          ? `conductor file log ${x.fileLog.path} restarted at ${x.fileLog.firstTs} after the container was recreated: earlier history is gone`
-          : x.fileLog.exists
-          ? `file log ${x.fileLog.path}: ${x.fileLog.lines} lines${replaced ? ', kept across the recreate' : ''}`
-          : `no conductor file log at ${x.fileLog.path}`,
+        fileLogDetail(x.fileLog, replaced, resetOnRecreate),
       ),
     );
   }

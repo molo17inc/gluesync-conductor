@@ -26,7 +26,10 @@ const log = (level, msg, extra = {}) =>
     `${JSON.stringify({ ts: new Date().toISOString(), level, role: ROLE, service: SERVICE, version: VERSION, msg, ...extra })}\n`,
   );
 
-const markReady = () => fs.writeFileSync('/tmp/ready', VERSION);
+// The image's HEALTHCHECK tests for this file. It lives in the image's own
+// directory rather than in the world-writable /tmp.
+const READY_FILE = '/fake/ready';
+const markReady = () => fs.writeFileSync(READY_FILE, VERSION);
 
 // A "bad release" image is built with FAKE_CRASH=1: it exits shortly after start,
 // so the conductor sees a crash-looping container after an update.
@@ -128,100 +131,114 @@ const startCoreHub = async () => {
 
   const modules = new Map();
 
+  const noRoute = (req, res, p) => send(res, 404, { error: `no route ${req.method} ${p}` });
+
+  const login = async (req, res) => {
+    const body = await readBody(req);
+    const user = users[body.username];
+    if (!user || user.password !== body.password) {
+      log('warn', 'login rejected', { username: body.username });
+      return send(res, 401, { error: 'Invalid credentials' });
+    }
+    const token = `sess-${randomUUID()}`;
+    const ttl = Number(body.ttlSeconds || 3600);
+    state.sessions[token] = {
+      username: body.username,
+      role: user.role,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + ttl * 1000,
+    };
+    persist();
+    log('info', 'login ok', { username: body.username, role: user.role });
+    return send(res, 200, { token, username: body.username, role: user.role }, {
+      'set-cookie': `gs-auth=${token}; Path=/; HttpOnly; Secure`,
+    });
+  };
+
+  const logout = (req, res) => {
+    const token = tokenFrom(req);
+    if (token && state.sessions[token]) {
+      state.sessions[token].revoked = true;
+      persist();
+    }
+    return send(res, 200, { success: true });
+  };
+
+  const authMe = async (req, res) => {
+    state.stats.authMeCalls += 1;
+    const chaos = activeChaos('auth');
+    const mode = chaos?.mode || 'ok';
+    log('debug', 'auth/me', { mode, hasAuthz: !!req.headers.authorization, hasCookie: !!req.headers.cookie });
+    if (mode === 'error500') return send(res, 500, { error: 'chaos: internal error' });
+    if (mode === 'hang') return; // never answer
+    if (mode === 'slow') await sleep(chaos.delayMs || 8000);
+    if (mode === 'garbage') return send(res, 200, '<html>not json</html>');
+    const session = sessionFor(tokenFrom(req));
+    if (!session) return send(res, 401, { error: 'Not authenticated' });
+    if (mode === 'norole') return send(res, 200, { username: session.username });
+    return send(res, 200, { username: session.username, role: session.role });
+  };
+
+  const dropModuleSockets = async (req, res) => {
+    const body = await readBody(req);
+    let n = 0;
+    wss.clients.forEach(ws => {
+      n += 1;
+      if (body.mode === 'close') ws.close(1000, 'sandbox close');
+      else ws.terminate();
+    });
+    log('warn', 'dropped module sockets', { count: n, mode: body.mode || 'terminate' });
+    return send(res, 200, { dropped: n });
+  };
+
+  // ---- sandbox admin API (runner only)
+  const sandboxAdmin = async (req, res, p) => {
+    if (!isAdmin(req)) return send(res, 403, { error: 'admin token required' });
+    if (p === '/__sandbox/state') {
+      return send(res, 200, {
+        version: VERSION,
+        stats: state.stats,
+        chaos: state.chaos,
+        modules: [...modules.values()],
+        sessions: Object.keys(state.sessions).length,
+      });
+    }
+    if (p === '/__sandbox/chaos' && req.method === 'POST') {
+      const body = await readBody(req);
+      state.chaos = { ...state.chaos, ...body };
+      Object.keys(state.chaos).forEach(k => state.chaos[k] === null && delete state.chaos[k]);
+      persist();
+      log('warn', 'chaos updated', { chaos: state.chaos });
+      return send(res, 200, { chaos: state.chaos });
+    }
+    if (p === '/__sandbox/revoke' && req.method === 'POST') {
+      const body = await readBody(req);
+      const s = state.sessions[body.token];
+      if (s) s.revoked = true;
+      persist();
+      return send(res, 200, { revoked: !!s });
+    }
+    if (p === '/__sandbox/ws-drop' && req.method === 'POST') return dropModuleSockets(req, res);
+    return noRoute(req, res, p);
+  };
+
+  const route = (req, res, p) => {
+    if (p === '/health' || p === '/version') return send(res, 200, { version: VERSION, status: 'ok' });
+    if (p === '/authentication/login' && req.method === 'POST') return login(req, res);
+    if (p === '/authentication/logout' && req.method === 'POST') return logout(req, res);
+    if (p === '/authentication/me') return authMe(req, res);
+    if (p.startsWith('/__sandbox/')) return sandboxAdmin(req, res, p);
+    return noRoute(req, res, p);
+  };
+
   const server = https.createServer(tlsOptions(), async (req, res) => {
     const url = new URL(req.url, 'https://corehub');
     const p = url.pathname;
     try {
-      if (p === '/health' || p === '/version') {
-        return send(res, 200, { version: VERSION, status: 'ok' });
-      }
-      if (p === '/authentication/login' && req.method === 'POST') {
-        const body = await readBody(req);
-        const user = users[body.username];
-        if (!user || user.password !== body.password) {
-          log('warn', 'login rejected', { username: body.username });
-          return send(res, 401, { error: 'Invalid credentials' });
-        }
-        const token = `sess-${randomUUID()}`;
-        const ttl = Number(body.ttlSeconds || 3600);
-        state.sessions[token] = {
-          username: body.username,
-          role: user.role,
-          createdAt: Date.now(),
-          expiresAt: Date.now() + ttl * 1000,
-        };
-        persist();
-        log('info', 'login ok', { username: body.username, role: user.role });
-        return send(res, 200, { token, username: body.username, role: user.role }, {
-          'set-cookie': `gs-auth=${token}; Path=/; HttpOnly; Secure`,
-        });
-      }
-      if (p === '/authentication/logout' && req.method === 'POST') {
-        const token = tokenFrom(req);
-        if (token && state.sessions[token]) {
-          state.sessions[token].revoked = true;
-          persist();
-        }
-        return send(res, 200, { success: true });
-      }
-      if (p === '/authentication/me') {
-        state.stats.authMeCalls += 1;
-        const chaos = activeChaos('auth');
-        const mode = chaos?.mode || 'ok';
-        log('debug', 'auth/me', { mode, hasAuthz: !!req.headers.authorization, hasCookie: !!req.headers.cookie });
-        if (mode === 'error500') return send(res, 500, { error: 'chaos: internal error' });
-        if (mode === 'hang') return; // never answer
-        if (mode === 'slow') await sleep(chaos.delayMs || 8000);
-        if (mode === 'garbage') return send(res, 200, '<html>not json</html>');
-        const session = sessionFor(tokenFrom(req));
-        if (!session) return send(res, 401, { error: 'Not authenticated' });
-        if (mode === 'norole') return send(res, 200, { username: session.username });
-        return send(res, 200, { username: session.username, role: session.role });
-      }
-
-      // ---- sandbox admin API (runner only)
-      if (p.startsWith('/__sandbox/')) {
-        if (!isAdmin(req)) return send(res, 403, { error: 'admin token required' });
-        if (p === '/__sandbox/state') {
-          return send(res, 200, {
-            version: VERSION,
-            stats: state.stats,
-            chaos: state.chaos,
-            modules: [...modules.values()],
-            sessions: Object.keys(state.sessions).length,
-          });
-        }
-        if (p === '/__sandbox/chaos' && req.method === 'POST') {
-          const body = await readBody(req);
-          state.chaos = { ...state.chaos, ...body };
-          Object.keys(state.chaos).forEach(k => state.chaos[k] === null && delete state.chaos[k]);
-          persist();
-          log('warn', 'chaos updated', { chaos: state.chaos });
-          return send(res, 200, { chaos: state.chaos });
-        }
-        if (p === '/__sandbox/revoke' && req.method === 'POST') {
-          const body = await readBody(req);
-          const s = state.sessions[body.token];
-          if (s) s.revoked = true;
-          persist();
-          return send(res, 200, { revoked: !!s });
-        }
-        if (p === '/__sandbox/ws-drop' && req.method === 'POST') {
-          const body = await readBody(req);
-          let n = 0;
-          wss.clients.forEach(ws => {
-            n += 1;
-            if (body.mode === 'close') ws.close(1000, 'sandbox close');
-            else ws.terminate();
-          });
-          log('warn', 'dropped module sockets', { count: n, mode: body.mode || 'terminate' });
-          return send(res, 200, { dropped: n });
-        }
-      }
-      return send(res, 404, { error: `no route ${req.method} ${p}` });
+      await route(req, res, p);
     } catch (error) {
       log('error', 'handler failed', { error: String(error) });
-      return send(res, 500, { error: String(error) });
+      send(res, 500, { error: String(error) });
     }
   });
 
@@ -326,6 +343,21 @@ const startBackoffice = () => {
   };
 
   // chaos[name] = { mode: 404|500|slow|garbage|flaky, failCount, delayMs }
+  // Returns the [status, body] the chaos forces, or null to answer normally.
+  const chaosReply = async chaos => {
+    if (!chaos) return null;
+    if (chaos.mode === 'slow') await sleep(chaos.delayMs || 7000);
+    if (chaos.mode === '500') return [500, { error: 'chaos 500' }];
+    if (chaos.mode === 'garbage') return [200, '<html>maintenance</html>'];
+    if (chaos.mode === 'flaky' && (chaos.failCount || 0) > 0) {
+      chaos.failCount -= 1;
+      persist();
+      return [503, { error: 'chaos flaky' }];
+    }
+    if (chaos.mode === '404') return [404, { error: 'not found' }];
+    return null;
+  };
+
   const backoffice = https.createServer(tlsOptions(), async (req, res) => {
     const parts = new URL(req.url, `https://${BACKOFFICE_HOST}`).pathname.split('/').filter(Boolean);
     const [kind, name, ver] = parts;
@@ -334,17 +366,8 @@ const startBackoffice = () => {
       record({ path: req.url, status, chaos: chaos?.mode || null });
       return send(res, status, body);
     };
-    if (chaos) {
-      if (chaos.mode === 'slow') await sleep(chaos.delayMs || 7000);
-      if (chaos.mode === '500') return reply(500, { error: 'chaos 500' });
-      if (chaos.mode === 'garbage') return reply(200, '<html>maintenance</html>');
-      if (chaos.mode === 'flaky' && (chaos.failCount || 0) > 0) {
-        chaos.failCount -= 1;
-        persist();
-        return reply(503, { error: 'chaos flaky' });
-      }
-      if (chaos.mode === '404') return reply(404, { error: 'not found' });
-    }
+    const forced = await chaosReply(chaos);
+    if (forced) return reply(...forced);
     if (kind === 'agent' && parts[2] === 'version') {
       const entry = state.catalog[name];
       if (!entry) return reply(404, { error: `unknown agent ${name}` });
@@ -377,9 +400,10 @@ const startBackoffice = () => {
   // HTTP CONNECT proxy: tunnels api.backoffice.molo17.com to the fake, refuses the rest.
   const proxy = http.createServer((req, res) => send(res, 405, { error: 'CONNECT only' }));
   proxy.on('connect', (req, clientSocket, head) => {
-    const [host, port] = req.url.split(':');
+    const [host] = req.url.split(':');
     const auth = req.headers['proxy-authorization'] || '';
-    const expected = proxyUser ? `Basic ${Buffer.from(`${proxyUser}:${proxyPass}`).toString('base64')}` : '';
+    const credentials = Buffer.from(`${proxyUser}:${proxyPass}`).toString('base64');
+    const expected = proxyUser ? `Basic ${credentials}` : '';
     if (proxyUser && auth !== expected) {
       record({ proxy: req.url, status: 407 });
       clientSocket.end('HTTP/1.1 407 Proxy Authentication Required\r\n\r\n');
@@ -399,7 +423,6 @@ const startBackoffice = () => {
     });
     upstream.on('error', () => clientSocket.destroy());
     clientSocket.on('error', () => upstream.destroy());
-    void port;
   });
   proxy.listen(3128, () => log('info', 'proxy listening', { port: 3128 }));
 
@@ -407,10 +430,12 @@ const startBackoffice = () => {
   http
     .createServer(async (req, res) => {
       if (!isAdmin(req)) return send(res, 403, { error: 'admin token required' });
-      const p = new URL(req.url, 'http://admin').pathname;
+      // The base URL only serves to parse the path and query string.
+      const url = new URL(req.url, 'https://admin');
+      const p = url.pathname;
       if (p === '/__sandbox/state') return send(res, 200, { catalog: state.catalog, chaos: state.chaos });
       if (p === '/__sandbox/requests') {
-        const since = new URL(req.url, 'http://admin').searchParams.get('since');
+        const since = url.searchParams.get('since');
         return send(res, 200, state.requests.filter(r => !since || r.ts >= since));
       }
       if (p === '/__sandbox/catalog' && req.method === 'POST') {
@@ -468,7 +493,8 @@ const startDockerProxy = () => {
     else connect();
   });
   server.listen(listenPath, () => {
-    fs.chmodSync(listenPath, 0o666);
+    // Owner and group only, like the real Docker socket: its one client, the conductor, runs as root.
+    fs.chmodSync(listenPath, 0o660);
     log('info', 'docker proxy listening', { listenPath, upstreamPath });
     markReady();
   });
