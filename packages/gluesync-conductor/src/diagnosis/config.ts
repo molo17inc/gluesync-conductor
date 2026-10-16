@@ -50,11 +50,16 @@ const readPositiveNumber = (name: string, fallback: number): number => {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 };
 
+/** Where Conductor's OTA requests go (agentInfo, fetchChangelogInfo). */
+export const PRODUCTION_BACKOFFICE_URL = 'https://api.backoffice.molo17.com';
+
 /** Read on every call so tests and operators can change the environment. */
 export const getDiagnosisConfig = (): DiagnosisConfig => ({
+  // Moves only the probe (tests point it at a local fake); OTA requests keep
+  // using PRODUCTION_BACKOFFICE_URL.
   backofficeBaseUrl: readUrl(
     'GLUESYNC_BACKOFFICE_URL',
-    'https://api.backoffice.molo17.com',
+    PRODUCTION_BACKOFFICE_URL,
   ),
   statusApiUrl: readUrl(
     'GLUESYNC_STATUS_API_URL',

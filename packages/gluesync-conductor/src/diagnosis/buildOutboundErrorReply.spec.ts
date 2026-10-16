@@ -81,6 +81,27 @@ describe('isMolo17OutboundError', () => {
     assert.equal(isMolo17OutboundError(new Error('boom')), false);
     assert.equal(isMolo17OutboundError(undefined), false);
   });
+
+  // The OTA requests always use the production host; the variable only moves the probe.
+  it('still accepts the production backoffice when GLUESYNC_BACKOFFICE_URL points elsewhere', () => {
+    const previous = process.env.GLUESYNC_BACKOFFICE_URL;
+    // eslint-disable-next-line functional/immutable-data
+    process.env.GLUESYNC_BACKOFFICE_URL = 'http://127.0.0.1:9999';
+
+    try {
+      assert.equal(
+        isMolo17OutboundError(networkFailure(BACKOFFICE_URL, 'ETIMEDOUT', 'x')),
+        true,
+      );
+    } finally {
+      // eslint-disable-next-line functional/immutable-data
+      process.env.GLUESYNC_BACKOFFICE_URL = previous;
+      if (previous === undefined) {
+        // eslint-disable-next-line functional/immutable-data
+        delete process.env.GLUESYNC_BACKOFFICE_URL;
+      }
+    }
+  });
 });
 
 describe('buildOutboundErrorReply', () => {
@@ -102,6 +123,38 @@ describe('buildOutboundErrorReply', () => {
     assert.equal(reply?.body.error, reply?.body.diagnosis.fallback.title);
     assert.equal(check.triggers[0].origin, 'molo17');
     assert.equal(check.triggers[0].httpStatus, 503);
+  });
+
+  it('leaves a status the caller treats as an answer to the caller, without probing', async () => {
+    const check = fakeCheck('BACKOFFICE_REQUEST_REJECTED');
+    const reply = await buildOutboundErrorReply(
+      httpFailure(
+        BACKOFFICE_URL,
+        404,
+        { error: 'not found' },
+        {
+          'x-amz-cf-id': 'abc',
+        },
+      ),
+      { runConnectivityCheck: check.run },
+      { passThroughStatuses: [404] },
+    );
+
+    assert.equal(reply, undefined);
+    assert.equal(check.triggers.length, 0);
+  });
+
+  it('still diagnoses a status the caller did not pass through', async () => {
+    const reply = await buildOutboundErrorReply(
+      httpFailure(BACKOFFICE_URL, 503, '', {}),
+      {
+        runConnectivityCheck: fakeCheck('UNEXPECTED_RESPONSE_FROM_INTERMEDIARY')
+          .run,
+      },
+      { passThroughStatuses: [404] },
+    );
+
+    assert.equal(reply?.statusCode, 502);
   });
 
   it('replies 502, not the upstream status, when the customer side is at fault', async () => {

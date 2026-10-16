@@ -55,7 +55,7 @@ describe('classifyProbeError', () => {
     ],
     [
       'socket timeout',
-      withCode('ETIMEDOUT', 'connect ETIMEDOUT 10.0.0.1:443'),
+      withCode('ETIMEDOUT', 'connect ETIMEDOUT 192.0.2.1:443'),
       'timeout',
     ],
     [

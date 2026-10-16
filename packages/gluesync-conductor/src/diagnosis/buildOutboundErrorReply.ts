@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import { redactSecrets } from '../utils/redact';
 import { getLogger } from '../utils/logger';
-import { getDiagnosisConfig } from './config';
+import { PRODUCTION_BACKOFFICE_URL, getDiagnosisConfig } from './config';
 import { Diagnosis } from './diagnosis.model';
 import { DIAGNOSIS_CATALOG } from './diagnosisCatalog';
 import {
@@ -31,6 +31,14 @@ export type OutboundErrorDeps = Readonly<{
   runConnectivityCheck: RunConnectivityCheck;
 }>;
 
+export type OutboundErrorOptions = Readonly<{
+  /**
+   * Upstream statuses that are an answer for this caller, not a failure to
+   * explain. They are left to the caller's own handling.
+   */
+  passThroughStatuses?: ReadonlyArray<number>;
+}>;
+
 const logger = getLogger();
 
 const hostOf = (url: string | undefined): string | undefined => {
@@ -54,9 +62,13 @@ export const isMolo17OutboundError = (error: unknown): error is AxiosError => {
   const config = getDiagnosisConfig();
   const host = hostOf(error.config?.url);
 
+  // The OTA requests always go to the production backoffice, whatever
+  // GLUESYNC_BACKOFFICE_URL says (that only moves the probe, for tests).
   return (
     host !== undefined &&
-    [config.backofficeBaseUrl, config.statusApiUrl].map(hostOf).includes(host)
+    [PRODUCTION_BACKOFFICE_URL, config.backofficeBaseUrl, config.statusApiUrl]
+      .map(hostOf)
+      .includes(host)
   );
 };
 
@@ -90,8 +102,13 @@ const defaultDeps: OutboundErrorDeps = { runConnectivityCheck };
 const buildOutboundErrorReply = async (
   error: unknown,
   deps: OutboundErrorDeps = defaultDeps,
+  options: OutboundErrorOptions = {},
 ): Promise<OutboundErrorReply | undefined> => {
-  if (!isMolo17OutboundError(error)) {
+  if (
+    !isMolo17OutboundError(error) ||
+    (error.response !== undefined &&
+      (options.passThroughStatuses ?? []).includes(error.response.status))
+  ) {
     return undefined;
   }
 

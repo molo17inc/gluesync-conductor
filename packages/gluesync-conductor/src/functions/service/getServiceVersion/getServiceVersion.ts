@@ -256,7 +256,11 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     logger.error({ error }, '[get-service-version] unexpected error');
 
     // Failures reaching MOLO17's own services are diagnosed (who is at fault, what to do).
-    const outbound = await buildOutboundErrorReply(error);
+    // A 404 is the backoffice's answer for an image it does not publish (a custom
+    // service, a Windows build), so it keeps its upstream status and body.
+    const outbound = await buildOutboundErrorReply(error, undefined, {
+      passThroughStatuses: [404],
+    });
 
     if (outbound) {
       return reply.code(outbound.statusCode).send(outbound.body);

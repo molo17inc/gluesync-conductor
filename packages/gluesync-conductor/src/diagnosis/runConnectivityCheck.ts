@@ -171,8 +171,12 @@ const getFacts = (
 
   const facts = collectFacts(config);
   cache.set(scope, { startedAt: Date.now(), facts });
-  // A rejected run must not poison the cache.
-  facts.catch(() => cache.delete(scope));
+  // A rejected run must not poison the cache, nor evict a newer run that replaced it.
+  facts.catch(() => {
+    if (cache.get(scope)?.facts === facts) {
+      cache.delete(scope);
+    }
+  });
 
   return facts;
 };
