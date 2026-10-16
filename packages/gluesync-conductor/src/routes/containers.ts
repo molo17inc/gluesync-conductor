@@ -8,7 +8,7 @@ import {
   ContainerActions,
 } from '../models/conductor.model';
 import normalizeReleaseChannel from '../helpers/normalizeReleaseChannel/normalizeReleaseChannerl';
-import { requireControl } from '../security';
+import { requireContainerAction } from '../security';
 
 const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
   // Register ComposeFile schema
@@ -363,7 +363,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
         },
       },
     },
-    preHandler: [requireControl()],
+    preHandler: [requireContainerAction()],
     preValidation: async (request, reply) => {
       const body = request.body as {
         action: ContainerActions;

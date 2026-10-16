@@ -1,0 +1,15 @@
+{
+  "name": "conductor-sandbox",
+  "private": true,
+  "type": "module",
+  "description": "Isolated sandbox that runs the real conductor against fake Gluesync services and stresses its update flow",
+  "scripts": {
+    "up": "node run.mjs up",
+    "iterate": "node run.mjs iterate",
+    "status": "node run.mjs status",
+    "down": "node run.mjs down"
+  },
+  "dependencies": {
+    "yaml": "2.7.0"
+  }
+}
