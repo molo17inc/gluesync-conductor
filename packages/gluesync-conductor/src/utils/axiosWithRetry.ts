@@ -1,76 +1,30 @@
-import axios, { AxiosError, AxiosRequestConfig } from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { getLogger } from './logger';
 import { AxiosWithRetry, AxiosRequestOptions } from './axisWithRetry.model';
+import { describeProxyUrl, redactSecrets, RedactedProxy } from './redact';
 
 const logger = getLogger();
 
-// Proxy URLs carry credentials (http://user:password@host:port): never log them.
-const withoutCredentials = (url: string | undefined): string | undefined => {
-  if (!url) {
-    return url;
-  }
-  try {
-    const parsed = new URL(url);
-    return parsed.username || parsed.password
-      ? url.replace(/\/\/[^@/]*@/, '//***:***@')
-      : url;
-  } catch {
-    return '[unparseable proxy URL]';
-  }
-};
-
 const getProxyConfig = (): string | undefined => {
   const proxyUrl = process.env.PROXY_HTTPS || process.env.PROXY_HTTP;
-
-  logger.info({ proxy: withoutCredentials(proxyUrl) }, 'Proxy URL from env');
 
   if (!proxyUrl) {
     logger.info('No proxy URL found, using direct connection');
     return undefined;
   }
 
-  try {
-    const url = new URL(proxyUrl);
+  // Never log the raw URL: it may carry user:password.
+  const proxyInfo = describeProxyUrl(proxyUrl);
 
-    const proxyObj = {
-      host: url.hostname,
-      port: parseInt(url.port, 10) || (url.protocol === 'https:' ? 443 : 80),
-      auth: url.username
-        ? {
-            username: decodeURIComponent(url.username),
-            password: decodeURIComponent(url.password),
-          }
-        : undefined,
-    };
-
-    logger.info(
-      {
-        proxy: {
-          host: proxyObj.host,
-          port: proxyObj.port,
-          authenticated: !!proxyObj.auth,
-        },
-      },
-      'Parsed proxy config',
-    );
-
-    return proxyUrl;
-  } catch (error: unknown) {
-    if (error instanceof AxiosError || error instanceof Error) {
-      logger.error(
-        { proxy: withoutCredentials(proxyUrl), error: error.message },
-        'Failed to parse proxy URL - falling back to direct',
-      );
-    } else {
-      logger.error(
-        { proxy: withoutCredentials(proxyUrl), error },
-        'Failed to parse proxy URL - falling back to direct (non-Error thrown)',
-      );
-    }
-
+  if (!proxyInfo) {
+    logger.error('Failed to parse proxy URL - falling back to direct');
     return undefined;
   }
+
+  logger.info({ proxy: proxyInfo }, 'Parsed proxy config');
+
+  return proxyUrl;
 };
 
 const proxyUrl = getProxyConfig();
@@ -102,6 +56,17 @@ const createHttpsAgent = (
   }
   return new HttpsProxyAgent(proxy);
 };
+
+/**
+ * The agent OTA calls use for `url` (proxy-aware, honours NO_PROXY).
+ * Exposed so connectivity probes travel exactly the same path as real requests.
+ */
+export const getHttpsAgentFor = (url: string): HttpsProxyAgent | undefined =>
+  createHttpsAgent(shouldSkipProxy(url), proxyUrl);
+
+/** Proxy host/port with credentials stripped, or undefined when no proxy is set. */
+export const getProxyInfo = (): RedactedProxy | undefined =>
+  proxyUrl ? describeProxyUrl(proxyUrl) : undefined;
 
 const sleep = (ms: number): Promise<void> =>
   new Promise(resolve => {
@@ -159,7 +124,7 @@ export const axiosWithRetry: AxiosWithRetry = async <T>(
           {
             url,
             attempt,
-            message: axiosError.message,
+            message: redactSecrets(axiosError.message),
             status: axiosError.response?.status,
           },
           '[axiosWithRetry] request failed',

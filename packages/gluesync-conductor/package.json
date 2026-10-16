@@ -15,7 +15,8 @@
     "get-openapi:ts-node": "yarn ts-node scripts/fetchOpenApiSpec.ts",
     "start:with-docs": "yarn start & sleep 5 && yarn get-openapi",
     "docker:load": "docker buildx build --platform linux/amd64,linux/arm64 --no-cache -t gluesync-conductor . --load",
-    "docker:push": "docker buildx build --platform linux/amd64,linux/arm64 --no-cache -t gluesync-conductor . --push"
+    "docker:push": "docker buildx build --platform linux/amd64,linux/arm64 --no-cache -t gluesync-conductor . --push",
+    "contract:generate": "tsx scripts/generateDiagnosisContract.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",

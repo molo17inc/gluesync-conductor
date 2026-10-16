@@ -10,6 +10,7 @@ import {
 } from './userRole';
 import { getIntrospector } from './corehubIntrospect';
 import { getLogger } from '../utils/logger';
+import buildDiagnosis from '../diagnosis/buildDiagnosis';
 
 const BYPASS_PATHS: ReadonlySet<string> = new Set([
   '/health',
@@ -95,6 +96,7 @@ const authPlugin = async (
           success: false,
           error: 'CoreHub unavailable',
           details: authResult.error,
+          diagnosis: buildDiagnosis({ code: 'COREHUB_UNAVAILABLE' }),
         });
       }
 

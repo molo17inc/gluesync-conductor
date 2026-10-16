@@ -53,6 +53,23 @@ const resolveLogFilename = (): string =>
 const resolveRotationSize = (): FileSize =>
   (process.env.GLUESYNC_LOG_ROTATION_SIZE || DEFAULT_ROTATION_SIZE) as FileSize;
 
+// An axios error carries its request config, and that config holds the proxy
+// agent with `user:password` in `proxy.auth` / `proxy.href`. The `error` and
+// `err` serializers drop the config, but an error logged under any other key
+// (`{ cause }`, `{ ctx: { error } }`) would write the password to the log files
+// that support collects, so those fields are masked one and two levels down.
+const PROXY_SECRETS = ['auth', 'href', 'path'];
+
+export const LOG_REDACTION = {
+  paths: [
+    ...REDACT_PATHS,
+    ...['*', '*.*'].flatMap(prefix =>
+      PROXY_SECRETS.map(field => `${prefix}.config.httpsAgent.proxy.${field}`),
+    ),
+  ],
+  censor: '[REDACTED]',
+};
+
 const loggerCache = {
   current: null as Logger | null,
   stream: null as RotatingFileStream | null,
@@ -135,7 +152,7 @@ const buildOptions = (): LoggerOptions => ({
     error: serializeError,
     err: serializeError,
   },
-  redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
+  redact: LOG_REDACTION,
 });
 
 const buildLogger = (): Logger => {

@@ -9,6 +9,7 @@ import apiBlockerAsUpdatingPlugin, {
   disableUpdateMode,
 } from './plugins/apiBlockerAsUpdating';
 import tzFix from './plugins/tzFix';
+import fakeErrorInjectorPlugin from './plugins/fakeErrorInjector';
 
 import httpsRedirectMiddleware from './middleware/httpsRedirect';
 import { authPlugin } from './security';
@@ -103,6 +104,12 @@ const startServer = async (): Promise<void> => {
     bypassPaths: ['/containers', '/collect-logs'],
     bypassMethods: ['POST'],
   });
+
+  // DEBUG ONLY: fake OTA failures and available updates so the UI can be tried. Not registered unless
+  // GLUESYNC_FAKE_ERROR is set (see plugins/fakeErrorInjector.ts).
+  if (process.env.GLUESYNC_FAKE_ERROR) {
+    await server.register(fakeErrorInjectorPlugin);
+  }
 
   // Register route modules
   const onUpdateEnabled = async (): Promise<void> => {
