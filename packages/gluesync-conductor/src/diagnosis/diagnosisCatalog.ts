@@ -138,12 +138,7 @@ export const DIAGNOSIS_CATALOG: Readonly<Record<DiagnosisCode, CatalogEntry>> =
       httpStatus: 502,
       resolutionCodes: ['ALLOWLIST_MOLO17_HOSTS', 'CHECK_PROXY_SETTINGS'],
       paramKeys: ['hosts'],
-      exampleParams: {
-        hosts: [
-          BACKOFFICE,
-          'aw53uno6n5.execute-api.eu-central-1.amazonaws.com',
-        ],
-      },
+      exampleParams: { hosts: [BACKOFFICE] },
       title: 'MOLO17 services are blocked from this host',
       summary: params =>
         `The internet is reachable but ${text(params, 'hosts')} cannot be. A firewall or proxy is probably blocking them.`,

@@ -122,6 +122,99 @@ describe('interpretStatusFeed', () => {
     );
   });
 
+  it('says so when the URL answers with a web page, as the public status site does', () => {
+    const feed = interpretStatusFeed(
+      outcome('<!DOCTYPE html><html lang="en"><head></head></html>'),
+      OPTIONS,
+    );
+
+    assert.equal(feed.state, 'unavailable');
+    assert.match(feed.probe.detail ?? '', /web page.*not the status feed/);
+    assert.match(feed.probe.detail ?? '', /GLUESYNC_STATUS_API_URL/);
+  });
+
+  // Trimmed copy of what the production feed answered on 2026-10-05: the OTA entry
+  // is ok while its own httpStatus is 404, other entries carry extra fields or a
+  // null httpStatus, and the run is stamped every 15 minutes.
+  it('reads the shape the production feed really has', () => {
+    const production = JSON.stringify({
+      runAt: '2026-10-05T15:44:45.748Z',
+      allOk: true,
+      downCount: 0,
+      totalChecks: 14,
+      groups: [
+        {
+          id: 'gluesync',
+          label: 'Gluesync Services',
+          order: 0,
+          services: [
+            {
+              id: 'ota-update-services',
+              label: 'OTA Update Services',
+              group: 'gluesync',
+              urlLabel: 'Gluesync agent release availability',
+              ok: true,
+              httpStatus: 404,
+              responseTimeMs: 495,
+              reason: '',
+              versions: [
+                { label: 'Core Hub', version: '2.2.11.10', available: true },
+                { label: 'Conductor', version: '0.13.1', available: true },
+              ],
+            },
+            {
+              id: 'docs',
+              label: 'Documentation',
+              group: 'gluesync',
+              ok: true,
+              httpStatus: 301,
+              responseTimeMs: 163,
+              reason: '',
+            },
+          ],
+        },
+        {
+          id: 'infrastructure',
+          label: 'Infrastructure',
+          order: 2,
+          services: [
+            {
+              id: 'log-pipeline',
+              label: 'Remote telemetry & proactive alerting',
+              group: 'infrastructure',
+              ok: true,
+              httpStatus: null,
+              responseTimeMs: 240,
+              reason: '',
+            },
+          ],
+        },
+      ],
+    });
+
+    const feed = interpretStatusFeed(outcome(production), {
+      ...OPTIONS,
+      now: Date.parse('2026-10-05T15:50:57.000Z'),
+    });
+
+    assert.equal(feed.state, 'ok');
+    assert.equal(feed.ageMinutes, 6);
+  });
+
+  it('treats a feed that missed four 15-minute runs as stale', () => {
+    const feed = interpretStatusFeed(
+      outcome(
+        feedBody(
+          { id: 'ota-update-services', ok: true },
+          '2026-10-02T10:44:00.000Z',
+        ),
+      ),
+      OPTIONS,
+    );
+
+    assert.equal(feed.state, 'stale');
+  });
+
   it('is unavailable when the feed changed shape or lacks the OTA entry', () => {
     assert.equal(
       interpretStatusFeed(outcome(feedBody(undefined)), OPTIONS).state,

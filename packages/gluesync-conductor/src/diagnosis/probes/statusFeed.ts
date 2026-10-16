@@ -81,6 +81,17 @@ export const interpretStatusFeed = (
   }
 
   const feed = parseJson(outcome.body);
+
+  // A web page answering 200 is what the public status site (a static page) or a
+  // captive portal returns for any path. Say so, instead of blaming the feed's shape.
+  if (feed === undefined) {
+    return withVerdict(
+      result,
+      'unavailable',
+      'answered with a web page or other non-JSON content, not the status feed (check GLUESYNC_STATUS_API_URL)',
+    );
+  }
+
   const service = findService(feed, serviceId);
 
   if (!service || typeof service.ok !== 'boolean') {

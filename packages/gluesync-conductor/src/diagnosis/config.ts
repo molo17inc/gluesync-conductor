@@ -76,7 +76,8 @@ export const getDiagnosisConfig = (): DiagnosisConfig => ({
     'GLUESYNC_DIAGNOSIS_MIN_REFRESH_MS',
     5000,
   ),
-  // The public feed refreshes on a slow cadence (about 30 minutes observed).
+  // The public feed is re-checked every 15 minutes (runs at :14/:29/:44/:59 in its
+  // history), so 60 minutes tolerates four missed runs before calling it stale.
   statusStaleAfterMs:
     readPositiveNumber('GLUESYNC_STATUS_STALE_MINUTES', 60) * 60_000,
 });

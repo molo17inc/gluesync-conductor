@@ -133,6 +133,30 @@ describe('diagnosis catalog', () => {
     });
   });
 
+  // Customers read these texts and copy them to their network team. An AWS
+  // address belongs to MOLO17's infrastructure, may change, and is not something
+  // they need to allow through a firewall.
+  it('never shows an internal AWS address to customers', () => {
+    const customerFacing = DIAGNOSIS_CODES.map(code => {
+      const entry = DIAGNOSIS_CATALOG[code];
+
+      return JSON.stringify([
+        entry.title,
+        entry.summary(entry.exampleParams),
+        entry.exampleParams,
+      ]);
+    }).concat(
+      fs.readFileSync(
+        path.join(CONTRACTS_DIR, 'diagnosis.v1.fixtures.json'),
+        'utf8',
+      ),
+    );
+
+    customerFacing.forEach(text => {
+      assert.ok(!/amazonaws\.com/i.test(text), text.slice(0, 120));
+    });
+  });
+
   it('only uses HTTP statuses that mean "this request failed" (except the OK code)', () => {
     DIAGNOSIS_CODES.filter(code => code !== 'CONNECTIVITY_OK').forEach(code => {
       assert.ok(

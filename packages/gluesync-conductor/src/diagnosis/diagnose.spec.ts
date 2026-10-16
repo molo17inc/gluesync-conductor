@@ -244,9 +244,12 @@ describe('diagnose: customer-side network', () => {
     });
 
     assert.equal(diagnosis.code, 'MOLO17_HOSTS_BLOCKED');
+    // Only the host an update needs is named. The status feed is Conductor's own
+    // aid, so its address is never put in front of the customer.
     assert.deepEqual(diagnosis.params, {
-      hosts: ['api.backoffice.molo17.com', 'status-api.example'],
+      hosts: ['api.backoffice.molo17.com'],
     });
+    assert.ok(!JSON.stringify(diagnosis).includes('status-api.example'));
   });
 
   it('BACKOFFICE_UNREACHABLE_FROM_HOST when only the backoffice is silent: high confidence with a fresh feed', () => {

@@ -377,8 +377,7 @@
     "confidence": "high",
     "params": {
       "hosts": [
-        "api.backoffice.molo17.com",
-        "aw53uno6n5.execute-api.eu-central-1.amazonaws.com"
+        "api.backoffice.molo17.com"
       ]
     },
     "resolutionCodes": [
@@ -387,7 +386,7 @@
     ],
     "fallback": {
       "title": "MOLO17 services are blocked from this host",
-      "summary": "The internet is reachable but api.backoffice.molo17.com, aw53uno6n5.execute-api.eu-central-1.amazonaws.com cannot be. A firewall or proxy is probably blocking them.",
+      "summary": "The internet is reachable but api.backoffice.molo17.com cannot be. A firewall or proxy is probably blocking them.",
       "steps": [
         "Ask your network team to allow outbound HTTPS (port 443) to the hosts listed in the connectivity details.",
         "Verify the PROXY_HTTPS / PROXY_HTTP settings of Conductor and that the proxy allows these hosts."

@@ -81,6 +81,12 @@ export const noInternetOrDns: Rule = (facts): Verdict | undefined => {
   return undefined;
 };
 
+// The hosts named here are what the customer is told to allow through their
+// firewall, so only hosts OTA really needs belong in the list. The status feed
+// is read by Conductor to help diagnose and is not needed for an update; it is an
+// internal address that may change, and it is never shown to customers.
+const CUSTOMER_FACING_HOST_PROBES = ['backoffice'] as const;
+
 export const molo17HostsBlocked: Rule = facts => {
   if (isMolo17Reachable(facts)) {
     return undefined;
@@ -90,9 +96,9 @@ export const molo17HostsBlocked: Rule = facts => {
     code: 'MOLO17_HOSTS_BLOCKED',
     confidence: 'high',
     params: {
-      hosts: MOLO17_PROBES.map(id => firstProbe(facts, id)?.host).filter(
-        (host): host is string => host !== undefined,
-      ),
+      hosts: CUSTOMER_FACING_HOST_PROBES.map(
+        id => firstProbe(facts, id)?.host,
+      ).filter((host): host is string => host !== undefined),
     },
   };
 };
