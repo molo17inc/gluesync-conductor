@@ -56,8 +56,15 @@ export const sessionSuite = async (it, { deep }) => {
   const expired = await call('expired session', 'GET', '/services', { token: shortLived });
   check('session.expired-rejected', expired.status === 401, `session expired at CoreHub, first use -> ${expired.status}`);
 
-  if (!deep) return results;
+  if (deep) {
+    await deepSessionChecks(check, call, admin);
+  }
 
+  return results;
+};
+
+// The slow probes: revocation window, CoreHub auth failing, hanging or answering garbage.
+const deepSessionChecks = async (check, call, admin) => {
   // Revocation: a token used once (and so cached), then logged out at CoreHub.
   const revoked = await corehub.login('admin');
   await call('pre-revoke use', 'GET', '/services', { token: revoked });
@@ -111,6 +118,4 @@ export const sessionSuite = async (it, { deep }) => {
   const garbage = await call('auth garbage', 'GET', '/services', { token: await corehub.login('manager') });
   await corehub.chaos({ auth: null });
   check('session.garbage-is-503', garbage.status === 503, `CoreHub auth returns HTML -> ${garbage.status}`);
-
-  return results;
 };

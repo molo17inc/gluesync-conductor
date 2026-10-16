@@ -117,7 +117,7 @@ export const renderKitCompose = versions => {
     V_GRAFANA: versions.grafana,
     V_PORTAINER: versions.portainer,
   };
-  const rendered = template.replace(/\{\{([A-Z_]+)\}\}/g, (_, k) => {
+  const rendered = template.replaceAll(/\{\{([A-Z_]+)\}\}/g, (_, k) => {
     if (!(k in values)) throw new Error(`template value ${k} missing`);
     return String(values[k]);
   });
