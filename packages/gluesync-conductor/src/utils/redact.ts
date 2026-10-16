@@ -1,4 +1,5 @@
-const CREDENTIALS_IN_URL = /([a-z][a-z0-9+.-]*:\/\/)[^/\s:@]+(?::[^/\s@]*)?@/gi;
+// The user may be empty (`http://:token@proxy`), the password may be missing.
+const CREDENTIALS_IN_URL = /([a-z][a-z0-9+.-]*:\/\/)[^/\s:@]*(?::[^/\s@]*)?@/gi;
 
 /**
  * Masks `user:password@` embedded in any URL found in free text

@@ -18,6 +18,13 @@ describe('redactSecrets', () => {
     );
   });
 
+  it('masks a token with an empty username', () => {
+    assert.equal(
+      redactSecrets('via http://:T0KEN@proxy.corp:3128'),
+      'via http://***:***@proxy.corp:3128',
+    );
+  });
+
   it('leaves text without credentials untouched', () => {
     const text =
       'timeout of 5000ms exceeded for https://api.backoffice.molo17.com/x';

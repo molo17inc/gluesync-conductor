@@ -32,13 +32,14 @@ const resolveRotationSize = (): FileSize =>
 // An axios error carries its request config, and that config holds the proxy
 // agent with `user:password` in `proxy.auth` / `proxy.href`. Logging an error
 // object (`{ error }`) would write the password to the log files that support
-// collects, so those fields are masked wherever an error is logged.
-const LOG_REDACTION = {
-  paths: [
-    '*.config.httpsAgent.proxy.auth',
-    '*.config.httpsAgent.proxy.href',
-    '*.config.httpsAgent.proxy.path',
-  ],
+// collects, so those fields are masked wherever an error is logged, also one
+// level down (`{ ctx: { error } }`).
+const PROXY_SECRETS = ['auth', 'href', 'path'];
+
+export const LOG_REDACTION = {
+  paths: ['*', '*.*'].flatMap(prefix =>
+    PROXY_SECRETS.map(field => `${prefix}.config.httpsAgent.proxy.${field}`),
+  ),
   censor: '[Redacted]',
 };
 
