@@ -282,7 +282,7 @@ export const iterate = async ({ iterations, seed, profiles, destructive }) => {
   if (!(await dindRunning()) || (await health()).status !== 200) {
     throw new Error('sandbox is not up or the conductor is unhealthy: run `node sandbox/run.mjs up` first');
   }
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  const stamp = new Date().toISOString().replaceAll(/[-:]/g, '').replace('T', '-').slice(0, 15);
   const dir = path.join(env.reportsDir, `${stamp}-seed${seed}`);
   fs.mkdirSync(dir, { recursive: true });
   setLogFile(path.join(dir, 'runner.log'));
