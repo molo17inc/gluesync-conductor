@@ -81,6 +81,11 @@ const runHttpProbe = async (
         healthy: spec.isHealthyStatus(response.status),
         ms: deps.now() - startedAt,
         httpStatus: response.status,
+        // https-proxy-agent hands a refused CONNECT back as an ordinary response,
+        // and every status is accepted here, so a 407 never reaches the catch.
+        ...(response.status === 407
+          ? { errorKind: 'proxy-auth' as const }
+          : {}),
         origin: spec.expectMolo17Origin
           ? detectOrigin(normalizeHeaders(response.headers))
           : undefined,

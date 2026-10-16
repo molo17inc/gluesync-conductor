@@ -92,9 +92,16 @@ export const molo17HostsBlocked: Rule = facts => {
     return undefined;
   }
 
+  // A refused, reset or unresolved connection is something on this side saying
+  // no. A timeout is not: MOLO17's hosts sit together, so an outage of theirs
+  // looks the same as a firewall that drops packets.
+  const onlyTimeouts = MOLO17_PROBES.map(id => firstProbe(facts, id)).every(
+    probe => probe === undefined || probe.errorKind === 'timeout',
+  );
+
   return {
     code: 'MOLO17_HOSTS_BLOCKED',
-    confidence: 'high',
+    confidence: onlyTimeouts ? 'medium' : 'high',
     params: {
       hosts: CUSTOMER_FACING_HOST_PROBES.map(
         id => firstProbe(facts, id)?.host,

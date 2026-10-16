@@ -1,5 +1,10 @@
 import { ProbeResult } from '../probes/probe.model';
-import { Rule, firstProbe, probesById } from './facts.model';
+import { ConnectivityFacts, Rule, firstProbe, probesById } from './facts.model';
+
+// MOLO17's own feed says OTA is down. A failure that could be either side's is
+// then left to statusFeedReportsDown instead of being put on the customer.
+const feedReportsDown = (facts: ConnectivityFacts): boolean =>
+  facts.statusFeed?.state === 'down';
 
 const isNon2xx = (probe: ProbeResult | undefined): probe is ProbeResult =>
   probe !== undefined &&
@@ -12,7 +17,11 @@ export const backofficeUnreachable: Rule = facts => {
   const backoffice = firstProbe(facts, 'backoffice');
   const statusFeed = firstProbe(facts, 'status-feed');
 
-  if (backoffice?.reachable !== false || statusFeed?.reachable !== true) {
+  if (
+    backoffice?.reachable !== false ||
+    statusFeed?.reachable !== true ||
+    feedReportsDown(facts)
+  ) {
     return undefined;
   }
 
@@ -44,6 +53,12 @@ export const unexpectedResponse: Rule = facts => {
     return observed.httpStatus >= 500
       ? { code: 'OTA_SERVICE_DOWN', confidence: 'high', params }
       : { code: 'BACKOFFICE_REQUEST_REJECTED', confidence: 'high', params };
+  }
+
+  // A proxy answering 502/503 for a CONNECT it could not complete looks the same
+  // whether MOLO17 or the customer's network is down; the feed tells them apart.
+  if (feedReportsDown(facts)) {
+    return undefined;
   }
 
   return {

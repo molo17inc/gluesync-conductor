@@ -252,6 +252,39 @@ describe('diagnose: customer-side network', () => {
     assert.ok(!JSON.stringify(diagnosis).includes('status-api.example'));
   });
 
+  it('is only medium sure of MOLO17_HOSTS_BLOCKED when every MOLO17 check timed out', () => {
+    const diagnosis = run({
+      proxy: { configured: false },
+      probes: [
+        reachableProbe('internet-ip'),
+        reachableProbe('internet-name'),
+        unreachableProbe('backoffice', 'timeout'),
+        unreachableProbe('status-feed', 'timeout'),
+      ],
+      statusFeed: feed('unavailable'),
+    });
+
+    // A firewall dropping packets and an outage of MOLO17's hosts look the same.
+    assert.equal(diagnosis.code, 'MOLO17_HOSTS_BLOCKED');
+    assert.equal(diagnosis.confidence, 'medium');
+  });
+
+  it('is sure of MOLO17_HOSTS_BLOCKED when a MOLO17 connection was refused or reset', () => {
+    const diagnosis = run({
+      proxy: { configured: false },
+      probes: [
+        reachableProbe('internet-ip'),
+        reachableProbe('internet-name'),
+        unreachableProbe('backoffice', 'reset'),
+        unreachableProbe('status-feed', 'timeout'),
+      ],
+      statusFeed: feed('unavailable'),
+    });
+
+    assert.equal(diagnosis.code, 'MOLO17_HOSTS_BLOCKED');
+    assert.equal(diagnosis.confidence, 'high');
+  });
+
   it('BACKOFFICE_UNREACHABLE_FROM_HOST when only the backoffice is silent: high confidence with a fresh feed', () => {
     const facts = healthy();
     const diagnosis = run({
@@ -371,6 +404,59 @@ describe('diagnose: who answered decides who is at fault', () => {
     assert.equal(diagnosis.code, 'BACKOFFICE_REQUEST_REJECTED');
     assert.equal(diagnosis.owner, 'molo17');
     assert.equal(diagnosis.fallback.steps.length, 1);
+  });
+
+  // MOLO17's own feed says OTA is down: a failure that could be either side's
+  // must not be put on the customer.
+  it('OTA_SERVICE_DOWN, not the customer, when the backoffice is silent and the feed reports the outage', () => {
+    const facts = healthy({ statusFeed: feed('down', 'HTTP 502') });
+    const diagnosis = run({
+      ...facts,
+      probes: [
+        ...without(facts, ['backoffice']),
+        unreachableProbe('backoffice'),
+      ],
+    });
+
+    assert.equal(diagnosis.code, 'OTA_SERVICE_DOWN');
+    assert.equal(diagnosis.owner, 'molo17');
+  });
+
+  it('OTA_SERVICE_DOWN, not the customer, when a proxy answers 503 and the feed reports the outage', () => {
+    const diagnosis = run(
+      healthy({
+        proxy: {
+          configured: true,
+          host: 'proxy.corp',
+          port: 3128,
+          reachable: true,
+        },
+        statusFeed: feed('down', 'HTTP 502'),
+        trigger: trigger({
+          reachable: true,
+          httpStatus: 503,
+          origin: 'intermediary',
+        }),
+      }),
+    );
+
+    assert.equal(diagnosis.code, 'OTA_SERVICE_DOWN');
+    assert.equal(diagnosis.owner, 'molo17');
+  });
+
+  it('still trusts MOLO17 headers over the feed: a 404 from MOLO17 is a rejected request', () => {
+    const diagnosis = run(
+      healthy({
+        statusFeed: feed('down', 'HTTP 502'),
+        trigger: trigger({
+          reachable: true,
+          httpStatus: 404,
+          origin: 'molo17',
+        }),
+      }),
+    );
+
+    assert.equal(diagnosis.code, 'BACKOFFICE_REQUEST_REJECTED');
   });
 
   it('OTA_SERVICE_DOWN, medium, when only the status feed reports the outage', () => {
