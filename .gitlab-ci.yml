@@ -39,6 +39,17 @@ build_artifacts:
 
     - echo "Building..."
     - yarn build
+
+    # Gluesync Control for Linux (both CPUs + run.sh shim + VERSION) goes into the image as kit-control/.
+    # GA for release-* tags, beta otherwise. Runs after the build because it stages into build/. Any problem fails the job.
+    - apk add --no-cache bash curl jq
+    - |
+      case "${CI_COMMIT_TAG:-}" in
+        release-*) CONTROL_CHANNEL=ga ;;
+        *) CONTROL_CHANNEL=beta ;;
+      esac
+      echo "Fetching Gluesync Control for Linux (${CONTROL_CHANNEL})..."
+      bash packages/gluesync-conductor/scripts/fetch-linux-control.sh "$CONTROL_CHANNEL" packages/gluesync-conductor/build/kit-control
   artifacts:
     paths:
       - packages/**/build

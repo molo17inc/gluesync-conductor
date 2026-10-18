@@ -48,6 +48,10 @@ RUN chmod +x collect-logs.sh system-info.sh
 COPY build/copy-agent-data.sh copy-agent-data.sh
 RUN chmod +x copy-agent-data.sh
 
+# Gluesync Control for Linux (both CPUs, run.sh shim, VERSION): delivered to the Linux kit folder at start (syncKitControl)
+COPY build/kit-control/ kit-control/
+RUN chmod 755 kit-control/gluesync-linux-amd64 kit-control/gluesync-linux-arm64 kit-control/run.sh
+
 COPY public/gluesync-conductor.svg static/logo.svg
 
 EXPOSE 1717

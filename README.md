@@ -355,6 +355,21 @@ You can provide your own YAML file by:
 PROJECT_CWD=/path/to/your/directory PORT=50015 yarn dev
 ```
 
+## Gluesync Control for Linux kits
+
+The Linux image carries Gluesync Control (the static `gluesync-linux-amd64` and `gluesync-linux-arm64` binaries, the `run.sh` shim and a `VERSION` file) in `/opt/gluesync-conductor/kit-control`. At start (Linux only, never blocking, logged with `[kit-control-sync]`) the Conductor delivers it to the kit folder, so existing installs get it when their Conductor image is updated. Windows is unchanged.
+
+It does nothing when the bundle is missing or the folder has no `docker-compose.yml`/`.yaml`. Otherwise, in order:
+
+1. Binaries: writes `gluesync-linux-<arch>` when missing, or both when the bundled version is strictly newer than the installed one (read with `--version`). It never downgrades (Control updates itself with `gluesync self-update`) and never overwrites a binary whose version it cannot read. Files are replaced atomically.
+2. Link: creates `gluesync -> gluesync-linux-<arch>` when nothing is called `gluesync`. An existing file is never replaced.
+3. `run.sh`: an old script is moved away and the thin shim is written; a missing one is written; the shim is left alone.
+4. Old scripts: once the binary of this CPU runs, `stop.sh`, `update.sh`, `collect-logs.sh` and `gluesync-cli` are moved (not deleted) to `.legacy/<YYYYMMDD-HHMMSS>/` in the kit folder. `collect-logs.sh` is no longer copied back on Linux.
+5. `.gluesync-control-migrated`: written when this run installed the binaries into a kit that had none (an old kit). Kits made by the new installer never get it, so their host setup and daily-update choice are never touched.
+6. Host setup: for a migrated kit without `.gluesync-control-host-setup`, a privileged helper container (the Conductor's own image, `nsenter` into the host) links `/usr/local/bin/gluesync` (and `/usr/bin/gluesync` when sudo's `secure_path` lacks `/usr/local/bin`) and, with systemd, runs `gluesync self-update --enable-auto`. On success it writes `.gluesync-control-host-setup`; on failure it logs the commands to run by hand and retries at the next start. Needs `BASE_PATH` (the kit folder on the host); `HELPER_IMAGE_LINUX` is the fallback helper image (default `docker:28`).
+
+Build: `packages/gluesync-conductor/scripts/fetch-linux-control.sh [ga|beta] [DEST_DIR]` downloads both binaries from the public catalog and checks size, sha256 and ELF type, and fails on any problem (no fallback). CI (`build_artifacts`) uses `ga` for `release-*` tags and `beta` otherwise, and stages into `packages/gluesync-conductor/build/kit-control/`, which the Dockerfile copies into the image.
+
 ## Integration Guide
 
 For detailed integration flows and code examples showing how to use the Gluesync Conductor API in your applications, see the [Integration Flows Guide](./packages/gluesync-conductor/docs/integration-flows.md). This guide includes:

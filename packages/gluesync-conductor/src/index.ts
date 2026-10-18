@@ -31,6 +31,7 @@ import { autoReboot } from './helpers/autoReboot/autoReboot';
 import getRootPath from './helpers/getRootPath/getRootPath';
 import healConductorConf from './helpers/healConductorConf/healConductorConf';
 import syncCollectLogsScripts from './helpers/syncCollectLogsScripts/syncCollectLogsScripts';
+import syncKitControl from './helpers/syncKitControl/syncKitControl';
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
 import migrateRoutes from './routes/migrate';
 import envRoutes from './routes/env';
@@ -233,14 +234,22 @@ const startServer = async (): Promise<void> => {
     logger.error('Failed to apply Conductor labels at startup');
   }
 
-  const syncResult = await syncCollectLogsScripts();
+  if (process.env.IS_WINDOWS?.toLowerCase() === 'true') {
+    const syncResult = await syncCollectLogsScripts();
 
-  if (syncResult.synced) {
-    logger.info('[collect-logs-sync] script synced to root folder');
-  } else if (syncResult.success) {
-    logger.info('[collect-logs-sync] already up to date');
+    if (syncResult.synced) {
+      logger.info('[collect-logs-sync] script synced to root folder');
+    } else if (syncResult.success) {
+      logger.info('[collect-logs-sync] already up to date');
+    } else {
+      logger.warn('[collect-logs-sync] sync failed');
+    }
   } else {
-    logger.warn('[collect-logs-sync] sync failed');
+    // Linux: Gluesync Control (binaries, link, run.sh shim) replaces the old kit scripts. It never throws, and it is
+    // not awaited so that the host setup (a helper container) cannot hold up the start-up.
+    syncKitControl().catch(error =>
+      logger.error({ error }, '[kit-control-sync] unexpected failure'),
+    );
   }
 
   const rebootNeeded = await healConductorConf();
