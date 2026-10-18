@@ -61,7 +61,11 @@ const binaryName = (arch: KitControlArch): string => `gluesync-linux-${arch}`;
 
 /** First dotted number of a text ("Gluesync Control 1.4.2.425" -> "1.4.2.425"). */
 export const parseVersion = (text: string): string | null =>
-  /\d+(?:\.\d+)+/.exec(text)?.[0] ?? null;
+  text
+    .split(/[^0-9.]+/)
+    .map(token => token.split('.').filter(part => part !== ''))
+    .find(parts => parts.length >= 2)
+    ?.join('.') ?? null;
 
 /** Numeric, part by part, any number of parts (semver cannot do 4). Negative, 0 or positive like a - b. */
 export const compareVersions = (a: string, b: string): number => {
@@ -77,8 +81,10 @@ export const compareVersions = (a: string, b: string): number => {
   );
 };
 
+const QUOTED_QUOTE = String.raw`'\''`;
+
 const shellQuote = (value: string): string =>
-  `'${value.replace(/'/g, `'\\''`)}'`;
+  ["'", value.replaceAll("'", QUOTED_QUOTE), "'"].join('');
 
 /**
  * POSIX sh that runs on the Docker host (in its namespaces). Mirrors gs_install_control of the Linux installer:

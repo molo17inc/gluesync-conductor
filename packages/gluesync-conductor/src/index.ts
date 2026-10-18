@@ -59,6 +59,32 @@ const host: string = process.env.HOST || '0.0.0.0';
 */
 const watchdogCell = new Map<string, boolean>([['value', false]]);
 
+/**
+ * Windows: refresh collect-logs.ps1 in the kit folder. Linux: Gluesync Control (binaries, link, run.sh shim) replaces
+ * the old kit scripts; it never throws, and it is not awaited so the host setup (a helper container) cannot hold up
+ * the start-up.
+ */
+const syncKitScripts = async (isWindows: boolean): Promise<void> => {
+  const logger = getLogger();
+
+  if (!isWindows) {
+    syncKitControl().catch(error =>
+      logger.error({ error }, '[kit-control-sync] unexpected failure'),
+    );
+    return;
+  }
+
+  const syncResult = await syncCollectLogsScripts();
+
+  if (syncResult.synced) {
+    logger.info('[collect-logs-sync] script synced to root folder');
+  } else if (syncResult.success) {
+    logger.info('[collect-logs-sync] already up to date');
+  } else {
+    logger.warn('[collect-logs-sync] sync failed');
+  }
+};
+
 const startServer = async (): Promise<void> => {
   const serverOptions = createFastifyHttpsOptions();
   const server = fastify(serverOptions);
@@ -234,23 +260,7 @@ const startServer = async (): Promise<void> => {
     logger.error('Failed to apply Conductor labels at startup');
   }
 
-  if (process.env.IS_WINDOWS?.toLowerCase() === 'true') {
-    const syncResult = await syncCollectLogsScripts();
-
-    if (syncResult.synced) {
-      logger.info('[collect-logs-sync] script synced to root folder');
-    } else if (syncResult.success) {
-      logger.info('[collect-logs-sync] already up to date');
-    } else {
-      logger.warn('[collect-logs-sync] sync failed');
-    }
-  } else {
-    // Linux: Gluesync Control (binaries, link, run.sh shim) replaces the old kit scripts. It never throws, and it is
-    // not awaited so that the host setup (a helper container) cannot hold up the start-up.
-    syncKitControl().catch(error =>
-      logger.error({ error }, '[kit-control-sync] unexpected failure'),
-    );
-  }
+  await syncKitScripts(isWindows);
 
   const rebootNeeded = await healConductorConf();
 
