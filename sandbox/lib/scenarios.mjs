@@ -202,6 +202,13 @@ export const PROFILES = [
     },
   },
   {
+    name: 'ui-sequence',
+    description:
+      'What the Core Hub UI does: one update request per service, in the UI order, through the reverse proxy, with the UI auto-retry policy. Updating reverse-proxy recreates the proxy the request travels through.',
+    // The UI never updates agents from the platform updates modal.
+    plan: () => ({ expect: 'updated', ui: true, lagging: ['gluesync-postgresql-cdc-source-agent'] }),
+  },
+  {
     name: 'conductor-bad-release',
     destructive: true,
     description: 'The new conductor image crashes on start. The self-update helper must roll the conductor back by itself.',

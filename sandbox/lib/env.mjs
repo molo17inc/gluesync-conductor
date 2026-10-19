@@ -26,7 +26,8 @@ export const env = {
 
   registry: 'localhost:5000',
   project: 'gluesync',
-  ports: { conductor: 5317, corehub: 5318, backofficeAdmin: 8088, dockerProxyAdmin: 8089 },
+  // proxy: the fake reverse-proxy, which forwards /conductor/api/ to the conductor as the UI's requests travel.
+  ports: { conductor: 5317, corehub: 5318, proxy: 5319, backofficeAdmin: 8088, dockerProxyAdmin: 8089 },
 
   // Sandbox-only values, not real credentials. The proxy password and license
   // text are canaries: the logging check fails if they show up in conductor logs.

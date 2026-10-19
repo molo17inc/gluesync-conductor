@@ -8,21 +8,25 @@ import { describeState, docker, now, request, sleep, waitFor } from './util.mjs'
 // ---------------------------------------------------------------- HTTP clients
 
 const conductorUrl = p => `https://127.0.0.1:${env.ports.conductor}${p}`;
+// Through the kit's reverse proxy, the path the Core Hub UI uses.
+const proxiedConductorUrl = p => `http://127.0.0.1:${env.ports.proxy}/conductor/api${p}`;
 const corehubUrl = p => `https://127.0.0.1:${env.ports.corehub}${p}`;
 
 // Every conductor call made by the runner goes through here so the report has a
-// full API transcript per iteration.
-export const callConductor = async (ctx, label, method, p, { token, cookie, body, timeoutMs = 30000 } = {}) => {
+// full API transcript per iteration. `via: 'proxy'` sends it through the kit's
+// reverse proxy instead of the conductor's published port.
+export const callConductor = async (ctx, label, method, p, { token, cookie, body, timeoutMs = 30000, via } = {}) => {
   const headers = {};
   if (token) headers.authorization = `Bearer ${token}`;
   if (cookie) headers.cookie = cookie;
   const started = now();
-  const res = await request(conductorUrl(p), { method, headers, body, timeoutMs });
+  const res = await request(via === 'proxy' ? proxiedConductorUrl(p) : conductorUrl(p), { method, headers, body, timeoutMs });
   const entry = {
     ts: started,
     label,
     method,
     path: p,
+    ...(via ? { via } : {}),
     status: res.status,
     ms: res.ms,
     error: res.error,
