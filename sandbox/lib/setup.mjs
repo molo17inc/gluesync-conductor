@@ -109,6 +109,7 @@ export const renderKitCompose = versions => {
     PROXY_PASS: env.proxyPass,
     PORT_CONDUCTOR: env.ports.conductor,
     PORT_COREHUB: env.ports.corehub,
+    PORT_PROXY: env.ports.proxy,
     V_CORE_HUB: versions['gluesync-core-hub'],
     V_CHRONOS: versions['gluesync-chronos'],
     V_CONDUCTOR: versions['gluesync-conductor'],

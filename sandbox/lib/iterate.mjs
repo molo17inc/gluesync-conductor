@@ -4,6 +4,7 @@ import { env, SERVICES, versionsFor } from './env.mjs';
 import { backofficeAdmin, catalogFor, dindRunning, ensureImages, kitCompose } from './setup.mjs';
 import { LogCollector, callConductor, conductorContainer, containers, corehub, health, settle, snapshot, waitConductor } from './stack.mjs';
 import { PROFILES, resetChaos } from './scenarios.mjs';
+import { driveLikeUi, uiChecks } from './uiDriver.mjs';
 import { sessionSuite } from './sessions.mjs';
 import { runChecks } from './checks.mjs';
 import { writeReport } from './report.mjs';
@@ -216,7 +217,8 @@ const runIteration = async (ctx, i, profile, k) => {
     }
 
     const started = Date.now();
-    await Promise.allSettled([drive(ctx, it, target, plan), profile.during ? profile.during(ctx, it) : null]);
+    const driver = plan.ui ? driveLikeUi : drive;
+    await Promise.allSettled([driver(ctx, it, target, plan), profile.during ? profile.during(ctx, it) : null]);
     it.metrics.updateMs = Date.now() - started;
     await profile.after?.(ctx, it);
     await resetChaos();
@@ -254,6 +256,7 @@ const runIteration = async (ctx, i, profile, k) => {
         fileLog,
       }),
       ...sessions,
+      ...(plan.ui ? uiChecks(it, post, target) : []),
     ];
     it.final = Object.fromEntries(Object.entries(post.byService).map(([s, c]) => [s, `${c.tag} ${describeState(c)}`]));
     fs.writeFileSync(path.join(iterDir, 'conductor.log'), conductorLogs.map(l => `${l.ts} [${l.incarnation}] ${l.line}`).join('\n'));

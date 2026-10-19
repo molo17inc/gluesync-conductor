@@ -313,12 +313,48 @@ const startChronos = () => {
 
 // ---------------------------------------------------------------- plain http
 
+// With FAKE_PROXY_TARGET set (the fake traefik), requests under FAKE_PROXY_PREFIX
+// are forwarded to the target with the prefix stripped, as the real kit's
+// `replacepathregex` middleware does for /conductor/api/. The UI reaches the
+// conductor this way, so recreating the proxy cuts the UI's own request.
+const forwardToTarget = (upstream, prefix, req, res) => {
+  const stripped = `/${req.url.slice(prefix.length)}`;
+  const lib = upstream.protocol === 'https:' ? https : http;
+  const started = Date.now();
+  const out = lib.request(
+    {
+      hostname: upstream.hostname,
+      port: upstream.port,
+      path: stripped,
+      method: req.method,
+      headers: { ...req.headers, host: upstream.host },
+      rejectUnauthorized: false,
+    },
+    up => {
+      res.writeHead(up.statusCode, up.headers);
+      up.pipe(res);
+      up.on('end', () => log('info', 'proxied', { method: req.method, path: stripped, status: up.statusCode, ms: Date.now() - started }));
+    },
+  );
+  out.on('error', e => {
+    log('warn', 'proxy upstream error', { method: req.method, path: stripped, error: e.message, ms: Date.now() - started });
+    if (res.headersSent) res.destroy();
+    else send(res, 502, { error: `upstream: ${e.message}` });
+  });
+  req.pipe(out);
+};
+
 const startHttp = () => {
   const port = Number(process.env.FAKE_PORT || 8080);
+  const upstream = process.env.FAKE_PROXY_TARGET ? new URL(process.env.FAKE_PROXY_TARGET) : null;
+  const prefix = process.env.FAKE_PROXY_PREFIX || '/conductor/api/';
   http
-    .createServer((req, res) => send(res, 200, { service: SERVICE, version: VERSION }))
+    .createServer((req, res) => {
+      if (upstream && req.url.startsWith(prefix)) return forwardToTarget(upstream, prefix, req, res);
+      return send(res, 200, { service: SERVICE, version: VERSION });
+    })
     .listen(port, () => {
-      log('info', 'fake service listening', { port });
+      log('info', 'fake service listening', { port, proxy: upstream ? `${prefix} -> ${upstream.href}` : undefined });
       markReady();
     });
 };
