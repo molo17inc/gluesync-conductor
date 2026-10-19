@@ -1066,6 +1066,9 @@
                         },
                         "releaseChannel": {
                           "type": "string"
+                        },
+                        "changelog": {
+                          "type": "string"
                         }
                       }
                     }
@@ -1125,7 +1128,7 @@
                     "success",
                     "error"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             }
@@ -1155,7 +1158,7 @@
                     "success",
                     "error"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             }
@@ -1636,11 +1639,67 @@
               }
             }
           },
+          "409": {
+            "description": "A different container action is already running (one at a time). A retry of the same action on the same ids joins the running one instead. The Retry-After header says when to ask again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "A different container action is already running (one at a time). A retry of the same action on the same ids joins the running one instead. The Retry-After header says when to ask again.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error message"
+                    },
+                    "details": {
+                      "type": "string",
+                      "description": "Which action is running and since when"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
           "500": {
             "description": "Default Response",
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error message"
+                    },
+                    "details": {
+                      "type": "string",
+                      "description": "Additional error details"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The conductor is updating itself; only restart is accepted until it is back",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The conductor is updating itself; only restart is accepted until it is back",
                   "type": "object",
                   "properties": {
                     "success": {
@@ -1738,6 +1797,9 @@
                         },
                         "releaseChannel": {
                           "type": "string"
+                        },
+                        "changelog": {
+                          "type": "string"
                         }
                       }
                     }
@@ -1797,7 +1859,7 @@
                     "success",
                     "error"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             }
@@ -1827,7 +1889,7 @@
                     "success",
                     "error"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             }
@@ -1847,10 +1909,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "ticketId",
-                  "email"
-                ],
                 "additionalProperties": false,
                 "properties": {
                   "ticketId": {
@@ -1860,12 +1918,15 @@
                   "email": {
                     "type": "string",
                     "description": "User email sending the logs"
+                  },
+                  "localOnly": {
+                    "type": "boolean",
+                    "description": "If true, collects and archives logs locally without credential validation or upload"
                   }
                 }
               }
             }
-          },
-          "required": true
+          }
         },
         "parameters": [
           {
@@ -1897,6 +1958,9 @@
                       ]
                     },
                     "output": {
+                      "type": "string"
+                    },
+                    "archivePath": {
                       "type": "string"
                     }
                   }
@@ -2022,6 +2086,192 @@
                     },
                     "details": {
                       "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/env/legacy-update": {
+      "get": {
+        "summary": "Get legacy update flag",
+        "tags": [
+          "env"
+        ],
+        "description": "Returns whether GS_LEGACY_TLS=1 is currently set in the .env file.",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "enabled"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Set legacy update flag",
+        "tags": [
+          "env"
+        ],
+        "description": "Adds or removes GS_LEGACY_TLS=1 from the .env file.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
                     }
                   }
                 }
