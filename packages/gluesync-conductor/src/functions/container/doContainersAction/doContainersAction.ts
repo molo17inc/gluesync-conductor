@@ -3,6 +3,7 @@ import semver from 'semver';
 import {
   DoContainersActionHandler,
   DoContainersActionItem,
+  DoContainersActionResponse,
 } from './doContainersAction.model';
 import createActions from '../../../helpers/dockerode/createActions/createActions';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
@@ -25,35 +26,41 @@ import { getLogger } from '../../../utils/logger';
 import describeFailure from '../../../helpers/describeFailure/describeFailure';
 import buildDiagnosis from '../../../diagnosis/buildDiagnosis';
 import buildOutboundErrorReply from '../../../diagnosis/buildOutboundErrorReply';
+import createActionGate from '../../../helpers/actionGate/actionGate';
+import { ActionOutcome } from '../../../helpers/actionGate/actionGate.model';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
 const logger = getLogger();
 
-// One container action at a time. Two updates running together (double click,
-// two tabs, UI plus Chronos) recreated the same containers concurrently and
-// failed with "container name already in use", and self-updated twice.
-const actionLock = new Map<
-  string,
-  Readonly<{ action: string; since: string }>
->();
+type Outcome = ActionOutcome<DoContainersActionResponse>;
+type Request = Parameters<DoContainersActionHandler>[0];
 
-const handler: DoContainersActionHandler = async (req, reply) => {
-  const running = actionLock.get('current');
-  if (running) {
-    reply.code(409);
-    reply.send({
+// Seconds a refused caller should wait before asking again: a pull plus
+// recreate plus the stability window of one service.
+const RETRY_AFTER_SECONDS = '30';
+
+// One container action at a time (see actionGate). A retry of the same action
+// on the same ids joins the running one and gets its result, so a request that
+// lost its connection mid-update (the reverse proxy it travels through was just
+// recreated) ends with the real outcome instead of a refusal.
+const gate = createActionGate<DoContainersActionResponse>({
+  onThrow: error => ({
+    statusCode: 500,
+    body: {
       success: false,
-      error: 'Another container action is in progress',
-      details: `"${running.action}" started at ${running.since}; try again when it has finished`,
-    });
-    return;
-  }
-  actionLock.set('current', {
-    action: req.body.action,
-    since: new Date().toISOString(),
-  });
+      error: 'Failed to do containers action',
+      details: error instanceof Error ? error.message : String(error),
+    },
+  }),
+});
 
+const ok = (body: DoContainersActionResponse): Outcome => ({
+  statusCode: 200,
+  body,
+});
+
+const perform = async (req: Readonly<Request>): Promise<Outcome> => {
   try {
     const containerAction = req.body.action;
     const requestIds: readonly string[] = req.body.ids || [];
@@ -61,21 +68,21 @@ const handler: DoContainersActionHandler = async (req, reply) => {
 
     // Block all actions except restart when update mode is active
     if (isUpdateMode() && containerAction !== 'restart') {
-      reply.code(503);
-      reply.send({
-        success: false,
-        error: 'Conductor is updating',
-        details: 'Only restart operations are allowed during update mode',
-        diagnosis: buildDiagnosis({ code: 'CONDUCTOR_UPDATING' }),
-      });
-      return;
+      return {
+        statusCode: 503,
+        body: {
+          success: false,
+          error: 'Conductor is updating',
+          details: 'Only restart operations are allowed during update mode',
+          diagnosis: buildDiagnosis({ code: 'CONDUCTOR_UPDATING' }),
+        },
+      };
     }
 
     const actions = createActions({ docker: req.server.docker });
     const action = actions[containerAction];
 
     if (!action) {
-      reply.code(400);
       throw new Error(`Unknown action: ${containerAction}`);
     }
 
@@ -175,7 +182,7 @@ const handler: DoContainersActionHandler = async (req, reply) => {
               req.server.docker,
             );
 
-            reply.code(200).send({
+            return ok({
               success: true,
               data: {
                 containers: [
@@ -183,14 +190,15 @@ const handler: DoContainersActionHandler = async (req, reply) => {
                 ],
               },
             });
-            return;
           } catch (error) {
-            reply.code(500).send({
-              success: false,
-              error: 'Migration failed',
-              details: error instanceof Error ? error.message : String(error),
-            });
-            return;
+            return {
+              statusCode: 500,
+              body: {
+                success: false,
+                error: 'Migration failed',
+                details: error instanceof Error ? error.message : String(error),
+              },
+            };
           }
         }
       }
@@ -278,15 +286,16 @@ const handler: DoContainersActionHandler = async (req, reply) => {
           : []),
       ];
 
-      reply.code(200);
-      reply.send({
+      return ok({
         success: true,
         data: {
           ...pruneOutcome,
           containers,
         },
       });
-    } else if (containerAction === 'restart') {
+    }
+
+    if (containerAction === 'restart') {
       const CONDUCTOR_SERVICE =
         process.env.CONDUCTOR_NAME || 'gluesync-conductor';
 
@@ -298,20 +307,8 @@ const handler: DoContainersActionHandler = async (req, reply) => {
 
         enableUpdateMode();
 
-        reply.code(200);
-        reply.send({
-          success: true,
-          data: {
-            containers: [
-              {
-                id: 'ALL',
-                status: 'OK',
-                message: 'Full stack restart initiated.',
-              },
-            ],
-          },
-        });
-
+        // Runs after the reply has gone out (the reply is sent as soon as this
+        // outcome is returned, before the next macrotask).
         setImmediate(() => {
           const hostProjectDir = getRootPath({
             basePath: process.env.BASE_PATH,
@@ -327,7 +324,18 @@ const handler: DoContainersActionHandler = async (req, reply) => {
           });
         });
 
-        return;
+        return ok({
+          success: true,
+          data: {
+            containers: [
+              {
+                id: 'ALL',
+                status: 'OK',
+                message: 'Full stack restart initiated.',
+              },
+            ],
+          },
+        });
       }
 
       // ---------------------------------------------------------
@@ -345,20 +353,6 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         // Enable update mode to block incoming requests during conductor restart
         enableUpdateMode();
 
-        reply.code(200);
-        reply.send({
-          success: true,
-          data: {
-            containers: [
-              {
-                id: CONDUCTOR_SERVICE,
-                status: 'OK',
-                message: `Conductor ${CONDUCTOR_SERVICE} restart initiated.`,
-              },
-            ],
-          },
-        });
-
         // Wrap in setImmediate to send response before conductor dies
         setImmediate(() => {
           autoReboot({
@@ -371,110 +365,113 @@ const handler: DoContainersActionHandler = async (req, reply) => {
             req.log.error({ error }, '[conductor-restart] autoReboot failed');
           });
         });
-      } else {
-        // If no IDs provided, get all services from compose file
-        const allServiceIds =
-          requestIds.length === 0
-            ? await readComposeFile({ raw: true }).then(composeJson => {
-                const services = fetchAllServicesInCompose(composeJson, true);
-                req.log.debug(
-                  `No IDs provided for restart, restarting all services: ${services.join(', ')}`,
-                );
-                return services;
-              })
-            : requestIds;
 
-        // Separate conductor from other services
-        const hasConductor = allServiceIds.includes(CONDUCTOR_SERVICE);
-        const idsToRestart = allServiceIds.filter(
-          serviceName => serviceName !== CONDUCTOR_SERVICE,
-        );
-
-        // Restart all services except conductor
-        const results = await Promise.allSettled(idsToRestart.map(action));
-
-        req.log.debug(
-          `Container action ${containerAction}: ${JSON.stringify(results)}`,
-        );
-
-        // Build response with all results
-        const serviceContainers: ReadonlyArray<DoContainersActionItem> =
-          results.map((result, index) => ({
-            id: idsToRestart[index],
-            status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
-            message:
-              result.status === 'fulfilled'
-                ? result.value
-                : describeFailure(result.reason),
-          }));
-
-        // If conductor needs restart, add it to response and trigger restart
-        if (hasConductor) {
-          const containers: ReadonlyArray<DoContainersActionItem> = [
-            ...serviceContainers,
-            {
-              id: CONDUCTOR_SERVICE,
-              status: 'OK',
-              message: `Conductor ${CONDUCTOR_SERVICE} restart initiated.`,
-            },
-          ];
-
-          req.log.info(
-            { service: CONDUCTOR_SERVICE },
-            '[conductor-restart] triggering conductor restart',
-          );
-
-          // Enable update mode to block incoming requests during conductor restart
-          enableUpdateMode();
-
-          reply.code(200);
-          reply.send({
-            success: true,
-            data: { containers },
-          });
-
-          // Wrap in setImmediate to send response before conductor dies
-          setImmediate(() => {
-            autoReboot({
-              hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
-              serviceName: CONDUCTOR_SERVICE,
-              helperImage: isWindows ? helperImageWindows : 'docker:cli',
-              log: msg =>
-                req.log.info({ msg }, '[conductor-restart] restart log'),
-            }).catch(error => {
-              req.log.error({ error }, '[conductor-restart] autoReboot failed');
-            });
-          });
-        } else {
-          reply.code(200);
-          reply.send({
-            success: true,
-            data: { containers: serviceContainers },
-          });
-        }
+        return ok({
+          success: true,
+          data: {
+            containers: [
+              {
+                id: CONDUCTOR_SERVICE,
+                status: 'OK',
+                message: `Conductor ${CONDUCTOR_SERVICE} restart initiated.`,
+              },
+            ],
+          },
+        });
       }
-    } else {
-      const results = await Promise.allSettled(requestIds.map(action));
+
+      // If no IDs provided, get all services from compose file
+      const allServiceIds =
+        requestIds.length === 0
+          ? await readComposeFile({ raw: true }).then(composeJson => {
+              const services = fetchAllServicesInCompose(composeJson, true);
+              req.log.debug(
+                `No IDs provided for restart, restarting all services: ${services.join(', ')}`,
+              );
+              return services;
+            })
+          : requestIds;
+
+      // Separate conductor from other services
+      const hasConductor = allServiceIds.includes(CONDUCTOR_SERVICE);
+      const idsToRestart = allServiceIds.filter(
+        serviceName => serviceName !== CONDUCTOR_SERVICE,
+      );
+
+      // Restart all services except conductor
+      const results = await Promise.allSettled(idsToRestart.map(action));
 
       req.log.debug(
         `Container action ${containerAction}: ${JSON.stringify(results)}`,
       );
 
-      reply.code(200);
-      reply.send({
-        success: true,
-        data: {
-          containers: results.map((result, index) => ({
-            id: requestIds[index],
-            status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
-            message:
-              result.status === 'fulfilled'
-                ? result.value
-                : describeFailure(result.reason),
-          })),
+      // Build response with all results
+      const serviceContainers: ReadonlyArray<DoContainersActionItem> =
+        results.map((result, index) => ({
+          id: idsToRestart[index],
+          status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
+          message:
+            result.status === 'fulfilled'
+              ? result.value
+              : describeFailure(result.reason),
+        }));
+
+      if (!hasConductor) {
+        return ok({ success: true, data: { containers: serviceContainers } });
+      }
+
+      // The conductor needs a restart too: add it to the response and trigger it
+      const containers: ReadonlyArray<DoContainersActionItem> = [
+        ...serviceContainers,
+        {
+          id: CONDUCTOR_SERVICE,
+          status: 'OK',
+          message: `Conductor ${CONDUCTOR_SERVICE} restart initiated.`,
         },
+      ];
+
+      req.log.info(
+        { service: CONDUCTOR_SERVICE },
+        '[conductor-restart] triggering conductor restart',
+      );
+
+      // Enable update mode to block incoming requests during conductor restart
+      enableUpdateMode();
+
+      // Wrap in setImmediate to send response before conductor dies
+      setImmediate(() => {
+        autoReboot({
+          hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
+          serviceName: CONDUCTOR_SERVICE,
+          helperImage: isWindows ? helperImageWindows : 'docker:cli',
+          log: msg => req.log.info({ msg }, '[conductor-restart] restart log'),
+        }).catch(error => {
+          req.log.error({ error }, '[conductor-restart] autoReboot failed');
+        });
       });
+
+      return ok({ success: true, data: { containers } });
     }
+
+    const results = await Promise.allSettled(requestIds.map(action));
+
+    req.log.debug(
+      `Container action ${containerAction}: ${JSON.stringify(results)}`,
+    );
+
+    return ok({
+      success: true,
+      data: {
+        containers: results.map((result, index) => ({
+          id: requestIds[index],
+          status: result.status === 'fulfilled' ? 'OK' : 'ERROR',
+          message:
+            result.status === 'fulfilled'
+              ? result.value
+              : describeFailure(result.reason),
+        })),
+      },
+    });
   } catch (error) {
     req.log.error(
       `Error do containers action: ${
@@ -498,16 +495,20 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     const outbound = await buildOutboundErrorReply(error);
 
     if (outbound) {
-      reply.code(outbound.statusCode);
-      reply.send({
-        ...outbound.body,
-        // Keeps the established title for this action while `diagnosis` carries the cause.
-        error: 'Failed to do containers action',
-        details: [outbound.body.diagnosis.fallback.title, outbound.body.details]
-          .filter(Boolean)
-          .join(' - '),
-      });
-      return;
+      return {
+        statusCode: outbound.statusCode,
+        body: {
+          ...outbound.body,
+          // Keeps the established title for this action while `diagnosis` carries the cause.
+          error: 'Failed to do containers action',
+          details: [
+            outbound.body.diagnosis.fallback.title,
+            outbound.body.details,
+          ]
+            .filter(Boolean)
+            .join(' - '),
+        },
+      };
     }
 
     if (axios.isAxiosError(error)) {
@@ -529,24 +530,59 @@ const handler: DoContainersActionHandler = async (req, reply) => {
         return axiosError.message;
       })();
 
-      reply.code(axiosError.response?.status ?? 500);
-      reply.send({
-        success: false,
-        error: 'Failed to do containers action',
-        details,
-      });
-      return;
+      return {
+        statusCode: axiosError.response?.status ?? 500,
+        body: {
+          success: false,
+          error: 'Failed to do containers action',
+          details,
+        },
+      };
     }
 
-    reply.code(500);
+    return {
+      statusCode: 500,
+      body: {
+        success: false,
+        error: 'Failed to do containers action',
+        details: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+};
+
+const handler: DoContainersActionHandler = async (req, reply) => {
+  const entry = gate.enter(
+    { action: req.body.action, ids: req.body.ids || [] },
+    () => perform(req),
+  );
+
+  if (entry.kind === 'busy') {
+    const { running } = entry;
+    req.log.warn(
+      { running, requested: req.body.action, ids: req.body.ids },
+      '[containers-action] refused: a different container action is running',
+    );
+    reply.header('Retry-After', RETRY_AFTER_SECONDS);
+    reply.code(409);
     reply.send({
       success: false,
-      error: 'Failed to do containers action',
-      details: error instanceof Error ? error.message : String(error),
+      error: 'Another container action is in progress',
+      details: `"${running.action}" started at ${running.since}; try again when it has finished`,
     });
-  } finally {
-    actionLock.delete('current');
+    return;
   }
+
+  if (entry.kind === 'joined') {
+    req.log.info(
+      { running: entry.running },
+      '[containers-action] same action already running: waiting for its result',
+    );
+  }
+
+  const outcome = await entry.outcome;
+  reply.code(outcome.statusCode);
+  reply.send(outcome.body);
 };
 
 export default handler;

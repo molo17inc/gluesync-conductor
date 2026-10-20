@@ -343,6 +343,35 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
             },
           },
         },
+        409: {
+          description:
+            'A different container action is already running (one at a time). A retry of the same action on the same ids joins the running one instead. The Retry-After header says when to ask again.',
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', const: false },
+            error: { type: 'string', description: 'Error message' },
+            details: {
+              type: 'string',
+              description: 'Which action is running and since when',
+            },
+          },
+          additionalProperties: false,
+        },
+        503: {
+          description:
+            'The conductor is updating itself (only restart is accepted until it is back), or the MOLO17 update service is down. `diagnosis.owner` tells which.',
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', const: false },
+            error: { type: 'string', description: 'Error message' },
+            details: {
+              type: 'string',
+              description: 'Additional error details',
+            },
+            diagnosis: { type: 'object', additionalProperties: true },
+          },
+          additionalProperties: true,
+        },
         500: {
           type: 'object',
           properties: {

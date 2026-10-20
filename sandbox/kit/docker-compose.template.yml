@@ -154,8 +154,11 @@ services:
     ports:
       - 80:80
       - 443:443
+      - {{PORT_PROXY}}:80
     environment:
       - FAKE_PORT=80
+      # The fake proxies /conductor/api/ to the conductor like the real Traefik does.
+      - FAKE_PROXY_TARGET=https://gluesync-conductor:1717
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./proxy/traefik.yml:/etc/traefik/traefik.yml:ro

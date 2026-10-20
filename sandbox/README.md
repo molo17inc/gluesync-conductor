@@ -28,7 +28,7 @@ Reports are written to `sandbox/reports/<timestamp>-seed<N>/`:
 |---|---|
 | Conductor | **Real**: image built from `packages/gluesync-conductor/build`, re-tagged per version so it can self-update |
 | CoreHub | Fake (`fakes/fake.mjs`, role `corehub`): WSS `/ext-module` handshake (Module-License / Module-Tag, token, ping/pong), `/authentication/login`, `/authentication/me`, `/authentication/logout`, sessions persisted across restarts |
-| Chronos, agent, traefik, prometheus, grafana, portainer | Fake: same image names, labels, volumes and `command:` as the default kit, one tiny Node process each |
+| Chronos, agent, traefik, prometheus, grafana, portainer | Fake: same image names, labels, volumes and `command:` as the default kit, one tiny Node process each. The fake traefik forwards `/conductor/api/` to the conductor, as the real one does for the UI |
 | api.backoffice.molo17.com | Fake, reached through the conductor's own `PROXY_HTTPS` support (an authenticating CONNECT proxy) and trusted with `NODE_EXTRA_CA_CERTS` |
 | Docker Hub | Local registry `localhost:5000` inside the sandbox daemon; one image per service per version |
 | Docker API | The conductor's `DOCKER_HOST` points at a pass-through socket proxy that can delay or refuse connections |
@@ -63,6 +63,7 @@ The kit (`kit/docker-compose.template.yml`) mirrors `debug-container/linux/docke
 | conductor-crash-mid-update | SIGKILL right after the conductor rewrites the compose file |
 | full-restart | "restart all" (helper container: pull, down, up) |
 | compose-customization | customer env var, `$$` label and comment added before the update |
+| ui-sequence | no fault; drives the update like the Core Hub UI's modal instead of "update all": one request per service in the UI's order, through the reverse proxy, with the UI's auto-retries (3, after 2s/4s/8s), then a manual Retry if it halted (`lib/uiDriver.mjs`) |
 | conductor-bad-release | *(only with `--destructive`)* the new conductor image crashes on start |
 
 Pick profiles with `--profiles a,b`. Replay a run with the same `--seed`.
@@ -74,5 +75,6 @@ Pick profiles with `--profiles a,b`. Replay a run with the same `--seed`.
 | 23750 | sandbox Docker API (`DOCKER_HOST=tcp://127.0.0.1:23750 docker ps`) |
 | 5317 | conductor API (`https`, sandbox CA in `run/kit/shared/sandbox-ca.pem`) |
 | 5318 | fake CoreHub (log in with `admin`/`admin`, `viewer`/`viewer`, …) |
+| 5319 | fake reverse proxy (`http`): `/conductor/api/...` reaches the conductor the way the UI does |
 | 8088 | fake backoffice admin (`x-sandbox-admin` header) |
 | 8089 | Docker socket proxy admin |
