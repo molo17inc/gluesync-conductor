@@ -64,39 +64,50 @@ const afterRestartable = async (service, state, before) => {
   return {};
 };
 
+const describeAttempt = (label, r, failure) => {
+  const took = `${(r.ms / 1000).toFixed(1)}s`;
+  const why = failure ? `: ${failure.message}` : '';
+  return `  ${label} -> ${r.status || r.error} in ${took}${why}`;
+};
+
+// One POST per attempt, with the UI's backoff, until the service updates or the
+// automatic retries run out. Records every attempt on `step` and sets its outcome.
+const tryUpdate = async (it, service, state, round, tag, step, attempt) => {
+  const retrySuffix = attempt ? ` retry ${attempt}` : '';
+  const label = `update round ${round} ${tag}${service}${retrySuffix}`;
+  const r = await callConductor(it, label, 'POST', '/containers', {
+    token: state.token,
+    body: { action: 'update', ids: [service], releaseChannel: 'ga' },
+    timeoutMs: 600000,
+    via: 'proxy',
+  });
+  const failure = failureOf(r);
+  step.attempts.push({
+    attempt,
+    at: now(),
+    status: r.status,
+    ms: r.ms,
+    ...(failure ? { error: failure.message, diagnosis: failure.diagnosis?.code } : {}),
+  });
+  say(describeAttempt(label, r, failure));
+  if (!failure) {
+    step.outcome = 'success';
+    return;
+  }
+  if (attempt < MAX_AUTO_RETRIES && shouldRetryUpdate(failure.diagnosis)) {
+    await sleep(2 ** attempt * DELAY_RETRY_MS);
+    await tryUpdate(it, service, state, round, tag, step, attempt + 1);
+    return;
+  }
+  step.outcome = 'failed';
+  step.error = failure.message;
+  step.status = r.status;
+};
+
 const updateOne = async (it, service, state, round, tag) => {
   const step = { service, startedAt: now(), attempts: [], outcome: 'pending' };
   const before = await runningContainer(service);
-  for (let attempt = 0; ; attempt += 1) {
-    const label = `update round ${round} ${tag}${service}${attempt ? ` retry ${attempt}` : ''}`;
-    const r = await callConductor(it, label, 'POST', '/containers', {
-      token: state.token,
-      body: { action: 'update', ids: [service], releaseChannel: 'ga' },
-      timeoutMs: 600000,
-      via: 'proxy',
-    });
-    const failure = failureOf(r);
-    step.attempts.push({
-      attempt,
-      at: now(),
-      status: r.status,
-      ms: r.ms,
-      ...(failure ? { error: failure.message, diagnosis: failure.diagnosis?.code } : {}),
-    });
-    say(`  ${label} -> ${r.status || r.error} in ${(r.ms / 1000).toFixed(1)}s${failure ? `: ${failure.message}` : ''}`);
-    if (!failure) {
-      step.outcome = 'success';
-      break;
-    }
-    if (attempt < MAX_AUTO_RETRIES && shouldRetryUpdate(failure.diagnosis)) {
-      await sleep(2 ** attempt * DELAY_RETRY_MS);
-      continue;
-    }
-    step.outcome = 'failed';
-    step.error = failure.message;
-    step.status = r.status;
-    break;
-  }
+  await tryUpdate(it, service, state, round, tag, step, 0);
   if (step.outcome === 'success' && RESTARTABLE.has(service)) {
     try {
       Object.assign(step, await afterRestartable(service, state, before));
@@ -117,6 +128,7 @@ const updateOne = async (it, service, state, round, tag) => {
   return step;
 };
 
+// One service after the other, as the modal does; stops at the first failure.
 const runSequence = async (ctx, it, services, state, startRound, tag) => {
   const steps = [];
   let round = startRound;
@@ -160,7 +172,7 @@ export const driveLikeUi = async (ctx, it, target) => {
 export const uiChecks = (it, post, target) => {
   const ui = it.ui;
   if (!ui) return [];
-  const result = (id, ok, detail, severity = 'fail', evidence) => ({
+  const result = (id, ok, detail, { severity = 'fail', evidence } = {}) => ({
     area: 'errors',
     id,
     ok,
@@ -179,34 +191,21 @@ export const uiChecks = (it, post, target) => {
     .filter(s => s.outcome === 'failed')
     .filter(s => post.byService[s.service]?.tag === target[s.service]);
 
+  const cutList = cut.map(a => `${a.service} attempt ${a.attempt}: ${a.error} after ${a.ms}ms`).join(' | ');
+  const conflictList = [...new Set(conflicts.map(a => `${a.service}: ${a.error}`))].join(' | ');
+  const spuriousList = spurious.map(s => `${s.service} updated to ${target[s.service]} but the user saw "Update failed": ${s.error}`).join(' | ');
+  const retryOutcome = ui.manualRetry?.halted ? `halted at ${ui.manualRetry.halted}` : 'completed';
+  const haltedDetail = `halted at ${ui.halted}; ${failed.length} failed step(s); manual Retry ${retryOutcome}`;
+
   return [
-    result(
-      'errors.ui-request-cut',
-      cut.length === 0,
-      cut.length ? cut.map(a => `${a.service} attempt ${a.attempt}: ${a.error} after ${a.ms}ms`).join(' | ') : 'no UI request lost its connection',
-      'info',
-    ),
+    result('errors.ui-request-cut', cut.length === 0, cut.length ? cutList : 'no UI request lost its connection', { severity: 'info' }),
     result(
       'errors.ui-action-lock-409',
       conflicts.length === 0,
-      conflicts.length
-        ? `the UI's retry was refused by the action lock: ${[...new Set(conflicts.map(a => `${a.service}: ${a.error}`))].join(' | ')}`
-        : 'no retry hit the action lock',
-      'fail',
-      conflicts.map(a => ({ service: a.service, attempt: a.attempt, at: a.at, error: a.error })),
+      conflicts.length ? `the UI's retry was refused by the action lock: ${conflictList}` : 'no retry hit the action lock',
+      { evidence: conflicts.map(a => ({ service: a.service, attempt: a.attempt, at: a.at, error: a.error })) },
     ),
-    result(
-      'errors.ui-spurious-failure',
-      spurious.length === 0,
-      spurious.length
-        ? spurious.map(s => `${s.service} updated to ${target[s.service]} but the user saw "Update failed": ${s.error}`).join(' | ')
-        : 'every failure the user saw was a real one',
-    ),
-    result(
-      'errors.ui-sequence-halted',
-      ui.halted === null,
-      ui.halted ? `halted at ${ui.halted}; ${failed.length} failed step(s); manual Retry ${ui.manualRetry?.halted ? `halted at ${ui.manualRetry.halted}` : 'completed'}` : 'the sequence ran through',
-      'warn',
-    ),
+    result('errors.ui-spurious-failure', spurious.length === 0, spurious.length ? spuriousList : 'every failure the user saw was a real one'),
+    result('errors.ui-sequence-halted', ui.halted === null, ui.halted ? haltedDetail : 'the sequence ran through', { severity: 'warn' }),
   ];
 };

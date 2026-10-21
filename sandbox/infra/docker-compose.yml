@@ -33,6 +33,9 @@ services:
   dockerproxy:
     image: conductor-sandbox/fake-base:dev
     restart: unless-stopped
+    # The only fake that needs root: it opens the daemon's own socket (root:docker)
+    # and publishes its own in /var/run/sandbox-sock.
+    user: root
     environment:
       - FAKE_ROLE=dockerproxy
       - FAKE_SERVICE=dockerproxy

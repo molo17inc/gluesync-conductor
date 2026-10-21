@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { env, SERVICES, versionsFor } from './env.mjs';
-import { docker, mustDocker, mustRun, request, run, say, waitFor, writeJson } from './util.mjs';
+import { docker, dockerBin, mustDocker, mustRun, request, run, say, waitFor, writeJson } from './util.mjs';
 
 const kit = (...p) => path.join(env.kitDir, ...p);
 const pushedFile = () => path.join(env.stateDir, 'pushed-images.json');
@@ -25,7 +25,7 @@ const infraCompose = (args, opts = {}) =>
 // ---------------------------------------------------------------- dind
 
 export const dindRunning = async () => {
-  const r = await run('docker', ['inspect', '-f', '{{.State.Running}}', env.dindName]);
+  const r = await run(dockerBin(), ['inspect', '-f', '{{.State.Running}}', env.dindName]);
   return r.code === 0 && r.out === 'true';
 };
 
@@ -34,10 +34,10 @@ const startDind = async () => {
     say('sandbox daemon already running');
     return;
   }
-  await run('docker', ['rm', '-f', env.dindName]);
+  await run(dockerBin(), ['rm', '-f', env.dindName]);
   const publish = [env.dockerPort, ...Object.values(env.ports)].flatMap(p => ['-p', `127.0.0.1:${p}:${p === env.dockerPort ? 2375 : p}`]);
   say('starting isolated Docker-in-Docker daemon', { image: env.dindImage });
-  await mustRun('docker', [
+  await mustRun(dockerBin(), [
     'run', '-d', '--privileged', '--name', env.dindName, '--hostname', 'sandbox-host',
     '-e', 'DOCKER_TLS_CERTDIR=',
     ...publish,
@@ -147,10 +147,13 @@ const buildBases = async () => {
   say('building conductor image from packages/gluesync-conductor/build');
   await mustDocker(['build', '-q', '-t', env.conductorBase, env.conductorPkgDir], { timeoutMs: 600000 });
   // Keeper containers stop the conductor's post-update image prune from deleting the bases.
-  for (const [name, image] of [['keep-conductor-base', env.conductorBase], ['keep-fake-base', env.fakeBase]]) {
-    await docker(['rm', '-f', name]);
-    await mustDocker(['create', '--name', name, image]);
-  }
+  const keepers = [['keep-conductor-base', env.conductorBase], ['keep-fake-base', env.fakeBase]];
+  await Promise.all(
+    keepers.map(async ([name, image]) => {
+      await docker(['rm', '-f', name]);
+      await mustDocker(['create', '--name', name, image]);
+    }),
+  );
 };
 
 export const imageRef = (service, version) => `${env.registry}/${SERVICES[service].image}:${version}`;
@@ -185,13 +188,15 @@ export const ensureImage = async (service, version, { crash = false } = {}) => {
 export const ensureImages = async (versions, { skip = [], crash = [] } = {}) => {
   const jobs = Object.entries(versions).filter(([s]) => !skip.includes(s));
   const queue = [...jobs];
-  const workers = Array.from({ length: 4 }, async () => {
-    while (queue.length) {
-      const [service, version] = queue.shift();
-      await ensureImage(service, version, { crash: crash.includes(service) });
-    }
-  });
-  await Promise.all(workers);
+  // Each worker takes the next job until the queue is empty.
+  const drain = async () => {
+    const next = queue.shift();
+    if (!next) return;
+    const [service, version] = next;
+    await ensureImage(service, version, { crash: crash.includes(service) });
+    await drain();
+  };
+  await Promise.all(Array.from({ length: 4 }, drain));
 };
 
 // ---------------------------------------------------------------- lifecycle
@@ -238,8 +243,8 @@ export const up = async ({ fresh = false } = {}) => {
 
 export const down = async ({ purge = false } = {}) => {
   say('removing sandbox daemon (everything inside it goes with it)');
-  await run('docker', ['rm', '-f', env.dindName]);
-  await run('docker', ['volume', 'rm', '-f', env.dindVolume]);
+  await run(dockerBin(), ['rm', '-f', env.dindName]);
+  await run(dockerBin(), ['volume', 'rm', '-f', env.dindVolume]);
   if (purge) {
     fs.rmSync(env.runDir, { recursive: true, force: true });
     say('removed run/ (reports are kept)');

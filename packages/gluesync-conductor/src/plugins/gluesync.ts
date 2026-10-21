@@ -131,12 +131,13 @@ async function gluesyncPlugin(
     retryCell.set('timer', timer);
   };
 
-  fastify.addHook('onClose', async () => {
+  fastify.addHook('onClose', (_instance: unknown, hookDone: () => void) => {
     retryCell.set('stopped', true);
     const timer = retryCell.get('timer');
     if (timer && typeof timer !== 'boolean') {
       clearTimeout(timer);
     }
+    hookDone();
   });
 
   fastify.log.info('Initializing Gluesync SDK client...');

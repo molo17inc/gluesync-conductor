@@ -9,9 +9,19 @@ import { ActionGate, ActionOutcome, RunningAction } from './actionGate.model';
 // connection (updating the reverse proxy cuts the UI's own request through
 // it). It joins the running action and gets its result instead of a refusal.
 
-const sameIds = (a: ReadonlyArray<string>, b: ReadonlyArray<string>): boolean =>
-  a.length === b.length &&
-  [...a].sort().every((id, index) => id === [...b].sort()[index]);
+const sortedIds = (ids: ReadonlyArray<string>): ReadonlyArray<string> =>
+  [...ids].sort((a, b) => a.localeCompare(b));
+
+const sameIds = (
+  a: ReadonlyArray<string>,
+  b: ReadonlyArray<string>,
+): boolean => {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const sortedB = sortedIds(b);
+  return sortedIds(a).every((id, index) => id === sortedB[index]);
+};
 
 const createActionGate = <Body>(
   options?: Readonly<{ onThrow: (error: unknown) => ActionOutcome<Body> }>,
