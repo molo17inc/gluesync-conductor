@@ -3,7 +3,7 @@
 // slow ones (revocation window, CoreHub outage, hang) only on "deep" iterations.
 
 import { callConductor, corehub } from './stack.mjs';
-import { sleep } from './util.mjs';
+import { sleep, waitFor } from './util.mjs';
 
 const NONEXISTENT = '__sandbox_nonexistent_service__';
 
@@ -69,16 +69,12 @@ const deepSessionChecks = async (check, call, admin) => {
   const revoked = await corehub.login('admin');
   await call('pre-revoke use', 'GET', '/services', { token: revoked });
   await corehub.admin('/__sandbox/revoke', { token: revoked });
-  const revokedAt = Date.now();
-  let acceptedForMs = null;
-  while (Date.now() - revokedAt < 45000) {
-    const r = await call('after revoke', 'GET', '/services', { token: revoked });
-    if (r.status === 401) {
-      acceptedForMs = Date.now() - revokedAt;
-      break;
-    }
-    await sleep(2000);
-  }
+  const rejected = await waitFor(
+    'revoked token rejected',
+    async () => (await call('after revoke', 'GET', '/services', { token: revoked })).status === 401,
+    { timeoutMs: 45000, intervalMs: 2000 },
+  );
+  const acceptedForMs = rejected.ok ? rejected.ms : null;
   check(
     'session.revocation-window',
     acceptedForMs !== null && acceptedForMs <= 7000,

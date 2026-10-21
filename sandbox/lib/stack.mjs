@@ -3,7 +3,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import YAML from 'yaml';
 import { env } from './env.mjs';
-import { describeState, docker, now, request, sleep, waitFor } from './util.mjs';
+import { describeState, docker, dockerBin, now, request, sleep, waitFor } from './util.mjs';
 
 // ---------------------------------------------------------------- HTTP clients
 
@@ -162,33 +162,41 @@ export const waitConductor = async ({ notId, tag, timeoutMs = 240000 } = {}) =>
 
 // Waits until nothing in the kit is starting/restarting and the conductor answers
 // authenticated reads (no update-mode 503). Returns what was still unsettled.
-export const settle = async (ctx, token, { timeoutMs = 180000, ignore = [] } = {}) => {
-  let stableFor = 0;
-  let last = null;
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    const list = await containers();
-    // The conductor's self-update helper keeps verifying for up to ~2 minutes.
-    const helpers = (await strayContainers()).filter(c => c.state === 'running');
-    const unsettled = [
-      ...list
-        .filter(c => !ignore.includes(c.service))
-        .filter(c => c.state !== 'running' || (c.health && c.health !== 'healthy')),
-      ...helpers.map(h => ({ service: `helper ${h.name}`, state: h.image, health: null })),
-    ];
-    const h = await health();
-    const svc = h.status === 200 ? await callConductor(null, 'settle', 'GET', '/services', { token, timeoutMs: 10000 }) : null;
-    last = {
+// One look at the kit: what is not running/healthy, and whether the conductor answers.
+const observeStack = async (token, ignore) => {
+  const list = await containers();
+  // The conductor's self-update helper keeps verifying for up to ~2 minutes.
+  const helpers = (await strayContainers()).filter(c => c.state === 'running');
+  const unsettled = [
+    ...list
+      .filter(c => !ignore.includes(c.service))
+      .filter(c => c.state !== 'running' || (c.health && c.health !== 'healthy')),
+    ...helpers.map(h => ({ service: `helper ${h.name}`, state: h.image, health: null })),
+  ];
+  const h = await health();
+  const svc = h.status === 200 ? await callConductor(null, 'settle', 'GET', '/services', { token, timeoutMs: 10000 }) : null;
+  return {
+    ok: unsettled.length === 0 && h.status === 200 && svc?.status === 200,
+    seen: {
       unsettled: unsettled.map(c => `${c.service}:${describeState(c)}`),
       health: h.status || h.error,
       services: svc?.status,
-    };
-    const ok = unsettled.length === 0 && h.status === 200 && svc?.status === 200;
-    stableFor = ok ? stableFor + 1 : 0;
-    if (stableFor >= 2) return { ok: true, ms: Date.now() - started, last };
+    },
+  };
+};
+
+export const settle = async (ctx, token, { timeoutMs = 180000, ignore = [] } = {}) => {
+  const started = Date.now();
+  // Settled means two consecutive clean looks, 3s apart.
+  const probe = async (stableFor, last) => {
+    if (Date.now() - started >= timeoutMs) return { ok: false, ms: Date.now() - started, last };
+    const { ok, seen } = await observeStack(token, ignore);
+    const stable = ok ? stableFor + 1 : 0;
+    if (stable >= 2) return { ok: true, ms: Date.now() - started, last: seen };
     await sleep(3000);
-  }
-  return { ok: false, ms: Date.now() - started, last };
+    return probe(stable, seen);
+  };
+  return probe(0, null);
 };
 
 // ---------------------------------------------------------------- log collection
@@ -218,7 +226,8 @@ export class LogCollector {
       }
       if (!this.stopped) this.timer = setTimeout(tick, 2000);
     };
-    tick();
+    // tick never rejects: it catches the daemon errors itself.
+    void tick();
   }
 
   follow(c) {
@@ -228,7 +237,7 @@ export class LogCollector {
     // docker logs -f ends when the container stops; a Docker restart keeps the id,
     // so the follow is resumed from the last line seen.
     const args = ['logs', '-f', '--timestamps', ...(resumeFrom ? ['--since', resumeFrom] : []), c.id];
-    const child = spawn('docker', args, {
+    const child = spawn(dockerBin(), args, {
       env: { ...process.env, DOCKER_HOST: env.dockerHost },
       stdio: ['ignore', 'pipe', 'pipe'],
     });

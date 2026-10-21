@@ -4,6 +4,8 @@ Runs the **real conductor** (built from this repo) against fake versions of ever
 
 Nothing touches your own Docker. The whole sandbox runs inside one isolated Docker-in-Docker container. That matters, because after every update the conductor prunes **all** unused images on its host.
 
+The runner calls the `docker` CLI by absolute path (`/usr/local/bin`, `/usr/bin` or `/bin`); set `SANDBOX_DOCKER_BIN` if yours lives elsewhere.
+
 ## Quick start
 
 ```bash
