@@ -27,23 +27,27 @@ WORKDIR C:\opt\gluesync-conductor
 # Switch default shell to PowerShell 7 for runtime stage
 SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
 
-# Install Docker CLI + Compose in one layer
-RUN Invoke-WebRequest -Uri https://download.docker.com/win/static/stable/x86_64/docker-29.9.2.zip -OutFile C:/docker.zip; `
+# Install Docker CLI + Compose, then remove npm, npx, corepack and the yarn/pnpm
+# shims (plus the bundled npm dependencies and the corepack cache) from C:\nodejs:
+# the runtime only runs `node index.js`, so they are only CVE surface
+RUN $dockerZip = 'https://download.docker.com/win/static/stable/x86_64/docker-29.9.2.zip'; `
+  $composeExe = 'https://github.com/docker/compose/releases/download/v5.6.1/docker-compose-windows-x86_64.exe'; `
+  Invoke-WebRequest -Uri $dockerZip -OutFile C:/docker.zip; `
   Expand-Archive -Path C:/docker.zip -DestinationPath C:/docker; `
   Copy-Item 'C:/docker/docker/docker.exe' 'C:/Windows/System32/docker.exe'; `
   Remove-Item 'C:/docker' -Recurse -Force; `
   Remove-Item 'C:/docker.zip' -Force; `
-  Invoke-WebRequest -Uri https://github.com/docker/compose/releases/download/v5.6.1/docker-compose-windows-x86_64.exe -OutFile C:/Windows/System32/docker-compose.exe
-
-# The runtime only runs `node index.js`: remove npm, npx, corepack and the yarn/pnpm
-# shims (plus the bundled npm dependencies and the corepack cache) from C:\nodejs
-# to drop their CVE surface from the image
-RUN $nodeDir = 'C:\nodejs'; `
+  Invoke-WebRequest -Uri $composeExe -OutFile C:/Windows/System32/docker-compose.exe; `
+  $nodeDir = 'C:\nodejs'; `
   foreach ($name in 'npm', 'npx', 'corepack', 'yarn', 'yarnpkg', 'pnpm', 'pnpx') { `
-  Get-ChildItem -Path $nodeDir -Filter "$name*" -File -ErrorAction SilentlyContinue | Remove-Item -Force `
+  Get-ChildItem -Path $nodeDir -Filter "$name*" -File -ErrorAction SilentlyContinue | `
+  Remove-Item -Force `
   }; `
-  Remove-Item -Path "$nodeDir\node_modules\npm", "$nodeDir\node_modules\corepack" -Recurse -Force -ErrorAction SilentlyContinue; `
-  Remove-Item -Path "$env:LOCALAPPDATA\node\corepack", 'C:\Users\ContainerAdministrator\AppData\Local\node\corepack' -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue -Path `
+  "$nodeDir\node_modules\npm", `
+  "$nodeDir\node_modules\corepack", `
+  "$env:LOCALAPPDATA\node\corepack", `
+  'C:\Users\ContainerAdministrator\AppData\Local\node\corepack'
 
 # Environment variables (one per line)
 ENV NODE_ENV=production
