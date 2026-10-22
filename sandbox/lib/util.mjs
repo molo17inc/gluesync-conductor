@@ -72,8 +72,20 @@ export const mustRun = async (cmd, args, opts = {}) => {
   return r;
 };
 
-export const docker = (args, opts = {}) => run('docker', args, { ...opts, docker: true });
-export const mustDocker = (args, opts = {}) => mustRun('docker', args, { ...opts, docker: true });
+// The docker CLI by absolute path, from fixed system directories rather than
+// whatever PATH holds. SANDBOX_DOCKER_BIN overrides it.
+const DOCKER_BIN_CANDIDATES = ['/usr/local/bin/docker', '/usr/bin/docker', '/bin/docker'];
+let dockerBinCache = null;
+export const dockerBin = () => {
+  if (!dockerBinCache) {
+    dockerBinCache = [process.env.SANDBOX_DOCKER_BIN, ...DOCKER_BIN_CANDIDATES].filter(Boolean).find(p => fs.existsSync(p));
+    if (!dockerBinCache) throw new Error(`docker CLI not found in ${DOCKER_BIN_CANDIDATES.join(', ')}; set SANDBOX_DOCKER_BIN`);
+  }
+  return dockerBinCache;
+};
+
+export const docker = (args, opts = {}) => run(dockerBin(), args, { ...opts, docker: true });
+export const mustDocker = (args, opts = {}) => mustRun(dockerBin(), args, { ...opts, docker: true });
 
 // JSON-over-HTTP(S) with the sandbox CA. Never throws: errors come back in the result.
 export const request = (url, { method = 'GET', headers = {}, body, timeoutMs = 15000 } = {}) =>
@@ -114,20 +126,27 @@ export const request = (url, { method = 'GET', headers = {}, body, timeoutMs = 1
     req.end();
   });
 
+// Polls `fn` until it returns something truthy or the time is up. `last` in a
+// timeout is what the last probe returned (or the message of what it threw).
 export const waitFor = async (label, fn, { timeoutMs = 60000, intervalMs = 2000 } = {}) => {
   const started = Date.now();
-  let last;
-  while (Date.now() - started < timeoutMs) {
-    try {
-      last = await fn();
-      if (last) return { ok: true, value: last, ms: Date.now() - started };
-    } catch (e) {
-      last = e.message;
-    }
+  const probe = async last => {
+    if (Date.now() - started >= timeoutMs) return { ok: false, label, last, ms: Date.now() - started };
+    const seen = await fn().then(value => ({ value, threw: false }), e => ({ value: e.message, threw: true }));
+    if (seen.value && !seen.threw) return { ok: true, value: seen.value, ms: Date.now() - started };
     await sleep(intervalMs);
-  }
-  return { ok: false, label, last, ms: Date.now() - started };
+    return probe(seen.value);
+  };
+  return probe(undefined);
 };
+
+// Runs `fn` on each item one after the other, for callers whose order matters or
+// whose target must not be hit concurrently. Resolves to the results in order.
+export const inSequence = (items, fn) =>
+  items.reduce(async (previous, item, index) => {
+    const results = await previous;
+    return [...results, await fn(item, index)];
+  }, Promise.resolve([]));
 
 // Small deterministic PRNG so a run can be replayed with --seed.
 export const rng = seed => {

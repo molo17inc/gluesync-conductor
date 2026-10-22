@@ -8,7 +8,7 @@ import { driveLikeUi, uiChecks } from './uiDriver.mjs';
 import { sessionSuite } from './sessions.mjs';
 import { runChecks } from './checks.mjs';
 import { writeReport } from './report.mjs';
-import { describeState, docker, now, rng, say, setLogFile, shuffle, sleep, waitFor, writeJson } from './util.mjs';
+import { describeState, docker, inSequence, now, rng, say, setLogFile, shuffle, sleep, waitFor, writeJson } from './util.mjs';
 
 const stateFile = () => path.join(env.stateDir, 'iterations.json');
 
@@ -212,9 +212,9 @@ const runIteration = async (ctx, i, profile, k) => {
     // What the UI does when the update page opens.
     await callConductor(it, 'ui: containers', 'GET', '/containers?type=all', { token: ctx.adminToken });
     await callConductor(it, 'ui: services', 'GET', '/services', { token: ctx.adminToken });
-    for (const s of Object.keys(SERVICES)) {
-      await callConductor(it, `ui: version ${s}`, 'GET', `/services/${s}/version/ga`, { token: ctx.adminToken, timeoutMs: 60000 });
-    }
+    await inSequence(Object.keys(SERVICES), s =>
+      callConductor(it, `ui: version ${s}`, 'GET', `/services/${s}/version/ga`, { token: ctx.adminToken, timeoutMs: 60000 }),
+    );
 
     const started = Date.now();
     const driver = plan.ui ? driveLikeUi : drive;
@@ -312,13 +312,13 @@ export const iterate = async ({ iterations, seed, profiles, destructive }) => {
   say(`run ${path.basename(dir)}: ${iterations} iterations, seed ${seed}`);
   say(`schedule: ${run.schedule.join(', ')}`);
 
-  for (let k = 0; k < schedule.length; k += 1) {
+  await inSequence(schedule, async (profile, k) => {
     const i = state.last + 1;
-    run.iterations.push(await runIteration(ctx, i, schedule[k], k));
+    run.iterations.push(await runIteration(ctx, i, profile, k));
     state.last = i;
     writeJson(stateFile(), state);
     writeReport(dir, run);
-  }
+  });
   run.finishedAt = now();
   collector.stop();
   const { md } = writeReport(dir, run);
