@@ -488,7 +488,10 @@ const perform = async (req: Readonly<Request>): Promise<Outcome> => {
       return await performRestart(req, action, requestIds);
     }
 
-    const results = await Promise.allSettled(requestIds.map(action));
+    const results = await Promise.allSettled(
+      // eslint-disable-next-line functional/prefer-tacit -- keep map's index and array away from action
+      requestIds.map(id => action(id)),
+    );
 
     req.log.debug(
       `Container action ${containerAction}: ${JSON.stringify(results)}`,
