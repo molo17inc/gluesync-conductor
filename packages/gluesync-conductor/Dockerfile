@@ -1,7 +1,14 @@
-FROM node:24.16.0-alpine
+FROM node:24.22.1-alpine
 
-# Install Docker CLI and tzdata for timezone support
-RUN apk add --no-cache docker-cli docker-cli-compose curl bash zip tar tzdata yq zstd xz pigz
+# Upgrade base OS packages, then install Docker CLI and tzdata for timezone support
+RUN apk upgrade --no-cache \
+  && apk add --no-cache docker-cli docker-cli-compose curl bash zip tar tzdata yq zstd xz pigz
+
+# The runtime only runs `node index.js`: drop npm, npx, corepack and yarn (and
+# their bundled dependencies) to remove their CVE surface from the image
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+    /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-*
 
 # Create Gluesync data and logs directory structure with proper permissions
 RUN mkdir -p /opt/gluesync/data /opt/gluesync/logs \
