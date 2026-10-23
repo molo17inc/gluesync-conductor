@@ -484,10 +484,26 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
         },
         502: {
           type: 'object',
+          description:
+            'The update service could not be reached or answered unexpectedly. `diagnosis` explains who is at fault and what to do.',
           properties: {
             success: { type: 'boolean', const: false },
             error: { type: 'string' },
             details: { type: 'string', nullable: true },
+            diagnosis: { type: 'object', additionalProperties: true },
+          },
+          required: ['success', 'error'],
+          additionalProperties: true,
+        },
+        503: {
+          type: 'object',
+          description:
+            'The MOLO17 update service is down, or Conductor itself is not ready (updating, Docker starting). `diagnosis.owner` tells which.',
+          properties: {
+            success: { type: 'boolean', const: false },
+            error: { type: 'string' },
+            details: { type: 'string', nullable: true },
+            diagnosis: { type: 'object', additionalProperties: true },
           },
           required: ['success', 'error'],
           additionalProperties: true,

@@ -1,0 +1,337 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://schemas.molo17.com/gluesync/diagnosis.v1.json",
+  "title": "Gluesync Diagnosis v1",
+  "description": "Structured explanation of why a request failed or what a connectivity check found. Consumers must ignore unknown fields and fall back to `fallback` for unknown codes.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "code",
+    "owner",
+    "confidence",
+    "params",
+    "resolutionCodes",
+    "fallback",
+    "checks",
+    "source",
+    "at"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "code": {
+      "type": "string",
+      "enum": [
+        "CONNECTIVITY_OK",
+        "TRANSIENT_FAILURE",
+        "CONDUCTOR_UPDATING",
+        "DOCKER_NOT_READY",
+        "COREHUB_UNAVAILABLE",
+        "PROXY_UNREACHABLE",
+        "PROXY_AUTH_REQUIRED",
+        "NO_INTERNET",
+        "DNS_FAILURE",
+        "TLS_INSPECTION",
+        "MOLO17_HOSTS_BLOCKED",
+        "BACKOFFICE_UNREACHABLE_FROM_HOST",
+        "REGISTRY_UNREACHABLE",
+        "UNEXPECTED_RESPONSE_FROM_INTERMEDIARY",
+        "OTA_SERVICE_DOWN",
+        "BACKOFFICE_REQUEST_REJECTED",
+        "UNKNOWN"
+      ]
+    },
+    "owner": {
+      "type": "string",
+      "enum": [
+        "none",
+        "customer",
+        "molo17",
+        "local",
+        "unknown"
+      ]
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "resolutionCodes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "WAIT_AND_RETRY",
+          "CHECK_STATUS_PAGE",
+          "WAIT_FOR_CONDUCTOR_UPDATE",
+          "CHECK_DOCKER_DAEMON",
+          "CHECK_COREHUB_RUNNING",
+          "CHECK_INTERNET_CONNECTION",
+          "CHECK_DNS_SETTINGS",
+          "ALLOWLIST_MOLO17_HOSTS",
+          "CHECK_PROXY_SETTINGS",
+          "CHECK_PROXY_CREDENTIALS",
+          "TRUST_CORPORATE_CA",
+          "CHECK_DOCKER_HUB_ACCESS",
+          "CONTACT_SUPPORT_WITH_DETAILS"
+        ]
+      }
+    },
+    "fallback": {
+      "type": "object",
+      "required": [
+        "title",
+        "summary",
+        "steps"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "ok"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "proxy",
+              "internet-ip",
+              "internet-name",
+              "backoffice",
+              "status-feed",
+              "registry"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "ms": {
+            "type": "number"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "service"
+      ],
+      "properties": {
+        "service": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "at": {
+      "type": "string"
+    }
+  },
+  "x-gluesync-codes": {
+    "CONNECTIVITY_OK": {
+      "owner": "none",
+      "resolutionCodes": [],
+      "params": []
+    },
+    "TRANSIENT_FAILURE": {
+      "owner": "unknown",
+      "resolutionCodes": [
+        "WAIT_AND_RETRY",
+        "CONTACT_SUPPORT_WITH_DETAILS"
+      ],
+      "params": [
+        "errorKind"
+      ]
+    },
+    "CONDUCTOR_UPDATING": {
+      "owner": "local",
+      "resolutionCodes": [
+        "WAIT_FOR_CONDUCTOR_UPDATE"
+      ],
+      "params": []
+    },
+    "DOCKER_NOT_READY": {
+      "owner": "local",
+      "resolutionCodes": [
+        "WAIT_AND_RETRY",
+        "CHECK_DOCKER_DAEMON"
+      ],
+      "params": []
+    },
+    "COREHUB_UNAVAILABLE": {
+      "owner": "local",
+      "resolutionCodes": [
+        "WAIT_AND_RETRY",
+        "CHECK_COREHUB_RUNNING"
+      ],
+      "params": []
+    },
+    "PROXY_UNREACHABLE": {
+      "owner": "customer",
+      "resolutionCodes": [
+        "CHECK_PROXY_SETTINGS",
+        "CONTACT_SUPPORT_WITH_DETAILS"
+      ],
+      "params": [
+        "host",
+        "port"
+      ]
+    },
+    "PROXY_AUTH_REQUIRED": {
+      "owner": "customer",
+      "resolutionCodes": [
+        "CHECK_PROXY_CREDENTIALS",
+        "CHECK_PROXY_SETTINGS"
+      ],
+      "params": []
+    },
+    "NO_INTERNET": {
+      "owner": "customer",
+      "resolutionCodes": [
+        "CHECK_INTERNET_CONNECTION",
+        "CHECK_PROXY_SETTINGS"
+      ],
+      "params": [
+        "viaProxy"
+      ]
+    },
+    "DNS_FAILURE": {
+      "owner": "customer",
+      "resolutionCodes": [
+        "CHECK_DNS_SETTINGS"
+      ],
+      "params": [
+        "host"
+      ]
+    },
+    "TLS_INSPECTION": {
+      "owner": "customer",
+      "resolutionCodes": [
+        "TRUST_CORPORATE_CA",
+        "ALLOWLIST_MOLO17_HOSTS"
+      ],
+      "params": [
+        "host"
+      ]
+    },
+    "MOLO17_HOSTS_BLOCKED": {
+      "owner": "customer",
+      "resolutionCodes": [
+        "ALLOWLIST_MOLO17_HOSTS",
+        "CHECK_PROXY_SETTINGS"
+      ],
+      "params": [
+        "hosts"
+      ]
+    },
+    "BACKOFFICE_UNREACHABLE_FROM_HOST": {
+      "owner": "customer",
+      "resolutionCodes": [
+        "ALLOWLIST_MOLO17_HOSTS",
+        "CHECK_PROXY_SETTINGS"
+      ],
+      "params": [
+        "host"
+      ]
+    },
+    "REGISTRY_UNREACHABLE": {
+      "owner": "customer",
+      "resolutionCodes": [
+        "CHECK_DOCKER_HUB_ACCESS",
+        "CHECK_PROXY_SETTINGS"
+      ],
+      "params": [
+        "host"
+      ]
+    },
+    "UNEXPECTED_RESPONSE_FROM_INTERMEDIARY": {
+      "owner": "customer",
+      "resolutionCodes": [
+        "CHECK_PROXY_SETTINGS",
+        "ALLOWLIST_MOLO17_HOSTS"
+      ],
+      "params": [
+        "status",
+        "viaProxy"
+      ]
+    },
+    "OTA_SERVICE_DOWN": {
+      "owner": "molo17",
+      "resolutionCodes": [
+        "CHECK_STATUS_PAGE",
+        "WAIT_AND_RETRY"
+      ],
+      "params": [
+        "status",
+        "host",
+        "reason"
+      ]
+    },
+    "BACKOFFICE_REQUEST_REJECTED": {
+      "owner": "molo17",
+      "resolutionCodes": [
+        "CONTACT_SUPPORT_WITH_DETAILS"
+      ],
+      "params": [
+        "status",
+        "host"
+      ]
+    },
+    "UNKNOWN": {
+      "owner": "unknown",
+      "resolutionCodes": [
+        "CONTACT_SUPPORT_WITH_DETAILS"
+      ],
+      "params": []
+    }
+  }
+}

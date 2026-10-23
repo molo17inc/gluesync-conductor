@@ -45,8 +45,9 @@ const prepareComposeUpdate: PrepareComposeUpdate = async (
     .filter(m => m.version === null)
     .map(m => m.id);
 
+  const { skipped } = canUpdateResult.data;
   const effectiveIds = initialEffectiveIds.filter(
-    id => !invalidModuleIds.includes(id),
+    id => !invalidModuleIds.includes(id) && !skipped.some(s => s.id === id),
   );
 
   await editUpdateImagesInComposeFile(
@@ -55,7 +56,7 @@ const prepareComposeUpdate: PrepareComposeUpdate = async (
     canUpdateResult.data,
   );
 
-  return effectiveIds;
+  return { effectiveIds, skipped };
 };
 
 export default prepareComposeUpdate;

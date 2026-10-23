@@ -20,6 +20,7 @@ import ensureVolumeDirs from '../../ensureVolumeDirs/ensureVolumeDirs';
 import { enableUpdateMode } from '../../../plugins/apiBlockerAsUpdating';
 import restartWindowsDependentServices from '../restartWindowsDependentServices/restartWindowsDependentServices';
 import { retryCmd, shouldRetryError } from '../retryHelper/retryHelper';
+import verifyServiceStable from '../../verifyServiceStable/verifyServiceStable';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
@@ -92,6 +93,7 @@ export const runCmd: RunCmd = async (
 const createActions: CreateActions = ({
   docker,
   filename = dkrComposeFile,
+  previousImages = {},
 }) => {
   const logger = getLogger();
 
@@ -140,6 +142,7 @@ const createActions: CreateActions = ({
             hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
             serviceName: CONDUCTOR_SERVICE,
             helperImage: isWindows ? helperImageWindows : 'docker:cli',
+            rollbackImage: previousImages[CONDUCTOR_SERVICE],
             log: msg =>
               logger.info({ msg }, '[conductor-updater] self-update log'),
           }).catch(error => {
@@ -159,18 +162,23 @@ const createActions: CreateActions = ({
 
       // Special handling for core-hub on Windows only
       // Windows NAT DNS cache requires dependent services to restart for reconnection
-      if (id === CORE_HUB_SERVICE && isWindows) {
-        return restartWindowsDependentServices(
-          docker,
-          runCmd,
-          filename,
-          id,
-          CHRONOS_SERVICE,
-          CONDUCTOR_SERVICE,
-        );
-      }
+      const restarted =
+        id === CORE_HUB_SERVICE && isWindows
+          ? await restartWindowsDependentServices(
+              docker,
+              runCmd,
+              filename,
+              id,
+              CHRONOS_SERVICE,
+              CONDUCTOR_SERVICE,
+            )
+          : `Agent ${id} updated and restarted.`;
 
-      return `Agent ${id} updated and restarted.`;
+      // "up" succeeds even when the new image crashes right away: only report
+      // success once the container has stayed up.
+      await verifyServiceStable(docker, id);
+
+      return restarted;
     },
   };
 };

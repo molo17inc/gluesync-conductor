@@ -1,0 +1,49 @@
+# Sandbox infrastructure, run inside the isolated Docker-in-Docker daemon.
+# It lives in its own compose project so the conductor's --remove-orphans and
+# full-restart flows never touch it.
+
+name: conductor-sandbox-infra
+
+services:
+  registry:
+    image: registry:2.8.3
+    restart: unless-stopped
+    ports:
+      - 5000:5000
+
+  backoffice:
+    image: conductor-sandbox/fake-base:dev
+    restart: unless-stopped
+    environment:
+      - FAKE_ROLE=backoffice
+      - FAKE_SERVICE=backoffice
+      - FAKE_STATE_FILE=/data/backoffice-state.json
+      - FAKE_TLS_CERT=/certs/gluesync-cert.pem
+      - FAKE_TLS_KEY=/certs/gluesync-key.pem
+      - SANDBOX_ADMIN_TOKEN=${SANDBOX_ADMIN_TOKEN}
+      - PROXY_USER=${SANDBOX_PROXY_USER}
+      - PROXY_PASS=${SANDBOX_PROXY_PASS}
+    volumes:
+      - ${SANDBOX_KIT_DIR}/shared:/certs:ro
+      - ${SANDBOX_STATE_DIR}/backoffice:/data
+    ports:
+      - 3128:3128
+      - 8088:8088
+
+  dockerproxy:
+    image: conductor-sandbox/fake-base:dev
+    restart: unless-stopped
+    # The only fake that needs root: it opens the daemon's own socket (root:docker)
+    # and publishes its own in /var/run/sandbox-sock.
+    user: root
+    environment:
+      - FAKE_ROLE=dockerproxy
+      - FAKE_SERVICE=dockerproxy
+      - SANDBOX_ADMIN_TOKEN=${SANDBOX_ADMIN_TOKEN}
+      - DOCKER_PROXY_SOCKET=/sockproxy/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Daemon-local path: unix sockets cannot live on the Mac-shared folder.
+      - /var/run/sandbox-sock:/sockproxy
+    ports:
+      - 8089:8089

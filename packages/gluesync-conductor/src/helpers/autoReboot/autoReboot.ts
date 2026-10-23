@@ -12,6 +12,9 @@ type AutoReboot = (
     hostProjectDir: string;
     serviceName: string;
     helperImage: string;
+    // Previous image of the service: when set (self-update), the helper rolls
+    // back to it if the new container does not stay up.
+    rollbackImage?: string;
     log: (msg: Readonly<string>) => void;
   }>,
 ) => Promise<boolean>;

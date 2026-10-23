@@ -15,6 +15,8 @@ import waitForDockerDaemon from '../../../helpers/dockerode/waitForDockerDaemon/
 import isTransientDockerConnError from '../../../helpers/dockerode/isTransientDockerConnError/isTransientDockerConnError';
 import fetchChangelogInfo from '../../../helpers/fetchChangelogInfo/fetchChangelogInfo';
 import getCurrentVersion from '../../../helpers/getCurrentVersion/getCurrentVersion';
+import buildOutboundErrorReply from '../../../diagnosis/buildOutboundErrorReply';
+import normalizeUpstreamErrorBody from '../../../helpers/normalizeUpstreamErrorBody/normalizeUpstreamErrorBody';
 
 const logger = getLogger();
 
@@ -253,10 +255,24 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
   } catch (error: any) {
     logger.error({ error }, '[get-service-version] unexpected error');
 
+    // Failures reaching MOLO17's own services are diagnosed (who is at fault, what to do).
+    // A 404 is the backoffice's answer for an image it does not publish (a custom
+    // service, a Windows build), so it keeps its upstream status and body.
+    const outbound = await buildOutboundErrorReply(error, undefined, {
+      passThroughStatuses: [404],
+    });
+
+    if (outbound) {
+      return reply.code(outbound.statusCode).send(outbound.body);
+    }
+
     if (error?.response) {
       return reply.code(error.response.status).send({
         success: false,
-        ...error.response.data,
+        ...normalizeUpstreamErrorBody(
+          error.response.data,
+          'Unable to retrieve service version',
+        ),
       });
     }
 
