@@ -131,20 +131,28 @@ describe('POST /containers', () => {
   });
 
   it('serializes the 503 reply while the conductor updates itself', async () => {
+    const diagnosis = {
+      schemaVersion: 1,
+      code: 'CONDUCTOR_UPDATING',
+      owner: 'local',
+      resolutionCodes: ['WAIT_FOR_CONDUCTOR_UPDATE'],
+    };
     const { app } = await buildApp(async (_req, reply) =>
       reply.code(503).send({
         success: false,
         error: 'Conductor is updating',
         details: 'only restart is accepted',
-        internal: 'must not leak',
+        diagnosis,
       }),
     );
     const res = await post(app, { action: 'update', ids: ['a'] });
     assert.equal(res.statusCode, 503);
+    // The schema must not strip the diagnosis: the UI relies on it to wait.
     assert.deepEqual(res.json(), {
       success: false,
       error: 'Conductor is updating',
       details: 'only restart is accepted',
+      diagnosis,
     });
     await app.close();
   });

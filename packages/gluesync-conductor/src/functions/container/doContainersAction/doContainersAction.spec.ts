@@ -304,11 +304,16 @@ describe('doContainersAction generic actions', () => {
       { action: 'stop', ids: ['a'] },
     );
     assert.equal(reply.statusCode, 503);
-    assert.deepEqual(body(reply), {
+    const { diagnosis, ...rest } = body(reply);
+    assert.deepEqual(rest, {
       success: false,
       error: 'Conductor is updating',
       details: 'Only restart operations are allowed during update mode',
     });
+    // The UI reads the diagnosis to wait instead of retrying.
+    assert.equal(diagnosis.code, 'CONDUCTOR_UPDATING');
+    assert.equal(diagnosis.owner, 'local');
+    assert.deepEqual(diagnosis.resolutionCodes, ['WAIT_FOR_CONDUCTOR_UPDATE']);
   });
 
   it('answers 500 for an unknown action and checks that docker is up', async () => {
