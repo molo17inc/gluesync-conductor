@@ -90,7 +90,6 @@ const messages = (logs: ReadonlyArray<LogCall>, level: string): string[] =>
 describe('axiosWithRetry proxy configuration', () => {
   it('goes direct and says so when no proxy is configured', async () => {
     const { call, logs, requests, agents } = load();
-    assert.ok(messages(logs, 'info').includes('Proxy URL from env'));
     assert.ok(
       messages(logs, 'info').includes(
         'No proxy URL found, using direct connection',
@@ -106,28 +105,25 @@ describe('axiosWithRetry proxy configuration', () => {
     const { call, logs, requests, agents } = load({
       PROXY_HTTPS: 'http://user:pa%24%24word@proxy.local:3128',
     });
-    const proxyLine = logs.find(l => l.msg === 'Proxy URL from env');
-    assert.deepEqual(proxyLine?.data, {
-      proxy: 'http://***:***@proxy.local:3128',
-    });
     const parsed = logs.find(l => l.msg === 'Parsed proxy config');
     assert.deepEqual(parsed?.data, {
       proxy: { host: 'proxy.local', port: 3128, authenticated: true },
     });
     await call('https://hub.example/x');
     assert.equal(JSON.stringify(logs).includes('word'), false);
+    assert.equal(JSON.stringify(logs).includes('user'), false);
     // The agent itself still needs the real URL to authenticate.
     assert.deepEqual(agents, ['http://user:pa%24%24word@proxy.local:3128']);
     assert.ok(requests[0].httpsAgent);
   });
 
-  it('logs a proxy URL without credentials as it is', () => {
+  it('logs a proxy URL without credentials as host and port only', () => {
     const { logs } = load({ PROXY_HTTP: 'https://proxy.local' });
     const parsed = logs.find(l => l.msg === 'Parsed proxy config');
     assert.deepEqual(parsed?.data, {
       proxy: { host: 'proxy.local', port: 443, authenticated: false },
     });
-    assert.deepEqual(logs[0].data, { proxy: 'https://proxy.local' });
+    assert.equal(JSON.stringify(logs).includes('https://proxy.local'), false);
   });
 
   it('skips the proxy for hosts in NO_PROXY', async () => {
@@ -143,46 +139,36 @@ describe('axiosWithRetry proxy configuration', () => {
 
   it('falls back to a direct connection when the proxy URL is unparseable', async () => {
     const { call, logs, requests } = load({ PROXY_HTTPS: 'not a proxy url' });
-    assert.deepEqual(logs[0].data, { proxy: '[unparseable proxy URL]' });
     const failure = logs.find(
       l => l.msg === 'Failed to parse proxy URL - falling back to direct',
     );
     assert.equal(failure?.level, 'error');
+    assert.equal(JSON.stringify(logs).includes('not a proxy url'), false);
     assert.equal(
-      (failure?.data as { proxy: string }).proxy,
-      '[unparseable proxy URL]',
+      logs.some(l => l.msg === 'Parsed proxy config'),
+      false,
     );
     await call('https://hub.example/x');
     assert.equal(requests[0].httpsAgent, undefined);
   });
 
   it('reports a parse failure that is not an Error without the credentials', () => {
-    process.env.PROXY_HTTPS = 'http://user:secret@proxy.local:3128';
-    let calls = 0;
-    // Only the second parse (the proxy config one) throws, and it throws a string.
-    globalThis.URL = function FakeUrl(url: string) {
-      calls += 1;
-      if (calls === 2) {
-        // eslint-disable-next-line no-throw-literal
-        throw 'boom';
-      }
-      return Reflect.construct(realUrl, [url]);
+    // The parse throws a string instead of an Error.
+    globalThis.URL = function FakeUrl() {
+      // eslint-disable-next-line no-throw-literal
+      throw 'boom';
     } as unknown as typeof URL;
     const { logs } = load({
       PROXY_HTTPS: 'http://user:secret@proxy.local:3128',
     });
     globalThis.URL = realUrl;
     const failure = logs.find(
-      l =>
-        l.msg ===
-        'Failed to parse proxy URL - falling back to direct (non-Error thrown)',
+      l => l.msg === 'Failed to parse proxy URL - falling back to direct',
     );
     assert.equal(failure?.level, 'error');
-    assert.deepEqual(failure?.data, {
-      proxy: 'http://***:***@proxy.local:3128',
-      error: 'boom',
-    });
+    assert.deepEqual(failure?.data, {});
     assert.equal(JSON.stringify(logs).includes('secret'), false);
+    assert.equal(JSON.stringify(logs).includes('user'), false);
   });
 });
 
