@@ -8,6 +8,7 @@ const updateConductorOnly: UpdateConductorOnly = async (
   action,
   conductorInfo,
   composeJson,
+  { swarm = false } = {},
 ) => {
   const { id, availableVersion } = conductorInfo;
 
@@ -27,7 +28,11 @@ const updateConductorOnly: UpdateConductorOnly = async (
   const allFulfilled = results.every(r => r.status === 'fulfilled');
 
   if (allFulfilled) {
-    enableUpdateMode();
+    // Swarm replaces the task and rolls it back by itself: nothing to block
+    // requests for nor to watch
+    if (!swarm) {
+      enableUpdateMode();
+    }
     return { id, results };
   }
 

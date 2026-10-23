@@ -36,11 +36,15 @@ const load = (
   outcomes: ReadonlyArray<RollbackOutcome> = [],
 ) => {
   const rollbackCalls: unknown[][] = [];
+  const prepareCalls: unknown[][] = [];
   const bulk = loadWithStubs<{ default: UpdateNormalBulk }>(
     here('./updateNormalBulk'),
     {
       [here('../prepareComposeUpdate/prepareComposeUpdate')]: {
-        default: async () => ({ skipped: [], ...prepared }),
+        default: async (...args: unknown[]) => {
+          prepareCalls.push(args);
+          return { skipped: [], ...prepared };
+        },
       },
       [here('../../../../helpers/rollbackServiceImages/rollbackServiceImages')]:
         {
@@ -51,7 +55,7 @@ const load = (
         },
     },
   ).default;
-  return { bulk, rollbackCalls };
+  return { bulk, rollbackCalls, prepareCalls };
 };
 
 describe('updateNormalBulk', () => {
@@ -162,5 +166,32 @@ describe('updateNormalBulk', () => {
         err: 'Could not get the latest version of redis. Not updated.',
       },
     });
+  });
+
+  it('only puts the stack file back on Swarm, where the update action rolled the service back', async () => {
+    const { bulk, rollbackCalls } = load({ effectiveIds: ['grafana'] });
+    await bulk(
+      async () => {
+        throw new Error('not stable');
+      },
+      compose,
+      [],
+      'ga',
+      { swarm: true },
+    );
+    assert.deepEqual(rollbackCalls, [
+      [[{ id: 'grafana', image: 'grafana:1' }], { recreate: false }],
+    ]);
+  });
+
+  it('passes the orchestrator on, so the types are read the way it needs', async () => {
+    const swarm = load({ effectiveIds: [] });
+    const onCompose = load({ effectiveIds: [] });
+
+    await swarm.bulk(async id => id, compose, [], 'ga', { swarm: true });
+    await onCompose.bulk(async id => id, compose, [], 'ga');
+
+    assert.deepEqual(swarm.prepareCalls[0][3], { swarm: true });
+    assert.deepEqual(onCompose.prepareCalls[0][3], { swarm: false });
   });
 });

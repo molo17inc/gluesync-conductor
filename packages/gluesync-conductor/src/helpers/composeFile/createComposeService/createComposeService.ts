@@ -110,6 +110,7 @@ const createComposeService: CreateComposeService = (
     resources = {},
     healthcheck,
     dependsOn,
+    swarm,
   },
 ) => {
   const labelsForCompose = sanitizeChronosRouterLabels(labels);
@@ -165,14 +166,28 @@ const createComposeService: CreateComposeService = (
           : []),
       ];
 
+  const hasResources =
+    Object.keys(resources.limits || {}).length > 0 ||
+    Object.keys(resources.reservations || {}).length > 0;
+
+  // Swarm ignores `restart:`, `depends_on` and the container name: the
+  // restart policy lives in `deploy`, and tasks find each other by service name
+  // on the overlay network the stack declares
+  const swarmDeploy = {
+    ...swarm?.currentDeploy,
+    restart_policy: swarm?.currentDeploy?.restart_policy ?? {
+      condition: 'on-failure' as const,
+    },
+    // What the request says replaces the old limits, like in compose mode
+    resources: hasResources ? resources : undefined,
+  };
+
+  const composeDeploy = hasResources ? { resources } : undefined;
+
   return {
     image: `molo17/${imageName}:${tag || 'latest'}`,
-    restart: 'unless-stopped',
-    deploy:
-      Object.keys(resources.limits || {}).length > 0 ||
-      Object.keys(resources.reservations || {}).length > 0
-        ? { resources }
-        : undefined,
+    ...(!swarm && { restart: 'unless-stopped' }),
+    deploy: swarm ? swarmDeploy : composeDeploy,
     labels: Object.entries({
       ...labelsForCompose,
       ...defaultLabels,
@@ -199,9 +214,9 @@ const createComposeService: CreateComposeService = (
       mapVolumes(volumes),
     ),
 
-    networks: [isWindows ? 'gluesync-windows-net' : 'gluesync-net'],
+    networks: [isWindows && !swarm ? 'gluesync-windows-net' : 'gluesync-net'],
     healthcheck,
-    depends_on: dependsOn,
+    depends_on: swarm ? undefined : dependsOn,
     env_file: buildEnvFileConf(),
   };
 };

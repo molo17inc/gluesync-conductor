@@ -219,6 +219,26 @@ export const DIAGNOSIS_CATALOG: Readonly<Record<DiagnosisCode, CatalogEntry>> =
       summary: params =>
         `The update service answered HTTP ${text(params, 'status')}. This is not a network problem.`,
     },
+    SWARM_NOT_MANAGER: {
+      owner: 'local',
+      httpStatus: 503,
+      resolutionCodes: ['RUN_CONDUCTOR_ON_SWARM_MANAGER'],
+      paramKeys: [],
+      exampleParams: {},
+      title: 'Conductor is not running on a swarm manager',
+      summary: () =>
+        'Docker Swarm services can only be managed from a manager node, and this Conductor runs on a worker.',
+    },
+    SWARM_UNSUPPORTED: {
+      owner: 'local',
+      httpStatus: 501,
+      resolutionCodes: [],
+      paramKeys: ['feature'],
+      exampleParams: { feature: 'migration to 2.x' },
+      title: 'Not available on Docker Swarm',
+      summary: params =>
+        `${text(params, 'feature')} is not supported when Gluesync runs as a Docker Swarm stack.`,
+    },
     UNKNOWN: {
       owner: 'unknown',
       httpStatus: 502,
@@ -279,6 +299,8 @@ export const RESOLUTION_FALLBACK: Readonly<Record<ResolutionCode, string>> = {
     "Install your organisation's root certificate on this host, or exclude the MOLO17 hosts from HTTPS inspection.",
   CHECK_DOCKER_HUB_ACCESS:
     'Allow outbound HTTPS to Docker Hub (registry-1.docker.io, auth.docker.io, production.cloudflare.docker.com).',
+  RUN_CONDUCTOR_ON_SWARM_MANAGER:
+    'Deploy the Conductor service with the placement constraint node.role == manager.',
   CONTACT_SUPPORT_WITH_DETAILS:
     'Contact MOLO17 support and attach the technical details.',
   FREE_DISK_SPACE:

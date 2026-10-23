@@ -108,6 +108,111 @@ describe('writeYmlFile', () => {
       services: { a: { image: 'x:1' } },
     });
   });
+
+  describe('sequences of the same length', () => {
+    const STACK = `services:
+  app:
+    image: molo17/app:1.0.0
+    secrets:
+      - source: a
+        target: /x
+        mode: 0444
+      - source: b
+        target: /y
+        mode: 0444
+`;
+
+    const changed = async (
+      change: (app: Record<string, any>) => Record<string, any>,
+    ): Promise<string> => {
+      const file = fileWith(STACK);
+      const parsed = parse(STACK);
+
+      await writeYmlFile(
+        { services: { app: change(parsed.services.app) } },
+        file,
+      );
+
+      return readFileSync(file, 'utf8');
+    };
+
+    it('keeps `mode: 0444` literal when only the image changes', async () => {
+      const out = await changed(app => ({ ...app, image: 'molo17/app:1.0.1' }));
+
+      assert.match(out, /image: molo17\/app:1\.0\.1/);
+      assert.equal(out.match(/mode: 0444/g)?.length, 2);
+      assert.doesNotMatch(out, /mode: 444\b/);
+    });
+
+    it('keeps the sibling secret `mode: 0444` when one target changes', async () => {
+      const out = await changed(app => ({
+        ...app,
+        secrets: [app.secrets[0], { ...app.secrets[1], target: '/z' }],
+      }));
+
+      assert.match(out, /target: \/z/);
+      assert.match(out, /target: \/x\n {8}mode: 0444/);
+      assert.doesNotMatch(out, /mode: 444\b/);
+    });
+
+    it('replaces the whole sequence when the length differs', async () => {
+      const out = await changed(app => ({
+        ...app,
+        secrets: [app.secrets[0]],
+      }));
+
+      assert.equal(parse(out).services.app.secrets.length, 1);
+      assert.equal(parse(out).services.app.secrets[0].source, 'a');
+    });
+  });
+
+  describe('long strings', () => {
+    const RULE =
+      'traefik.http.routers.chronos.rule=PathPrefix(`/chronos/`) || PathPrefix(`/chronos/api/`)';
+    const LABELS = `services:
+  chronos:
+    image: molo17/gluesync-chronos:0.2.4
+    labels:
+      - "${RULE}"
+`;
+
+    it('does not fold a long string that changed in an existing file', async () => {
+      const file = fileWith(LABELS);
+      const parsed = parse(LABELS);
+      const changedRule = RULE.replace('/chronos/api/', '/chronos/v2/');
+
+      await writeYmlFile(
+        {
+          services: {
+            chronos: { ...parsed.services.chronos, labels: [changedRule] },
+          },
+        },
+        file,
+      );
+
+      const out = readFileSync(file, 'utf8');
+      assert.match(
+        out,
+        new RegExp(
+          `^ {6}- "${changedRule.replace(/[$()|`/]/g, '\\$&')}"$`,
+          'm',
+        ),
+      );
+      assert.equal(out.trimEnd().split('\n').length, 5);
+      assert.equal(parse(out).services.chronos.labels[0], changedRule);
+    });
+
+    it('does not fold a long string when the file is written from scratch', async () => {
+      const file = join(mkdtempSync(join(tmpdir(), 'yml-')), 'new.yml');
+      const long = `${'word '.repeat(60)}end`;
+
+      await writeYmlFile({ services: { a: { command: long } } }, file);
+
+      const out = readFileSync(file, 'utf8');
+      assert.equal(out.trimEnd().split('\n').length, 3);
+      assert.equal(parse(out).services.a.command, long);
+    });
+  });
 });
 
 describe('writeYmlFile safety', () => {

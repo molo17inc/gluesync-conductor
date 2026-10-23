@@ -7,7 +7,8 @@ import {
   upAll,
   IDockerComposeResult,
 } from 'docker-compose';
-import { CreateActions, RunCmd } from './createActions.model';
+import { ContainerAction, CreateActions, RunCmd } from './createActions.model';
+import { ContainerActions } from '../../../models/conductor.model';
 import getRootPath from '../../getRootPath/getRootPath';
 import cleanupOrphanNetworkByName from '../cleanupOrphanNetworkByName/cleanupOrphanNetworkByName';
 import { readComposeFile } from '../../composeFile/readComposeFile/readComposeFile';
@@ -21,6 +22,8 @@ import { enableUpdateMode } from '../../../plugins/apiBlockerAsUpdating';
 import restartWindowsDependentServices from '../restartWindowsDependentServices/restartWindowsDependentServices';
 import { retryCmd, shouldRetryError } from '../retryHelper/retryHelper';
 import verifyServiceStable from '../../verifyServiceStable/verifyServiceStable';
+import { getDecidedOrchestrator } from '../../orchestrator/getOrchestrator/getOrchestrator';
+import createSwarmActions from '../../swarm/createSwarmActions/createSwarmActions';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
@@ -90,11 +93,11 @@ export const runCmd: RunCmd = async (
   return finalMessage;
 };
 
-const createActions: CreateActions = ({
+const composeActions = ({
   docker,
   filename = dkrComposeFile,
   previousImages = {},
-}) => {
+}: Parameters<CreateActions>[0]): Record<ContainerActions, ContainerAction> => {
   const logger = getLogger();
 
   return {
@@ -180,6 +183,46 @@ const createActions: CreateActions = ({
 
       return restarted;
     },
+  };
+};
+
+const NOT_DECIDED =
+  'Cannot tell whether Gluesync runs on Docker Compose or Docker Swarm: the Docker daemon is not answering';
+
+/**
+ * The actions of whichever orchestrator runs this Conductor (compose, or the
+ * swarm stack of docs/swarm-mode.md). The mode is looked up when an action
+ * runs, and an action never falls back to compose when it is not known: that
+ * would recreate containers by hand inside a swarm.
+ */
+const createActions: CreateActions = options => {
+  const compose = composeActions(options);
+  const { docker, filename = dkrComposeFile } = options;
+
+  const forMode =
+    (action: Exclude<ContainerActions, 'removeNetwork'>) =>
+    async (id: string): Promise<string> => {
+      const orchestrator = await getDecidedOrchestrator(docker);
+
+      if (!orchestrator) {
+        throw new Error(NOT_DECIDED);
+      }
+
+      return orchestrator.mode === 'swarm'
+        ? createSwarmActions({ docker, orchestrator, filename })[action](id)
+        : compose[action](id);
+    };
+
+  return {
+    kill: forMode('kill'),
+    pull: forMode('pull'),
+    remove: forMode('remove'),
+    removeNetwork: compose.removeNetwork,
+    restart: forMode('restart'),
+    start: forMode('start'),
+    stop: forMode('stop'),
+    undeploy: forMode('undeploy'),
+    update: forMode('update'),
   };
 };
 

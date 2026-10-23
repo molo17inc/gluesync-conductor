@@ -1,11 +1,13 @@
 import mergeComposeKeyValueField from '../mergeKeyValueStrings/mergeKeyValueStrings';
 
 import {
+  ComposeServiceDeploy,
   RawComposeFile,
   RawComposeService,
   composeServiceFieldConfig,
   ComposeServiceFieldName,
 } from '../../../models/composeFile.model';
+import { KeyValueEntry } from '../extractKeyValue/extractKeyValue.model';
 import { MergeTwoServices } from './mergeComposeFiles.model';
 import cleanObject from '../../cleanObject/cleanOjbect';
 
@@ -16,6 +18,16 @@ const pickResource = <T extends string | number | null | undefined>(
   newValue === null || String(newValue).trim() === ''
     ? (null as T)
     : newValue || oldValue;
+
+// Every deploy key other than resources (replicas, placement, update_config...)
+// passes through, the later service winning key by key. Resources are merged
+// separately below so that clearing them stays possible.
+const withoutResources = (
+  deploy: RawComposeService['deploy'],
+): Readonly<Record<string, unknown>> =>
+  Object.fromEntries(
+    Object.entries(deploy ?? {}).filter(([key]) => key !== 'resources'),
+  );
 
 const mergeTwoServices: MergeTwoServices = (service1, service2) => {
   const limCpus = pickResource(
@@ -35,28 +47,34 @@ const mergeTwoServices: MergeTwoServices = (service1, service2) => {
     service1?.deploy?.resources?.reservations?.memory,
   );
 
+  const resources = {
+    ...((resvCpus || resvMemory) && {
+      reservations: {
+        ...(resvCpus && { cpus: resvCpus }),
+        ...(resvMemory && { memory: resvMemory }),
+      },
+    }),
+    ...((limCpus || limMemory) && {
+      limits: {
+        ...(limCpus && { cpus: limCpus }),
+        ...(limMemory && { memory: limMemory }),
+      },
+    }),
+  };
+
+  const deploy = {
+    ...withoutResources(service1?.deploy),
+    ...withoutResources(service2?.deploy),
+    ...(Object.keys(resources).length > 0 && { resources }),
+  } as ComposeServiceDeploy;
+
   return {
     ...service1,
     ...service2,
-    ...((resvCpus || resvMemory || limCpus || limMemory) && {
-      deploy: {
-        ...((resvCpus || resvMemory || limCpus || limMemory) && {
-          resources: {
-            ...((resvCpus || resvMemory) && {
-              reservations: {
-                ...(resvCpus && { cpus: resvCpus }),
-                ...(resvMemory && { memory: resvMemory }),
-              },
-            }),
-            ...((limCpus || limMemory) && {
-              limits: {
-                ...(limCpus && { cpus: limCpus }),
-                ...(limMemory && { memory: limMemory }),
-              },
-            }),
-          },
-        }),
-      },
+    // Always set when a service had one, so that a service2 deploy that
+    // lost its resources does not come back through the spread above
+    ...((service1?.deploy || service2?.deploy) && {
+      deploy: Object.keys(deploy).length > 0 ? deploy : undefined,
     }),
     ...(
       Object.keys(
@@ -64,7 +82,10 @@ const mergeTwoServices: MergeTwoServices = (service1, service2) => {
       ) as ReadonlyArray<ComposeServiceFieldName>
     ).reduce<
       Partial<
-        Record<ComposeServiceFieldName, ReadonlyArray<string> | undefined>
+        Record<
+          ComposeServiceFieldName,
+          ReadonlyArray<KeyValueEntry> | undefined
+        >
       >
     >(
       (acc, field) => ({

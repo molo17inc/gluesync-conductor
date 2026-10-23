@@ -14,6 +14,7 @@ import fakeErrorInjectorPlugin from './plugins/fakeErrorInjector';
 
 import httpsRedirectMiddleware from './middleware/httpsRedirect';
 import { authPlugin } from './security';
+import swarmManagerGuardPlugin from './plugins/swarmManagerGuard';
 
 import {
   createFastifyHttpsOptions,
@@ -38,11 +39,14 @@ import {
 import healConductorConf from './helpers/healConductorConf/healConductorConf';
 import syncCollectLogsScripts from './helpers/syncCollectLogsScripts/syncCollectLogsScripts';
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
+import awaitDecidedOrchestrator from './helpers/orchestrator/awaitDecidedOrchestrator/awaitDecidedOrchestrator';
+import reconcileSelfImage from './helpers/swarm/reconcileSelfImage/reconcileSelfImage';
 import migrateRoutes from './routes/migrate';
 import envRoutes from './routes/env';
 import updateModeEmitter from './plugins/updateModeEmitter';
 import { startUpdateWatchdog } from './helpers/updateWatchdog/updateWatchdog';
 import errorHandlerPlugin from './plugins/errorHandlerPlugin';
+import installShutdownHandlers from './helpers/installShutdownHandlers/installShutdownHandlers';
 
 type FastifyServices = {
   docker: Docker;
@@ -65,9 +69,57 @@ const host: string = process.env.HOST || '0.0.0.0';
 */
 const watchdogCell = new Map<string, boolean>([['value', false]]);
 
+// Compose only: it edits the compose file and recreates containers
+const adoptServicesAtStartup = async (
+  docker: Readonly<Docker>,
+  logger: Readonly<ReturnType<typeof getLogger>>,
+): Promise<void> => {
+  const result = await runStartupStep(
+    'auto-adopt services',
+    autoAdoptServices,
+    {
+      success: false,
+      updatedIds: [] as readonly string[],
+      unmatchedIds: [] as readonly string[],
+    },
+  );
+
+  if (result.success) {
+    const { updatedIds, unmatchedIds } = result;
+
+    if (updatedIds.length === 0 && unmatchedIds.length === 0) {
+      logger.info(
+        'All services already had a Conductor type, no changes applied',
+      );
+    } else if (updatedIds.length > 0) {
+      logger.info(
+        `Applied Conductor labels to services: ${updatedIds.join(', ')}`,
+      );
+
+      if (unmatchedIds.length > 0) {
+        logger.warn(
+          `Some services had no Conductor type and did not match agents.json: ${unmatchedIds.join(', ')}`,
+        );
+      }
+
+      // Start only the adopted/updated services (Linux + Windows)
+      await upAdoptedServices(docker, updatedIds);
+    } else if (updatedIds.length === 0 && unmatchedIds.length > 0) {
+      logger.warn(
+        `No services adopted. Unmatched services: ${unmatchedIds.join(', ')}`,
+      );
+    }
+  } else {
+    logger.error('Failed to apply Conductor labels at startup');
+  }
+};
+
 const startServer = async (): Promise<void> => {
   const serverOptions = createFastifyHttpsOptions();
   const server = fastify(serverOptions);
+
+  // Swarm and `docker stop` send SIGTERM and kill the process after the grace period
+  installShutdownHandlers(server, code => process.exit(code));
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
 
   // Register TZ fix FIRST (so later plugins/routes see the normalized TZ for windows).
@@ -108,6 +160,9 @@ const startServer = async (): Promise<void> => {
 
   // Register auth plugin (after gluesync so CoreHub URL is available, before routes)
   await server.register(authPlugin);
+
+  // On a swarm worker every route but /health and the docs answers 503
+  await server.register(swarmManagerGuardPlugin);
 
   // Register api blocker when updating plugin, routes after this will be blocked when updating
   await server.register(apiBlockerAsUpdatingPlugin, {
@@ -221,45 +276,31 @@ const startServer = async (): Promise<void> => {
   );
   logger.info(`Gluesync Conductor server started on port ${port}`);
 
+  // Both modes: DKR_COMPOSE_FILE is the compose file or the stack file, and
+  // either is read and rewritten below (and on every request), so a damaged one
+  // is restored from its last-good copy before anything touches it
   await guardComposeAtStartup();
 
-  const result = await runStartupStep(
-    'auto-adopt services',
-    autoAdoptServices,
-    {
-      success: false,
-      updatedIds: [] as readonly string[],
-      unmatchedIds: [] as readonly string[],
-    },
-  );
+  // Docker can still be starting: the healing below only suits compose, so it
+  // waits (bounded) until the mode is known instead of guessing
+  const orchestrator = await awaitDecidedOrchestrator(server.docker);
+  const isComposeMode = orchestrator?.mode === 'compose';
 
-  if (result.success) {
-    const { updatedIds, unmatchedIds } = result;
+  if (orchestrator?.mode === 'swarm') {
+    logger.info(
+      '[swarm] swarm mode: not adopting services nor healing the Conductor configuration, the stack file is the source of truth',
+    );
 
-    if (updatedIds.length === 0 && unmatchedIds.length === 0) {
-      logger.info(
-        'All services already had a Conductor type, no changes applied',
-      );
-    } else if (updatedIds.length > 0) {
-      logger.info(
-        `Applied Conductor labels to services: ${updatedIds.join(', ')}`,
-      );
-
-      if (unmatchedIds.length > 0) {
-        logger.warn(
-          `Some services had no Conductor type and did not match agents.json: ${unmatchedIds.join(', ')}`,
-        );
-      }
-
-      // Start only the adopted/updated services (Linux + Windows)
-      await upAdoptedServices(server.docker, updatedIds);
-    } else if (updatedIds.length === 0 && unmatchedIds.length > 0) {
-      logger.warn(
-        `No services adopted. Unmatched services: ${unmatchedIds.join(', ')}`,
-      );
+    // A self update that Swarm rolled back leaves the stack file on the bad image
+    if (orchestrator.isManager) {
+      await reconcileSelfImage(server.docker, orchestrator);
     }
+  } else if (!orchestrator) {
+    logger.warn(
+      '[orchestrator] Docker did not answer, so compose or swarm is unknown: not adopting services nor healing the Conductor configuration',
+    );
   } else {
-    logger.error('Failed to apply Conductor labels at startup');
+    await adoptServicesAtStartup(server.docker, logger);
   }
 
   const syncResult = await syncCollectLogsScripts();
@@ -270,6 +311,10 @@ const startServer = async (): Promise<void> => {
     logger.info('[collect-logs-sync] already up to date');
   } else {
     logger.warn('[collect-logs-sync] sync failed');
+  }
+
+  if (!isComposeMode) {
+    return;
   }
 
   const rebootNeeded = await runStartupStep(
@@ -288,11 +333,15 @@ const startServer = async (): Promise<void> => {
     const shouldUseWindows =
       process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
+    // Not awaited: the reboot replaces this very process. A failure must not
+    // become an unhandled rejection, which exits the process.
     autoReboot({
       hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
       serviceName: 'gluesync-conductor',
       helperImage: shouldUseWindows ? helperImageWindows : 'docker:cli',
       log: msg => logger.info({ msg }, '[conductor-healer] self-heal log'),
+    }).catch((error: unknown) => {
+      logger.error({ error }, '[conductor-healer] self-heal reboot failed');
     });
   }
 };

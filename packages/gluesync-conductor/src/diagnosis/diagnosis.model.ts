@@ -30,6 +30,8 @@ export const DIAGNOSIS_CODES = [
   'UNKNOWN',
   'DISK_FULL',
   'COMPOSE_FILE_CORRUPT',
+  'SWARM_NOT_MANAGER',
+  'SWARM_UNSUPPORTED',
 ] as const;
 
 export type DiagnosisCode = (typeof DIAGNOSIS_CODES)[number];
@@ -64,6 +66,7 @@ export const RESOLUTION_CODES = [
   'CHECK_DOCKER_HUB_ACCESS',
   'CONTACT_SUPPORT_WITH_DETAILS',
   'FREE_DISK_SPACE',
+  'RUN_CONDUCTOR_ON_SWARM_MANAGER',
 ] as const;
 
 export type ResolutionCode = (typeof RESOLUTION_CODES)[number];

@@ -7,4 +7,5 @@ export type EditUpdateImagesInComposeFile = (
     agentVersion: string | null;
     modules: ReadonlyArray<{ id: string; version: string | null }>;
   }>,
+  options?: Readonly<{ swarm?: boolean }>,
 ) => Promise<void>;
