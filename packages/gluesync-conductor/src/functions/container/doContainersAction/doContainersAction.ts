@@ -274,6 +274,76 @@ const migrationRefusedOnSwarm = (): Outcome => ({
   body: buildMigrationRefusedOnSwarmReply(),
 });
 
+type ConductorRefusalSplit = Readonly<{
+  refusedItems: ReadonlyArray<DoContainersActionItem>;
+  wantedIds: Ids;
+  nothingToUpdate: boolean;
+}>;
+
+// Swarm only (compose never sets a refusal): the Conductor is not moved to a
+// version that is not newer than itself, the rest of the request goes on
+const splitConductorRefusal = (
+  conductorRefusal: string | undefined,
+  requestIds: Ids,
+): ConductorRefusalSplit => {
+  const conductorAsked =
+    requestIds.length === 0 || requestIds.includes(CONDUCTOR_NAME);
+  const refusedItems: ReadonlyArray<DoContainersActionItem> =
+    conductorRefusal && conductorAsked
+      ? [{ id: CONDUCTOR_NAME, status: 'ERROR', message: conductorRefusal }]
+      : [];
+  const wantedIds = conductorRefusal
+    ? requestIds.filter(id => id !== CONDUCTOR_NAME)
+    : requestIds;
+
+  return {
+    refusedItems,
+    wantedIds,
+    // Only the Conductor was asked for: an empty list must not mean "all"
+    nothingToUpdate:
+      Boolean(conductorRefusal) &&
+      requestIds.length > 0 &&
+      wantedIds.length === 0,
+  };
+};
+
+type UpdateBranchArgs = Readonly<{
+  nothingToUpdate: boolean;
+  conductorInfo: CheckModuleUpdateResult | null;
+  composeJson: RawComposeFile;
+  wantedIds: Ids;
+  bulkIds: Ids;
+  releaseChannel: ReleaseChannelTypes;
+  swarm: boolean;
+}>;
+
+const runUpdateBranch = async (
+  updateAction: ContainerAction,
+  {
+    nothingToUpdate,
+    conductorInfo,
+    composeJson,
+    wantedIds,
+    bulkIds,
+    releaseChannel,
+    swarm,
+  }: UpdateBranchArgs,
+) => {
+  if (nothingToUpdate) {
+    return { orderedIds: [], results: [] };
+  }
+
+  if (isConductorOnlyUpdate(conductorInfo, wantedIds)) {
+    return updateConductorOnly(updateAction, conductorInfo, composeJson, {
+      swarm,
+    });
+  }
+
+  return updateNormalBulk(updateAction, composeJson, bulkIds, releaseChannel, {
+    swarm,
+  });
+};
+
 const performUpdate = async (
   req: Readonly<Request>,
   requestIds: Ids,
@@ -336,37 +406,24 @@ const performUpdate = async (
 
   logger.debug('[update-handler] Entering  NORMAL UPDATE FLOW');
 
-  // Swarm only (compose never sets it): the Conductor is not moved to a
-  // version that is not newer than itself, the rest of the request goes on
-  const conductorRefusal = swarm ? conductorInfo?.refusal : undefined;
-  const conductorAsked =
-    requestIds.length === 0 || requestIds.includes(CONDUCTOR_NAME);
-  const refusedItems: ReadonlyArray<DoContainersActionItem> =
-    conductorRefusal && conductorAsked
-      ? [{ id: CONDUCTOR_NAME, status: 'ERROR', message: conductorRefusal }]
-      : [];
-  const wantedIds = conductorRefusal
-    ? requestIds.filter(id => id !== CONDUCTOR_NAME)
-    : requestIds;
-  // Only the Conductor was asked for: an empty list must not mean "all"
-  const nothingToUpdate =
-    Boolean(conductorRefusal) &&
-    requestIds.length > 0 &&
-    wantedIds.length === 0;
+  const { refusedItems, wantedIds, nothingToUpdate } = splitConductorRefusal(
+    swarm ? conductorInfo?.refusal : undefined,
+    requestIds,
+  );
 
   const bulkIds =
     wantedIds.length === 0 && chronosInfo?.needsUpdate
       ? [CHRONOS_NAME]
       : wantedIds;
-  const branchResult = nothingToUpdate
-    ? { orderedIds: [], results: [] }
-    : await (isConductorOnlyUpdate(conductorInfo, wantedIds)
-        ? updateConductorOnly(updateAction, conductorInfo, composeJson, {
-            swarm,
-          })
-        : updateNormalBulk(updateAction, composeJson, bulkIds, releaseChannel, {
-            swarm,
-          }));
+  const branchResult = await runUpdateBranch(updateAction, {
+    nothingToUpdate,
+    conductorInfo,
+    composeJson,
+    wantedIds,
+    bulkIds,
+    releaseChannel,
+    swarm,
+  });
 
   const ids =
     'id' in branchResult ? [branchResult.id] : branchResult.orderedIds;

@@ -108,12 +108,14 @@ type PlatformPaths = Readonly<{
 }>;
 
 const resolvePlatformPaths = (isWindows: boolean): PlatformPaths => {
-  const basePath = isWindows ? 'C:\\opt\\gluesync' : '/opt/gluesync';
+  const basePath = isWindows ? String.raw`C:\opt\gluesync` : '/opt/gluesync';
 
   return {
-    sharedPath: isWindows ? `${basePath}\\shared` : `${basePath}/shared`,
-    dataPath: isWindows ? `${basePath}\\data` : `${basePath}/data`,
-    logsPath: isWindows ? `${basePath}\\logs` : `${basePath}/logs`,
+    sharedPath: isWindows
+      ? String.raw`${basePath}\shared`
+      : `${basePath}/shared`,
+    dataPath: isWindows ? String.raw`${basePath}\data` : `${basePath}/data`,
+    logsPath: isWindows ? String.raw`${basePath}\logs` : `${basePath}/logs`,
   };
 };
 
@@ -209,7 +211,7 @@ const buildEnvironment = (
     ...(serviceType === 'agent' && {
       INITIAL_AGENT_ID: id,
       LOG_CONFIG_FILE: isWindows
-        ? `${sharedPath}\\logback.xml`
+        ? String.raw`${sharedPath}\logback.xml`
         : '/opt/gluesync/shared/logback.xml',
       ...(isWindows && { GLUESYNC_HOST: ['gluesync-core-hub'] }),
     }),

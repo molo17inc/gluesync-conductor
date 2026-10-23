@@ -48,6 +48,41 @@ describe('createComposeService', () => {
         'gluesync-windows-net',
       ]);
     });
+
+    it('uses the Windows paths for the logback file and the agent mounts', () => {
+      process.env.IS_WINDOWS = 'true';
+      const service = createComposeService('agent', base);
+
+      assert.ok(
+        service.environment?.includes(
+          String.raw`LOG_CONFIG_FILE=C:\opt\gluesync\shared\logback.xml`,
+        ),
+      );
+      assert.ok(
+        service.volumes?.includes(
+          String.raw`./logs/gs-agent-1:C:\opt\gluesync\logs`,
+        ),
+      );
+      assert.ok(
+        service.volumes?.includes(
+          String.raw`./data/gs-agent-1:C:\opt\gluesync\data`,
+        ),
+      );
+    });
+
+    it('uses the Linux paths for the logback file and the agent mounts', () => {
+      delete process.env.IS_WINDOWS;
+      const service = createComposeService('agent', base);
+
+      assert.ok(
+        service.environment?.includes(
+          'LOG_CONFIG_FILE=/opt/gluesync/shared/logback.xml',
+        ),
+      );
+      assert.ok(
+        service.volumes?.includes('./logs/gs-agent-1:/opt/gluesync/logs'),
+      );
+    });
   });
 
   describe('swarm', () => {
