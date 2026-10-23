@@ -61,11 +61,47 @@ if [ -z "$FILE" ]; then
   exit 1
 fi
 NEW_RE=$(printf '%s' "$NEW_IMAGE" | sed 's/[.[*^$\\\\]/\\\\&/g')
-# Rewrite in place (cat >) so the file keeps its inode: the conductor mounts
-# this single file and would otherwise keep seeing the old copy.
-sed "s|image: *[\\"']\\{0,1\\}$NEW_RE[\\"']\\{0,1\\} *$|image: $ROLLBACK_IMAGE|" "$FILE" > /tmp/compose.rollback \\
-  && cat /tmp/compose.rollback > "$FILE"
-if grep -q "image: $ROLLBACK_IMAGE" "$FILE"; then
+
+# Rewrites $FILE in place without ever truncating it first: the conductor mounts
+# this single file (a new inode would go unseen), and "cat >" emptied it when
+# the disk was full. The file is padded with newlines to the longer of the old
+# and new sizes, the new bytes go over it, then it is cut to the new size, so
+# every state in between is a complete compose file.
+size_of() { wc -c < "$1" | tr -d ' '; }
+pad() { [ "$1" -gt 0 ] || return 0; yes '' | head -c "$1"; }
+no_room() { log "rollback not applied: not enough free disk space"; }
+undo() {
+  dd if=/tmp/compose.before of="$FILE" conv=notrunc 2>/dev/null
+  truncate -s "$old_size" "$FILE"
+}
+apply_rollback() {
+  [ -s /tmp/compose.rollback ] || { log "rollback not applied: the rewritten compose file is empty"; return 1; }
+  cmp -s "$FILE" /tmp/compose.rollback && return 0
+  old_size=$(size_of "$FILE"); new_size=$(size_of /tmp/compose.rollback)
+  len=$old_size
+  [ "$new_size" -gt "$len" ] && len=$new_size
+  cp "$FILE" /tmp/compose.before 2>/dev/null || { no_room; return 1; }
+  cp /tmp/compose.rollback /tmp/compose.padded 2>/dev/null \\
+    && pad $((len - new_size)) >> /tmp/compose.padded 2>/dev/null \\
+    || { no_room; return 1; }
+  if [ "$len" -gt "$old_size" ]; then
+    pad $((len - old_size)) >> "$FILE" 2>/dev/null
+    if [ "$(size_of "$FILE")" != "$len" ]; then undo; no_room; return 1; fi
+  fi
+  if ! dd if=/tmp/compose.padded of="$FILE" conv=notrunc 2>/dev/null \\
+    || ! truncate -s "$new_size" "$FILE" \\
+    || ! cmp -s /tmp/compose.rollback "$FILE"; then
+    undo
+    log "rollback not applied: could not write $FILE"
+    return 1
+  fi
+}
+
+if ! sed "s|image: *[\\"']\\{0,1\\}$NEW_RE[\\"']\\{0,1\\} *$|image: $ROLLBACK_IMAGE|" "$FILE" > /tmp/compose.rollback; then
+  no_room
+elif ! apply_rollback; then
+  :
+elif grep -q "image: $ROLLBACK_IMAGE" "$FILE"; then
   docker compose up -d --force-recreate "$SVC" >>"$LOG" 2>&1 \\
     && log "rolled back $SVC to $ROLLBACK_IMAGE" \\
     || log "rollback of $SVC to $ROLLBACK_IMAGE failed"

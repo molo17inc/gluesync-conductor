@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import { parse } from 'yaml';
 
+import {
+  COMPOSE as KIT,
+  CORRUPT_SHAPES,
+  makeComposeSandbox,
+} from '../../../testing/composeSandbox';
+import { ComposeFileCorruptError } from '../../composeFile/ensureValidCompose/composeFile.errors';
+import { UnsafeWriteError } from '../safeWriteFile/safeWriteFile.errors';
 import writeYmlFile from './writeYmlFile';
 
 // yarn sets PROJECT_CWD, which getRootPath would prefix to the absolute paths below.
@@ -100,5 +107,76 @@ describe('writeYmlFile', () => {
     assert.deepEqual(parse(readFileSync(file, 'utf8')), {
       services: { a: { image: 'x:1' } },
     });
+  });
+});
+
+describe('writeYmlFile safety', () => {
+  let sandbox = makeComposeSandbox();
+  afterEach(() => sandbox.restore());
+
+  const kit = (): Record<string, any> => parse(KIT);
+
+  it('refuses a compose without services and leaves the file as it is', async () => {
+    sandbox = makeComposeSandbox();
+    sandbox.setCompose(KIT);
+    await assert.rejects(
+      writeYmlFile({ name: 'gluesync', services: {} }, sandbox.compose),
+      UnsafeWriteError,
+    );
+    await assert.rejects(
+      writeYmlFile({ name: 'gluesync' }, sandbox.compose),
+      UnsafeWriteError,
+    );
+    assert.equal(sandbox.read(sandbox.compose), KIT);
+  });
+
+  it('refuses to write a new compose file without services either', async () => {
+    sandbox = makeComposeSandbox();
+    await assert.rejects(writeYmlFile({}, sandbox.compose), UnsafeWriteError);
+  });
+
+  CORRUPT_SHAPES.forEach(([name, text]) => {
+    it(`does not build a compose from scratch over ${name}`, async () => {
+      sandbox = makeComposeSandbox();
+      sandbox.setCompose(text);
+      await assert.rejects(
+        writeYmlFile({ services: { a: { image: 'x:1' } } }, sandbox.compose),
+        ComposeFileCorruptError,
+      );
+      assert.equal(sandbox.read(sandbox.compose), text);
+    });
+
+    it(`restores ${name} from the last-good copy before merging into it`, async () => {
+      sandbox = makeComposeSandbox();
+      sandbox.setLastGood(KIT);
+      sandbox.setCompose(text);
+      const json = kit();
+      json.services['gluesync-conductor'].image =
+        'molo17/gluesync-conductor:0.13.2';
+
+      await writeYmlFile(json, sandbox.compose);
+
+      const out = sandbox.read(sandbox.compose);
+      assert.match(out, /# kit header/);
+      assert.deepEqual(parse(out), json);
+    });
+  });
+
+  it('overwrites a damaged file that is not the compose file', async () => {
+    sandbox = makeComposeSandbox();
+    const generated = join(sandbox.dir, 'compose.generated.yml');
+    writeFileSync(generated, '');
+    await writeYmlFile(kit(), generated);
+    assert.deepEqual(parse(readFileSync(generated, 'utf8')), kit());
+  });
+
+  it('leaves no temp files next to the compose file', async () => {
+    sandbox = makeComposeSandbox();
+    sandbox.setCompose(KIT);
+    await writeYmlFile(kit(), sandbox.compose);
+    assert.deepEqual(
+      readdirSync(sandbox.dir).filter(f => f.endsWith('.tmp')),
+      [],
+    );
   });
 });

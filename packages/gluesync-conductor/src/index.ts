@@ -30,6 +30,10 @@ import { getLogger, logFatalAndExit } from './utils/logger';
 import autoAdoptServices from './helpers/autoAdoptServices/autoAdoptServices';
 import { autoReboot } from './helpers/autoReboot/autoReboot';
 import getRootPath from './helpers/getRootPath/getRootPath';
+import {
+  guardComposeAtStartup,
+  runStartupStep,
+} from './helpers/composeFile/guardComposeAtStartup/guardComposeAtStartup';
 import healConductorConf from './helpers/healConductorConf/healConductorConf';
 import syncCollectLogsScripts from './helpers/syncCollectLogsScripts/syncCollectLogsScripts';
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
@@ -209,7 +213,17 @@ const startServer = async (): Promise<void> => {
   );
   logger.info(`Gluesync Conductor server started on port ${port}`);
 
-  const result = await autoAdoptServices();
+  await guardComposeAtStartup();
+
+  const result = await runStartupStep(
+    'auto-adopt services',
+    autoAdoptServices,
+    {
+      success: false,
+      updatedIds: [] as readonly string[],
+      unmatchedIds: [] as readonly string[],
+    },
+  );
 
   if (result.success) {
     const { updatedIds, unmatchedIds } = result;
@@ -250,7 +264,11 @@ const startServer = async (): Promise<void> => {
     logger.warn('[collect-logs-sync] sync failed');
   }
 
-  const rebootNeeded = await healConductorConf();
+  const rebootNeeded = await runStartupStep(
+    'conductor-healer',
+    healConductorConf,
+    false,
+  );
 
   logger.info(
     `[conductor-healer] ${rebootNeeded ? 'reboot needed to heal' : 'nothing to heal'}`,

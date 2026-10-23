@@ -11,6 +11,33 @@ import {
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 
+type Rollbacks = Parameters<RollbackServiceImages>[0];
+
+// A failure here (full disk, unreadable compose) must not replace the error
+// that made the update fail: it is logged and reported next to it instead.
+const putImagesBack = async (
+  rollbacks: Rollbacks,
+): Promise<string | undefined> => {
+  try {
+    const compose = await readComposeFile({ raw: true });
+    const services = Object.fromEntries(
+      Object.entries(compose.services ?? {}).map(([id, service]) => {
+        const rollback = rollbacks.find(r => r.id === id);
+        return [id, rollback ? { ...service, image: rollback.image } : service];
+      }),
+    );
+    await writeComposeFile({ ...compose, services });
+    return undefined;
+  } catch (error) {
+    const message = describeFailure(error);
+    getLogger().error(
+      { error: message, services: rollbacks.map(r => r.id) },
+      '[update] could not put the previous images back in the compose file',
+    );
+    return `compose file could not be restored: ${message}`;
+  }
+};
+
 /**
  * Puts services back on the image they had before a failed update. The compose
  * file is rewritten before images are pulled, so without this a failed pull
@@ -27,14 +54,16 @@ const rollbackServiceImages: RollbackServiceImages = async (
     return [];
   }
 
-  const compose = await readComposeFile({ raw: true });
-  const services = Object.fromEntries(
-    Object.entries(compose.services ?? {}).map(([id, service]) => {
-      const rollback = rollbacks.find(r => r.id === id);
-      return [id, rollback ? { ...service, image: rollback.image } : service];
-    }),
-  );
-  await writeComposeFile({ ...compose, services });
+  const failure = await putImagesBack(rollbacks);
+  if (failure) {
+    // Recreating now would only start the new image again.
+    return rollbacks.map(({ id, image }) => ({
+      id,
+      image,
+      ok: false,
+      error: failure,
+    }));
+  }
 
   return rollbacks.reduce<Promise<RollbackOutcome[]>>(
     async (previous, { id, image }) => {

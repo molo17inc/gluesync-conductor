@@ -1,4 +1,15 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 
@@ -161,5 +172,123 @@ describe('autoRebootLinux', () => {
       rollbackImage: 'conductor:1',
     });
     assert.equal(envOf(noServices.spawned[0].args).ROLLBACK_IMAGE, '');
+  });
+});
+
+// The rollback runs in a busybox shell in a helper container: run the real
+// script here, with a fake docker that always reports a crashing container.
+describe('autoRebootLinux rollback script', () => {
+  const NEW = 'molo17/conductor:2';
+
+  const composeText = (image: string): string =>
+    `services:\n  gluesync-conductor:\n    image: ${image}\n    restart: always\n`;
+
+  const scriptFor = async (rollbackImage: string): Promise<string> => {
+    const { autoRebootLinux, spawned } = load(compose);
+    await autoRebootLinux({ hostProjectDir: '/srv/gs', rollbackImage });
+    return spawned[0].args[spawned[0].args.length - 1];
+  };
+
+  const runRollback = async (
+    original: string,
+    rollbackImage: string,
+    extraEnv: Record<string, string> = {},
+  ) => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'rollback-'));
+    const bin = path.join(dir, 'bin');
+    mkdirSync(bin);
+    const shim = (name: string, body: string): void => {
+      writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`);
+      chmodSync(path.join(bin, name), 0o755);
+    };
+    shim(
+      'docker',
+      'case "$*" in "compose ps"*) echo abc ;; inspect*) echo "exited 0 1" ;; *) exit 0 ;; esac',
+    );
+    // macOS has no truncate; dd seeks and cuts the same way
+    shim('truncate', 'exec dd if=/dev/null of="$3" bs=1 seek="$2" 2>/dev/null');
+    // makes the padding write fail after two bytes, like a disk filling up
+    shim(
+      'head',
+      // eslint-disable-next-line no-template-curly-in-string -- shell, not a template
+      'if [ "$1" = "-c" ] && [ -n "${FAIL_PAD:-}" ]; then printf "\\n\\n"; exit 1; fi\nexec "$REAL_HEAD" "$@"',
+    );
+    const file = path.join(dir, 'docker-compose.yml');
+    writeFileSync(file, original);
+    const inode = statSync(file).ino;
+
+    const realHead = spawnSync('sh', ['-c', 'command -v head'], {
+      encoding: 'utf8',
+    }).stdout.trim();
+    spawnSync('sh', ['-c', await scriptFor(rollbackImage)], {
+      cwd: dir,
+      env: {
+        PATH: `${bin}:${process.env.PATH}`,
+        REAL_HEAD: realHead,
+        SVC: 'gluesync-conductor',
+        NEW_IMAGE: NEW,
+        ROLLBACK_IMAGE: rollbackImage,
+        ...extraEnv,
+      },
+      encoding: 'utf8',
+    });
+    return {
+      text: readFileSync(file, 'utf8'),
+      sameInode: statSync(file).ino === inode,
+      log: readFileSync(
+        path.join(dir, 'logs', 'conductor-self-update.log'),
+        'utf8',
+      ),
+      leftovers: existsSync(path.join(dir, 'docker-compose.yml.tmp')),
+    };
+  };
+
+  it('puts a shorter previous image back in the same file', async () => {
+    const result = await runRollback(composeText(NEW), 'molo17/conductor:1');
+    assert.equal(result.text, composeText('molo17/conductor:1'));
+    assert.equal(result.sameInode, true);
+    assert.match(
+      result.log,
+      /rolled back gluesync-conductor to molo17\/conductor:1/,
+    );
+  });
+
+  it('puts a longer previous image back in the same file', async () => {
+    const longer = 'registry.example.com/molo17/conductor:1.0.0-long';
+    const result = await runRollback(composeText(NEW), longer);
+    assert.equal(result.text, composeText(longer));
+    assert.equal(result.sameInode, true);
+  });
+
+  it('leaves the file alone when the padding cannot be written', async () => {
+    const longer = 'registry.example.com/molo17/conductor:1.0.0-long';
+    const result = await runRollback(composeText(NEW), longer, {
+      FAIL_PAD: '1',
+    });
+    assert.equal(result.text, composeText(NEW));
+    assert.match(
+      result.log,
+      /rollback not applied: not enough free disk space/,
+    );
+    assert.doesNotMatch(result.log, /rolled back/);
+  });
+
+  it('never writes an empty compose file', async () => {
+    const result = await runRollback('', 'molo17/conductor:1');
+    assert.equal(result.text, '');
+    assert.match(result.log, /rollback not applied/);
+  });
+
+  it('does not touch a file without the new image', async () => {
+    const other = composeText('molo17/other:9');
+    const result = await runRollback(other, 'molo17/conductor:1');
+    assert.equal(result.text, other);
+    assert.match(result.log, /could not find image/);
+  });
+
+  it('no longer truncates the compose file with a redirect', async () => {
+    const script = await scriptFor('molo17/conductor:1');
+    assert.doesNotMatch(script, />\s*"\$FILE"\s*$/m);
+    assert.match(script, /conv=notrunc/);
   });
 });

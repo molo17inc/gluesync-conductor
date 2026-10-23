@@ -15,6 +15,10 @@ import {
   isUpdateMode,
 } from '../../../plugins/apiBlockerAsUpdating';
 import { autoReboot } from '../../../helpers/autoReboot/autoReboot';
+import ensureFreeSpace, {
+  getUpdateMinFreeBytes,
+} from '../../../helpers/file/ensureFreeSpace/ensureFreeSpace';
+import { composeFilePath } from '../../../helpers/composeFile/composeBackup/composeBackup';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 import restartWindows from '../../../helpers/restartAllServices/windowsRestart';
 import restartLinux from '../../../helpers/restartAllServices/linuxRestart';
@@ -234,6 +238,10 @@ const performUpdate = async (
   releaseChannel: ReleaseChannelTypes,
 ): Promise<Outcome> => {
   logger.info('[update-handler] Update action triggered');
+
+  // Before anything is pulled or written: a disk that fills up halfway is what
+  // used to leave the compose file empty.
+  await ensureFreeSpace([composeFilePath()], getUpdateMinFreeBytes());
 
   const composeJson = await readComposeFile({ raw: true });
   req.log.debug(
@@ -463,7 +471,7 @@ const failureOutcome = async (error: unknown): Promise<Outcome> => {
 
   return axios.isAxiosError(error)
     ? failed(error.response?.status ?? 500, ACTION_FAILED, axiosDetails(error))
-    : failed(500, ACTION_FAILED, errorMessage(error));
+    : failed(500, ACTION_FAILED, describeFailure(error));
 };
 
 // Tells a Docker outage apart from an action that failed on its own.

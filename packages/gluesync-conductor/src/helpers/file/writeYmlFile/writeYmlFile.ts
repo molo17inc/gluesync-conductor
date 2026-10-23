@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { isDeepStrictEqual } from 'node:util';
 import {
   Document,
@@ -10,6 +10,11 @@ import {
 } from 'yaml';
 import { WriteYmlFile } from './writeYmlFile.model';
 import getRootPath from '../../getRootPath/getRootPath';
+import { isMainComposeFile } from '../../composeFile/composeBackup/composeBackup';
+import ensureValidCompose from '../../composeFile/ensureValidCompose/ensureValidCompose';
+import inspectCompose from '../../composeFile/inspectCompose/inspectCompose';
+import safeWriteFile from '../safeWriteFile/safeWriteFile';
+import { UnsafeWriteError } from '../safeWriteFile/safeWriteFile.errors';
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
@@ -44,7 +49,26 @@ const syncNode = (
   doc.setIn(path, value);
 };
 
+const withoutUndefined = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(withoutUndefined);
+  }
+  if (isPlainObject(value)) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, child]) => child !== undefined)
+        .map(([key, child]) => [key, withoutUndefined(child)]),
+    );
+  }
+  return value;
+};
+
 const readExisting = async (path: string): Promise<Document | null> => {
+  // The compose file is never taken for "nothing there" when it is damaged:
+  // it is restored from the last-good copy, or the write fails.
+  if (isMainComposeFile(path)) {
+    await ensureValidCompose(path);
+  }
   try {
     const doc = parseDocument(await readFile(path, 'utf8'));
     return doc.errors.length === 0 && doc.contents ? doc : null;
@@ -52,6 +76,25 @@ const readExisting = async (path: string): Promise<Document | null> => {
     return null;
   }
 };
+
+// What is about to be written must read back as exactly `json`, with services.
+const assertReadsBackAs =
+  (path: string, json: unknown) =>
+  (content: Buffer): void => {
+    const { problem, value } = inspectCompose(content.toString('utf8'));
+    if (problem) {
+      throw new UnsafeWriteError(
+        path,
+        `the result is not a usable compose file (${problem})`,
+      );
+    }
+    if (!isDeepStrictEqual(value, withoutUndefined(json))) {
+      throw new UnsafeWriteError(
+        path,
+        'the serialised YAML does not match what was asked',
+      );
+    }
+  };
 
 /**
  * Writes `json` as YAML. When the file already exists, the change is applied
@@ -63,14 +106,16 @@ const writeYmlFile: WriteYmlFile = async (json, filename) => {
   const path = getRootPath({ filename });
   const existing = await readExisting(path);
 
+  const validate = assertReadsBackAs(path, json);
+
   // Merging needs a mapping on both sides (always the case for compose files).
   if (!existing || !isMap(existing.contents) || !isPlainObject(json)) {
-    await writeFile(path, stringify(json, { indent: 2 }), 'utf8');
+    await safeWriteFile(path, stringify(json, { indent: 2 }), { validate });
     return;
   }
 
   syncNode(existing, [], json);
-  await writeFile(path, existing.toString({ indent: 2 }), 'utf8');
+  await safeWriteFile(path, existing.toString({ indent: 2 }), { validate });
 };
 
 export default writeYmlFile;
