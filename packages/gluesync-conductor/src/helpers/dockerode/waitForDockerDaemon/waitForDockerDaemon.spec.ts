@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
 import type Docker from 'dockerode';
 import type { Logger } from 'pino';
 
@@ -47,5 +47,42 @@ describe('waitForDockerDaemon', () => {
       (error: Readonly<Error & { code?: string }>) =>
         /not ready within/.test(error.message) && error.code === 'ETIMEDOUT',
     );
+  });
+
+  it('fails at once on an error that is not transient', async () => {
+    const docker = {
+      ping: async () => {
+        throw new Error('permission denied');
+      },
+    } as unknown as Docker;
+    await assert.rejects(
+      waitForDockerDaemon(docker, quietLog, { totalTimeoutMs: 2000 }),
+      /permission denied/,
+    );
+  });
+
+  describe('when the budget runs out during a failing ping', () => {
+    afterEach(() => {
+      mock.timers.reset();
+    });
+
+    it('gives up with a transient error instead of sleeping', async () => {
+      mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 0 });
+      const docker = {
+        ping: () => {
+          // The refused connection takes the whole budget.
+          mock.timers.tick(200);
+          return Promise.reject(
+            Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }),
+          );
+        },
+      } as unknown as Docker;
+      await assert.rejects(
+        waitForDockerDaemon(docker, quietLog, { totalTimeoutMs: 200 }),
+        (error: Readonly<Error & { code?: string }>) =>
+          /not ready within 200ms/.test(error.message) &&
+          error.code === 'ETIMEDOUT',
+      );
+    });
   });
 });

@@ -70,8 +70,14 @@ quality:
     - echo "Running type-check..."
     - yarn type-check
 
-    - echo "Running unit tests..."
-    - yarn workspace gluesync-conductor test
+    - echo "Running unit tests with coverage..."
+    - yarn workspace gluesync-conductor test:coverage
+    # Sonar reads lcov paths from the repository root
+    - sed -i 's#^SF:src/#SF:packages/gluesync-conductor/src/#' packages/gluesync-conductor/coverage/lcov.info
+  artifacts:
+    paths:
+      - packages/gluesync-conductor/coverage/lcov.info
+    expire_in: 1 day
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "push"
@@ -313,6 +319,9 @@ build-sonar:
   image:
     name: sonarsource/sonar-scanner-cli:11
     entrypoint: ['']
+  needs:
+    - job: quality
+      artifacts: true
   variables:
     GIT_DEPTH: '0'
   cache:

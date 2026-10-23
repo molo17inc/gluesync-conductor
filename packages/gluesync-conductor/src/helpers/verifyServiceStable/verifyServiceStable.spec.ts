@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import type Docker from 'dockerode';
 
 import verifyServiceStable from './verifyServiceStable';
@@ -90,5 +90,59 @@ describe('verifyServiceStable', () => {
       ),
       /did not become ready/,
     );
+  });
+
+  it('does nothing when the verify window is 0', async () => {
+    const docker = {
+      listContainers: async () => {
+        throw new Error('must not be called');
+      },
+    } as unknown as Docker;
+    await assert.doesNotReject(
+      verifyServiceStable(docker, 'grafana', { windowMs: 0 }),
+    );
+  });
+
+  it('fails when no container exists for the service', async () => {
+    const docker = {
+      listContainers: async () => [],
+    } as unknown as Docker;
+    await assert.rejects(
+      verifyServiceStable(docker, 'grafana', fast),
+      /no container found for grafana after the update/,
+    );
+  });
+
+  describe('window from the environment', () => {
+    const saved = process.env.UPDATE_VERIFY_SECONDS;
+    afterEach(() => {
+      if (saved === undefined) {
+        delete process.env.UPDATE_VERIFY_SECONDS;
+      } else {
+        process.env.UPDATE_VERIFY_SECONDS = saved;
+      }
+    });
+
+    it('UPDATE_VERIFY_SECONDS=0 disables the check', async () => {
+      process.env.UPDATE_VERIFY_SECONDS = '0';
+      const docker = {
+        listContainers: async () => {
+          throw new Error('must not be called');
+        },
+      } as unknown as Docker;
+      await assert.doesNotReject(verifyServiceStable(docker, 'grafana'));
+    });
+
+    it('ignores a value that is not a number and keeps the default', async () => {
+      process.env.UPDATE_VERIFY_SECONDS = 'soon';
+      // Default window is 20s: the missing container is reported on the first poll.
+      const docker = {
+        listContainers: async () => [],
+      } as unknown as Docker;
+      await assert.rejects(
+        verifyServiceStable(docker, 'grafana'),
+        /no container found/,
+      );
+    });
   });
 });
