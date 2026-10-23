@@ -10,8 +10,9 @@
 //   freshToken    drive the update with a token the conductor has not cached
 //   concurrent    send each update request N times in parallel
 //   expectConductorRestarts   Docker restarts of the conductor the profile causes on purpose
-//   refusal       { phrase }: the first update round must be refused with a failure
-//                 containing the phrase and leave everything untouched. The fault is
+//   refusal       { phrase, code, status }: the first update round must be refused with a failure
+//                 containing the phrase, answered with that HTTP status and a diagnosis of
+//                 that code, and leave everything untouched. The fault is
 //                 released right after that round and the user clicks again, so the same
 //                 iteration must still converge.
 //   minRounds     keep clicking (after a failed or stalled round) until at least this many rounds
@@ -246,14 +247,14 @@ export const PROFILES = [
     name: 'disk-full',
     description:
       "The compose file's filesystem has no free space when the update is sent (a 256 KiB tmpfs bind-mounted over the conductor's compose mount and filled). The update must be refused with 'not enough free disk space' and touch nothing; once space is freed the retry must update everything.",
-    plan: () => ({ expect: 'updated', refusal: { phrase: DISK_FULL_TEXT } }),
+    plan: () => ({ expect: 'updated', refusal: { phrase: DISK_FULL_TEXT, code: 'DISK_FULL', status: 507 } }),
     before: (ctx, it) => startDiskFault(ctx, it, { freeKiB: 0 }),
   },
   {
     name: 'disk-almost-full',
     description:
       'Free space on the compose file filesystem is above the compose size but below the conductor minimum (32 KiB left, minimum 64 KiB). Same expectation as disk-full: refused up front with nothing touched, then the retry succeeds.',
-    plan: () => ({ expect: 'updated', refusal: { phrase: DISK_FULL_TEXT } }),
+    plan: () => ({ expect: 'updated', refusal: { phrase: DISK_FULL_TEXT, code: 'DISK_FULL', status: 507 } }),
     before: (ctx, it) => startDiskFault(ctx, it, { freeKiB: ALMOST_FULL_KIB }),
   },
   {

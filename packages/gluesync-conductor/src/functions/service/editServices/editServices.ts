@@ -10,6 +10,7 @@ import {
   EditServicesQuerystring,
   EditServicesSuccessResponse,
 } from './editServices.model';
+import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
 
 const handler: EditServicesHandler = async (req, reply) => {
   const { raw } = castObject<EditServicesQuerystring>(req.query) || false;
@@ -44,9 +45,20 @@ const handler: EditServicesHandler = async (req, reply) => {
 
     reply.code(200).send(response);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const local = buildLocalErrorReply(
+      error,
+      `Failed to edit services: ${message}`,
+    );
+
+    if (local) {
+      reply.code(local.statusCode).send(local.body);
+      return;
+    }
+
     reply.code(500).send({
       success: false,
-      error: `Failed to edit services: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Failed to edit services: ${message}`,
     });
   }
 };

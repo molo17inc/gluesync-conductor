@@ -256,6 +256,13 @@ const refusalCheck = (it, plan) => {
   if (!r.refused) {
     problems.push(`the update was not refused with "${plan.refusal.phrase}" (round ${r.round}: ${r.statuses?.join('/')} ${r.text || ''})`);
   }
+  // The UI words the refusal from the diagnosis code, not from the English text: it must be there.
+  if (r.refused && !r.diagnoses?.every(code => code === plan.refusal.code)) {
+    problems.push(`the refusal does not carry diagnosis.code "${plan.refusal.code}" (got ${JSON.stringify(r.diagnoses)})`);
+  }
+  if (r.refused && !r.statuses?.every(status => status === plan.refusal.status)) {
+    problems.push(`the refusal was not answered with HTTP ${plan.refusal.status} (got ${r.statuses?.join('/')})`);
+  }
   if (!r.composeUnchanged) problems.push('the compose bytes changed (or could not be read) while the disk was full');
   if (!r.containersUnchanged) problems.push(`containers changed during the refused update: ${r.changedContainers.join(', ')}`);
   if (r.servicesStatus !== 200) problems.push(`the conductor answered ${r.servicesStatus} afterwards (update mode not released)`);
@@ -263,7 +270,7 @@ const refusalCheck = (it, plan) => {
     'compose',
     'compose.disk-full-refused',
     problems.length === 0,
-    problems.length ? problems.join('; ') : `update refused ("${plan.refusal.phrase}"), compose identical (${r.composeBytes} bytes), no container touched`,
+    problems.length ? problems.join('; ') : `update refused ("${plan.refusal.phrase}", HTTP ${plan.refusal.status}, ${plan.refusal.code}), compose identical (${r.composeBytes} bytes), no container touched`,
     'fail',
     problems.length ? r : undefined,
   );

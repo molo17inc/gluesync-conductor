@@ -8,6 +8,7 @@ import gluesyncPlugin from './plugins/gluesync';
 import apiBlockerAsUpdatingPlugin, {
   disableUpdateMode,
 } from './plugins/apiBlockerAsUpdating';
+import localErrorHandlerPlugin from './plugins/localErrorHandler';
 import tzFix from './plugins/tzFix';
 import fakeErrorInjectorPlugin from './plugins/fakeErrorInjector';
 
@@ -88,6 +89,9 @@ const startServer = async (): Promise<void> => {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
+
+  // A full disk or a corrupt compose file thrown out of any route gets its diagnosis
+  await server.register(localErrorHandlerPlugin);
 
   // Register Swagger plugins first
   await server.register(swaggerPlugin);

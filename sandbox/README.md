@@ -64,7 +64,7 @@ The kit (`kit/docker-compose.template.yml`) mirrors `debug-container/linux/docke
 | docker-socket-blip | Docker API refuses connections for 10s; `/version` and `/containers` are called during the blip |
 | concurrent-update | every update request is sent twice in parallel |
 | conductor-crash-mid-update | SIGKILL right after the conductor rewrites the compose file; the compose must be valid right after the kill and after the restart |
-| disk-full | the compose file's filesystem has 0 bytes free when the update is sent; the update must be refused with `not enough free disk space`, touching nothing; after the space is freed the retry updates everything |
+| disk-full | the compose file's filesystem has 0 bytes free when the update is sent; the update must be refused with HTTP 507, `not enough free disk space` and `diagnosis.code` `DISK_FULL`, touching nothing; after the space is freed the retry updates everything |
 | disk-almost-full | 32 KiB free: more than the compose file, less than the conductor's minimum (64 KiB in the sandbox); same expectation as disk-full |
 | disk-flapping | during the bulk update the filesystem toggles between full and 96 KiB free every 20-50 ms; the UI-like driver keeps retrying; the compose is never blank or invalid, and after the filler stops the update converges |
 | compose-blanked | the compose file is truncated to 0 bytes and the conductor restarted; within 60s it must restore it byte for byte from `.conductor/docker-compose.last-good.yml`, log `restored docker-compose.yml from last-good backup`, and never write a stub compose |

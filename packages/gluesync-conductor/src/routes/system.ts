@@ -4,6 +4,10 @@ import version from '../functions/version/version';
 import composeToJSON from '../functions/composeToJSON/composeToJSON';
 import connectivity from '../functions/system/connectivity/connectivity';
 import { requireConfig } from '../security';
+import {
+  DIAGNOSIS_REPLY_PROPERTY,
+  DISK_FULL_REPLY_SCHEMA,
+} from '../diagnosis/diagnosisReplySchema';
 
 const systemRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.get('/health', {
@@ -89,6 +93,18 @@ const systemRoutes = async (fastify: Readonly<FastifyInstance>) => {
               type: 'object',
             },
           },
+        },
+        507: DISK_FULL_REPLY_SCHEMA,
+        500: {
+          type: 'object',
+          description:
+            'The compose file cannot be read. `diagnosis.code` is COMPOSE_FILE_CORRUPT when it is empty or corrupt with no backup to restore.',
+          properties: {
+            success: { type: 'boolean', const: false },
+            error: { type: 'string' },
+            diagnosis: DIAGNOSIS_REPLY_PROPERTY,
+          },
+          additionalProperties: true,
         },
       },
     },

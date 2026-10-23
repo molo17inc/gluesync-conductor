@@ -11,6 +11,7 @@ import createService from '../../../helpers/processService/service.factory';
 import serviceValidation from '../../../helpers/serviceValidation/serviceValidation';
 import { castObject } from '../../../helpers/composeFile/extractKeyValue/extractKeyValue';
 import cleanResults from '../../../helpers/cleanResults/cleanResults';
+import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
 
 const handler: AddServicesHandler = async (req, reply) => {
   try {
@@ -45,9 +46,20 @@ const handler: AddServicesHandler = async (req, reply) => {
 
     reply.code(200).send(response);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const local = buildLocalErrorReply(
+      error,
+      `Failed to add services: ${message}`,
+    );
+
+    if (local) {
+      reply.code(local.statusCode).send(local.body);
+      return;
+    }
+
     reply.code(500).send({
       success: false,
-      error: `Failed to add services: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Failed to add services: ${message}`,
     });
   }
 };

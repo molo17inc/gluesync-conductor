@@ -28,6 +28,7 @@ import { CollectLogsHandler } from './collectLogs.model';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 import axiosWithRetry from '../../../utils/axiosWithRetry';
 import collectLogsByScript from '../../../helpers/collectLogsByScript/collectLogsByScript';
+import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
 
 type Logger = Readonly<{
   debug: (
@@ -2049,6 +2050,12 @@ const handler: CollectLogsHandler = async (req, reply) => {
     });
   } catch (error) {
     req.log.error({ error }, 'failed to collect logs internally');
+
+    const local = buildLocalErrorReply(error, 'internal server error');
+
+    if (local) {
+      return reply.code(local.statusCode).send(local.body);
+    }
 
     if (isCollectLogsError(error)) {
       return reply.code(500).send({

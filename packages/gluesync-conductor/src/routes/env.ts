@@ -3,6 +3,10 @@ import { FastifyInstance } from 'fastify';
 import getLegacyUpdate from '../functions/env/legacyUpdate/getLegacyUpdate';
 import setLegacyUpdate from '../functions/env/legacyUpdate/setLegacyUpdate';
 import { requireConfig } from '../security';
+import {
+  DIAGNOSIS_REPLY_PROPERTY,
+  DISK_FULL_REPLY_SCHEMA,
+} from '../diagnosis/diagnosisReplySchema';
 
 const envRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.get('/env/legacy-update', {
@@ -76,6 +80,7 @@ const envRoutes = async (fastify: Readonly<FastifyInstance>) => {
             details: { type: 'string', nullable: true },
           },
         },
+        507: DISK_FULL_REPLY_SCHEMA,
         500: {
           type: 'object',
           required: ['success', 'error'],
@@ -84,6 +89,7 @@ const envRoutes = async (fastify: Readonly<FastifyInstance>) => {
             success: { type: 'boolean', const: false },
             error: { type: 'string' },
             details: { type: 'string', nullable: true },
+            diagnosis: DIAGNOSIS_REPLY_PROPERTY,
           },
         },
       },

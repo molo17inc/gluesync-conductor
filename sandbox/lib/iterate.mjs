@@ -147,6 +147,7 @@ const driveRound = async (ctx, it, target, plan, state, round) => {
     const text = responses.map(r => JSON.stringify(r.json ?? r.text ?? r.error ?? '')).join(' ');
     entry.refused = text.includes(plan.refusal.phrase);
     entry.refusalText = text.slice(0, 400);
+    entry.refusalDiagnoses = responses.map(r => r.json?.diagnosis?.code);
     if (entry.refused) return false;
   }
 
@@ -193,6 +194,7 @@ const endRefusal = async (ctx, it, plan, state, round, kept) => {
     refused: !!entry?.refused,
     statuses: entry?.statuses,
     text: entry?.refusalText,
+    diagnoses: entry?.refusalDiagnoses,
     composeUnchanged: !!kept.compose && !!after.compose && kept.compose.equals(after.compose),
     composeBytes: after.compose?.length ?? null,
     containersUnchanged: JSON.stringify(kept.containers) === JSON.stringify(after.containers),

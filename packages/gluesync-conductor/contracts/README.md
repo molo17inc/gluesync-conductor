@@ -18,6 +18,8 @@ committed files are out of date.
 - `GET /connectivity` returns it as `data`.
 - Error replies of Conductor requests that depend on MOLO17 services carry it as `diagnosis`
   next to the existing `success` / `error` / `details`.
+- Error replies of requests that failed on this install's own files carry it too: `DISK_FULL`
+  (HTTP 507, nothing was changed) and `COMPOSE_FILE_CORRUPT` (HTTP 500).
 
 ## Rules for consumers
 

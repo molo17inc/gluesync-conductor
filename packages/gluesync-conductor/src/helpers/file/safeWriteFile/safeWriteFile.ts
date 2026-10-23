@@ -7,7 +7,11 @@ import ensureFreeSpace, {
   getWriteReserveBytes,
   queryFreeBytes,
 } from '../ensureFreeSpace/ensureFreeSpace';
-import { DiskFullError, UnsafeWriteError } from './safeWriteFile.errors';
+import {
+  DiskFullError,
+  UnsafeWriteError,
+  isDiskFull,
+} from './safeWriteFile.errors';
 import {
   FileHandleLike,
   SafeWriteFile,
@@ -46,11 +50,6 @@ const codeOf = (error: unknown): string | undefined => {
   const code = (error as { code?: unknown } | null)?.code;
   return typeof code === 'string' ? code : undefined;
 };
-
-const isDiskFull = (error: unknown): boolean =>
-  error instanceof DiskFullError ||
-  codeOf(error) === 'ENOSPC' ||
-  codeOf(error) === 'EDQUOT';
 
 // Kernel ENOSPC/EDQUOT become the DiskFullError callers (and the UI) know.
 const asWriteError = async (

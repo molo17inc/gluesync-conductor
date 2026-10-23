@@ -30,6 +30,7 @@ import { HandleGrafanaEmbeddedDashboardResult } from '../../../helpers/handleGra
 import { getLogger } from '../../../utils/logger';
 import describeFailure from '../../../helpers/describeFailure/describeFailure';
 import buildDiagnosis from '../../../diagnosis/buildDiagnosis';
+import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
 import buildOutboundErrorReply from '../../../diagnosis/buildOutboundErrorReply';
 import createActionGate from '../../../helpers/actionGate/actionGate';
 import { ActionOutcome } from '../../../helpers/actionGate/actionGate.model';
@@ -78,7 +79,9 @@ const failed = (
 // lost its connection mid-update (the reverse proxy it travels through was just
 // recreated) ends with the real outcome instead of a refusal.
 const gate = createActionGate<DoContainersActionResponse>({
-  onThrow: error => failed(500, ACTION_FAILED, errorMessage(error)),
+  onThrow: error =>
+    buildLocalErrorReply(error, ACTION_FAILED) ??
+    failed(500, ACTION_FAILED, errorMessage(error)),
 });
 
 // One reply item per settled action, in the order the ids were given.
@@ -168,7 +171,10 @@ const runMigration = async (
       },
     });
   } catch (error) {
-    return failed(500, 'Migration failed', errorMessage(error));
+    return (
+      buildLocalErrorReply(error, 'Migration failed') ??
+      failed(500, 'Migration failed', errorMessage(error))
+    );
   }
 };
 
@@ -451,6 +457,13 @@ const axiosDetails = (axiosError: Readonly<AxiosError>): string => {
 };
 
 const failureOutcome = async (error: unknown): Promise<Outcome> => {
+  // A full disk or a corrupt compose file is this install's own problem.
+  const local = buildLocalErrorReply(error, ACTION_FAILED);
+
+  if (local) {
+    return local;
+  }
+
   // Failures reaching MOLO17's own services (backoffice) are diagnosed:
   // who is at fault and what to do, instead of a bare upstream status.
   const outbound = await buildOutboundErrorReply(error);

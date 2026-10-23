@@ -37,3 +37,12 @@ export class UnsafeWriteError extends Error {
     this.path = path;
   }
 }
+
+const DISK_FULL_CODES: ReadonlyArray<string> = ['ENOSPC', 'EDQUOT'];
+
+/** A DiskFullError, or the kernel's own "no space" / "quota exceeded" errno. */
+export const isDiskFull = (error: unknown): boolean =>
+  error instanceof DiskFullError ||
+  DISK_FULL_CODES.includes(
+    (error as { code?: unknown } | null)?.code as string,
+  );

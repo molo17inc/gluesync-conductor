@@ -10,6 +10,7 @@ import containerInfoMapper from '../../../helpers/dockerode/containerInfoMapper/
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import getSystemInfo from '../../../helpers/dockerode/getSystemInfo/getSystemInfo';
 import buildDiagnosis from '../../../diagnosis/buildDiagnosis';
+import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
 import { castObject } from '../../../helpers/composeFile/extractKeyValue/extractKeyValue';
 import parseServiceType from '../../../helpers/composeFile/parseServiceType/parseServiceType';
 import {
@@ -144,6 +145,13 @@ const handler: ListContainersHandler = async (req, reply) => {
         error instanceof Error ? error.message : JSON.stringify(error)
       }`,
     );
+
+    const local = buildLocalErrorReply(error, 'Failed to list containers');
+
+    if (local) {
+      reply.code(local.statusCode).send(local.body);
+      return;
+    }
 
     const transient = isTransientDockerConnError(error);
 

@@ -17,6 +17,7 @@ import fetchChangelogInfo from '../../../helpers/fetchChangelogInfo/fetchChangel
 import getCurrentVersion from '../../../helpers/getCurrentVersion/getCurrentVersion';
 import buildOutboundErrorReply from '../../../diagnosis/buildOutboundErrorReply';
 import normalizeUpstreamErrorBody from '../../../helpers/normalizeUpstreamErrorBody/normalizeUpstreamErrorBody';
+import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
 
 const logger = getLogger();
 
@@ -254,6 +255,16 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     });
   } catch (error: any) {
     logger.error({ error }, '[get-service-version] unexpected error');
+
+    // A compose file that is empty or corrupt is this install's own problem.
+    const local = buildLocalErrorReply(
+      error,
+      'Unable to retrieve service version',
+    );
+
+    if (local) {
+      return reply.code(local.statusCode).send(local.body);
+    }
 
     // Failures reaching MOLO17's own services are diagnosed (who is at fault, what to do).
     // A 404 is the backoffice's answer for an image it does not publish (a custom

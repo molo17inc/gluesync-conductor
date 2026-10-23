@@ -12,6 +12,7 @@ import {
   GetServicesParams,
   GetServicesQuerystring,
 } from './getServices.model';
+import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
 
 const handler: GetServicesHandler = async (req, reply) => {
   try {
@@ -68,9 +69,19 @@ const handler: GetServicesHandler = async (req, reply) => {
     req.log.error(
       `Error getting agents: ${error instanceof Error ? error.message : String(error)}`,
     );
+    const message = error instanceof Error ? error.message : String(error);
+    const local = buildLocalErrorReply(
+      error,
+      `Failed to get agents: ${message}`,
+    );
+
+    if (local) {
+      return reply.code(local.statusCode).send(local.body);
+    }
+
     return reply.code(500).send({
       success: false,
-      error: `Failed to get agents: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Failed to get agents: ${message}`,
     });
   }
 };

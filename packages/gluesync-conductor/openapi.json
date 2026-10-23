@@ -199,6 +199,70 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "The compose file cannot be read. `diagnosis.code` is COMPOSE_FILE_CORRUPT when it is empty or corrupt with no backup to restore.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "The compose file cannot be read. `diagnosis.code` is COMPOSE_FILE_CORRUPT when it is empty or corrupt with no backup to restore.",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
           }
         }
       }
@@ -523,6 +587,11 @@
                     "details": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   },
                   "required": [
@@ -530,6 +599,42 @@
                     "error"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
                 }
               }
             }
@@ -792,6 +897,11 @@
                     "details": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   },
                   "required": [
@@ -799,6 +909,42 @@
                     "error"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
                 }
               }
             }
@@ -908,6 +1054,11 @@
                     "details": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   },
                   "required": [
@@ -1035,6 +1186,11 @@
                     "details": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   },
                   "required": [
@@ -1176,6 +1332,11 @@
                     "details": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   },
                   "required": [
@@ -1303,6 +1464,11 @@
                       },
                       "details": {
                         "type": "string"
+                      },
+                      "diagnosis": {
+                        "type": "object",
+                        "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                        "additionalProperties": true
                       }
                     }
                   },
@@ -1781,6 +1947,11 @@
                     "details": {
                       "type": "string",
                       "description": "Additional error details"
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   },
                   "additionalProperties": false
@@ -1815,6 +1986,42 @@
                       "additionalProperties": true
                     }
                   },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
                   "additionalProperties": true
                 }
               }
@@ -2118,8 +2325,49 @@
                     },
                     "details": {
                       "type": "string"
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   }
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
                 }
               }
             }
@@ -2370,8 +2618,49 @@
                     "details": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   }
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
                 }
               }
             }
