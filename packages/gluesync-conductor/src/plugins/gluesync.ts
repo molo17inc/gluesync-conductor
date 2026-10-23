@@ -89,19 +89,67 @@ async function gluesyncPlugin(
     }
   });
 
-  // Block server startup until the SDK has the token, matching the scheduler.
-  fastify.log.info('Initializing Gluesync SDK client...');
-  try {
-    await sdkClient.initialize();
+  // Try once before the server starts listening, as before. If CoreHub is not
+  // reachable (restarting, being updated, down), keep the conductor up and
+  // retry in the background: exiting here made the conductor crash-loop and
+  // unreachable for as long as CoreHub was down. Until it connects,
+  // authenticated calls answer 503 "CoreHub unavailable".
+  const logConnected = (): void => {
     fastify.log.info('Gluesync SDK client initialized successfully');
     fastify.log.info(`CoreHub URL: ${sdkClient.coreHubUrl ?? 'not set'}`);
     fastify.log.info(`SDK token present: ${sdkClient.token ? 'yes' : 'no'}`);
+  };
+
+  const retryCell = new Map<string, NodeJS.Timeout | boolean>([
+    ['stopped', false],
+  ]);
+
+  const retryInBackground = (attempt: number): void => {
+    const delayMs = Math.min(30000, 1000 * 2 ** Math.min(attempt, 5));
+    const timer = setTimeout(async () => {
+      if (retryCell.get('stopped')) {
+        return;
+      }
+      try {
+        await sdkClient.initialize();
+        fastify.log.info(
+          `Connected to CoreHub after ${attempt + 1} background attempt(s)`,
+        );
+        logConnected();
+      } catch (error) {
+        getLogger().warn(
+          {
+            attempt: attempt + 1,
+            nextRetryMs: Math.min(30000, 1000 * 2 ** Math.min(attempt + 1, 5)),
+            error,
+          },
+          'CoreHub still unreachable; the conductor keeps running and retries',
+        );
+        retryInBackground(attempt + 1);
+      }
+    }, delayMs);
+    retryCell.set('timer', timer);
+  };
+
+  fastify.addHook('onClose', (_instance: unknown, hookDone: () => void) => {
+    retryCell.set('stopped', true);
+    const timer = retryCell.get('timer');
+    if (timer && typeof timer !== 'boolean') {
+      clearTimeout(timer);
+    }
+    hookDone();
+  });
+
+  fastify.log.info('Initializing Gluesync SDK client...');
+  try {
+    await sdkClient.initialize();
+    logConnected();
   } catch (error) {
-    fastify.log.error(
-      `Failed to initialize Gluesync SDK client: ${error instanceof Error ? error.message : String(error)}`,
+    getLogger().warn(
+      { error },
+      'CoreHub not reachable at startup; starting anyway and retrying in the background',
     );
-    done(error instanceof Error ? error : new Error(String(error)));
-    return;
+    retryInBackground(0);
   }
 
   done();

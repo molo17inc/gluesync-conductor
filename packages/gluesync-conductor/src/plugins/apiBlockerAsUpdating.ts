@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 import updateModeEmitter from './updateModeEmitter';
 import { getLogger } from '../utils/logger';
+import buildDiagnosis from '../diagnosis/buildDiagnosis';
 
 // isUpdateMode state
 const cell = new Map<string, boolean>([['value', false]]);
@@ -67,11 +68,15 @@ const apiBlockerAsUpdatingPlugin = (
       );
 
       if (!shouldBypass) {
-        reply.header('Retry-After', '60').code(statusCode).send({
-          success: false,
-          error: 'Conductor update in progress',
-          message,
-        });
+        reply
+          .header('Retry-After', '60')
+          .code(statusCode)
+          .send({
+            success: false,
+            error: 'Conductor update in progress',
+            message,
+            diagnosis: buildDiagnosis({ code: 'CONDUCTOR_UPDATING' }),
+          });
       }
     }
   });

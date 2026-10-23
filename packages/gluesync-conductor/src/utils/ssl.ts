@@ -1,6 +1,6 @@
 import fs from 'fs';
 import { FastifyServerOptions } from 'fastify';
-import { getLoggerOptions } from './logger';
+import { getLogger } from './logger';
 
 /**
  * Check if SSL is enabled based on environment variables
@@ -41,10 +41,9 @@ export const getSslFilePaths = (): {
  * Create Fastify HTTPS options if SSL is enabled
  */
 export const createFastifyHttpsOptions = (): FastifyServerOptions => {
-  const loggerOptions = getLoggerOptions();
-
   const baseOptions: FastifyServerOptions = {
-    logger: loggerOptions,
+    // Same pino instance as getLogger(): one file stream and one format.
+    loggerInstance: getLogger(),
     routerOptions: {
       ignoreTrailingSlash: true,
     },

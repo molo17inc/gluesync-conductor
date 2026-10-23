@@ -9,6 +9,7 @@ import apiBlockerAsUpdatingPlugin, {
   disableUpdateMode,
 } from './plugins/apiBlockerAsUpdating';
 import tzFix from './plugins/tzFix';
+import fakeErrorInjectorPlugin from './plugins/fakeErrorInjector';
 
 import httpsRedirectMiddleware from './middleware/httpsRedirect';
 import { authPlugin } from './security';
@@ -25,7 +26,7 @@ import agentRoutes from './routes/agents';
 import serviceRoutes from './routes/services';
 import supportRoutes from './routes/support';
 
-import { getLogger } from './utils/logger';
+import { getLogger, logFatalAndExit } from './utils/logger';
 import autoAdoptServices from './helpers/autoAdoptServices/autoAdoptServices';
 import { autoReboot } from './helpers/autoReboot/autoReboot';
 import getRootPath from './helpers/getRootPath/getRootPath';
@@ -103,6 +104,12 @@ const startServer = async (): Promise<void> => {
     bypassPaths: ['/containers', '/collect-logs'],
     bypassMethods: ['POST'],
   });
+
+  // DEBUG ONLY: fake OTA failures and available updates so the UI can be tried. Not registered unless
+  // GLUESYNC_FAKE_ERROR is set (see plugins/fakeErrorInjector.ts).
+  if (process.env.GLUESYNC_FAKE_ERROR) {
+    await server.register(fakeErrorInjectorPlugin);
+  }
 
   // Register route modules
   const onUpdateEnabled = async (): Promise<void> => {
@@ -266,18 +273,15 @@ const startServer = async (): Promise<void> => {
 
 // Handle unhandled rejections
 process.on('unhandledRejection', (error: unknown) => {
-  getLogger().error({ error }, 'Unhandled Promise Rejection');
-  process.exit(1);
+  logFatalAndExit('Unhandled Promise Rejection', error);
 });
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error: unknown) => {
-  getLogger().error({ error }, 'Uncaught Exception');
-  process.exit(1);
+  logFatalAndExit('Uncaught Exception', error);
 });
 
 // Start the fastify server
 startServer().catch((error: unknown) => {
-  getLogger().error({ error }, 'Failed to start server');
-  process.exit(1);
+  logFatalAndExit('Failed to start server', error);
 });

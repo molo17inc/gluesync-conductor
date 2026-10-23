@@ -10,6 +10,7 @@ import {
 } from './userRole';
 import { getIntrospector } from './corehubIntrospect';
 import { getLogger } from '../utils/logger';
+import buildDiagnosis from '../diagnosis/buildDiagnosis';
 
 const BYPASS_PATHS: ReadonlySet<string> = new Set([
   '/health',
@@ -95,6 +96,7 @@ const authPlugin = async (
           success: false,
           error: 'CoreHub unavailable',
           details: authResult.error,
+          diagnosis: buildDiagnosis({ code: 'COREHUB_UNAVAILABLE' }),
         });
       }
 
@@ -180,4 +182,30 @@ export const requireConfig =
       });
     }
     return undefined;
+  };
+
+// Day-to-day operations a MONITOR may run, like starting and stopping
+// replication. Everything else (update, pull, kill, remove, undeploy, network
+// cleanup) changes what is deployed and needs a role that can manage: the UI
+// only offers those actions to SUPER_ADMIN and MANAGER, and Chronos calls in as
+// EXTERNAL_MODULE.
+const OPERATIONAL_CONTAINER_ACTIONS: ReadonlySet<string> = new Set([
+  'restart',
+  'start',
+  'stop',
+]);
+
+export const requireContainerAction =
+  () =>
+  async (
+    req: Readonly<AuthenticatedRequest>,
+    reply: Readonly<FastifyReply>,
+  ) => {
+    // A non-string action matches no operational action, so it needs manage.
+    const requested = (req.body as { action?: unknown } | undefined)?.action;
+    const action = typeof requested === 'string' ? requested : '';
+    const guard = OPERATIONAL_CONTAINER_ACTIONS.has(action)
+      ? requireControl()
+      : requireManage();
+    return guard(req, reply);
   };

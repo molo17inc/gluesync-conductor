@@ -15,5 +15,8 @@ export type CanUpdateContainers = (
       id: string;
       version: string | null;
     }>;
+    // Modules left out because their latest version could not be fetched;
+    // the rest of the update goes ahead without them.
+    skipped: ReadonlyArray<{ id: string; reason: string }>;
   }>;
 }>;
