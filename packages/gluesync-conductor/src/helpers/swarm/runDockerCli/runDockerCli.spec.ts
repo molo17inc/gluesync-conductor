@@ -13,11 +13,16 @@ type Script = (child: {
   emitter: EventEmitter;
 }) => void;
 
-const load = (script: Script) => {
+const load = (
+  script: Script,
+  resolve: () => string = () => '/usr/bin/docker',
+) => {
   const spawned: Array<{ command: string; args: string[]; options: any }> = [];
   const subject = loadWithStubs<{ default: RunDockerCli }>(
     path.resolve(__dirname, './runDockerCli'),
     {
+      [path.resolve(__dirname, '../resolveDockerCliPath/resolveDockerCliPath')]:
+        { default: resolve },
       'node:child_process': {
         spawn: (command: string, args: string[], options: any) => {
           spawned.push({ command, args, options });
@@ -61,12 +66,23 @@ describe('runDockerCli', () => {
       exitCode: 0,
       output: 'Creating service gs_core-hub\n',
     });
-    assert.equal(spawned[0].command, 'docker');
+    assert.equal(spawned[0].command, '/usr/bin/docker');
     assert.deepEqual(spawned[0].args, ['stack', 'deploy', 'gs']);
     assert.equal(spawned[0].options.shell, false);
     assert.equal(spawned[0].options.cwd, '/kit');
     assert.deepEqual(spawned[0].options.env, { A: '1' });
     assert.equal(spawned[0].options.timeout, 5000);
+  });
+
+  it('rejects when no docker CLI exists in the fixed locations', async () => {
+    const { run } = load(
+      () => undefined,
+      () => {
+        throw new Error('docker CLI not found');
+      },
+    );
+
+    await assert.rejects(run(['x']), /docker CLI not found/);
   });
 
   it('keeps stdout and stderr in the order they were written', async () => {

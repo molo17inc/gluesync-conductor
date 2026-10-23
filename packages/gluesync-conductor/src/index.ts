@@ -114,6 +114,98 @@ const adoptServicesAtStartup = async (
   }
 };
 
+type DecidedOrchestrator = Awaited<ReturnType<typeof awaitDecidedOrchestrator>>;
+
+const prepareForOrchestrator = async (
+  docker: Readonly<Docker>,
+  orchestrator: DecidedOrchestrator,
+  logger: Readonly<ReturnType<typeof getLogger>>,
+): Promise<void> => {
+  if (orchestrator?.mode === 'swarm') {
+    logger.info(
+      '[swarm] swarm mode: not adopting services nor healing the Conductor configuration, the stack file is the source of truth',
+    );
+
+    // A self update that Swarm rolled back leaves the stack file on the bad image
+    if (orchestrator.isManager) {
+      await reconcileSelfImage(docker, orchestrator);
+    }
+  } else if (!orchestrator) {
+    logger.warn(
+      '[orchestrator] Docker did not answer, so compose or swarm is unknown: not adopting services nor healing the Conductor configuration',
+    );
+  } else {
+    await adoptServicesAtStartup(docker, logger);
+  }
+};
+
+const syncCollectLogsAtStartup = async (
+  logger: Readonly<ReturnType<typeof getLogger>>,
+): Promise<void> => {
+  const syncResult = await syncCollectLogsScripts();
+
+  if (syncResult.synced) {
+    logger.info('[collect-logs-sync] script synced to root folder');
+  } else if (syncResult.success) {
+    logger.info('[collect-logs-sync] already up to date');
+  } else {
+    logger.warn('[collect-logs-sync] sync failed');
+  }
+};
+
+const healConductorAtStartup = async (
+  logger: Readonly<ReturnType<typeof getLogger>>,
+): Promise<void> => {
+  const rebootNeeded = await runStartupStep(
+    'conductor-healer',
+    healConductorConf,
+    false,
+  );
+  const verdict = rebootNeeded ? 'reboot needed to heal' : 'nothing to heal';
+
+  logger.info(`[conductor-healer] ${verdict}`);
+
+  const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
+
+  if (rebootNeeded) {
+    const shouldUseWindows =
+      process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
+
+    // Not awaited: the reboot replaces this very process. A failure must not
+    // become an unhandled rejection, which exits the process.
+    autoReboot({
+      hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
+      serviceName: 'gluesync-conductor',
+      helperImage: shouldUseWindows ? helperImageWindows : 'docker:cli',
+      log: msg => logger.info({ msg }, '[conductor-healer] self-heal log'),
+    }).catch((error: unknown) => {
+      logger.error({ error }, '[conductor-healer] self-heal reboot failed');
+    });
+  }
+};
+
+// What runs once the server listens: adoption and healing depend on the mode
+const runPostListenStartup = async (
+  docker: Readonly<Docker>,
+  logger: Readonly<ReturnType<typeof getLogger>>,
+): Promise<void> => {
+  // Both modes: DKR_COMPOSE_FILE is the compose file or the stack file, and
+  // either is read and rewritten below (and on every request), so a damaged one
+  // is restored from its last-good copy before anything touches it
+  await guardComposeAtStartup();
+
+  // Docker can still be starting: the healing below only suits compose, so it
+  // waits (bounded) until the mode is known instead of guessing
+  const orchestrator = await awaitDecidedOrchestrator(docker);
+
+  await prepareForOrchestrator(docker, orchestrator, logger);
+  await syncCollectLogsAtStartup(logger);
+
+  if (orchestrator?.mode === 'compose') {
+    await healConductorAtStartup(logger);
+  }
+};
+
 const startServer = async (): Promise<void> => {
   const serverOptions = createFastifyHttpsOptions();
   const server = fastify(serverOptions);
@@ -276,74 +368,7 @@ const startServer = async (): Promise<void> => {
   );
   logger.info(`Gluesync Conductor server started on port ${port}`);
 
-  // Both modes: DKR_COMPOSE_FILE is the compose file or the stack file, and
-  // either is read and rewritten below (and on every request), so a damaged one
-  // is restored from its last-good copy before anything touches it
-  await guardComposeAtStartup();
-
-  // Docker can still be starting: the healing below only suits compose, so it
-  // waits (bounded) until the mode is known instead of guessing
-  const orchestrator = await awaitDecidedOrchestrator(server.docker);
-  const isComposeMode = orchestrator?.mode === 'compose';
-
-  if (orchestrator?.mode === 'swarm') {
-    logger.info(
-      '[swarm] swarm mode: not adopting services nor healing the Conductor configuration, the stack file is the source of truth',
-    );
-
-    // A self update that Swarm rolled back leaves the stack file on the bad image
-    if (orchestrator.isManager) {
-      await reconcileSelfImage(server.docker, orchestrator);
-    }
-  } else if (!orchestrator) {
-    logger.warn(
-      '[orchestrator] Docker did not answer, so compose or swarm is unknown: not adopting services nor healing the Conductor configuration',
-    );
-  } else {
-    await adoptServicesAtStartup(server.docker, logger);
-  }
-
-  const syncResult = await syncCollectLogsScripts();
-
-  if (syncResult.synced) {
-    logger.info('[collect-logs-sync] script synced to root folder');
-  } else if (syncResult.success) {
-    logger.info('[collect-logs-sync] already up to date');
-  } else {
-    logger.warn('[collect-logs-sync] sync failed');
-  }
-
-  if (!isComposeMode) {
-    return;
-  }
-
-  const rebootNeeded = await runStartupStep(
-    'conductor-healer',
-    healConductorConf,
-    false,
-  );
-
-  logger.info(
-    `[conductor-healer] ${rebootNeeded ? 'reboot needed to heal' : 'nothing to heal'}`,
-  );
-
-  const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
-
-  if (rebootNeeded) {
-    const shouldUseWindows =
-      process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
-
-    // Not awaited: the reboot replaces this very process. A failure must not
-    // become an unhandled rejection, which exits the process.
-    autoReboot({
-      hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
-      serviceName: 'gluesync-conductor',
-      helperImage: shouldUseWindows ? helperImageWindows : 'docker:cli',
-      log: msg => logger.info({ msg }, '[conductor-healer] self-heal log'),
-    }).catch((error: unknown) => {
-      logger.error({ error }, '[conductor-healer] self-heal reboot failed');
-    });
-  }
+  await runPostListenStartup(server.docker, logger);
 };
 
 // Handle unhandled rejections

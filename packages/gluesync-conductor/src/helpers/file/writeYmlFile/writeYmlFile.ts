@@ -18,17 +18,17 @@ import inspectCompose from '../../composeFile/inspectCompose/inspectCompose';
 import safeWriteFile from '../safeWriteFile/safeWriteFile';
 import { UnsafeWriteError } from '../safeWriteFile/safeWriteFile.errors';
 
-const NUMBER_TAGS: ReadonlyArray<string> = [
+const NUMBER_TAGS: ReadonlySet<string> = new Set([
   'tag:yaml.org,2002:int',
   'tag:yaml.org,2002:float',
-];
+]);
 
 // The library writes every number back from its value, so an untouched
 // `mode: 0444` (decimal 444 for YAML 1.2) would come out as `444`, which
 // Docker reads as another permission. A number that was parsed keeps its source.
 const keepNumberSource: NonNullable<SchemaOptions['customTags']> = tags =>
   (tags as ReadonlyArray<any>).map(tag =>
-    NUMBER_TAGS.includes(tag.tag) && typeof tag.stringify === 'function'
+    NUMBER_TAGS.has(tag.tag) && typeof tag.stringify === 'function'
       ? {
           ...tag,
           stringify: (node: any, ctx: any, onComment: any, onChompKeep: any) =>

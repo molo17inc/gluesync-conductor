@@ -358,19 +358,15 @@ const performUpdate = async (
     wantedIds.length === 0 && chronosInfo?.needsUpdate
       ? [CHRONOS_NAME]
       : wantedIds;
-  const branchResult = await (async () => {
-    if (nothingToUpdate) {
-      return { orderedIds: [], results: [] };
-    }
-
-    return isConductorOnlyUpdate(conductorInfo, wantedIds)
-      ? updateConductorOnly(updateAction, conductorInfo, composeJson, {
-          swarm,
-        })
-      : updateNormalBulk(updateAction, composeJson, bulkIds, releaseChannel, {
-          swarm,
-        });
-  })();
+  const branchResult = nothingToUpdate
+    ? { orderedIds: [], results: [] }
+    : await (isConductorOnlyUpdate(conductorInfo, wantedIds)
+        ? updateConductorOnly(updateAction, conductorInfo, composeJson, {
+            swarm,
+          })
+        : updateNormalBulk(updateAction, composeJson, bulkIds, releaseChannel, {
+            swarm,
+          }));
 
   const ids =
     'id' in branchResult ? [branchResult.id] : branchResult.orderedIds;

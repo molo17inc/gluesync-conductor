@@ -1,6 +1,25 @@
 import { ParseEnvFile } from './parseEnvFile.model';
 
-const ASSIGNMENT = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*=(.*)$/;
+const KEY = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
+
+// Split on the first `=` instead of one regex over the whole line: a pattern
+// with `\s*` and `.*` around it backtracks badly on a long run of spaces.
+const parseAssignment = (
+  line: string,
+): readonly [key: string, raw: string] | undefined => {
+  const separator = line.indexOf('=');
+
+  if (separator < 0) {
+    return undefined;
+  }
+
+  const left = line.slice(0, separator).trimEnd();
+  const key = /^export\s/.test(left)
+    ? left.slice('export'.length).trim()
+    : left;
+
+  return KEY.test(key) ? [key, line.slice(separator + 1)] : undefined;
+};
 
 const unquote = (raw: string): string => {
   const value = raw.trim();
@@ -11,7 +30,9 @@ const unquote = (raw: string): string => {
   }
 
   // An unquoted value ends at a ` #` comment
-  return value.replace(/\s+#.*$/, '').trim();
+  const comment = value.search(/\s#/);
+
+  return (comment < 0 ? value : value.slice(0, comment)).trim();
 };
 
 /**
@@ -26,9 +47,11 @@ const parseEnvFile: ParseEnvFile = content =>
       .map(line => line.trim())
       .filter(line => line && !line.startsWith('#'))
       .flatMap(line => {
-        const match = ASSIGNMENT.exec(line);
+        const assignment = parseAssignment(line);
 
-        return match ? [[match[1], unquote(match[2])] as const] : [];
+        return assignment
+          ? [[assignment[0], unquote(assignment[1])] as const]
+          : [];
       }),
   );
 

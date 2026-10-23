@@ -28,13 +28,11 @@ const isNotFound = (error: unknown): boolean =>
 
 // `undefined` when this process is not a container Docker knows (dev run on a
 // host): that is an answer, not a failure.
-const inspectSelfLabels = async (
+export const inspectSelf = async (
   docker: Readonly<Docker>,
-): Promise<SelfLabels | undefined> => {
+): Promise<Docker.ContainerInspectInfo | undefined> => {
   try {
-    const inspect = await docker.getContainer(os.hostname()).inspect();
-
-    return inspect.Config?.Labels ?? {};
+    return await docker.getContainer(os.hostname()).inspect();
   } catch (error) {
     if (isNotFound(error)) {
       return undefined;
@@ -42,6 +40,14 @@ const inspectSelfLabels = async (
 
     throw error;
   }
+};
+
+const inspectSelfLabels = async (
+  docker: Readonly<Docker>,
+): Promise<SelfLabels | undefined> => {
+  const inspect = await inspectSelf(docker);
+
+  return inspect && (inspect.Config?.Labels ?? {});
 };
 
 const withoutNamespace = (serviceName: string, namespace: string): string =>

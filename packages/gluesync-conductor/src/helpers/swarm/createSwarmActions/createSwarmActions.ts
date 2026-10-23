@@ -172,8 +172,10 @@ const createSwarmActions: CreateSwarmActions = ({
     },
     restart: id => restartService(id, 'restart'),
     kill: id => restartService(id, 'kill'),
-    pull: async id =>
-      `Swarm pulls the image of ${id} when the service updates.`,
+    pull: id =>
+      Promise.resolve(
+        `Swarm pulls the image of ${id} when the service updates.`,
+      ),
     remove: async id => {
       await removeService(docker, fullName(id));
 

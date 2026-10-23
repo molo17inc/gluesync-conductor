@@ -67,13 +67,11 @@ const longEntryParsers: Partial<
   },
   ports: entry => {
     const { target, published, protocol } = entry as LongPort;
+    const protocolSuffix = protocol && protocol !== 'tcp' ? `/${protocol}` : '';
 
     return target === undefined || target === ''
       ? undefined
-      : [
-          String(published ?? ''),
-          `${target}${protocol && protocol !== 'tcp' ? `/${protocol}` : ''}`,
-        ];
+      : [String(published ?? ''), `${target}${protocolSuffix}`];
   },
 };
 

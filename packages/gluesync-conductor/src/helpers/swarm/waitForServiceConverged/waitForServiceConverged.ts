@@ -51,9 +51,11 @@ const judge = (
   const state = service.updateState;
 
   if (state && FAILED_UPDATE_STATES.has(state)) {
+    const message = service.updateMessage ? `: ${service.updateMessage}` : '';
+
     return {
       kind: 'failed',
-      reason: `${fullName} update ${state}${service.updateMessage ? `: ${service.updateMessage}` : ''}`,
+      reason: `${fullName} update ${state}${message}`,
     };
   }
 

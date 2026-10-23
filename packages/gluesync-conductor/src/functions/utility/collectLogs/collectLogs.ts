@@ -1376,6 +1376,51 @@ const filterReadableFiles = async (
   return checks.filter((filePath): filePath is string => filePath !== null);
 };
 
+// Swarm mode exports the logs of the stack services, compose mode the ones of
+// the containers
+const exportContainerOrServiceLogs = async (
+  outputDirectory: string,
+  sinceHours: number,
+  tailLines: number | undefined,
+  logger?: Logger,
+  swarm?: SwarmLogsSource,
+): Promise<ReadonlyArray<string>> => {
+  if (!swarm) {
+    return exportDockerContainerLogs(
+      outputDirectory,
+      sinceHours,
+      tailLines,
+      logger,
+    );
+  }
+
+  try {
+    return await exportSwarmServiceLogs(swarm.docker, swarm.namespace, {
+      outputDirectory,
+      sinceHours,
+      tailLines,
+    });
+  } catch (error: unknown) {
+    // Like `docker ps` failing in compose mode: the other sources and the
+    // report still make a useful archive
+    logger?.warn({ error }, 'Failed to export swarm service logs');
+
+    return [];
+  }
+};
+
+const describeDockerCollection = (
+  sinceHours: number,
+  tailLines: number | undefined,
+  swarm?: SwarmLogsSource,
+): string => {
+  const lines =
+    typeof tailLines === 'number' ? `${tailLines} tail lines` : 'all lines';
+  const unit = swarm ? 'service' : 'container';
+
+  return `Collecting logs from Docker (since ${sinceHours}h, ${lines} per ${unit}).`;
+};
+
 const collectLogsInternally = async (
   options: CollectLogsOptions,
 ): Promise<CollectLogsResult> => {
@@ -1448,24 +1493,13 @@ const collectLogsInternally = async (
     ]);
 
     // Docker logs
-    const dockerLogFiles = swarm
-      ? await exportSwarmServiceLogs(swarm.docker, swarm.namespace, {
-          outputDirectory: containerLogsDir,
-          sinceHours: dockerSinceHours,
-          tailLines: dockerTailLines,
-        }).catch((error: unknown) => {
-          // Like `docker ps` failing in compose mode: the other sources and
-          // the report still make a useful archive
-          logger?.warn({ error }, 'Failed to export swarm service logs');
-
-          return [];
-        })
-      : await exportDockerContainerLogs(
-          containerLogsDir,
-          dockerSinceHours,
-          dockerTailLines,
-          logger,
-        );
+    const dockerLogFiles = await exportContainerOrServiceLogs(
+      containerLogsDir,
+      dockerSinceHours,
+      dockerTailLines,
+      logger,
+      swarm,
+    );
 
     // Optional file-based logs.
     //
@@ -1924,7 +1958,7 @@ const collectLogsInternally = async (
           [
             'Local-only mode enabled. Credential pre-check skipped.',
             `Collecting logs from last ${logLookbackDays} day(s).`,
-            `Collecting logs from Docker (since ${dockerSinceHours}h, ${typeof dockerTailLines === 'number' ? `${dockerTailLines} tail lines` : 'all lines'} per ${swarm ? 'service' : 'container'}).`,
+            describeDockerCollection(dockerSinceHours, dockerTailLines, swarm),
             collectLogsFromFiles
               ? 'File-based log collection enabled (default).'
               : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
@@ -2004,7 +2038,7 @@ const collectLogsInternally = async (
         [
           'Credential pre-check succeeded.',
           `Collecting logs from last ${logLookbackDays} day(s).`,
-          `Collecting logs from Docker (since ${dockerSinceHours}h, ${typeof dockerTailLines === 'number' ? `${dockerTailLines} tail lines` : 'all lines'} per ${swarm ? 'service' : 'container'}).`,
+          describeDockerCollection(dockerSinceHours, dockerTailLines, swarm),
           collectLogsFromFiles
             ? 'File-based log collection enabled (default).'
             : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',

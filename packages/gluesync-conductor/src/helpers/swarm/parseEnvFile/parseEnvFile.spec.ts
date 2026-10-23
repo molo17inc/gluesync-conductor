@@ -56,6 +56,42 @@ describe('parseEnvFile', () => {
     });
   });
 
+  it('keeps export as a key when nothing follows it and as a prefix otherwise', () => {
+    assert.deepEqual(
+      parseEnvFile('export=1\nexportA=2\nexport   B=3\nexport A B=4'),
+      {
+        export: '1',
+        exportA: '2',
+        B: '3',
+      },
+    );
+  });
+
+  it('reads long lines of spaces and quotes in linear time', () => {
+    const spaces = ' '.repeat(200_000);
+    const started = Date.now();
+
+    assert.deepEqual(
+      parseEnvFile(
+        [
+          `A=x${spaces}y`,
+          `B${spaces}`,
+          `export${spaces}`,
+          `C=${spaces}#`,
+          `D=${'"'.repeat(200_000)}`,
+          `E=${"'".repeat(200_000)} x`,
+        ].join('\n'),
+      ),
+      {
+        A: `x${spaces}y`,
+        C: '#',
+        D: '"'.repeat(199_998),
+        E: "'".repeat(199_998),
+      },
+    );
+    assert.ok(Date.now() - started < 2000);
+  });
+
   it('lets a later line win', () => {
     assert.deepEqual(parseEnvFile('A=1\nA=2'), { A: '2' });
   });

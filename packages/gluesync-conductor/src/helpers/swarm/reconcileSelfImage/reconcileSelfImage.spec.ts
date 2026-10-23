@@ -23,8 +23,9 @@ const load = (
   fileServices: Record<string, unknown>,
   services: ReadonlyArray<FakeService>,
   writeFails = false,
+  dockerOptions: Parameters<typeof fakeSwarmDocker>[0] = {},
 ) => {
-  const { docker, calls } = fakeSwarmDocker({ services });
+  const { docker, calls } = fakeSwarmDocker({ ...dockerOptions, services });
   const written: Array<{ services: Record<string, unknown> }> = [];
 
   const reconcile = loadWithStubs<{ default: ReconcileSelfImage }>(
@@ -62,7 +63,102 @@ const rolledBack = (image: string) =>
     message: 'rollback completed',
   });
 
+const startedRollback = (image: string, state: string) =>
+  buildService('gluesync-conductor', {
+    image: `${image}@sha256:0123456789abcdef`,
+    state,
+    message: 'rollback',
+  });
+
 describe('reconcileSelfImage', () => {
+  it('fixes the stack file while the rollback has only started, from the image of its own container', async () => {
+    // The service spec still names the image that was rolled back
+    const { reconcile, docker, written } = load(
+      FILE_SERVICES,
+      [startedRollback('molo17/gluesync-conductor:0.2.5', 'rollback_started')],
+      false,
+      { selfImage: 'molo17/gluesync-conductor:0.2.4@sha256:0123456789abcdef' },
+    );
+
+    assert.equal(await reconcile(docker, ORCHESTRATOR), 'reconciled');
+    assert.deepEqual(written, [
+      {
+        version: '3',
+        services: {
+          ...FILE_SERVICES,
+          'gluesync-conductor': {
+            ...FILE_SERVICES['gluesync-conductor'],
+            image: 'molo17/gluesync-conductor:0.2.4',
+          },
+        },
+      },
+    ]);
+  });
+
+  it('treats every rollback state as a rollback', async () => {
+    const states = [
+      'rollback_started',
+      'rollback_paused',
+      'rollback_completed',
+    ];
+
+    await Promise.all(
+      states.map(async state => {
+        const { reconcile, docker, written } = load(
+          FILE_SERVICES,
+          [startedRollback('molo17/gluesync-conductor:0.2.5', state)],
+          false,
+          { selfImage: 'molo17/gluesync-conductor:0.2.4' },
+        );
+
+        assert.equal(
+          await reconcile(docker, ORCHESTRATOR),
+          'reconciled',
+          state,
+        );
+        assert.equal(written.length, 1, state);
+      }),
+    );
+  });
+
+  it('trusts the own container over the service spec', async () => {
+    const { reconcile, docker, written } = load(
+      FILE_SERVICES,
+      [rolledBack('molo17/gluesync-conductor:0.2.5')],
+      false,
+      { selfImage: 'molo17/gluesync-conductor:0.2.4' },
+    );
+
+    assert.equal(await reconcile(docker, ORCHESTRATOR), 'reconciled');
+    assert.equal(
+      (written[0].services['gluesync-conductor'] as { image: string }).image,
+      'molo17/gluesync-conductor:0.2.4',
+    );
+  });
+
+  it('falls back to the image of the service when its own container cannot be inspected', async () => {
+    const failing = load(
+      FILE_SERVICES,
+      [rolledBack('molo17/gluesync-conductor:0.2.4')],
+      false,
+      { selfInspectFails: true },
+    );
+    const unknown = load(FILE_SERVICES, [
+      rolledBack('molo17/gluesync-conductor:0.2.4'),
+    ]);
+
+    assert.equal(
+      await failing.reconcile(failing.docker, ORCHESTRATOR),
+      'reconciled',
+    );
+    assert.equal(
+      await unknown.reconcile(unknown.docker, ORCHESTRATOR),
+      'reconciled',
+    );
+    assert.equal(failing.written.length, 1);
+    assert.equal(unknown.written.length, 1);
+  });
+
   it('puts the image the service rolled back to into the stack file, touching nothing else', async () => {
     const { reconcile, docker, calls, written } = load(FILE_SERVICES, [
       rolledBack('molo17/gluesync-conductor:0.2.4'),
@@ -93,8 +189,8 @@ describe('reconcileSelfImage', () => {
     assert.deepEqual(written, []);
   });
 
-  it('does nothing unless the last update was a completed rollback', async () => {
-    const states = [undefined, 'completed', 'updating', 'rollback_started'];
+  it('does nothing unless the last update was rolled back', async () => {
+    const states = [undefined, 'completed', 'updating', 'paused'];
 
     await Promise.all(
       states.map(async state => {

@@ -20,6 +20,11 @@ export type FakeSwarmOptions = Readonly<{
   // Rejects `service.update` with this error (once per entry)
   updateErrors?: ReadonlyArray<Error>;
   listNodesFails?: boolean;
+  // The image of the container this process runs in (`Config.Image` of
+  // `getContainer(hostname).inspect()`); unset, no container is found (404)
+  selfImage?: string;
+  // Makes the inspect of the own container fail with a daemon error
+  selfInspectFails?: boolean;
 }>;
 
 // What the helpers asked of the fake, for the specs to look at
@@ -138,6 +143,8 @@ const fakeSwarmDocker = ({
   nodes = [],
   updateErrors = [],
   listNodesFails = false,
+  selfImage,
+  selfInspectFails = false,
 }: FakeSwarmOptions = {}) => {
   const calls: SwarmCalls = {
     listServices: [],
@@ -183,6 +190,18 @@ const fakeSwarmDocker = ({
 
       return nodes;
     },
+    getContainer: (id: string) => ({
+      inspect: async () => {
+        if (selfInspectFails) {
+          throw new Error('Cannot connect to the Docker daemon');
+        }
+        if (!selfImage) {
+          throw notFound(id);
+        }
+
+        return { Id: id, Config: { Image: selfImage, Labels: {} } };
+      },
+    }),
     getService: (id: string) => ({
       inspect: async () => {
         const service = find(id);

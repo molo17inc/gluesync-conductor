@@ -125,10 +125,15 @@ unless Swarm already rolled it back (rolling back again would undo that). Images
 are not pruned after an update: the Docker API only reaches the manager.
 
 The stack file receives the Conductor's new image before Swarm replaces its
-task. If Swarm rolls that back (`rollback_completed`), the Conductor that
-starts again compares the stack file image with its own service spec and, when
-they differ, writes the spec image back (only that service; an image written
-as a `${VAR}` is left alone) and logs a warning.
+task. If Swarm rolls that back, the Conductor that starts again (the old image)
+compares the stack file image with the image it is running and, when they
+differ, writes the running image back (only that service; an image written as a
+`${VAR}` is left alone) and logs a warning. It does so in any rollback state
+(`rollback_started`, `rollback_paused`, `rollback_completed`): Swarm marks the
+rollback completed only after its monitor window, so the service is usually
+still `rollback_started` when the rolled back task boots. The running image is
+read from the Conductor's own container (`Config.Image`, digest stripped); the
+image of the service spec is used only when that inspect fails.
 
 "Converged" means: `UpdateStatus.State` is `completed` (or absent for a
 service never updated), the number of tasks in state `running` equals the

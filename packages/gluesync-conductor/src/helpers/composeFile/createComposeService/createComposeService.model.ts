@@ -28,7 +28,7 @@ export type CreateComposeServiceOptions = Readonly<
     swarm?: Readonly<{
       // `deploy` of the service being edited: placement, replicas and the like
       // are not Conductor's to drop
-      currentDeploy?: RawComposeService['deploy'];
+      currentDeploy?: ComposeServiceDeploy;
     }>;
   }
 >;
