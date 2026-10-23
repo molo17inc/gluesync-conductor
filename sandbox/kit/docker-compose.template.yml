@@ -111,6 +111,11 @@ services:
       - PROXY_HTTPS=http://{{PROXY_USER}}:{{PROXY_PASS}}@host.docker.internal:3128
       - NODE_EXTRA_CA_CERTS=/opt/gluesync/data/sandbox-ca.pem
       - DOCKER_HOST=unix:///var/run/sandbox-sock/docker.sock
+      # Sandbox-only tuning, not for a real kit: the disk-full profiles give the compose file a
+      # 256 KiB tmpfs, so the conductor's free-space thresholds (default 512 MiB before an
+      # update, 1 MiB reserve per write) are scaled down to something that tmpfs can show.
+      - CONDUCTOR_UPDATE_MIN_FREE_BYTES=65536
+      - CONDUCTOR_WRITE_RESERVE_BYTES=4096
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./shared:/opt/gluesync/data
