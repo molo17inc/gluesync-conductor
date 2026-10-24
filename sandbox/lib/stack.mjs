@@ -186,7 +186,7 @@ export const conductorContainer = async () => (await containers()).find(c => c.s
 const kitFingerprint = (list, strict) =>
   list
     .filter(c => SERVICES[c.service])
-    .map(c => `${c.service} ${c.id} ${c.image}${strict ? ` ${c.state === 'running' ? 'running' : 'not-running'}` : ''}`)
+    .map(c => [c.service, c.id, c.image, ...(strict ? [String(c.state === 'running')] : [])].join(' '))
     .sort((a, b) => a.localeCompare(b));
 
 const describeKitChange = (before, after) => {
@@ -201,7 +201,8 @@ const kitProblems = (list, strict) =>
   Object.keys(SERVICES).flatMap(service => {
     if (!strict) return [];
     const mine = list.filter(c => c.service === service);
-    if (mine.length !== 1) return [`${service}: ${mine.length} containers (${mine.map(c => `${c.name}:${c.state}`).join(', ') || 'none'})`];
+    const names = mine.map(c => `${c.name}:${c.state}`).join(', ');
+    if (mine.length !== 1) return [`${service}: ${mine.length} containers (${names || 'none'})`];
     return mine[0].state !== 'running' ? [`${service}: ${mine[0].state}`] : [];
   });
 
