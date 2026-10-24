@@ -35,7 +35,17 @@ const startDind = async () => {
     return;
   }
   await run(dockerBin(), ['rm', '-f', env.dindName]);
-  const publish = [env.dockerPort, ...Object.values(env.ports)].flatMap(p => ['-p', `127.0.0.1:${p}:${p === env.dockerPort ? 2375 : p}`]);
+  // Host port -> port inside the DinD container. The kit publishes its own ports at the same number
+  // inside; the daemon API and the two infra admin ports have fixed inner ports.
+  const mappings = [
+    [env.dockerPort, 2375],
+    [env.ports.conductor, env.ports.conductor],
+    [env.ports.corehub, env.ports.corehub],
+    [env.ports.proxy, env.ports.proxy],
+    [env.ports.backofficeAdmin, env.infraPorts.backofficeAdmin],
+    [env.ports.dockerProxyAdmin, env.infraPorts.dockerProxyAdmin],
+  ];
+  const publish = mappings.flatMap(([host, inner]) => ['-p', `127.0.0.1:${host}:${inner}`]);
   say('starting isolated Docker-in-Docker daemon', { image: env.dindImage });
   await mustRun(dockerBin(), [
     'run', '-d', '--privileged', '--name', env.dindName, '--hostname', 'sandbox-host',
@@ -147,7 +157,7 @@ const buildBases = async () => {
   say('building conductor image from packages/gluesync-conductor/build');
   await mustDocker(['build', '-q', '-t', env.conductorBase, env.conductorPkgDir], { timeoutMs: 600000 });
   // Keeper containers stop the conductor's post-update image prune from deleting the bases.
-  const keepers = [['keep-conductor-base', env.conductorBase], ['keep-fake-base', env.fakeBase]];
+  const keepers = [[`${env.keepPrefix}conductor-base`, env.conductorBase], [`${env.keepPrefix}fake-base`, env.fakeBase]];
   await Promise.all(
     keepers.map(async ([name, image]) => {
       await docker(['rm', '-f', name]);

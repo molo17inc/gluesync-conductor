@@ -13,6 +13,7 @@ yarn install && yarn build          # repo root: builds packages/gluesync-conduc
 cd sandbox && npm install
 node run.mjs up                     # isolated daemon, registry, fakes, real conductor
 node run.mjs iterate --iterations 17 --seed 4242
+node run.mjs iterate --profiles all --shard 2/4   # every profile once, a quarter of them (what a CI job runs)
 node run.mjs enospc                 # real-kernel ENOSPC test of safeWriteFile (sandbox must be up)
 node run.mjs status
 node run.mjs down --purge           # remove everything except reports/
@@ -75,6 +76,8 @@ The kit (`kit/docker-compose.template.yml`) mirrors `debug-container/linux/docke
 
 Pick profiles with `--profiles a,b`. Replay a run with the same `--seed`.
 
+`--profiles all` runs every non-destructive profile once, in the order of the table, minus `--exclude a,b` and `SANDBOX_EXCLUDE_PROFILES` (comma separated; an unknown name is an error). `--shard i/n` (1-based) keeps the profiles at positions `k` of that list with `k % n == i-1`, and implies `--profiles all`; `--iterations` is ignored for `all` and for a shard. `iterate` exits 1 if any iteration FAILs (WARN does not), and writes `junit.xml` next to `report.md`: one test case per iteration, named after the profile.
+
 ### Compose file checks (every profile)
 
 - `compose.never-blank`: a background sampler reads the compose file the conductor sees every ~25 ms from before the profile's fault until the stack has settled. Every sample must be non-empty, parse, and contain every kit service. A sample that catches an in-flight write and is fine at the next one is counted as a torn read and ignored; two broken samples in a row, or an empty one, fail the check, with the samples as evidence.
@@ -106,6 +109,35 @@ The kit's conductor runs with `CONDUCTOR_UPDATE_MIN_FREE_BYTES=65536` and `CONDU
 | D | control: case A with Node's plain `fs.writeFile` | file ends truncated (neither old nor new bytes); printed as `control: plain writeFile left N bytes`. Its expectation is inverted: it passes when the bug reproduces |
 
 The runner prints a PASS/FAIL table, writes `reports/<timestamp>-enospc/report.md` and `report.json`, and exits non-zero if any case fails. If a case fails, check the `detail` object first: a `harness:` message means the setup, not `safeWriteFile`, is at fault.
+
+## In CI
+
+The `sandbox` job of `.gitlab-ci.yml` runs on every merge request pipeline (no manual step), on the `hq-linux-docker` runners, after `build_artifacts` (it needs `packages/gluesync-conductor/build`). It is `parallel: 4`: shard `i` runs `node run.mjs iterate --profiles all --shard i/4`, one iteration per profile, so about five profiles each; shard 1 also runs `node run.mjs enospc`. The job fails if any iteration or ENOSPC case fails. Reports (with `junit.xml`, shown as the pipeline's test report) are kept as artifacts for two weeks.
+
+- **Own daemon.** The job runs in a privileged `docker:28.3.3-dind` container and starts its own `dockerd` there (data root on the image's `/var/lib/docker` volume, never overlay on overlay). Concurrent pipelines never share a daemon, so there is nothing to clash on names or ports, and the bind-mount paths under the checkout exist for the daemon that mounts them. The sandbox then runs its own DinD inside that daemon, exactly as on a Mac.
+- **Excluded:** destructive profiles, and `conductor-crash-mid-update`, which can deadlock: a SIGKILL in the middle of the recreate leaves CoreHub `Created`, and the restarted conductor's SDK plugin blocks startup until CoreHub answers, so it crash-loops. Known bug; re-enable it by emptying `SANDBOX_EXCLUDE_PROFILES` in `ci/sandbox-job.sh`.
+- **No signing, no registry credentials**: nothing leaves the job except the artifacts. Images come from Docker Hub (inside the sandbox daemon) and the job needs internet access to it.
+
+Everything the job does is in `ci/sandbox-job.sh`. To reproduce shard 2 of 4 locally, in the same image, from a copy of the checkout (run `yarn install && yarn build` first):
+
+```bash
+docker run --rm --privileged --entrypoint sh \
+  -v "$PWD":/src:ro -v /tmp/sandbox-out:/out \
+  -e CI_NODE_INDEX=2 -e CI_NODE_TOTAL=4 \
+  -e SANDBOX_NAME=conductor-sandbox-ci -e SANDBOX_PORT_OFFSET=1000 \
+  docker:28.3.3-dind -c '
+    mkdir -p /builds/conductor && cd /builds/conductor
+    tar -C /src --exclude=./.git --exclude=./sandbox/node_modules --exclude=./sandbox/run --exclude=./sandbox/reports -cf - . | tar -xf -
+    sh ci/sandbox-job.sh; rc=$?
+    cp -a sandbox/reports/. /out/
+    exit $rc'
+```
+
+It never touches your own sandbox: the nested daemon is private to the container, and `SANDBOX_NAME` / `SANDBOX_PORT_OFFSET` only matter when you run `ci/sandbox-job.sh` directly on a host that already runs one.
+
+## Overriding names and ports
+
+Defaults are listed under *Ports*. `SANDBOX_NAME` (default `conductor-sandbox`) names the DinD container and its volume (`<name>-dind`). `SANDBOX_PORT_OFFSET` is added to every default port; `SANDBOX_DOCKER_PORT`, `SANDBOX_CONDUCTOR_PORT`, `SANDBOX_COREHUB_PORT`, `SANDBOX_PROXY_PORT`, `SANDBOX_BACKOFFICE_ADMIN_PORT` and `SANDBOX_DOCKER_PROXY_ADMIN_PORT` set one port and win over the offset. Names inside the sandbox daemon (images, `keep-*` helpers, the infra compose project) cannot clash with anything on the host and are fixed.
 
 ## Ports (localhost only)
 

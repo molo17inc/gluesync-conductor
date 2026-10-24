@@ -6,7 +6,11 @@
 //        --iterations N    (default 15)
 //        --seed N          (default: time based; printed so a run can be replayed)
 //        --profiles a,b    only these chaos profiles (default: all non-destructive)
+//        --profiles all    every non-destructive profile once, minus --exclude / SANDBOX_EXCLUDE_PROFILES
+//        --exclude a,b     profiles left out of `all` (added to SANDBOX_EXCLUDE_PROFILES)
+//        --shard i/n       only the profiles at positions k with k % n == i-1 (1-based i); implies --profiles all
 //        --destructive     also run profiles that can leave the conductor down
+//      exits 1 if any iteration FAILs (WARN does not); writes reports/<run>/junit.xml
 //   node sandbox/run.mjs enospc                  real-kernel ENOSPC test of safeWriteFile on a 64 KiB tmpfs (needs the sandbox up)
 //   node sandbox/run.mjs status                  containers, versions, chaos state
 //   node sandbox/run.mjs down [--purge]          remove the sandbox daemon (and run/ with --purge)
@@ -18,12 +22,18 @@ import { iterate } from './lib/iterate.mjs';
 import { enospc } from './lib/enospc.mjs';
 import { describeState, say } from './lib/util.mjs';
 
+// The kit's directories are bind-mounted into containers that run as other users (the fakes run
+// as `node`): on a Linux host a 0755 directory created here would be read-only for them.
+process.umask(0);
+
 const [, , command = 'help', ...rest] = process.argv;
 const flag = name => rest.includes(`--${name}`);
 const option = (name, fallback) => {
   const i = rest.indexOf(`--${name}`);
   return i !== -1 && rest[i + 1] ? rest[i + 1] : fallback;
 };
+
+const list = value => (value || '').split(',').filter(Boolean);
 
 const status = async () => {
   if (!(await dindRunning())) {
@@ -45,16 +55,22 @@ const main = async () => {
     case 'up':
       await up({ fresh: flag('fresh') });
       break;
-    case 'iterate':
-      await iterate({
+    case 'iterate': {
+      const run = await iterate({
         iterations: Number(option('iterations', 15)),
         seed: Number(option('seed', Date.now() % 100000)),
-        profiles: option('profiles', '')
-          .split(',')
-          .filter(Boolean),
+        profiles: list(option('profiles', '')),
         destructive: flag('destructive'),
+        shard: option('shard', ''),
+        exclude: [...list(process.env.SANDBOX_EXCLUDE_PROFILES), ...list(option('exclude', ''))],
       });
+      const failed = run.iterations.filter(it => it.outcome === 'fail');
+      if (failed.length) {
+        say(`FAILED: ${failed.length} of ${run.iterations.length} iteration(s): ${failed.map(it => it.profile).join(', ')}`);
+        process.exitCode = 1;
+      }
       break;
+    }
     case 'enospc':
       await enospc();
       break;

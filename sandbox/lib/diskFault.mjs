@@ -334,7 +334,7 @@ const startNow = async (ctx, it, { freeKiB, sizeKiB = 256, flap = false }) => {
   it?.notes.push(`disk fault in conductor ${c.id} (pid ${c.pid}): ${r.out.split('\n').at(-1)}, tmpfs ${sizeKiB} KiB${flap ? ', flapping' : ''}`);
   startStream(c.pid, ctx.sampler);
   if (flap) {
-    const cmd = await nsCommand(c.pid, flapScript(freeKiB), 'keep-disk-fault');
+    const cmd = await nsCommand(c.pid, flapScript(freeKiB), `${env.keepPrefix}disk-fault`);
     const child = spawn(dockerBin(), cmd.args, {
       env: cmd.docker ? { ...process.env, DOCKER_HOST: env.dockerHost } : process.env,
       stdio: 'ignore',

@@ -105,7 +105,7 @@ export const strayContainers = async () => {
     .split('\n')
     .map(l => JSON.parse(l))
     .filter(c => !/com\.docker\.compose\.project=(gluesync|conductor-sandbox-infra)/.test(c.Labels || ''))
-    .filter(c => !c.Names.startsWith('keep-'))
+    .filter(c => !c.Names.startsWith(env.keepPrefix))
     .map(c => ({ id: c.ID, name: c.Names, image: c.Image, state: c.State, status: c.Status }));
 };
 

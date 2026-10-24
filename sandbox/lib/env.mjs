@@ -7,6 +7,16 @@ const runDir = path.join(sandboxDir, 'run');
 
 let caCache = null;
 
+// Every host-visible name and port can be overridden, so several sandboxes (a developer's own,
+// CI shards on a shared daemon) can coexist. Defaults are what a developer's Mac gets.
+//   SANDBOX_NAME            prefix of the DinD container and its volume (default conductor-sandbox)
+//   SANDBOX_PORT_OFFSET     added to every default port below
+//   SANDBOX_DOCKER_PORT, SANDBOX_CONDUCTOR_PORT, SANDBOX_COREHUB_PORT, SANDBOX_PROXY_PORT,
+//   SANDBOX_BACKOFFICE_ADMIN_PORT, SANDBOX_DOCKER_PROXY_ADMIN_PORT   one port each, winning over the offset
+const portOffset = Number(process.env.SANDBOX_PORT_OFFSET || 0);
+const port = (name, fallback) => Number(process.env[`SANDBOX_${name}_PORT`] || fallback + portOffset);
+const sandboxName = process.env.SANDBOX_NAME || 'conductor-sandbox';
+
 export const env = {
   sandboxDir,
   repoDir: path.resolve(sandboxDir, '..'),
@@ -19,10 +29,10 @@ export const env = {
   lastGoodFile: path.join(runDir, 'kit', '.conductor', 'docker-compose.last-good.yml'),
   reportsDir: path.join(sandboxDir, 'reports'),
 
-  dindName: 'conductor-sandbox-dind',
-  dindVolume: 'conductor-sandbox-dind',
+  dindName: `${sandboxName}-dind`,
+  dindVolume: `${sandboxName}-dind`,
   dindImage: 'docker:28.3.3-dind',
-  dockerPort: 23750,
+  dockerPort: port('DOCKER', 23750),
   get dockerHost() {
     return `tcp://127.0.0.1:${this.dockerPort}`;
   },
@@ -30,7 +40,19 @@ export const env = {
   registry: 'localhost:5000',
   project: 'gluesync',
   // proxy: the fake reverse-proxy, which forwards /conductor/api/ to the conductor as the UI's requests travel.
-  ports: { conductor: 5317, corehub: 5318, proxy: 5319, backofficeAdmin: 8088, dockerProxyAdmin: 8089 },
+  ports: {
+    conductor: port('CONDUCTOR', 5317),
+    corehub: port('COREHUB', 5318),
+    proxy: port('PROXY', 5319),
+    backofficeAdmin: port('BACKOFFICE_ADMIN', 8088),
+    dockerProxyAdmin: port('DOCKER_PROXY_ADMIN', 8089),
+  },
+  // Ports the infra containers listen on inside the sandbox daemon (the infra compose file's own);
+  // the DinD container publishes them to ports.backofficeAdmin / ports.dockerProxyAdmin on the host.
+  infraPorts: { backofficeAdmin: 8088, dockerProxyAdmin: 8089 },
+  // Helper containers that stop the conductor's image prune from deleting the bases. They live in
+  // the sandbox daemon, so they cannot clash with anything on the host and need no per-sandbox name.
+  keepPrefix: 'keep-',
 
   // Sandbox-only values, not real credentials. The proxy password and license
   // text are canaries: the logging check fails if they show up in conductor logs.
@@ -39,6 +61,7 @@ export const env = {
   proxyPass: 'SbProxyP4ss-leakcheck',
   licenseText: 'SANDBOX-LICENSE-LEAKCHECK-91e2',
 
+  // Image names inside the sandbox daemon (no host-side clash possible).
   fakeBase: 'conductor-sandbox/fake-base:dev',
   conductorBase: 'conductor-sandbox/conductor-base:dev',
 
