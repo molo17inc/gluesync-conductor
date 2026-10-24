@@ -3,7 +3,7 @@
 // safeWriteFile's statfs pre-flight normally refuses a write before the kernel ever
 // returns ENOSPC, and its unit tests use an in-memory fake fs. This puts the real
 // bundle on a real 64 KiB tmpfs filled to 0 bytes free, inside a privileged
-// node:24-alpine container of the sandbox daemon, with statfs reporting ENOSYS (a
+// node:24.16.0-alpine container of the sandbox daemon, with statfs reporting ENOSYS (a
 // supported production path) so the write itself meets the kernel's ENOSPC.
 //
 //   A  single-file bind mount, in place, growing by a page: DiskFullError, bytes and inode untouched
@@ -14,10 +14,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { env } from './env.mjs';
-import { dindRunning } from './setup.mjs';
-import { docker, mustDocker, mustRun, say, writeJson } from './util.mjs';
+import { dindRunning, seedImages } from './setup.mjs';
+import { writeJunit } from './junit.mjs';
+import { docker, mustRun, now, say, writeJson } from './util.mjs';
 
-const IMAGE = 'node:24-alpine';
+const IMAGE = env.enospcImage;
 const SAFE_WRITE_DIR = path.join(env.conductorPkgDir, 'src', 'helpers', 'file', 'safeWriteFile');
 const here = path.dirname(new URL(import.meta.url).pathname);
 
@@ -39,12 +40,6 @@ const bundle = async outDir => {
   });
   fs.copyFileSync(path.join(here, 'enospcDriver.cjs'), path.join(outDir, 'driver.cjs'));
   return r;
-};
-
-const ensureImage = async () => {
-  if ((await docker(['image', 'inspect', IMAGE])).code === 0) return;
-  say(`pulling ${IMAGE} into the sandbox daemon`);
-  await mustDocker(['pull', IMAGE], { timeoutMs: 600000 });
 };
 
 const table = results =>
@@ -85,10 +80,12 @@ const markdown = (stamp, results, pass, container) =>
 export const enospc = async () => {
   if (!(await dindRunning())) throw new Error('sandbox is not running: run `node run.mjs up` first');
 
+  const startedAt = now();
   const outDir = path.join(env.runDir, 'enospc');
   say('bundling safeWriteFile with esbuild');
   await bundle(outDir);
-  await ensureImage();
+  // Already there after `up`; this covers an `enospc` run against a daemon seeded by an older version.
+  await seedImages([IMAGE], { inner: true });
 
   say('running the real-kernel ENOSPC cases in a privileged container');
   const r = await docker(
@@ -128,6 +125,19 @@ export const enospc = async () => {
   process.stdout.write(`\n${table(results)}\n\n`);
   fs.writeFileSync(path.join(dir, 'report.md'), markdown(stamp, results, pass, { stderr: r.err }));
   writeJson(path.join(dir, 'report.json'), { stamp, image: IMAGE, pass, exitCode: r.code, results, driverStderr: r.err });
+  writeJunit(dir, {
+    suite: 'conductor-sandbox enospc',
+    classname: 'sandbox.enospc',
+    startedAt,
+    cases: [
+      ...results.map(c => ({
+        name: c.case,
+        failure: c.pass ? undefined : { type: 'CaseFailed', message: c.summary, text: `${c.summary}\n${JSON.stringify(c.detail, null, 2)}` },
+        out: isControl(c) && c.pass ? `${c.summary} (inverted: bug reproduced)` : undefined,
+      })),
+      ...(r.code === 0 ? [] : [{ name: 'driver exit code', failure: { type: 'DriverFailed', message: `driver exited ${r.code}`, text: r.err } }]),
+    ],
+  });
   say(`${pass ? 'PASS' : 'FAIL'}: report in ${dir}`);
   if (!pass) process.exitCode = 1;
 };

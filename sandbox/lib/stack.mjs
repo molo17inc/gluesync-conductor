@@ -3,7 +3,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import YAML from 'yaml';
 import { env } from './env.mjs';
-import { describeState, docker, dockerBin, now, request, sleep, waitFor } from './util.mjs';
+import { describeState, docker, dockerBin, inSequence, now, request, say, sleep, waitFor } from './util.mjs';
 
 // ---------------------------------------------------------------- HTTP clients
 
@@ -66,6 +66,45 @@ export const dockerProxy = body =>
 
 export const health = () => request(conductorUrl('/health'), { timeoutMs: 5000 });
 
+// `docker compose up -d` returns when the containers are started, not when their servers listen:
+// the published port accepts the connection and the fake behind it is not there yet ("socket
+// disconnected before secure TLS connection was established"). A slower host (a CI runner) hits
+// that window every time, so nothing may talk to a fake before it has answered a real request.
+// Each probe is retried for up to `timeoutMs`; the first one that never succeeds throws with what
+// it saw last.
+export const waitStackReady = async ({ timeoutMs = 120000 } = {}) => {
+  const probes = [
+    ['fake corehub (TLS login)', async () => ({ ok: !!(await corehub.login('admin', 60)) })],
+    ['fake backoffice (admin API)', async () => ({ ok: (await backofficeState()).status === 200, why: 'no 200' })],
+    ['docker socket proxy (admin API)', async () => ({ ok: (await dockerProxy()).status === 200, why: 'no 200' })],
+    ['conductor /health', async () => ({ ok: (await health()).status === 200, why: 'no 200' })],
+  ];
+  const started = Date.now();
+  await inSequence(probes, async ([label, fn]) => {
+    let last = 'never answered';
+    const left = Math.max(5000, timeoutMs - (Date.now() - started));
+    const r = await waitFor(
+      label,
+      async () => {
+        try {
+          const res = await fn();
+          if (!res.ok) last = res.why || 'not ready';
+          return res.ok;
+        } catch (e) {
+          last = e.message;
+          return false;
+        }
+      },
+      { timeoutMs: left, intervalMs: 2000 },
+    );
+    if (!r.ok) throw new Error(`${label} not ready after ${Math.round(r.ms / 1000)}s: ${last}`);
+  });
+  say(`stack ready after ${Math.round((Date.now() - started) / 1000)}s: fake corehub, backoffice, docker proxy and conductor answer`);
+};
+
+const backofficeState = () =>
+  request(`http://127.0.0.1:${env.ports.backofficeAdmin}/__sandbox/state`, { headers: { 'x-sandbox-admin': env.adminToken }, timeoutMs: 5000 });
+
 // ---------------------------------------------------------------- docker state
 
 const parseTag = image => {
@@ -105,7 +144,7 @@ export const strayContainers = async () => {
     .split('\n')
     .map(l => JSON.parse(l))
     .filter(c => !/com\.docker\.compose\.project=(gluesync|conductor-sandbox-infra)/.test(c.Labels || ''))
-    .filter(c => !c.Names.startsWith('keep-'))
+    .filter(c => !c.Names.startsWith(env.keepPrefix))
     .map(c => ({ id: c.ID, name: c.Names, image: c.Image, state: c.State, status: c.Status }));
 };
 
