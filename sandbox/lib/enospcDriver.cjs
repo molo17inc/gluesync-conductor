@@ -8,7 +8,7 @@ const { execSync } = require('node:child_process');
 const { promisify } = require('node:util');
 const path = require('node:path');
 
-const { safeWriteFile, DiskFullError } = require('/work/safeWriteFile.cjs');
+const { safeWriteFile, DiskFullError } = require(path.join(__dirname, 'safeWriteFile.cjs'));
 
 const SMALL = '/small';
 const TARGET_DIR = '/target';
@@ -110,7 +110,12 @@ const writeOutcome = async (file, content, options = {}) => {
 };
 
 // The kernel's own errno behind a DiskFullError (proves it was not our pre-flight).
-const kernelCause = o => (o.threw ? o.error?.cause?.syscall ? `${o.error.cause.syscall}:${o.error.cause.code}` : o.error?.cause?.code ?? 'none' : undefined);
+const kernelCause = o => {
+  if (!o.threw) return undefined;
+  const cause = o.error?.cause;
+  if (cause?.syscall) return `${cause.syscall}:${cause.code}`;
+  return cause?.code ?? 'none';
+};
 const describe = o => (o.threw ? `threw ${o.error?.name}/${o.error?.code} (kernel ${kernelCause(o)})` : 'returned');
 
 const caseA = async size => {
@@ -140,14 +145,19 @@ const caseB = async () => {
     ['shrink', Buffer.from('services:\n  web:\n    image: app:2\n')],
     ['same-size', yamlOf(size, 'app:9')],
   ];
-  for (const [label, next] of variants) {
-    const name = `B.in-place-${label}`;
-    const s = bindSetup(old);
-    const out = await writeOutcome(BOUND, next);
-    const after = fs.readFileSync(BOUND);
-    const checks = { succeeded: !out.threw, bytesEqualNew: after.equals(next), inodeUnchanged: fs.statSync(BOUND).ino === s.ino };
-    emit(name, Object.values(checks).every(Boolean) && s.free === 0, { ...checks, outcome: describe(out), error: out.error?.message, size: after.length, newSize: next.length, free: s.free });
-  }
+  // One after the other: they share the same tmpfs.
+  await variants.reduce(
+    (previous, [label, next]) =>
+      previous.then(async () => {
+        const name = `B.in-place-${label}`;
+        const s = bindSetup(old);
+        const out = await writeOutcome(BOUND, next);
+        const after = fs.readFileSync(BOUND);
+        const checks = { succeeded: !out.threw, bytesEqualNew: after.equals(next), inodeUnchanged: fs.statSync(BOUND).ino === s.ino };
+        emit(name, Object.values(checks).every(Boolean) && s.free === 0, { ...checks, outcome: describe(out), error: out.error?.message, size: after.length, newSize: next.length, free: s.free });
+      }),
+    Promise.resolve(),
+  );
 };
 
 const caseC = async () => {
@@ -190,15 +200,23 @@ const caseD = async () => {
 
 const main = async () => {
   const cases = [() => caseA(4096), () => caseA(8192), caseB, caseC, caseD];
-  for (const c of cases) {
-    try {
-      await c();
-    } catch (e) {
-      emit(`harness-error.${c.name || 'case'}`, false, String(e && e.stack ? e.stack : e));
-    }
-  }
+  // One after the other: they share the same tmpfs.
+  await cases.reduce(
+    (previous, c) =>
+      previous.then(async () => {
+        try {
+          await c();
+        } catch (e) {
+          emit(`harness-error.${c.name || 'case'}`, false, String(e?.stack ?? e));
+        }
+      }),
+    Promise.resolve(),
+  );
   tryShell(`umount ${BOUND}`);
   tryShell(`umount ${SMALL}`);
 };
 
-main();
+main().catch(e => {
+  process.stderr.write(`${e?.stack ?? e}\n`);
+  process.exitCode = 1;
+});

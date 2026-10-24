@@ -52,9 +52,11 @@ describe('ensureFreeSpace', () => {
   it('skips the check where statfs is not supported', async () => {
     await Promise.all(
       ['ENOSYS', 'ENOTSUP', 'EINVAL'].map(code =>
-        ensureFreeSpace(['/a'], 1e18, async () => {
-          throw errno(code);
-        }),
+        assert.doesNotReject(
+          ensureFreeSpace(['/a'], 1e18, async () => {
+            throw errno(code);
+          }),
+        ),
       ),
     );
   });

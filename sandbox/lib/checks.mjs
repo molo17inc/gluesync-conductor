@@ -290,8 +290,9 @@ const flappingCheck = it => {
     .filter(inWindow)
     .filter(a => a.status >= 400 || (a.json?.data?.containers || []).some(c => c.status === 'ERROR'));
   const unexplained = failed.filter(a => !JSON.stringify(a.json ?? a.text ?? '').includes(DISK_FULL_TEXT));
+  const describeFailure = a => `${a.label} -> ${a.status} ${JSON.stringify(a.json ?? a.text).slice(0, 200)}`;
   const detail = unexplained.length
-    ? `${unexplained.length} of ${failed.length} update(s) that failed while the disk flapped do not say "${DISK_FULL_TEXT}": ${unexplained.map(a => `${a.label} -> ${a.status} ${JSON.stringify(a.json ?? a.text).slice(0, 200)}`).join(' | ')}`
+    ? `${unexplained.length} of ${failed.length} update(s) that failed while the disk flapped do not say "${DISK_FULL_TEXT}": ${unexplained.map(describeFailure).join(' | ')}`
     : `${failed.length} update(s) failed while the disk flapped (rounds ${f.startRound}-${f.stopRound ?? 'end'}), all saying "${DISK_FULL_TEXT}"`;
   return result('compose', 'compose.disk-full-refused', unexplained.length === 0, detail);
 };

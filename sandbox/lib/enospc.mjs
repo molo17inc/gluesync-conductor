@@ -58,7 +58,9 @@ const summarise = c => {
   if (typeof d === 'string') return d;
   if (isControl(c)) return d.text;
   const failed = Object.entries(d).filter(([, v]) => v === false).map(([k]) => k);
-  return failed.length ? `failed: ${failed.join(', ')} (${d.outcome ?? ''})` : `${d.outcome ?? 'ok'}${d.code ? ` ${d.code}` : ''}, ${d.size ?? '?'} bytes`;
+  if (failed.length) return `failed: ${failed.join(', ')} (${d.outcome ?? ''})`;
+  const code = d.code ? ` ${d.code}` : '';
+  return `${d.outcome ?? 'ok'}${code}, ${d.size ?? '?'} bytes`;
 };
 
 const markdown = (stamp, results, pass, container) =>
