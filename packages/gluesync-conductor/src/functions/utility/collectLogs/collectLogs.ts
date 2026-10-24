@@ -2066,6 +2066,22 @@ const collectLogsInternally = async (
   }
 };
 
+const validateCollectLogsRequest = (
+  localOnly: boolean,
+  ticketId: string | undefined,
+  email: string | undefined,
+): string | undefined => {
+  if (localOnly) {
+    return undefined;
+  }
+
+  if (!ticketId || !email) {
+    return 'ticketId and email are required unless localOnly is true';
+  }
+
+  return /^[^@\s]+@[^@\s]+$/.test(email) ? undefined : 'invalid email format';
+};
+
 const handler: CollectLogsHandler = async (req, reply) => {
   const {
     ticketId,
@@ -2077,18 +2093,10 @@ const handler: CollectLogsHandler = async (req, reply) => {
     localOnly?: boolean;
   }>;
 
-  if (!localOnly && (!ticketId || !email)) {
-    return reply.code(400).send({
-      success: false,
-      error: 'ticketId and email are required unless localOnly is true',
-    });
-  }
+  const requestError = validateCollectLogsRequest(localOnly, ticketId, email);
 
-  if (!localOnly && email && !/^[^@\s]+@[^@\s]+$/.test(email)) {
-    return reply.code(400).send({
-      success: false,
-      error: 'invalid email format',
-    });
+  if (requestError) {
+    return reply.code(400).send({ success: false, error: requestError });
   }
 
   try {

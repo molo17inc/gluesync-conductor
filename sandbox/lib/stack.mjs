@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import YAML from 'yaml';
-import { env } from './env.mjs';
+import { SERVICES, env } from './env.mjs';
 import { describeState, docker, dockerBin, inSequence, now, request, say, sleep, waitFor } from './util.mjs';
 
 // ---------------------------------------------------------------- HTTP clients
@@ -182,6 +182,64 @@ export const snapshot = async () => {
 // ---------------------------------------------------------------- waiting
 
 export const conductorContainer = async () => (await containers()).find(c => c.service === 'gluesync-conductor' && c.state === 'running');
+
+const kitFingerprint = (list, strict) =>
+  list
+    .filter(c => SERVICES[c.service])
+    .map(c => `${c.service} ${c.id} ${c.image}${strict ? ` ${c.state === 'running' ? 'running' : 'not-running'}` : ''}`)
+    .sort((a, b) => a.localeCompare(b));
+
+const describeKitChange = (before, after) => {
+  const gone = before.filter(e => !after.includes(e)).map(e => `-${e}`);
+  const added = after.filter(e => !before.includes(e)).map(e => `+${e}`);
+  return [...gone, ...added].join(', ') || 'none';
+};
+
+// Why the kit is not worth looking at yet (empty when it is): a kit service without exactly one
+// container, or with one that is not running. Only asked for when `strict`.
+const kitProblems = (list, strict) =>
+  Object.keys(SERVICES).flatMap(service => {
+    if (!strict) return [];
+    const mine = list.filter(c => c.service === service);
+    if (mine.length !== 1) return [`${service}: ${mine.length} containers (${mine.map(c => `${c.name}:${c.state}`).join(', ') || 'none'})`];
+    return mine[0].state !== 'running' ? [`${service}: ${mine[0].state}`] : [];
+  });
+
+// Waits until the kit is SETTLED, so a snapshot taken afterwards is the kit as it stays: every kit
+// service has exactly one running container (`strict`, the default; without it a service a profile
+// left down on purpose is accepted) and the containers' ids and image refs are the same on
+// `stablePolls` consecutive polls `intervalMs` apart. The conductor recreates containers right
+// after it starts (it labels the services it adopts and starts them again), and a snapshot taken
+// in the middle reads "<tag> (neither old nor target)" for every service that was caught. Throws,
+// naming what kept changing, when `timeoutMs` passes. The conductor's own startup is waited for
+// separately (`waitConductorStartup`).
+export const waitKitSettled = async ({ timeoutMs = 120000, intervalMs = 2000, stablePolls = 3, strict = true } = {}) => {
+  const started = Date.now();
+  const poll = async (prev, stable, lastChange, lastChangeAt) => {
+    const elapsed = Date.now() - started;
+    const list = await containers();
+    const problems = kitProblems(list, strict);
+    const fingerprint = kitFingerprint(list, strict);
+    const same = !!prev && fingerprint.join('\n') === prev.join('\n');
+    const change = prev && !same ? describeKitChange(prev, fingerprint) : lastChange;
+    const changeAt = prev && !same ? elapsed : lastChangeAt;
+    const stableNow = !problems.length && same ? stable + 1 : 0;
+    if (stableNow >= stablePolls - 1) {
+      say(`kit settled after ${Math.round(elapsed / 1000)}s: ${fingerprint.length} containers unchanged for ${stablePolls} polls`);
+      return;
+    }
+    if (elapsed >= timeoutMs) {
+      const why = [
+        ...problems,
+        ...(change ? [`containers kept changing, last at +${Math.round(changeAt / 1000)}s: ${change}`] : []),
+      ];
+      throw new Error(`kit did not settle within ${Math.round(timeoutMs / 1000)}s (${stablePolls} identical polls ${intervalMs}ms apart needed): ${why.join('; ') || 'no stable run of polls'}`);
+    }
+    await sleep(intervalMs);
+    return poll(fingerprint, stableNow, change, changeAt);
+  };
+  return poll(null, 0, null, 0);
+};
 
 // Waits until a conductor container (optionally a new one, optionally on a given tag)
 // is running and answering /health.
