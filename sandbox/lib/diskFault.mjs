@@ -43,7 +43,7 @@ const COMPOSE = '/opt/gluesync-conductor/docker-compose.yml';
 const MOUNT_DIR = '/run/sbx-disk';
 const TMPFS = 'sbx-disk';
 const TMPFS_MAGIC = 0x01021994;
-const STOP_FILE = '/tmp/sbx-compose-sampler.stop';
+const STOP_FILE = '/run/sbx-compose-sampler.stop';
 const hostCompose = () => path.join(env.kitDir, 'docker-compose.yml');
 
 // ---------------------------------------------------------------- running things in the conductor's namespace
@@ -193,12 +193,12 @@ export const diskFaultDiagnostics = async pid => {
 // (/proc/<pid>/root/...) every 25 ms and prints it between markers; a docker exec
 // per sample would be too slow. The conductor's mount namespace is not reachable
 // from the host, so this is the way to see the tmpfs copy at that rate.
-const streamScript = pid => `
+const streamScript = pid => String.raw`
 P=/proc/${pid}/root${COMPOSE}
 rm -f ${STOP_FILE}
 i=0
 while [ ! -e ${STOP_FILE} ] && [ $i -lt 40000 ]; do
-  if [ -r "$P" ]; then echo '@@S'; cat "$P"; printf '\\n@@E\\n'; else echo '@@N'; fi
+  if [ -r "$P" ]; then echo '@@S'; cat "$P"; printf '\n@@E\n'; else echo '@@N'; fi
   i=$((i + 1))
   sleep 0.025
 done
@@ -226,7 +226,7 @@ const startStream = (pid, sampler) => {
 
 const waitClosed = (child, ms) =>
   new Promise(resolve => {
-    if (!child || child.exitCode !== null || child.signalCode !== null) return resolve();
+    if (child?.exitCode !== null || child.signalCode !== null) return resolve();
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
       resolve();
