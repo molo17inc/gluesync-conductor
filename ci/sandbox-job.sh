@@ -65,7 +65,8 @@ start_dockerd() {
 check_tools() {
   command -v node >/dev/null 2>&1 || die "node is missing: run this in conductor-sandbox-ci (ci/sandbox-ci.Dockerfile)"
   # Only the enospc test needs yarn: it bundles safeWriteFile with the repo's esbuild through Yarn
-  # PnP. .pnp.cjs and .yarn/cache are committed, so no `yarn install`: just the yarn binary.
+  # PnP. .pnp.cjs and .yarn/cache are committed; the unplugged esbuild is materialized offline from
+  # that cache before the test (see the end of this script).
   command -v yarn >/dev/null 2>&1 || die "yarn is missing: run this in conductor-sandbox-ci (ci/sandbox-ci.Dockerfile)"
   log "node $(node --version), yarn $(yarn --version)"
 }
@@ -133,6 +134,10 @@ fi
 rc=0
 phase "iterate" "$ITERATE_BUDGET" node run.mjs iterate --profiles all --shard "$SHARD_INDEX/$SHARD_TOTAL" || rc=$?
 if [ "$SHARD_INDEX" = 1 ]; then
+  # enospc bundles safeWriteFile with the repo's esbuild through Yarn PnP. .pnp.cjs and .yarn/cache are
+  # committed, but .yarn/unplugged (esbuild's binary) is not: materialize it from the committed cache,
+  # network off, so nothing can be downloaded.
+  phase "yarn install (offline, for the enospc bundle)" 300 sh -c "cd '$ROOT' && YARN_ENABLE_NETWORK=0 yarn install --immutable --immutable-cache" || rc=$?
   phase "enospc" "$ENOSPC_BUDGET" node run.mjs enospc || rc=$?
 fi
 exit "$rc"

@@ -54,7 +54,7 @@ const FLAP_ROUNDS = 3; // bulk rounds under flapping before the filler stops and
 const composeFile = () => path.join(env.kitDir, 'docker-compose.yml');
 
 // compose-blanked: what the compose file looks like to a reader that polls it from the moment
-// the conductor starts: blank until it is restored, and never anything else but the last-good bytes.
+// the conductor starts: blank (empty, or only the newlines safeWriteFile pads with) until it is restored, and never anything else but the last-good bytes.
 const watchRestore = async (lastGood, blanked) => {
   const file = composeFile();
   const stubs = new Set();
@@ -62,9 +62,13 @@ const watchRestore = async (lastGood, blanked) => {
     'compose restore',
     async () => {
       const bytes = fs.readFileSync(file);
-      if (!bytes.length) return false;
       if (lastGood && bytes.equals(lastGood)) return true;
       const text = bytes.toString('utf8');
+      // Blank is what composeProblem calls blank: nothing but whitespace. The conductor writes in
+      // place through safeWriteFile, which first grows the file to its final size with newlines (so the
+      // overwrite cannot hit ENOSPC); for a file that was empty that is, for a moment, a file of
+      // newlines. It means the same as an empty file to YAML, and a slow runner's poll sees it.
+      if (!text.trim()) return false;
       if (stubs.size < 3 && !stubs.has(text.slice(0, 200))) {
         stubs.add(text.slice(0, 200));
         blanked.stubs.push({ at: now(), size: bytes.length, head: text.slice(0, 200) });
