@@ -199,6 +199,39 @@ export const waitConductor = async ({ notId, tag, timeoutMs = 240000 } = {}) =>
     { timeoutMs, intervalMs: 2000 },
   );
 
+// After it listens, the Conductor runs its startup steps (healers, auto-adoption that recreates the
+// adopted services, log-collection sync) and the last one logs the conductor-healer verdict, after
+// the adoption's recreates. A snapshot taken before that line races those recreates (a container
+// removed between `ps` and `inspect`). If the verdict is a reboot, the Conductor replaces itself and
+// the new container is waited for the same way.
+const healerVerdict = /\[conductor-healer\] (nothing to heal|reboot needed to heal)/;
+
+const conductorLogs = async id => {
+  const r = await docker(['logs', id], { timeoutMs: 15000 });
+  return `${r.out}\n${r.err}`;
+};
+
+const waitHealerVerdict = async (id, deadline) => {
+  const r = await waitFor(
+    'conductor startup',
+    async () => healerVerdict.exec(await conductorLogs(id))?.[1] || false,
+    { timeoutMs: Math.max(1000, deadline - Date.now()), intervalMs: 1000 },
+  );
+  if (!r.ok) throw new Error(`conductor ${id} did not log the conductor-healer verdict after ${Math.round(r.ms / 1000)}s: startup (adoption) not finished`);
+  if (r.value !== 'reboot needed to heal') return;
+  const next = await waitConductor({ notId: id, timeoutMs: Math.max(1000, deadline - Date.now()) });
+  if (!next.ok) throw new Error(`conductor did not come back after the reboot to heal, ${Math.round(next.ms / 1000)}s`);
+  await waitHealerVerdict(next.value.id, deadline);
+};
+
+export const waitConductorStartup = async ({ timeoutMs = 180000 } = {}) => {
+  const started = Date.now();
+  const c = await conductorContainer();
+  if (!c) throw new Error('conductor startup: no running conductor container');
+  await waitHealerVerdict(c.id, started + timeoutMs);
+  say(`conductor startup done after ${Math.round((Date.now() - started) / 1000)}s (adoption finished)`);
+};
+
 // Waits until nothing in the kit is starting/restarting and the conductor answers
 // authenticated reads (no update-mode 503). Returns what was still unsettled.
 // One look at the kit: what is not running/healthy, and whether the conductor answers.

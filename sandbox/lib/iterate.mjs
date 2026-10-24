@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { env, SERVICES, versionsFor } from './env.mjs';
 import { backofficeAdmin, catalogFor, dindRunning, ensureImages, kitCompose } from './setup.mjs';
-import { LogCollector, callConductor, conductorContainer, containers, corehub, health, settle, snapshot, waitConductor, waitStackReady } from './stack.mjs';
+import { LogCollector, callConductor, conductorContainer, containers, corehub, health, settle, snapshot, waitConductor, waitConductorStartup, waitStackReady } from './stack.mjs';
 import { PROFILES, resetChaos } from './scenarios.mjs';
 import { ComposeSampler } from './composeSampler.mjs';
 import { readLiveCompose, releaseDiskFault } from './diskFault.mjs';
@@ -438,6 +438,8 @@ export const iterate = async ({ iterations, seed, profiles, destructive, shard: 
   // Same wait as the end of `up`: a runner that reaches this line right after `up` must not meet a
   // fake that is still starting.
   await waitStackReady();
+  // Iteration 1's snapshot must not race the Conductor's startup recreates (auto-adoption).
+  await waitConductorStartup();
   const collector = new LogCollector(path.join(dir, 'logs'));
   collector.start();
   // The collector's timer and its `docker logs -f` children keep the process alive: whatever
