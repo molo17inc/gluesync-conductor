@@ -40,6 +40,13 @@ export const requiredImages = {
 // test can prove the nested daemon reaches nothing but the mirror (CI never sets it).
 const dindAddHosts = (process.env.SANDBOX_DIND_ADD_HOSTS || '').split(',').map(h => h.trim()).filter(Boolean);
 
+// Trailing slashes off, without a regex: `/\/+$/` backtracks quadratically on a long run of them.
+const withoutTrailingSlashes = text => {
+  let end = text.length;
+  while (end > 0 && text[end - 1] === '/') end -= 1;
+  return text.slice(0, end);
+};
+
 export const env = {
   sandboxDir,
   repoDir: path.resolve(sandboxDir, '..'),
@@ -56,7 +63,7 @@ export const env = {
   dindVolume: `${sandboxName}-dind`,
   dindImage: DIND_IMAGE,
   enospcImage: NODE_IMAGE,
-  imageMirror: (process.env.SANDBOX_IMAGE_MIRROR || '').replace(/\/+$/, ''),
+  imageMirror: withoutTrailingSlashes(process.env.SANDBOX_IMAGE_MIRROR || ''),
   dindAddHosts,
   dockerPort: port('DOCKER', 23750),
   get dockerHost() {

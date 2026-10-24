@@ -12,6 +12,9 @@
 #     -t nexus.hq.molo17.com/molo17-local/conductor-sandbox-ci:1 --push .
 FROM nexus.hq.molo17.com/molo17-local/docker:28.3.3-dind
 
+# The job runs dockerd inside this container (docker-in-docker, privileged), and dockerd needs root.
+USER root
+
 # Must equal "packageManager" in the root package.json (checked below, the build fails otherwise).
 ARG YARN_VERSION=4.6.0
 ARG COREPACK_VERSION=0.34.0
@@ -37,7 +40,11 @@ COPY package.json /tmp/root-package.json
 RUN node -e '\
 const want = "yarn@" + process.argv[1];\
 const got = require("/tmp/root-package.json").packageManager;\
-if (got !== want) { console.error("root package.json packageManager is " + got + ", this image has " + want + ": rebuild with --build-arg YARN_VERSION"); process.exit(1); }' "${YARN_VERSION}" \
+if (got !== want) {\
+  console.error("root package.json packageManager is " + got + ", this image has " + want\
+    + ": rebuild with --build-arg YARN_VERSION");\
+  process.exit(1);\
+}' "${YARN_VERSION}" \
  && rm /tmp/root-package.json
 
 # Anything that would download at run time (yarn through corepack) fails loudly instead.

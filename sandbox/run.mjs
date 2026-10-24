@@ -24,10 +24,6 @@ import { enospc } from './lib/enospc.mjs';
 import { diskFaultCheck } from './lib/diskFault.mjs';
 import { describeState, say } from './lib/util.mjs';
 
-// The kit's directories are bind-mounted into containers that run as other users (the fakes run
-// as `node`): on a Linux host a 0755 directory created here would be read-only for them.
-process.umask(0);
-
 const [, , command = 'help', ...rest] = process.argv;
 const flag = name => rest.includes(`--${name}`);
 const option = (name, fallback) => {

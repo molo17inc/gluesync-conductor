@@ -385,6 +385,31 @@ export const selectProfiles = ({ profiles, destructive, shard, exclude }) => {
   };
 };
 
+// The iterations to run, in order. `all` and a shard run each selected profile once and ignore
+// --iterations; --iterations sizes the other schedules (a repeated explicit list, or the default
+// random one).
+const buildSchedule = ({ all, shard, profiles, available, iterations, rand }) => {
+  if (all || shard) return [...available];
+  const schedule = [];
+  if (profiles.length) {
+    while (schedule.length < iterations) schedule.push(...available);
+  } else {
+    const clean = available.find(p => p.name === 'clean');
+    const others = available.filter(p => p.name !== 'clean');
+    if (clean) schedule.push(clean);
+    while (schedule.length < iterations) schedule.push(...shuffle(others, rand));
+  }
+  schedule.length = iterations;
+  return schedule;
+};
+
+// How a sharded run names itself: in the report directory, in the log line and in the junit suite.
+const shardNames = shard => {
+  if (!shard) return { dirSuffix: '', logNote: '', suite: 'conductor-sandbox iterate' };
+  const text = `shard ${shard.index}/${shard.total}`;
+  return { dirSuffix: `-shard${shard.index}of${shard.total}`, logNote: `, ${text}`, suite: `conductor-sandbox iterate ${text}` };
+};
+
 // Runs the iterations, writes the report (and junit.xml) and resolves to the run: the caller
 // turns `run.iterations[].outcome === 'fail'` into the exit code.
 export const iterate = async ({ iterations, seed, profiles, destructive, shard: shardSpec, exclude = [] }) => {
@@ -396,7 +421,8 @@ export const iterate = async ({ iterations, seed, profiles, destructive, shard: 
     throw new Error('sandbox is not up or the conductor is unhealthy: run `node sandbox/run.mjs up` first');
   }
   const stamp = new Date().toISOString().replaceAll(/[-:]/g, '').replace('T', '-').slice(0, 15);
-  const dir = path.join(env.reportsDir, `${stamp}-seed${seed}${shard ? `-shard${shard.index}of${shard.total}` : ''}`);
+  const names = shardNames(shard);
+  const dir = path.join(env.reportsDir, `${stamp}-seed${seed}${names.dirSuffix}`);
   fs.mkdirSync(dir, { recursive: true });
   setLogFile(path.join(dir, 'runner.log'));
   const startedAt = now();
@@ -406,21 +432,7 @@ export const iterate = async ({ iterations, seed, profiles, destructive, shard: 
   }
 
   const rand = rng(seed);
-  const schedule = [];
-  // `all` and a shard run each selected profile once and ignore --iterations; --iterations
-  // sizes the other schedules (a repeated explicit list, or the default random one).
-  if (all || shard) {
-    schedule.push(...available);
-  } else if (profiles.length) {
-    while (schedule.length < iterations) schedule.push(...available);
-    schedule.length = iterations;
-  } else {
-    const clean = available.find(p => p.name === 'clean');
-    const others = available.filter(p => p.name !== 'clean');
-    if (clean) schedule.push(clean);
-    while (schedule.length < iterations) schedule.push(...shuffle(others, rand));
-    schedule.length = iterations;
-  }
+  const schedule = buildSchedule({ all, shard, profiles, available, iterations, rand });
   const total = schedule.length;
 
   // Same wait as the end of `up`: a runner that reaches this line right after `up` must not meet a
@@ -435,11 +447,10 @@ export const iterate = async ({ iterations, seed, profiles, destructive, shard: 
     const ctx = { dir, collector, total, adminToken: await corehub.login('admin', 86400), inflight: null };
     const state = loadState();
     const run = { seed, startedAt, ...(shard ? { shard } : {}), schedule: schedule.map(p => p.name), iterations: [], baseline: baseline() };
-    say(`run ${path.basename(dir)}: ${total} iterations, seed ${seed}${shard ? `, shard ${shard.index}/${shard.total}` : ''}`);
+    say(`run ${path.basename(dir)}: ${total} iterations, seed ${seed}${names.logNote}`);
     say(`schedule: ${run.schedule.join(', ')}`);
 
-    const suite = `conductor-sandbox iterate${shard ? ` shard ${shard.index}/${shard.total}` : ''}`;
-    const writeJunitFile = () => writeJunit(dir, { suite, classname: 'sandbox.iterate', startedAt, cases: iterationCases(run) });
+    const writeJunitFile = () => writeJunit(dir, { suite: names.suite, classname: 'sandbox.iterate', startedAt, cases: iterationCases(run) });
     await inSequence(schedule, async (profile, k) => {
       const i = state.last + 1;
       run.iterations.push(await runIteration(ctx, i, profile, k));

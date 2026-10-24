@@ -104,12 +104,22 @@ const writeIfMissing = (file, content) => {
   if (!fs.existsSync(file)) fs.writeFileSync(file, content);
 };
 
+// The kit directories the fakes write to (state files, logs), bind-mounted into containers that
+// run as `node`, not as the user that creates them here: on a Linux host a 0755 directory would be
+// read-only for them. Only these get the wider mode; every other directory keeps the default one.
+const FAKE_WRITABLE_MODE = 0o777;
+const fakeWritableDirs = () => [
+  kit('data', 'core-hub'), kit('data', 'chronos'), kit('data', 'postgresql-cdc-source-agent'),
+  kit('logs', 'core-hub'), kit('logs', 'chronos'), path.join(env.stateDir, 'backoffice'),
+];
+
 const prepareKitFiles = async () => {
-  [
-    kit(), kit('shared'), kit('proxy'), kit('prometheus'), kit('grafana'),
-    kit('data', 'core-hub'), kit('data', 'chronos'), kit('data', 'postgresql-cdc-source-agent'),
-    kit('logs', 'core-hub'), kit('logs', 'chronos'), path.join(env.stateDir, 'backoffice'),
-  ].forEach(d => fs.mkdirSync(d, { recursive: true }));
+  [kit(), kit('shared'), kit('proxy'), kit('prometheus'), kit('grafana')].forEach(d => fs.mkdirSync(d, { recursive: true }));
+  fakeWritableDirs().forEach(d => {
+    fs.mkdirSync(d, { recursive: true });
+    // chmod, not the mkdir mode: that one is cut by the process umask.
+    fs.chmodSync(d, FAKE_WRITABLE_MODE);
+  });
 
   const debugKit = path.join(env.repoDir, 'debug-container', 'linux');
   writeIfMissing(kit('shared', 'gs-license.dat'), env.licenseText);

@@ -37,7 +37,7 @@ import { spawn } from 'node:child_process';
 import { env } from './env.mjs';
 import { composeProblem } from './composeSampler.mjs';
 import { conductorContainer } from './stack.mjs';
-import { dockerBin, run, say, sleep } from './util.mjs';
+import { dockerBin, inSequence, run, say, sleep } from './util.mjs';
 
 const COMPOSE = '/opt/gluesync-conductor/docker-compose.yml';
 const MOUNT_DIR = '/run/sbx-disk';
@@ -171,7 +171,10 @@ const liveBytes = async pid => {
 // Everything that explains a fault that is not what was asked: for the error message and for
 // `node run.mjs disk-check`.
 export const diskFaultDiagnostics = async pid => {
-  const section = async (title, r) => `--- ${title}\n${[r.out, r.err].filter(Boolean).join('\n') || `(nothing, exit ${r.code})`}`;
+  const section = async (title, r) => {
+    const body = [r.out, r.err].filter(Boolean).join('\n') || `(nothing, exit ${r.code})`;
+    return `--- ${title}\n${body}`;
+  };
   const inside = script => inConductor(pid, script, { timeoutMs: 15000 });
   const parts = [
     await section('uname -a (docker-in-docker container)', await inDind(['uname', '-a'])),
@@ -295,31 +298,44 @@ const copyBack = (b64, it) => {
   return 'copied back';
 };
 
+// One umount per bind mount of ours; never one more, that would be Docker's own. At most
+// `attempts` of them, one after the other.
+const unbindOurs = async (pid, attempts = 4) => {
+  if (attempts === 0 || ourMounts(await mountinfo(pid)).length === 0) return;
+  await inConductor(pid, unbindScript);
+  await unbindOurs(pid, attempts - 1);
+};
+
+// Copies the conductor's view of the compose file back to the host; null when it cannot be read.
+const copyLiveBack = async (pid, it) => {
+  const live = await liveBytes(pid);
+  if (live) return copyBack(live.toString('base64'), it);
+  it?.notes.push('disk fault: the conductor view of the compose file could not be read when releasing; kept the host copy');
+  return null;
+};
+
+// Releases whatever the running conductor container `c` holds of the fault.
+const releaseFrom = async (c, wasActive, it) => {
+  // Whatever container runs now: the mounts of a runner that died are found too.
+  const mounted = ourMounts(await mountinfo(c.pid)).length > 0;
+  let copy = null;
+  if (mounted) {
+    copy = await copyLiveBack(c.pid, it);
+    await unbindOurs(c.pid);
+  }
+  await inConductor(c.pid, teardownScript);
+  const left = ourMounts(await mountinfo(c.pid)).length;
+  if (left > 0) it?.notes.push(`disk fault: ${left} mount(s) of the fault are still over the compose file after the release`);
+  return { released: mounted, replaced: wasActive && !mounted && c.id !== state.containerId, copy };
+};
+
 const releaseNow = async it => {
   await stopFlapping();
   await stopStream();
   const wasActive = state.pid !== null;
   const sampler = state.sampler;
   const c = await conductorContainer();
-  let summary = { released: false, replaced: false, copy: null };
-  if (!c) {
-    summary = { released: false, replaced: wasActive, copy: null };
-  } else {
-    // Whatever container runs now: the mounts of a runner that died are found too.
-    const mounted = ourMounts(await mountinfo(c.pid)).length > 0;
-    let copy = null;
-    if (mounted) {
-      const live = await liveBytes(c.pid);
-      if (live) copy = copyBack(live.toString('base64'), it);
-      else it?.notes.push('disk fault: the conductor view of the compose file could not be read when releasing; kept the host copy');
-      // One umount per bind mount of ours; never one more, that would be Docker's own.
-      for (let i = 0; i < 4 && ourMounts(await mountinfo(c.pid)).length > 0; i += 1) await inConductor(c.pid, unbindScript);
-    }
-    await inConductor(c.pid, teardownScript);
-    const left = ourMounts(await mountinfo(c.pid)).length;
-    if (left > 0) it?.notes.push(`disk fault: ${left} mount(s) of the fault are still over the compose file after the release`);
-    summary = { released: mounted, replaced: wasActive && !mounted && c.id !== state.containerId, copy };
-  }
+  const summary = c ? await releaseFrom(c, wasActive, it) : { released: false, replaced: wasActive, copy: null };
   if (summary.replaced) it?.notes.push('disk fault: the conductor container was replaced during the iteration; its mounts went with it');
   Object.assign(state, { pid: null, containerId: null, flap: null, stream: null, sampler: null });
   if (sampler) sampler.external = false;
@@ -341,10 +357,11 @@ const verifyFault = async (pid, freeKiB, hostBytes) => {
   const live = await liveBytes(pid);
   const problems = [];
   if (mounts.length !== 1) problems.push(`the conductor's mount table has ${mounts.length} tmpfs bind mount(s) over the compose file, expected 1`);
-  if (fsView.type !== 'tmpfs') problems.push(`the compose file is on "${fsView.type}" for the conductor, expected tmpfs${fsView.raw ? ` (${fsView.raw})` : ''}`);
+  const rawNote = fsView.raw ? ` (${fsView.raw})` : '';
+  if (fsView.type !== 'tmpfs') problems.push(`the compose file is on "${fsView.type}" for the conductor, expected tmpfs${rawNote}`);
   if (fsView.freeKiB === null) problems.push('the free space of the compose file filesystem could not be read');
   else if (fsView.freeKiB !== want) problems.push(`the compose file filesystem has ${fsView.freeKiB} KiB free, expected ${want} (asked for ${freeKiB})`);
-  if (!live || !live.equals(hostBytes)) problems.push('the compose bytes the conductor sees are not the host copy it was started from');
+  if (!live?.equals(hostBytes)) problems.push('the compose bytes the conductor sees are not the host copy it was started from');
   if (problems.length) throw new Error(problems.join('; '));
   return { freeKiB: fsView.freeKiB, bytes: live.length };
 };
@@ -357,7 +374,8 @@ const startNow = async (ctx, it, { freeKiB, sizeKiB = 256, flap = false }) => {
   const fail = async (what, detail) => {
     const diagnostics = await diskFaultDiagnostics(c.pid).catch(e => `(diagnostics failed: ${e.message})`);
     await releaseNow(it).catch(() => {});
-    throw new Error(`disk fault NOT in place in conductor ${c.id} (pid ${c.pid}): ${what}${detail ? `: ${detail}` : ''}\n${diagnostics}`);
+    const reason = detail ? `${what}: ${detail}` : what;
+    throw new Error(`disk fault NOT in place in conductor ${c.id} (pid ${c.pid}): ${reason}\n${diagnostics}`);
   };
   const hostBytes = readHostCompose();
   const r = await inConductor(c.pid, setupScript(sizeKiB, freeKiB));
@@ -406,7 +424,7 @@ export const diskFaultCheck = async () => {
   const c = await conductorContainer();
   if (!c) throw new Error('no running conductor');
   const before = readHostCompose();
-  for (const freeKiB of [0, 32, 96]) {
+  await inSequence([0, 32, 96], async freeKiB => {
     const it = { notes: [] };
     await startDiskFault({}, it, { freeKiB });
     say(it.notes.at(-1));
@@ -416,6 +434,6 @@ export const diskFaultCheck = async () => {
     const left = ourMounts(await mountinfo(c.pid)).length;
     if (left) throw new Error(`${left} mount(s) of the fault left after releasing (${freeKiB} KiB free)`);
     if (!readHostCompose().equals(before)) throw new Error('the host compose file changed across a fault that wrote nothing');
-  }
+  });
   say('disk fault check: every fault was in place with the free space asked for, and fully released');
 };
