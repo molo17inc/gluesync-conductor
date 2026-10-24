@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { env, requiredImages, SERVICES, versionsFor } from './env.mjs';
+import { waitStackReady } from './stack.mjs';
 import { docker, dockerBin, mustDocker, mustRun, request, run, say, waitFor, writeJson } from './util.mjs';
 
 const kit = (...p) => path.join(env.kitDir, ...p);
@@ -40,12 +41,12 @@ export const seedImages = async (images, { inner = false } = {}) => {
       if ((await dock(['image', 'inspect', image])).code === 0) return;
       if (!env.imageMirror) {
         say(`pulling ${image} into the ${daemon} daemon`);
-        await must(['pull', '-q', image], { timeoutMs: 600000 });
+        await must(['pull', '-q', image], { timeoutMs: 300000 });
         return;
       }
       const mirrored = `${env.imageMirror}/${image}`;
       say(`pulling ${mirrored} into the ${daemon} daemon, tagged ${image}`);
-      await must(['pull', '-q', mirrored], { timeoutMs: 600000 });
+      await must(['pull', '-q', mirrored], { timeoutMs: 300000 });
       await must(['tag', mirrored, image]);
       await dock(['rmi', mirrored]);
     }),
@@ -202,13 +203,13 @@ const stageFakesContext = () => {
 // as it is. BuildKit in the sandbox daemon does that for the named image, without a registry lookup.
 const buildBases = async () => {
   say('building fake service base image');
-  await mustDocker(['build', '-q', '-t', env.fakeBase, stageFakesContext()], { timeoutMs: 600000 });
+  await mustDocker(['build', '-q', '-t', env.fakeBase, stageFakesContext()], { timeoutMs: 300000 });
 
   if (!fs.existsSync(path.join(env.conductorPkgDir, 'build', 'index.js'))) {
     throw new Error('conductor build missing: run "yarn install && yarn build" in the repo root first');
   }
   say('building conductor image from packages/gluesync-conductor/build');
-  await mustDocker(['build', '-q', '-t', env.conductorBase, env.conductorPkgDir], { timeoutMs: 600000 });
+  await mustDocker(['build', '-q', '-t', env.conductorBase, env.conductorPkgDir], { timeoutMs: 300000 });
   // Keeper containers stop the conductor's post-update image prune from deleting the bases and the
   // seeded images (the conductor pulls its helper images itself, so they must be there when it needs them).
   const keepers = [
@@ -245,8 +246,8 @@ export const ensureImage = async (service, version, { crash = false } = {}) => {
           `ENV FAKE_ROLE=${def.role} FAKE_SERVICE=${service} FAKE_VERSION=${version} FAKE_CRASH=${crash ? 1 : 0}`,
           `LABEL sandbox.version=${version}`,
         ].join('\n');
-  await mustDocker(['build', '-q', '-t', ref, '-'], { input: `${dockerfile}\n`, timeoutMs: 300000 });
-  await mustDocker(['push', '-q', ref], { timeoutMs: 300000 });
+  await mustDocker(['build', '-q', '-t', ref, '-'], { input: `${dockerfile}\n`, timeoutMs: 120000 });
+  await mustDocker(['push', '-q', ref], { timeoutMs: 120000 });
   const after = loadPushed();
   after.add(ref);
   savePushed(after);
@@ -286,7 +287,8 @@ export const up = async ({ fresh = false } = {}) => {
   await buildBases();
 
   say('starting sandbox infrastructure (registry, fake backoffice + proxy, docker socket proxy)');
-  const infra = await infraCompose(['up', '-d', '--wait'], { timeoutMs: 300000 });
+  const infra = await infraCompose(['up', '-d', '--wait'], { timeoutMs: 180000 });
+  if (infra.timedOut) throw new Error('infra up hung: no registry/backoffice/docker proxy healthy after 180s');
   if (infra.code !== 0) throw new Error(`infra up failed: ${infra.err}`);
 
   const v0 = versionsFor(0);
@@ -297,15 +299,16 @@ export const up = async ({ fresh = false } = {}) => {
   if (fresh || !fs.existsSync(kit('docker-compose.yml'))) renderKitCompose(v0);
 
   say('starting the kit (fake services + real conductor)');
-  const r = await kitCompose(['up', '-d'], { timeoutMs: 600000 });
+  const r = await kitCompose(['up', '-d'], { timeoutMs: 300000 });
+  if (r.timedOut) throw new Error('kit up hung: docker compose up -d did not return in 300s');
   if (r.code !== 0) throw new Error(`kit up failed: ${r.err}`);
 
-  const healthy = await waitFor(
-    'conductor health',
-    async () => (await request(`https://127.0.0.1:${env.ports.conductor}/health`, { timeoutMs: 5000 })).status === 200,
-    { timeoutMs: 240000, intervalMs: 3000 },
-  );
-  if (!healthy.ok) throw new Error('conductor never became healthy; check run/kit logs and `node sandbox/run.mjs logs`');
+  // The conductor, and the fakes the iterations talk to straight away, answer real requests.
+  try {
+    await waitStackReady({ timeoutMs: 240000 });
+  } catch (e) {
+    throw new Error(`${e.message}; check run/kit logs and \`node sandbox/run.mjs logs\``);
+  }
   say(`sandbox up: conductor https://127.0.0.1:${env.ports.conductor}, fake corehub https://127.0.0.1:${env.ports.corehub}`);
 };
 

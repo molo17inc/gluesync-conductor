@@ -40,6 +40,7 @@ start_dockerd() {
   # as the command keeps it from adding the tcp listener. Data root is the image's /var/lib/docker
   # VOLUME, a real filesystem: overlay2 cannot sit on the container's own overlay.
   dockerd-entrypoint.sh dockerd >/var/log/dockerd.log 2>&1 &
+  DOCKERD_PID=$!
   i=0
   until docker info >/dev/null 2>&1; do
     i=$((i + 1))
@@ -80,10 +81,37 @@ link_sandbox_deps() {
   ln -s "$deps/node_modules" "$ROOT/sandbox/node_modules"
 }
 
+# Every phase has its own time budget (seconds), so a hang fails the job with a message long before
+# the job's own 60 minute timeout: busybox `timeout` sends TERM, then KILL 15 s later. Tuned for the
+# whole job to fit in 60 minutes; override from the environment when running by hand.
+UP_BUDGET=${SANDBOX_UP_BUDGET:-600}
+ITERATE_BUDGET=${SANDBOX_ITERATE_BUDGET:-2400}
+ENOSPC_BUDGET=${SANDBOX_ENOSPC_BUDGET:-420}
+TEARDOWN_BUDGET=${SANDBOX_TEARDOWN_BUDGET:-90}
+
+# phase NAME SECONDS COMMAND...: runs the command under `timeout` and says why it failed.
+phase() {
+  name=$1; budget=$2; shift 2
+  log "$name (budget ${budget}s)"
+  rc=0
+  timeout -k 15 "$budget" "$@" || rc=$?
+  if [ "$rc" -eq 124 ] || [ "$rc" -eq 143 ] || [ "$rc" -eq 137 ]; then
+    log "$name HUNG: killed after ${budget}s (exit $rc)"
+  elif [ "$rc" -ne 0 ]; then
+    log "$name failed (exit $rc)"
+  fi
+  return "$rc"
+}
+
 # Leaves nothing in the daemon behind, whatever the outcome (the daemon dies with the job anyway;
-# this is for runs on a long-lived daemon, i.e. a developer's machine).
+# this is for runs on a long-lived daemon, i.e. a developer's machine). Bounded: a daemon that stopped
+# answering must not keep the job `running`. Then the background dockerd is stopped too.
 teardown() {
-  (cd "$ROOT/sandbox" && node run.mjs down --purge) || true
+  trap - EXIT
+  (cd "$ROOT/sandbox" && timeout -k 10 "$TEARDOWN_BUDGET" node run.mjs down --purge) || log "teardown did not finish cleanly (ignored)"
+  if [ -n "${DOCKERD_PID:-}" ]; then
+    kill "$DOCKERD_PID" 2>/dev/null || true
+  fi
 }
 
 check_tools
@@ -91,12 +119,20 @@ link_sandbox_deps
 start_dockerd
 cd "$ROOT/sandbox"
 trap teardown EXIT
+# A cancelled job gets TERM: run the teardown through EXIT.
+trap 'exit 143' TERM INT
 
-node run.mjs up
+phase "up" "$UP_BUDGET" node run.mjs up
+
+# SANDBOX_JOB_ONLY=disk-check: only the disk fault self check, no iterations (diagnosing a runner).
+if [ "${SANDBOX_JOB_ONLY:-}" = disk-check ]; then
+  phase "disk-check" 180 node run.mjs disk-check
+  exit $?
+fi
 
 rc=0
-node run.mjs iterate --profiles all --shard "$SHARD_INDEX/$SHARD_TOTAL" || rc=$?
+phase "iterate" "$ITERATE_BUDGET" node run.mjs iterate --profiles all --shard "$SHARD_INDEX/$SHARD_TOTAL" || rc=$?
 if [ "$SHARD_INDEX" = 1 ]; then
-  node run.mjs enospc || rc=$?
+  phase "enospc" "$ENOSPC_BUDGET" node run.mjs enospc || rc=$?
 fi
 exit "$rc"

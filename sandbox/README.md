@@ -14,6 +14,7 @@ cd sandbox && npm install
 node run.mjs up                     # isolated daemon, registry, fakes, real conductor
 node run.mjs iterate --iterations 17 --seed 4242
 node run.mjs iterate --profiles all --shard 2/4   # every profile once, a quarter of them (what a CI job runs)
+node run.mjs disk-check             # inject each disk fault, verify it from the conductor's side, release it (sandbox must be up)
 node run.mjs enospc                 # real-kernel ENOSPC test of safeWriteFile (sandbox must be up)
 node run.mjs status
 node run.mjs down --purge           # remove everything except reports/
@@ -86,7 +87,7 @@ Pick profiles with `--profiles a,b`. Replay a run with the same `--seed`.
 
 ### How the disk faults work
 
-The sandbox must never fill a real disk, and the conductor reads its compose file through a single-file bind mount (`./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml`), like the Linux kits. A disk profile therefore enters the conductor container's mount namespace from the privileged Docker-in-Docker container (`nsenter -t <pid> -m`, `lib/diskFault.mjs`) and, in there, mounts a 256 KiB tmpfs at `/run/sbx-disk`, copies the compose file into it, bind-mounts the copy over the compose file, and fills the tmpfs with a filler file down to the wanted free space. The conductor now sees a compose file on a tiny filesystem: statfs reports what is left, and a write that needs more fails with ENOSPC. For `disk-flapping` a loop in the same namespace creates and removes a second filler file every 20-50 ms.
+The sandbox must never fill a real disk, and the conductor reads its compose file through a single-file bind mount (`./docker-compose.yml:/opt/gluesync-conductor/docker-compose.yml`), like the Linux kits. A disk profile therefore enters the conductor container's mount namespace from the privileged Docker-in-Docker container (`nsenter -t <pid> -m`, `lib/diskFault.mjs`) and, in there, mounts a 256 KiB tmpfs at `/run/sbx-disk`, copies the compose file into it, bind-mounts the copy over the compose file, and fills the tmpfs with a filler file down to the wanted free space (nothing in there reads `/proc` or runs `df`: inside the conductor's mount namespace `/proc` is the container's own, and `df` printed nothing on the CI runner, which once made the fault silently ineffective). The runner then **verifies** the fault from the Docker-in-Docker container, through `/proc/<pid>/mountinfo` and statfs on `/proc/<pid>/root/...`: exactly one tmpfs bind mount over the compose file, the file on a tmpfs, the free space that was asked for, the host's bytes. If any of that is not true it throws, with diagnostics (kernel, mount table, statfs, what `df` says in there), and the iteration fails with that message instead of a misleading disk-full result; `node run.mjs disk-check` runs the same checks for each kind of fault. The conductor now sees a compose file on a tiny filesystem: statfs reports what is left, and a write that needs more fails with ENOSPC. For `disk-flapping` a loop in the same namespace creates and removes a second filler file every 20-50 ms.
 
 On Docker Desktop for Mac (gRPC FUSE) the conductor's compose bind goes stale a few seconds after the compose file is written (by anyone; the host inode does not change) (its `mountinfo` root ends in `//deleted`) and the kernel then refuses the bind mount; the runner detects that, restarts the conductor container (same id, sandbox only) and notes it on the iteration. Native Linux binds never go stale.
 
@@ -160,6 +161,8 @@ docker run --rm --privileged --entrypoint sh \
     cp -a sandbox/reports/. /out/
     exit $rc'
 ```
+
+`ci/sandbox-job.sh` gives each phase a time budget (`SANDBOX_UP_BUDGET` 600 s, `SANDBOX_ITERATE_BUDGET` 2400 s, `SANDBOX_ENOSPC_BUDGET` 420 s, `SANDBOX_TEARDOWN_BUDGET` 90 s) and the sandbox gives every docker command its own timeout, so a hang fails the job with a message (`... hung: killed after Ns`) well before the job's 60 minutes. `up` and `iterate` wait until the fake CoreHub accepts a TLS login, the fake backoffice and docker proxy answer and the conductor is healthy before they use them (`waitStackReady`): `docker compose up -d` returns before the fakes listen, and a slower host hits that window. `SANDBOX_JOB_ONLY=disk-check` runs only `up` and `disk-check`, to diagnose a runner quickly.
 
 It never touches your own sandbox: the nested daemon is private to the container, and `SANDBOX_NAME` / `SANDBOX_PORT_OFFSET` only matter when you run `ci/sandbox-job.sh` directly on a host that already runs one.
 

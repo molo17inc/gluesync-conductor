@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { env, SERVICES, versionsFor } from './env.mjs';
 import { backofficeAdmin, catalogFor, dindRunning, ensureImages, kitCompose } from './setup.mjs';
-import { LogCollector, callConductor, conductorContainer, containers, corehub, health, settle, snapshot, waitConductor } from './stack.mjs';
+import { LogCollector, callConductor, conductorContainer, containers, corehub, health, settle, snapshot, waitConductor, waitStackReady } from './stack.mjs';
 import { PROFILES, resetChaos } from './scenarios.mjs';
 import { ComposeSampler } from './composeSampler.mjs';
 import { readLiveCompose, releaseDiskFault } from './diskFault.mjs';
@@ -423,29 +423,38 @@ export const iterate = async ({ iterations, seed, profiles, destructive, shard: 
   }
   const total = schedule.length;
 
+  // Same wait as the end of `up`: a runner that reaches this line right after `up` must not meet a
+  // fake that is still starting.
+  await waitStackReady();
   const collector = new LogCollector(path.join(dir, 'logs'));
   collector.start();
-  const ctx = { dir, collector, total, adminToken: await corehub.login('admin', 86400), inflight: null };
-  const state = loadState();
-  const run = { seed, startedAt, ...(shard ? { shard } : {}), schedule: schedule.map(p => p.name), iterations: [], baseline: baseline() };
-  say(`run ${path.basename(dir)}: ${total} iterations, seed ${seed}${shard ? `, shard ${shard.index}/${shard.total}` : ''}`);
-  say(`schedule: ${run.schedule.join(', ')}`);
+  // The collector's timer and its `docker logs -f` children keep the process alive: whatever
+  // happens below, they are stopped before iterate returns or throws (a throw here once left the
+  // CI job `running` for the rest of its timeout).
+  try {
+    const ctx = { dir, collector, total, adminToken: await corehub.login('admin', 86400), inflight: null };
+    const state = loadState();
+    const run = { seed, startedAt, ...(shard ? { shard } : {}), schedule: schedule.map(p => p.name), iterations: [], baseline: baseline() };
+    say(`run ${path.basename(dir)}: ${total} iterations, seed ${seed}${shard ? `, shard ${shard.index}/${shard.total}` : ''}`);
+    say(`schedule: ${run.schedule.join(', ')}`);
 
-  const suite = `conductor-sandbox iterate${shard ? ` shard ${shard.index}/${shard.total}` : ''}`;
-  const writeJunitFile = () => writeJunit(dir, { suite, classname: 'sandbox.iterate', startedAt, cases: iterationCases(run) });
-  await inSequence(schedule, async (profile, k) => {
-    const i = state.last + 1;
-    run.iterations.push(await runIteration(ctx, i, profile, k));
-    state.last = i;
-    writeJson(stateFile(), state);
-    writeReport(dir, run);
-    // After every iteration, so a job that is killed half way still leaves a test report.
+    const suite = `conductor-sandbox iterate${shard ? ` shard ${shard.index}/${shard.total}` : ''}`;
+    const writeJunitFile = () => writeJunit(dir, { suite, classname: 'sandbox.iterate', startedAt, cases: iterationCases(run) });
+    await inSequence(schedule, async (profile, k) => {
+      const i = state.last + 1;
+      run.iterations.push(await runIteration(ctx, i, profile, k));
+      state.last = i;
+      writeJson(stateFile(), state);
+      writeReport(dir, run);
+      // After every iteration, so a job that is killed half way still leaves a test report.
+      writeJunitFile();
+    });
+    run.finishedAt = now();
+    const { md } = writeReport(dir, run);
     writeJunitFile();
-  });
-  run.finishedAt = now();
-  collector.stop();
-  const { md } = writeReport(dir, run);
-  writeJunitFile();
-  say(`report: ${md}`);
-  return run;
+    say(`report: ${md}`);
+    return run;
+  } finally {
+    collector.stop();
+  }
 };

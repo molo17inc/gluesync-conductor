@@ -11,6 +11,14 @@
 //   3. bind-mounts that copy over /opt/gluesync-conductor/docker-compose.yml
 //   4. fills the tmpfs with a filler file down to the wanted free space
 //
+// Nothing in there reads /proc (df, /proc/self/mountinfo): inside the conductor's mount namespace
+// /proc is the container's own, and whether `df` finds its mount point there depends on the
+// kernel and the busybox (on the CI runner it printed nothing, and the fault silently did not
+// happen). The state of the fault is read from the Docker-in-Docker container instead, through
+// /proc/<pid>/mountinfo and statfs on /proc/<pid>/root/..., which is the conductor's own view of the
+// file. startNow() compares that view with what was asked and THROWS when the fault is not in
+// place: a fault that silently does nothing would turn every disk-full profile into a misleading result.
+//
 // While the fault is active the host copy of the compose file is NOT what the
 // conductor sees; readLiveCompose() and the stream sampler read the tmpfs copy
 // through /proc/<pid>/root. releaseDiskFault() copies the tmpfs bytes back to the
@@ -22,38 +30,33 @@
 // held across the conductor's self-update: its helper container recreates the
 // conductor from the HOST compose file. Profiles therefore only inject the fault
 // when no self-update is about to run (or when the update is refused up front).
-//
-// Docker Desktop for Mac (gRPC FUSE) leaves that single-file bind "stale" a few seconds
-// after the host file is written (mountinfo root ends in //deleted) and the kernel then
-// refuses the bind in step 3. startNow detects it and restarts the conductor container
-// (same id, sandbox only) to re-resolve the bind; native Linux binds never go stale.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { env } from './env.mjs';
 import { composeProblem } from './composeSampler.mjs';
-import { conductorContainer, waitConductor } from './stack.mjs';
-import { docker, dockerBin, run, sleep } from './util.mjs';
+import { conductorContainer } from './stack.mjs';
+import { dockerBin, run, say, sleep } from './util.mjs';
 
 const COMPOSE = '/opt/gluesync-conductor/docker-compose.yml';
 const MOUNT_DIR = '/run/sbx-disk';
 const TMPFS = 'sbx-disk';
-const STOP_FILE = '/run/sbx-compose-sampler.stop';
+const TMPFS_MAGIC = 0x01021994;
+const STOP_FILE = '/tmp/sbx-compose-sampler.stop';
 const hostCompose = () => path.join(env.kitDir, 'docker-compose.yml');
 
 // ---------------------------------------------------------------- running things in the conductor's namespace
 
-const inDind = (args, opts = {}) => run(dockerBin(), ['exec', env.dindName, ...args], opts);
+const inDind = (args, opts = {}) => run(dockerBin(), ['exec', env.dindName, ...args], { timeoutMs: 30000, ...opts });
 
 // The DinD image is alpine: its busybox has nsenter. If it ever does not, a
 // privileged helper container sharing the daemon's pid namespace does the same.
 let nsenterInDind = null;
 const nsCommand = async (pid, script, helperName) => {
   if (nsenterInDind === null) nsenterInDind = (await inDind(['sh', '-c', 'command -v nsenter'])).code === 0;
-  // -p as well: df and the mountinfo lookups need /proc/self, which only exists
-  // for processes inside the container's pid namespace.
-  const nsenter = ['nsenter', '-t', String(pid), '-m', '-p', 'sh', '-c', script];
+  // Mount namespace only: the scripts below need no /proc (see the header).
+  const nsenter = ['nsenter', '-t', String(pid), '-m', 'sh', '-c', script];
   if (nsenterInDind) return { args: ['exec', env.dindName, ...nsenter], docker: false };
   const name = helperName ? ['--name', helperName] : [];
   return { args: ['run', '--rm', ...name, '--privileged', '--pid=host', 'alpine:3.20', ...nsenter], docker: true };
@@ -64,38 +67,32 @@ const inConductor = async (pid, script, opts = {}) => {
   return run(dockerBin(), cmd.args, { docker: cmd.docker, timeoutMs: 30000, ...opts });
 };
 
-// Shell helpers every script shares. `mine` counts the bind mount this module put
-// over the compose file (told apart from Docker's own by the tmpfs source name).
+// Shell variables every script shares.
 const PRELUDE = `
 F=${COMPOSE}
 M=${MOUNT_DIR}
-stale() { awk -v f="$F" '$5 == f && $4 ~ "//deleted$" && !/ - tmpfs ${TMPFS} /' /proc/self/mountinfo | wc -l | tr -d ' '; }
-mine() { awk -v f="$F" '$5 == f && / - tmpfs ${TMPFS} /' /proc/self/mountinfo | wc -l | tr -d ' '; }
-avail() { df -k "$M" | awk 'NR==2 {print $4}'; }
-fill_to() {
-  rm -f "$M/.filler"
-  if [ "$1" -le 0 ]; then
-    dd if=/dev/zero of="$M/.filler" bs=1k 2>/dev/null || true
-  else
-    n=$(( $(avail) - $1 ))
-    if [ "$n" -gt 0 ]; then dd if=/dev/zero of="$M/.filler" bs=1k count="$n" 2>/dev/null || true; fi
-  fi
-}
 `;
 
+// Page size of the tmpfs: free space is counted in whole pages.
+const PAGE_KIB = 4;
+
+// The filler file takes every free page (dd runs into ENOSPC), then is cut back so `keep` KiB stay
+// free. No df: the size of the filler is what dd wrote.
 const setupScript = (sizeKiB, freeKiB) => `set -e
 ${PRELUDE}
 mkdir -p "$M"
-i=0
-while awk -v m="$M" '$5 == m {f=1} END {exit !f}' /proc/self/mountinfo && [ $i -lt 4 ]; do
-  umount "$M" || umount -l "$M" || break
-  i=$((i + 1))
-done
 mount -t tmpfs -o size=${sizeKiB}k ${TMPFS} "$M"
 cat "$F" > "$M/compose.yml"
 mount -o bind "$M/compose.yml" "$F"
-fill_to ${freeKiB}
-echo "free_kib=$(avail) compose_bytes=$(wc -c < "$M/compose.yml" | tr -d ' ')"
+dd if=/dev/zero of="$M/.filler" bs=1k 2>/dev/null || true
+filled=$(wc -c < "$M/.filler" | tr -d ' ')
+keep_kib=${Math.ceil(freeKiB / PAGE_KIB) * PAGE_KIB}
+if [ "$keep_kib" -gt 0 ]; then
+  kib=$(( filled / 1024 - keep_kib ))
+  if [ "$kib" -lt 0 ]; then kib=0; fi
+  dd if=/dev/null of="$M/.filler" bs=1k seek="$kib" 2>/dev/null
+fi
+echo "compose_bytes=$(wc -c < "$M/compose.yml" | tr -d ' ') filler_bytes=$(wc -c < "$M/.filler" | tr -d ' ')"
 `;
 
 // Free space toggles between none (a filler file takes it all) and openKiB, every 20-50 ms.
@@ -113,26 +110,16 @@ done
 rm -f "$M/.fB"
 `;
 
-const grabScript = `${PRELUDE}
-if [ "$(mine)" -eq 0 ]; then echo NOMOUNT; exit 0; fi
-echo MOUNT
-base64 "$F"
-`;
-
-const staleScript = `${PRELUDE}
-echo "stale=$(stale)"
+// One umount of the compose file's top mount (the caller only calls it while this module's tmpfs
+// bind mount is the top one, never for Docker's own).
+const unbindScript = `${PRELUDE}
+umount "$F" 2>/dev/null || umount -l "$F"
 `;
 
 const teardownScript = `${PRELUDE}
 rm -f "$M/.flap"
-i=0
-while [ "$(mine)" -gt 0 ] && [ $i -lt 4 ]; do
-  umount "$F" 2>/dev/null || umount -l "$F" 2>/dev/null || break
-  i=$((i + 1))
-done
 umount "$M" 2>/dev/null || umount -l "$M" 2>/dev/null || true
 rmdir "$M" 2>/dev/null || true
-echo "left=$(mine)"
 `;
 
 // ---------------------------------------------------------------- state
@@ -148,18 +135,67 @@ const exclusive = fn => {
 
 export const diskFaultActive = () => state.pid !== null;
 
+// ---------------------------------------------------------------- the conductor's view, from outside
+
+// Read from the Docker-in-Docker container, not from inside the conductor's namespaces (see the header).
+
+const mountinfo = async pid => {
+  const r = await inDind(['cat', `/proc/${pid}/mountinfo`]);
+  return r.code === 0 ? r.out.split('\n') : null;
+};
+
+// This module's bind mounts over the compose file: told apart from Docker's own by the tmpfs
+// source name. mountinfo: "id parent maj:min root mountpoint opts [optional...] - fstype source super".
+const ourMounts = lines =>
+  (lines || []).filter(line => {
+    const f = line.split(' ');
+    const dash = f.indexOf('-');
+    return f[4] === COMPOSE && f[dash + 1] === 'tmpfs' && f[dash + 2] === TMPFS;
+  });
+
+// Filesystem type and free KiB of what `file` is on, in the conductor's mount namespace
+// (/proc/<pid>/root/... resolves there). statfs on a path needs no mount table.
+const statfsOf = async (pid, file) => {
+  // %t is the filesystem magic in hex (busybox prints UNKNOWN for %T on most of them).
+  const r = await inDind(['stat', '-f', '-c', '%t %a %S', `/proc/${pid}/root${file}`]);
+  const m = /^([0-9a-f]+) (\d+) (\d+)$/.exec(r.out);
+  if (!m) return { type: null, freeKiB: null, raw: (r.err || r.out).slice(0, 200) };
+  return { type: Number.parseInt(m[1], 16) === TMPFS_MAGIC ? 'tmpfs' : `filesystem 0x${m[1]}`, freeKiB: Math.floor((Number(m[2]) * Number(m[3])) / 1024) };
+};
+
+const liveBytes = async pid => {
+  const r = await inDind(['base64', `/proc/${pid}/root${COMPOSE}`]);
+  return r.code === 0 ? Buffer.from(r.out.replaceAll('\n', ''), 'base64') : null;
+};
+
+// Everything that explains a fault that is not what was asked: for the error message and for
+// `node run.mjs disk-check`.
+export const diskFaultDiagnostics = async pid => {
+  const section = async (title, r) => `--- ${title}\n${[r.out, r.err].filter(Boolean).join('\n') || `(nothing, exit ${r.code})`}`;
+  const inside = script => inConductor(pid, script, { timeoutMs: 15000 });
+  const parts = [
+    await section('uname -a (docker-in-docker container)', await inDind(['uname', '-a'])),
+    await section('nsenter', await inDind(['sh', '-c', 'command -v nsenter; busybox 2>&1 | head -1'])),
+    await section(`/proc/${pid}/mountinfo, compose file and sbx-disk lines`, await inDind(['sh', '-c', `grep -E "sbx-disk|docker-compose.yml" /proc/${pid}/mountinfo`])),
+    await section('statfs of the compose file, as the conductor sees it', await inDind(['stat', '-f', `/proc/${pid}/root${COMPOSE}`])),
+    await section('statfs of the tmpfs directory', await inDind(['stat', '-f', `/proc/${pid}/root${MOUNT_DIR}`])),
+    await section('inside the conductor: shell, /proc/self, df, mounts', await inside(`echo "sh pid $$"; ls -d /proc/self 2>&1; echo '$ df -k ${MOUNT_DIR}'; df -k ${MOUNT_DIR} 2>&1; echo "exit $?"; echo '$ stat -f'; stat -f ${MOUNT_DIR} 2>&1; echo '$ mount | grep sbx'; mount 2>&1 | grep sbx; ls -la ${MOUNT_DIR} 2>&1`)),
+  ];
+  return parts.join('\n');
+};
+
 // ---------------------------------------------------------------- stream sampler
 
 // A shell loop in the DinD container reads the conductor's view of the compose file
 // (/proc/<pid>/root/...) every 25 ms and prints it between markers; a docker exec
 // per sample would be too slow. The conductor's mount namespace is not reachable
 // from the host, so this is the way to see the tmpfs copy at that rate.
-const streamScript = pid => String.raw`
+const streamScript = pid => `
 P=/proc/${pid}/root${COMPOSE}
 rm -f ${STOP_FILE}
 i=0
 while [ ! -e ${STOP_FILE} ] && [ $i -lt 40000 ]; do
-  if [ -r "$P" ]; then echo '@@S'; cat "$P"; printf '\n@@E\n'; else echo '@@N'; fi
+  if [ -r "$P" ]; then echo '@@S'; cat "$P"; printf '\\n@@E\\n'; else echo '@@N'; fi
   i=$((i + 1))
   sleep 0.025
 done
@@ -187,7 +223,7 @@ const startStream = (pid, sampler) => {
 
 const waitClosed = (child, ms) =>
   new Promise(resolve => {
-    if (child?.exitCode !== null || child.signalCode !== null) return resolve();
+    if (!child || child.exitCode !== null || child.signalCode !== null) return resolve();
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
       resolve();
@@ -265,19 +301,23 @@ const releaseNow = async it => {
   const wasActive = state.pid !== null;
   const sampler = state.sampler;
   const c = await conductorContainer();
-  let summary;
+  let summary = { released: false, replaced: false, copy: null };
   if (!c) {
     summary = { released: false, replaced: wasActive, copy: null };
   } else {
     // Whatever container runs now: the mounts of a runner that died are found too.
-    const grab = await inConductor(c.pid, grabScript);
-    const [head, ...b64] = grab.out.split('\n');
-    const mounted = grab.code === 0 && head === 'MOUNT';
-    const copy = mounted ? copyBack(b64.join(''), it) : null;
+    const mounted = ourMounts(await mountinfo(c.pid)).length > 0;
+    let copy = null;
     if (mounted) {
-      const down = await inConductor(c.pid, teardownScript);
-      if (!/left=0/.test(down.out)) it?.notes.push(`disk fault: unmount left something behind: ${down.err || down.out}`);
+      const live = await liveBytes(c.pid);
+      if (live) copy = copyBack(live.toString('base64'), it);
+      else it?.notes.push('disk fault: the conductor view of the compose file could not be read when releasing; kept the host copy');
+      // One umount per bind mount of ours; never one more, that would be Docker's own.
+      for (let i = 0; i < 4 && ourMounts(await mountinfo(c.pid)).length > 0; i += 1) await inConductor(c.pid, unbindScript);
     }
+    await inConductor(c.pid, teardownScript);
+    const left = ourMounts(await mountinfo(c.pid)).length;
+    if (left > 0) it?.notes.push(`disk fault: ${left} mount(s) of the fault are still over the compose file after the release`);
     summary = { released: mounted, replaced: wasActive && !mounted && c.id !== state.containerId, copy };
   }
   if (summary.replaced) it?.notes.push('disk fault: the conductor container was replaced during the iteration; its mounts went with it');
@@ -291,47 +331,44 @@ export const releaseDiskFault = it => exclusive(() => releaseNow(it));
 
 // ---------------------------------------------------------------- start
 
-// True when the conductor's own compose bind is stale (see the header): the kernel
-// would refuse to mount over it. A failed probe counts as not stale.
-const bindStale = async pid => {
-  const r = await inConductor(pid, staleScript);
-  return r.code === 0 && /stale=[1-9]/.test(r.out);
-};
-
-// Restarts the conductor container (same id, RestartCount untouched) so Docker
-// re-resolves the compose bind, then waits for /health. Returns the fresh container.
-const healStaleBind = async (c, it) => {
-  const r = await docker(['restart', c.id], { timeoutMs: 90000 });
-  if (r.code !== 0) throw new Error(`could not restart conductor ${c.id} to refresh its stale compose bind: ${(r.err || r.out).slice(-400)}`);
-  const up = await waitConductor({ timeoutMs: 120000 });
-  if (!up.ok) throw new Error(`conductor ${c.id} did not answer /health after the restart that refreshes its stale compose bind (last: ${up.last})`);
-  it?.notes.push(`disk fault: Docker Desktop file sharing left the conductor's compose bind stale; restarted conductor ${c.id} to re-resolve it (sandbox only)`);
-  return up.value;
+// The fault is in place when the conductor's own view says so: exactly one tmpfs bind mount over
+// the compose file, the file on a tmpfs, with the free space asked for (whole pages), and the bytes
+// it holds are the host's. Returns what was seen; throws what is wrong.
+const verifyFault = async (pid, freeKiB, hostBytes) => {
+  const want = Math.ceil(freeKiB / PAGE_KIB) * PAGE_KIB;
+  const mounts = ourMounts(await mountinfo(pid));
+  const fsView = await statfsOf(pid, COMPOSE);
+  const live = await liveBytes(pid);
+  const problems = [];
+  if (mounts.length !== 1) problems.push(`the conductor's mount table has ${mounts.length} tmpfs bind mount(s) over the compose file, expected 1`);
+  if (fsView.type !== 'tmpfs') problems.push(`the compose file is on "${fsView.type}" for the conductor, expected tmpfs${fsView.raw ? ` (${fsView.raw})` : ''}`);
+  if (fsView.freeKiB === null) problems.push('the free space of the compose file filesystem could not be read');
+  else if (fsView.freeKiB !== want) problems.push(`the compose file filesystem has ${fsView.freeKiB} KiB free, expected ${want} (asked for ${freeKiB})`);
+  if (!live || !live.equals(hostBytes)) problems.push('the compose bytes the conductor sees are not the host copy it was started from');
+  if (problems.length) throw new Error(problems.join('; '));
+  return { freeKiB: fsView.freeKiB, bytes: live.length };
 };
 
 const startNow = async (ctx, it, { freeKiB, sizeKiB = 256, flap = false }) => {
   await releaseNow(it);
-  let c = await conductorContainer();
+  const c = await conductorContainer();
   if (!c) throw new Error('no running conductor to inject the disk fault into');
-  if (await bindStale(c.pid)) c = await healStaleBind(c, it);
   Object.assign(state, { pid: c.pid, containerId: c.id, sampler: ctx.sampler || null });
-  let r = await inConductor(c.pid, setupScript(sizeKiB, freeKiB));
-  // It can go stale between the check and the mount: heal once and retry once.
-  if (r.code !== 0 && (await bindStale(c.pid))) {
-    try {
-      c = await healStaleBind(c, it);
-    } catch (e) {
-      await releaseNow(it).catch(() => {});
-      throw e;
-    }
-    Object.assign(state, { pid: c.pid, containerId: c.id });
-    r = await inConductor(c.pid, setupScript(sizeKiB, freeKiB));
-  }
-  if (r.code !== 0) {
+  const fail = async (what, detail) => {
+    const diagnostics = await diskFaultDiagnostics(c.pid).catch(e => `(diagnostics failed: ${e.message})`);
     await releaseNow(it).catch(() => {});
-    throw new Error(`could not set up the disk fault in conductor ${c.id}: ${(r.err || r.out).slice(-400)}`);
+    throw new Error(`disk fault NOT in place in conductor ${c.id} (pid ${c.pid}): ${what}${detail ? `: ${detail}` : ''}\n${diagnostics}`);
+  };
+  const hostBytes = readHostCompose();
+  const r = await inConductor(c.pid, setupScript(sizeKiB, freeKiB));
+  if (r.code !== 0) await fail('setup script failed', (r.err || r.out).slice(-400));
+  let seen;
+  try {
+    seen = await verifyFault(c.pid, freeKiB, hostBytes);
+  } catch (e) {
+    await fail('the fault is not what was asked', e.message);
   }
-  it?.notes.push(`disk fault in conductor ${c.id} (pid ${c.pid}): ${r.out.split('\n').at(-1)}, tmpfs ${sizeKiB} KiB${flap ? ', flapping' : ''}`);
+  it?.notes.push(`disk fault in conductor ${c.id} (pid ${c.pid}): ${r.out.split('\n').at(-1)}, tmpfs ${sizeKiB} KiB, ${seen.freeKiB} KiB free as the conductor sees it${flap ? ', flapping' : ''}`);
   startStream(c.pid, ctx.sampler);
   if (flap) {
     const cmd = await nsCommand(c.pid, flapScript(freeKiB), `${env.keepPrefix}disk-fault`);
@@ -357,7 +394,28 @@ export const startDiskFault = (ctx, it, options) => exclusive(() => startNow(ctx
 // The compose file the way the conductor sees it right now, or null when it cannot be read.
 export const readLiveCompose = async () => {
   if (state.pid === null) return fs.existsSync(hostCompose()) ? readHostCompose() : null;
-  const r = await inConductor(state.pid, `base64 ${COMPOSE}`, { timeoutMs: 15000 });
-  if (r.code !== 0) return null;
-  return Buffer.from(r.out, 'base64');
+  return liveBytes(state.pid);
+};
+
+// ---------------------------------------------------------------- self check
+
+// `node run.mjs disk-check`: injects each kind of fault on the running sandbox, prints what the
+// conductor sees and what the namespaces look like (the diagnostics), releases it and checks that
+// nothing is left. Throws on the first fault that is not in place, with the diagnostics.
+export const diskFaultCheck = async () => {
+  const c = await conductorContainer();
+  if (!c) throw new Error('no running conductor');
+  const before = readHostCompose();
+  for (const freeKiB of [0, 32, 96]) {
+    const it = { notes: [] };
+    await startDiskFault({}, it, { freeKiB });
+    say(it.notes.at(-1));
+    if (freeKiB === 32) say(`diagnostics with ${freeKiB} KiB free:\n${await diskFaultDiagnostics(c.pid)}`);
+    await releaseDiskFault(it);
+    it.notes.forEach(n => say(`  ${n}`));
+    const left = ourMounts(await mountinfo(c.pid)).length;
+    if (left) throw new Error(`${left} mount(s) of the fault left after releasing (${freeKiB} KiB free)`);
+    if (!readHostCompose().equals(before)) throw new Error('the host compose file changed across a fault that wrote nothing');
+  }
+  say('disk fault check: every fault was in place with the free space asked for, and fully released');
 };

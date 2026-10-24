@@ -12,6 +12,7 @@
 //        --destructive     also run profiles that can leave the conductor down
 //      exits 1 if any iteration FAILs (WARN does not); writes reports/<run>/junit.xml
 //   node sandbox/run.mjs enospc                  real-kernel ENOSPC test of safeWriteFile on a 64 KiB tmpfs (needs the sandbox up)
+//   node sandbox/run.mjs disk-check              inject each disk fault on the running sandbox, verify it from the conductor's side, release it
 //   node sandbox/run.mjs status                  containers, versions, chaos state
 //   node sandbox/run.mjs down [--purge]          remove the sandbox daemon (and run/ with --purge)
 
@@ -20,6 +21,7 @@ import { backofficeAdmin, down, up, dindRunning } from './lib/setup.mjs';
 import { snapshot, corehub, dockerProxy } from './lib/stack.mjs';
 import { iterate } from './lib/iterate.mjs';
 import { enospc } from './lib/enospc.mjs';
+import { diskFaultCheck } from './lib/diskFault.mjs';
 import { describeState, say } from './lib/util.mjs';
 
 // The kit's directories are bind-mounted into containers that run as other users (the fakes run
@@ -74,6 +76,9 @@ const main = async () => {
     case 'enospc':
       await enospc();
       break;
+    case 'disk-check':
+      await diskFaultCheck();
+      break;
     case 'status':
       await status();
       break;
@@ -91,3 +96,7 @@ try {
   say(`FAILED: ${e.message}`);
   process.exitCode = 1;
 }
+// Exit explicitly: a leftover timer, `docker logs -f` child or exec stream (anything a failed run did
+// not get to stop) must never keep a finished command alive. A CI job once sat `running` for 30 minutes
+// after printing FAILED because of exactly that.
+process.exit(process.exitCode ?? 0);
