@@ -3,7 +3,7 @@
 // safeWriteFile's statfs pre-flight normally refuses a write before the kernel ever
 // returns ENOSPC, and its unit tests use an in-memory fake fs. This puts the real
 // bundle on a real 64 KiB tmpfs filled to 0 bytes free, inside a privileged
-// node:24-alpine container of the sandbox daemon, with statfs reporting ENOSYS (a
+// node:24.16.0-alpine container of the sandbox daemon, with statfs reporting ENOSYS (a
 // supported production path) so the write itself meets the kernel's ENOSPC.
 //
 //   A  single-file bind mount, in place, growing by a page: DiskFullError, bytes and inode untouched
@@ -14,11 +14,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { env } from './env.mjs';
-import { dindRunning } from './setup.mjs';
+import { dindRunning, seedImages } from './setup.mjs';
 import { writeJunit } from './junit.mjs';
-import { docker, mustDocker, mustRun, now, say, writeJson } from './util.mjs';
+import { docker, mustRun, now, say, writeJson } from './util.mjs';
 
-const IMAGE = 'node:24-alpine';
+const IMAGE = env.enospcImage;
 const SAFE_WRITE_DIR = path.join(env.conductorPkgDir, 'src', 'helpers', 'file', 'safeWriteFile');
 const here = path.dirname(new URL(import.meta.url).pathname);
 
@@ -40,12 +40,6 @@ const bundle = async outDir => {
   });
   fs.copyFileSync(path.join(here, 'enospcDriver.cjs'), path.join(outDir, 'driver.cjs'));
   return r;
-};
-
-const ensureImage = async () => {
-  if ((await docker(['image', 'inspect', IMAGE])).code === 0) return;
-  say(`pulling ${IMAGE} into the sandbox daemon`);
-  await mustDocker(['pull', IMAGE], { timeoutMs: 600000 });
 };
 
 const table = results =>
@@ -90,7 +84,8 @@ export const enospc = async () => {
   const outDir = path.join(env.runDir, 'enospc');
   say('bundling safeWriteFile with esbuild');
   await bundle(outDir);
-  await ensureImage();
+  // Already there after `up`; this covers an `enospc` run against a daemon seeded by an older version.
+  await seedImages([IMAGE], { inner: true });
 
   say('running the real-kernel ENOSPC cases in a privileged container');
   const r = await docker(

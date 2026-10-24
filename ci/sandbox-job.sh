@@ -2,12 +2,18 @@
 # One shard of the conductor sandbox. Run by the `sandbox` job of .gitlab-ci.yml, and by hand to
 # reproduce a CI shard (see "In CI" in sandbox/README.md).
 #
-# It expects what the job has: a privileged container from docker:28.3.3-dind (alpine, busybox sh),
-# the repository checked out, and packages/gluesync-conductor/build from build_artifacts. The
+# It expects what the job has: a privileged container from conductor-sandbox-ci (docker:28.3.3-dind
+# plus node, yarn and the sandbox's npm dependencies, see ci/sandbox-ci.Dockerfile; alpine, busybox
+# sh), the repository checked out, and packages/gluesync-conductor/build from build_artifacts. The
 # container runs its own dockerd, so concurrent jobs never share a daemon and the sandbox's
 # bind-mount paths (under the checkout) exist for the daemon that mounts them.
 #
+# Nothing is downloaded here: node, yarn and the npm dependencies are in the image, and with
+# SANDBOX_IMAGE_MIRROR set the sandbox pulls its images from that registry instead of Docker Hub.
+# A missing tool is an error, never an install.
+#
 #   CI_NODE_INDEX / CI_NODE_TOTAL   the shard (default 1/1: everything)
+#   SANDBOX_IMAGE_MIRROR            registry/repo holding the sandbox's images (see sandbox/lib/env.mjs)
 #   SANDBOX_*                       name and port overrides, see sandbox/lib/env.mjs
 set -eu
 
@@ -22,6 +28,7 @@ SHARD_TOTAL=${CI_NODE_TOTAL:-1}
 export SANDBOX_EXCLUDE_PROFILES=${SANDBOX_EXCLUDE_PROFILES-conductor-crash-mid-update}
 
 log() { printf '[sandbox-job] %s\n' "$*"; }
+die() { log "$*"; exit 1; }
 
 start_dockerd() {
   if docker info >/dev/null 2>&1; then
@@ -52,19 +59,25 @@ start_dockerd() {
   fi
 }
 
-install_node() {
-  command -v node >/dev/null 2>&1 || apk add --no-cache nodejs npm
-  log "node $(node --version), npm $(npm --version)"
+# The CI image has node, yarn (prepared by corepack, which cannot download) and the sandbox's npm
+# dependencies in /opt/sandbox-deps. Fail loudly rather than fetch anything.
+check_tools() {
+  command -v node >/dev/null 2>&1 || die "node is missing: run this in conductor-sandbox-ci (ci/sandbox-ci.Dockerfile)"
+  # Only the enospc test needs yarn: it bundles safeWriteFile with the repo's esbuild through Yarn
+  # PnP. .pnp.cjs and .yarn/cache are committed, so no `yarn install`: just the yarn binary.
+  command -v yarn >/dev/null 2>&1 || die "yarn is missing: run this in conductor-sandbox-ci (ci/sandbox-ci.Dockerfile)"
+  log "node $(node --version), yarn $(yarn --version)"
 }
 
-# Only the enospc test needs yarn: it bundles safeWriteFile with the repo's esbuild through Yarn
-# PnP. .pnp.cjs and .yarn/cache are committed, so no `yarn install`: just the yarn binary.
-install_yarn() {
-  command -v yarn >/dev/null 2>&1 && return
-  # Alpine's nodejs ships no corepack.
-  npm install --global --no-audit --no-fund corepack@0.34.0
-  corepack enable
-  yarn --version
+link_sandbox_deps() {
+  deps=${SANDBOX_DEPS_DIR:-/opt/sandbox-deps}
+  [ -d "$deps/node_modules" ] || die "$deps/node_modules is missing: run this in conductor-sandbox-ci (ci/sandbox-ci.Dockerfile)"
+  # The package-lock the image was built from must be the checkout's, or the sandbox could run on
+  # other versions than the ones it pins.
+  cmp -s "$deps/package-lock.json" "$ROOT/sandbox/package-lock.json" ||
+    die "sandbox/package-lock.json differs from the one in the image: rebuild and push the image, bump its tag (ci/sandbox-ci.Dockerfile)"
+  rm -rf "$ROOT/sandbox/node_modules"
+  ln -s "$deps/node_modules" "$ROOT/sandbox/node_modules"
 }
 
 # Leaves nothing in the daemon behind, whatever the outcome (the daemon dies with the job anyway;
@@ -73,10 +86,10 @@ teardown() {
   (cd "$ROOT/sandbox" && node run.mjs down --purge) || true
 }
 
+check_tools
+link_sandbox_deps
 start_dockerd
-install_node
 cd "$ROOT/sandbox"
-npm ci --no-audit --no-fund
 trap teardown EXIT
 
 node run.mjs up
@@ -84,7 +97,6 @@ node run.mjs up
 rc=0
 node run.mjs iterate --profiles all --shard "$SHARD_INDEX/$SHARD_TOTAL" || rc=$?
 if [ "$SHARD_INDEX" = 1 ]; then
-  install_yarn
   node run.mjs enospc || rc=$?
 fi
 exit "$rc"

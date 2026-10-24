@@ -17,6 +17,29 @@ const portOffset = Number(process.env.SANDBOX_PORT_OFFSET || 0);
 const port = (name, fallback) => Number(process.env[`SANDBOX_${name}_PORT`] || fallback + portOffset);
 const sandboxName = process.env.SANDBOX_NAME || 'conductor-sandbox';
 
+// Every image the sandbox pulls, by the daemon that needs it. By default they come from Docker Hub,
+// on first use. With SANDBOX_IMAGE_MIRROR=<registry>/<repo> (CI: nexus.hq.molo17.com/molo17-local)
+// each one is pulled from `<mirror>/<name:tag>` and tagged with its canonical name before anything
+// uses it (see seedImages in setup.mjs), so Docker Hub is never contacted. The mirror must hold
+// every name below, with the same tag. Keep this list complete: it is what the CI job needs offline.
+const DIND_IMAGE = 'docker:28.3.3-dind';
+// Also the image the real-kernel ENOSPC test runs in, and the base of the fakes and the conductor.
+const NODE_IMAGE = 'node:24.16.0-alpine';
+export const requiredImages = {
+  // The host's daemon: the sandbox's own Docker-in-Docker, and the certificate step (it has openssl).
+  outer: [DIND_IMAGE],
+  // The sandbox daemon: the registry, the FROM of sandbox/fakes/Dockerfile and of
+  // packages/gluesync-conductor/Dockerfile, the ENOSPC test, the nsenter fallback in diskFault, and
+  // the helper images the conductor itself runs (`docker run --rm docker:cli|docker:28 ...`, see
+  // autoReboot / restartAllServices: they pull what is not local, from Docker Hub). The conductor's
+  // image prune removes whatever is unused, so up() keeps all of these with keep-* containers.
+  inner: ['registry:2.8.3', NODE_IMAGE, 'alpine:3.20', 'docker:28', 'docker:cli'],
+};
+
+// SANDBOX_DIND_ADD_HOSTS="host:ip,host:ip": --add-host entries for the sandbox DinD container, so a
+// test can prove the nested daemon reaches nothing but the mirror (CI never sets it).
+const dindAddHosts = (process.env.SANDBOX_DIND_ADD_HOSTS || '').split(',').map(h => h.trim()).filter(Boolean);
+
 export const env = {
   sandboxDir,
   repoDir: path.resolve(sandboxDir, '..'),
@@ -31,7 +54,10 @@ export const env = {
 
   dindName: `${sandboxName}-dind`,
   dindVolume: `${sandboxName}-dind`,
-  dindImage: 'docker:28.3.3-dind',
+  dindImage: DIND_IMAGE,
+  enospcImage: NODE_IMAGE,
+  imageMirror: (process.env.SANDBOX_IMAGE_MIRROR || '').replace(/\/+$/, ''),
+  dindAddHosts,
   dockerPort: port('DOCKER', 23750),
   get dockerHost() {
     return `tcp://127.0.0.1:${this.dockerPort}`;

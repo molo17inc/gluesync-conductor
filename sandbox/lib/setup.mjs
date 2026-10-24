@@ -1,6 +1,7 @@
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
-import { env, SERVICES, versionsFor } from './env.mjs';
+import { env, requiredImages, SERVICES, versionsFor } from './env.mjs';
 import { docker, dockerBin, mustDocker, mustRun, request, run, say, waitFor, writeJson } from './util.mjs';
 
 const kit = (...p) => path.join(env.kitDir, ...p);
@@ -21,6 +22,35 @@ export const kitCompose = (args, opts) => compose(kit('docker-compose.yml'), arg
 
 const infraCompose = (args, opts = {}) =>
   compose(path.join(env.sandboxDir, 'infra', 'docker-compose.yml'), args, { ...opts, env: infraEnv() });
+
+// ---------------------------------------------------------------- image seeding
+
+// Makes `images` (canonical Docker Hub names) available in one daemon without Docker Hub when
+// SANDBOX_IMAGE_MIRROR is set: pull `<mirror>/<image>`, tag it with the canonical name, drop the
+// mirror tag. Everything that names the image later (docker run, compose, FROM in a Dockerfile)
+// then finds it locally and never resolves a registry. An image already present is left alone.
+// Without a mirror this only pulls what is missing, which is what docker would do on first use.
+// `inner` picks the sandbox daemon; the default is the host's.
+export const seedImages = async (images, { inner = false } = {}) => {
+  const dock = inner ? docker : (args, opts) => run(dockerBin(), args, opts);
+  const must = inner ? mustDocker : (args, opts) => mustRun(dockerBin(), args, opts);
+  const daemon = inner ? 'sandbox' : 'host';
+  await Promise.all(
+    images.map(async image => {
+      if ((await dock(['image', 'inspect', image])).code === 0) return;
+      if (!env.imageMirror) {
+        say(`pulling ${image} into the ${daemon} daemon`);
+        await must(['pull', '-q', image], { timeoutMs: 600000 });
+        return;
+      }
+      const mirrored = `${env.imageMirror}/${image}`;
+      say(`pulling ${mirrored} into the ${daemon} daemon, tagged ${image}`);
+      await must(['pull', '-q', mirrored], { timeoutMs: 600000 });
+      await must(['tag', mirrored, image]);
+      await dock(['rmi', mirrored]);
+    }),
+  );
+};
 
 // ---------------------------------------------------------------- dind
 
@@ -46,10 +76,12 @@ const startDind = async () => {
     [env.ports.dockerProxyAdmin, env.infraPorts.dockerProxyAdmin],
   ];
   const publish = mappings.flatMap(([host, inner]) => ['-p', `127.0.0.1:${host}:${inner}`]);
+  await seedImages(requiredImages.outer);
   say('starting isolated Docker-in-Docker daemon', { image: env.dindImage });
   await mustRun(dockerBin(), [
     'run', '-d', '--privileged', '--name', env.dindName, '--hostname', 'sandbox-host',
     '-e', 'DOCKER_TLS_CERTDIR=',
+    ...env.dindAddHosts.flatMap(h => ['--add-host', h]),
     ...publish,
     // Same absolute path inside the daemon, so compose bind mounts and the
     // conductor's BASE_PATH resolve exactly as they do on a customer host.
@@ -62,6 +94,7 @@ const startDind = async () => {
   });
   if (!ready.ok) throw new Error('sandbox Docker daemon did not come up');
   say('sandbox daemon ready');
+  await seedImages(requiredImages.inner, { inner: true });
 };
 
 // ---------------------------------------------------------------- kit files
@@ -96,7 +129,6 @@ const prepareKitFiles = async () => {
     say('generating sandbox CA and server certificate');
     const script = [
       'set -e',
-      'apk add --no-cache openssl >/dev/null',
       'cd /out',
       'openssl req -x509 -newkey rsa:2048 -nodes -keyout ca-key.pem -out sandbox-ca.pem -days 3650 -subj "/CN=Conductor Sandbox CA" 2>/dev/null',
       'openssl req -newkey rsa:2048 -nodes -keyout gluesync-key.pem -out srv.csr -subj "/CN=gluesync-core-hub" 2>/dev/null',
@@ -105,7 +137,12 @@ const prepareKitFiles = async () => {
       'rm -f srv.csr ext.cnf sandbox-ca.srl',
       'chmod 644 *.pem',
     ].join(' && ');
-    await mustDocker(['run', '--rm', '-v', `${kit('shared')}:/out`, 'alpine:3.20', 'sh', '-c', script], { timeoutMs: 180000 });
+    // The DinD image already has openssl, so nothing is downloaded (an alpine container would
+    // `apk add` it from the Alpine CDN). It runs in the host's daemon, where that image is
+    // present after seeding anyway; the bind mount is the same directory the sandbox daemon sees.
+    await mustRun(dockerBin(), ['run', '--rm', '--entrypoint', 'sh', '-v', `${kit('shared')}:/out`, env.dindImage, '-c', script], {
+      timeoutMs: 180000,
+    });
   }
 };
 
@@ -147,17 +184,38 @@ const loadPushed = () => {
 
 const savePushed = set => writeJson(pushedFile(), [...set].sort((a, b) => a.localeCompare(b)));
 
+// The fakes' build context: Dockerfile, fake.mjs and the `ws` package from the sandbox's own
+// node_modules (resolved, so a symlinked node_modules works), so the image build needs no npm.
+const stageFakesContext = () => {
+  const ctx = path.join(env.runDir, 'fakes-context');
+  fs.rmSync(ctx, { recursive: true, force: true });
+  fs.mkdirSync(ctx, { recursive: true });
+  const fakes = path.join(env.sandboxDir, 'fakes');
+  fs.copyFileSync(path.join(fakes, 'Dockerfile'), path.join(ctx, 'Dockerfile'));
+  fs.copyFileSync(path.join(fakes, 'fake.mjs'), path.join(ctx, 'fake.mjs'));
+  const ws = path.dirname(createRequire(import.meta.url).resolve('ws/package.json'));
+  fs.cpSync(ws, path.join(ctx, 'ws'), { recursive: true, dereference: true });
+  return ctx;
+};
+
+// No `--pull`: a FROM that is already in the daemon (seeded from the mirror, see seedImages) is used
+// as it is. BuildKit in the sandbox daemon does that for the named image, without a registry lookup.
 const buildBases = async () => {
   say('building fake service base image');
-  await mustDocker(['build', '-q', '-t', env.fakeBase, path.join(env.sandboxDir, 'fakes')], { timeoutMs: 600000 });
+  await mustDocker(['build', '-q', '-t', env.fakeBase, stageFakesContext()], { timeoutMs: 600000 });
 
   if (!fs.existsSync(path.join(env.conductorPkgDir, 'build', 'index.js'))) {
     throw new Error('conductor build missing: run "yarn install && yarn build" in the repo root first');
   }
   say('building conductor image from packages/gluesync-conductor/build');
   await mustDocker(['build', '-q', '-t', env.conductorBase, env.conductorPkgDir], { timeoutMs: 600000 });
-  // Keeper containers stop the conductor's post-update image prune from deleting the bases.
-  const keepers = [[`${env.keepPrefix}conductor-base`, env.conductorBase], [`${env.keepPrefix}fake-base`, env.fakeBase]];
+  // Keeper containers stop the conductor's post-update image prune from deleting the bases and the
+  // seeded images (the conductor pulls its helper images itself, so they must be there when it needs them).
+  const keepers = [
+    [`${env.keepPrefix}conductor-base`, env.conductorBase],
+    [`${env.keepPrefix}fake-base`, env.fakeBase],
+    ...requiredImages.inner.map(image => [`${env.keepPrefix}${image.replaceAll(/[^\w.-]/g, '-')}`, image]),
+  ];
   await Promise.all(
     keepers.map(async ([name, image]) => {
       await docker(['rm', '-f', name]);

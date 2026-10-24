@@ -10,6 +10,7 @@
     "down": "node run.mjs down"
   },
   "dependencies": {
+    "ws": "8.18.0",
     "yaml": "2.7.0"
   }
 }

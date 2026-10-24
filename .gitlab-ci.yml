@@ -89,10 +89,14 @@ quality:
 # concurrent pipelines never share a daemon and the sandbox's bind-mount paths under
 # $CI_PROJECT_DIR exist for the daemon that mounts them. Everything happens in ci/sandbox-job.sh,
 # which is also how to reproduce a shard locally; the profile exclusions live there.
+# Nothing comes from Docker Hub or the npm registry: the job image (ci/sandbox-ci.Dockerfile) has
+# node, yarn and the sandbox's npm dependencies, and SANDBOX_IMAGE_MIRROR makes the sandbox pull
+# every image it runs from Nexus. The only download left is the conductor image's own `apk add`
+# (Alpine CDN, packages/gluesync-conductor/Dockerfile).
 sandbox:
   stage: sandbox
   image:
-    name: docker:28.3.3-dind
+    name: nexus.hq.molo17.com/molo17-local/conductor-sandbox-ci:1
     # The script starts dockerd itself through the image's entrypoint script.
     entrypoint: ['']
   needs:
@@ -103,6 +107,7 @@ sandbox:
   parallel: 4
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
+    SANDBOX_IMAGE_MIRROR: nexus.hq.molo17.com/molo17-local
   script:
     # parallel: 4 sets CI_NODE_INDEX (1-based) and CI_NODE_TOTAL; the script reads them.
     - sh ci/sandbox-job.sh

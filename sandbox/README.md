@@ -114,18 +114,46 @@ The runner prints a PASS/FAIL table, writes `reports/<timestamp>-enospc/report.m
 
 The `sandbox` job of `.gitlab-ci.yml` runs on every merge request pipeline (no manual step), on the `hq-linux-docker` runners, after `build_artifacts` (it needs `packages/gluesync-conductor/build`). It is `parallel: 4`: shard `i` runs `node run.mjs iterate --profiles all --shard i/4`, one iteration per profile, so about five profiles each; shard 1 also runs `node run.mjs enospc`. The job fails if any iteration or ENOSPC case fails. Reports (with `junit.xml`, shown as the pipeline's test report) are kept as artifacts for two weeks.
 
-- **Own daemon.** The job runs in a privileged `docker:28.3.3-dind` container and starts its own `dockerd` there (data root on the image's `/var/lib/docker` volume, never overlay on overlay). Concurrent pipelines never share a daemon, so there is nothing to clash on names or ports, and the bind-mount paths under the checkout exist for the daemon that mounts them. The sandbox then runs its own DinD inside that daemon, exactly as on a Mac.
+- **Own daemon.** The job runs in a privileged container (the CI image below, which is `docker:28.3.3-dind` plus tooling) and starts its own `dockerd` there (data root on the image's `/var/lib/docker` volume, never overlay on overlay). Concurrent pipelines never share a daemon, so there is nothing to clash on names or ports, and the bind-mount paths under the checkout exist for the daemon that mounts them. The sandbox then runs its own DinD inside that daemon, exactly as on a Mac.
 - **Excluded:** destructive profiles, and `conductor-crash-mid-update`, which can deadlock: a SIGKILL in the middle of the recreate leaves CoreHub `Created`, and the restarted conductor's SDK plugin blocks startup until CoreHub answers, so it crash-loops. Known bug; re-enable it by emptying `SANDBOX_EXCLUDE_PROFILES` in `ci/sandbox-job.sh`.
-- **No signing, no registry credentials**: nothing leaves the job except the artifacts. Images come from Docker Hub (inside the sandbox daemon) and the job needs internet access to it.
+- **No signing, no registry credentials**: nothing leaves the job except the artifacts.
+- **Nothing from Docker Hub, nothing from npm.** The job image is `nexus.hq.molo17.com/molo17-local/conductor-sandbox-ci:1` (`ci/sandbox-ci.Dockerfile`): `docker:28.3.3-dind` plus node, corepack with yarn prepared, and the sandbox's npm dependencies in `/opt/sandbox-deps` (the job symlinks `sandbox/node_modules` to it). `COREPACK_ENABLE_NETWORK=0` makes a yarn download fail instead of happen; `ci/sandbox-job.sh` fails if node, yarn or the deps are missing, or if `sandbox/package-lock.json` is not the one the image was built from. The sandbox's own images come from Nexus too, through `SANDBOX_IMAGE_MIRROR` (below). The one download left is the conductor image's own `apk add` (`packages/gluesync-conductor/Dockerfile`), from the Alpine CDN: not Docker Hub, not rate-limited.
 
-Everything the job does is in `ci/sandbox-job.sh`. To reproduce shard 2 of 4 locally, in the same image, from a copy of the checkout (run `yarn install && yarn build` first):
+### Image mirror (`SANDBOX_IMAGE_MIRROR`)
+
+Unset (a developer's Mac), every image comes from Docker Hub on first use. Set it to a registry/repository, e.g. `nexus.hq.molo17.com/molo17-local` (the job does), and the sandbox pulls `<mirror>/<name:tag>` instead and tags it with the canonical Docker Hub name before anything uses it, in the daemon that uses it (`seedImages` in `lib/setup.mjs`, the list is `requiredImages` in `lib/env.mjs`):
+
+| Daemon | Images |
+|---|---|
+| host (the job's own `dockerd`, or Docker Desktop) | `docker:28.3.3-dind` (the sandbox DinD, and the certificate step, which uses its `openssl`) |
+| sandbox (inside the DinD) | `registry:2.8.3`, `node:24.16.0-alpine` (FROM of the fakes and of the conductor image, and the ENOSPC test), `alpine:3.20` (nsenter fallback of the disk-full fault), `docker:28` and `docker:cli` (the helper images the conductor itself runs for self-update and "restart all"; it pulls them from Docker Hub when absent) |
+
+`up` also creates a stopped `keep-*` container per image, because the conductor prunes every unused image after an update and would otherwise delete the seeded helpers. Because the names are canonical and present, `docker build` (no `--pull`) uses the local image for `FROM` without contacting a registry, so neither Dockerfile needed changes for that. The fakes' `ws` package comes from the sandbox's own npm dependencies (staged into the build context), not from `npm install` in the image build. The mirror must hold every name above with the same tag; mirror a new image there before adding it to `requiredImages`.
+
+`SANDBOX_DIND_ADD_HOSTS="host:ip,host:ip"` adds `--add-host` entries to the sandbox DinD, to prove the nested daemon never reaches a host (for example `registry-1.docker.io:127.0.0.1`); add the same `--add-host` flags to the outer `docker run` for the job container's own daemon.
+
+### The CI image
+
+Rebuild and push it when `ci/sandbox-ci.Dockerfile`, `sandbox/package.json`, `sandbox/package-lock.json` or the root `packageManager` change, and bump the tag (`:1` is the current one) in the Dockerfile header, in `.gitlab-ci.yml` and here. From the repository root, logged in to Nexus:
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 --provenance=false --sbom=false \
+  -f ci/sandbox-ci.Dockerfile --build-arg SOURCE_COMMIT=$(git rev-parse --short HEAD) \
+  -t nexus.hq.molo17.com/molo17-local/conductor-sandbox-ci:1 --push .
+docker buildx imagetools inspect nexus.hq.molo17.com/molo17-local/conductor-sandbox-ci:1
+```
+
+The build fails if `YARN_VERSION` (build arg, default `4.6.0`) differs from the root `packageManager`.
+
+Everything the job does is in `ci/sandbox-job.sh`. To reproduce shard 2 of 4 locally, in the same image and with the same mirror, from a copy of the checkout (run `yarn install && yarn build` first):
 
 ```bash
 docker run --rm --privileged --entrypoint sh \
   -v "$PWD":/src:ro -v /tmp/sandbox-out:/out \
   -e CI_NODE_INDEX=2 -e CI_NODE_TOTAL=4 \
   -e SANDBOX_NAME=conductor-sandbox-ci -e SANDBOX_PORT_OFFSET=1000 \
-  docker:28.3.3-dind -c '
+  -e SANDBOX_IMAGE_MIRROR=nexus.hq.molo17.com/molo17-local \
+  nexus.hq.molo17.com/molo17-local/conductor-sandbox-ci:1 -c '
     mkdir -p /builds/conductor && cd /builds/conductor
     tar -C /src --exclude=./.git --exclude=./sandbox/node_modules --exclude=./sandbox/run --exclude=./sandbox/reports -cf - . | tar -xf -
     sh ci/sandbox-job.sh; rc=$?
