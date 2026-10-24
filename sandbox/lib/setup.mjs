@@ -105,20 +105,34 @@ const writeIfMissing = (file, content) => {
 };
 
 // The kit directories the fakes write to (state files, logs), bind-mounted into containers that
-// run as `node`, not as the user that creates them here: on a Linux host a 0755 directory would be
-// read-only for them. Only these get the wider mode; every other directory keeps the default one.
-const FAKE_WRITABLE_MODE = 0o777;
+// run as `node` (uid/gid 1000 in the fakes' image), not as the user that creates them here: on a
+// Linux host a directory owned by someone else with mode 0755 would be read-only for them. Only
+// these are handed over; every other directory keeps the default owner and mode.
+const FAKES_UID = 1000;
+const FAKES_DIR_MODE = 0o770;
 const fakeWritableDirs = () => [
   kit('data', 'core-hub'), kit('data', 'chronos'), kit('data', 'postgresql-cdc-source-agent'),
   kit('logs', 'core-hub'), kit('logs', 'chronos'), path.join(env.stateDir, 'backoffice'),
 ];
 
+// As root (the CI job, a root Docker host) the directory becomes the fakes' own. As any other
+// user it is already writable for them where Docker maps ownership (Docker Desktop) or when that
+// user is uid 1000; on a Linux host with another uid nothing here can fix it, so it is said.
+const handOverToFakes = dir => {
+  const uid = process.getuid?.();
+  if (uid === 0) {
+    fs.chownSync(dir, FAKES_UID, FAKES_UID);
+    fs.chmodSync(dir, FAKES_DIR_MODE);
+  } else if (process.platform === 'linux' && uid !== FAKES_UID) {
+    say(`warning: ${dir} is owned by uid ${uid}, the fakes run as uid ${FAKES_UID} and may not be able to write there; run the sandbox as root or as uid ${FAKES_UID}`);
+  }
+};
+
 const prepareKitFiles = async () => {
   [kit(), kit('shared'), kit('proxy'), kit('prometheus'), kit('grafana')].forEach(d => fs.mkdirSync(d, { recursive: true }));
   fakeWritableDirs().forEach(d => {
     fs.mkdirSync(d, { recursive: true });
-    // chmod, not the mkdir mode: that one is cut by the process umask.
-    fs.chmodSync(d, FAKE_WRITABLE_MODE);
+    handOverToFakes(d);
   });
 
   const debugKit = path.join(env.repoDir, 'debug-container', 'linux');
