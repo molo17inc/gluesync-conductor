@@ -78,7 +78,7 @@ const startServer = async (): Promise<void> => {
   logSslInfo();
   httpsRedirectMiddleware(server);
 
-  // Register error hangler plugin so all error follows ErrorResponse structure
+  // Register error handler plugin so every error follows ErrorResponse structure
   await server.register(errorHandlerPlugin);
 
   // Register CORS before routes
