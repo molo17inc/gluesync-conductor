@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import safeWriteFile from '../file/safeWriteFile/safeWriteFile';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import { LabelPrefix } from '../../models/composeFile.model';
 import { getLogger } from '../../utils/logger';
@@ -22,11 +23,7 @@ export const markMigrationCompleted = async (): Promise<void> => {
       completedAt: new Date().toISOString(),
     };
 
-    await fs.writeFile(
-      MIGRATION_FILE,
-      JSON.stringify(payload, null, 2),
-      'utf-8',
-    );
+    await safeWriteFile(MIGRATION_FILE, JSON.stringify(payload, null, 2));
   } catch (error) {
     logger.error({ error }, '[migration-complete] Error:');
   }

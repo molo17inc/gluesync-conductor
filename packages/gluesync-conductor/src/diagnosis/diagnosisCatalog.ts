@@ -27,6 +27,32 @@ const text = (params: DiagnosisParams, key: string, fallback = '?'): string => {
   return value === undefined ? fallback : String(value);
 };
 
+const BYTES_PER_MIB = 1024 * 1024;
+
+// Sizes for people: KiB below one MiB so a small file does not read as "0.0 MiB".
+const size = (params: DiagnosisParams, key: string): string | undefined => {
+  const value = params[key];
+  if (typeof value !== 'number') {
+    return undefined;
+  }
+  return value < BYTES_PER_MIB
+    ? `${Math.ceil(value / 1024)} KiB`
+    : `${(value / BYTES_PER_MIB).toFixed(1)} MiB`;
+};
+
+// The disk figures a failing write could not supply are left out of `params`
+// (a kernel ENOSPC knows neither the size nor the free space), so the text
+// mentions only what it has.
+const diskDetail = (params: DiagnosisParams): string => {
+  const needed = size(params, 'neededBytes');
+  const available = size(params, 'availableBytes');
+
+  if (needed && available) {
+    return ` (${needed} needed, ${available} available)`;
+  }
+  return needed ? ` (${needed} needed)` : '';
+};
+
 const BACKOFFICE = 'api.backoffice.molo17.com';
 
 /**
@@ -203,6 +229,34 @@ export const DIAGNOSIS_CATALOG: Readonly<Record<DiagnosisCode, CatalogEntry>> =
       summary: () =>
         'The checks did not point to a single cause. Share the technical details with support.',
     },
+    DISK_FULL: {
+      owner: 'customer',
+      httpStatus: 507,
+      resolutionCodes: ['FREE_DISK_SPACE', 'CONTACT_SUPPORT_WITH_DETAILS'],
+      // path, neededBytes and availableBytes are each omitted when the failing write did not know them.
+      paramKeys: ['path', 'neededBytes', 'availableBytes'],
+      exampleParams: {
+        path: '/opt/gluesync/docker-compose.yml',
+        neededBytes: 52428800,
+        availableBytes: 1048576,
+      },
+      title: 'Not enough free disk space',
+      summary: params =>
+        `There is not enough free disk space to write ${text(params, 'path', 'the Gluesync configuration')}${diskDetail(params)}. Nothing was changed.`,
+    },
+    COMPOSE_FILE_CORRUPT: {
+      owner: 'local',
+      httpStatus: 500,
+      resolutionCodes: ['CONTACT_SUPPORT_WITH_DETAILS'],
+      paramKeys: ['path', 'problem'],
+      exampleParams: {
+        path: '/opt/gluesync/docker-compose.yml',
+        problem: 'the file is empty',
+      },
+      title: 'docker-compose.yml is empty or corrupt',
+      summary: params =>
+        `${text(params, 'path', 'docker-compose.yml')} is unusable (${text(params, 'problem', 'unreadable')}) and no last-good backup could restore it. Conductor refused to write over it.`,
+    },
   };
 
 export const RESOLUTION_FALLBACK: Readonly<Record<ResolutionCode, string>> = {
@@ -227,4 +281,6 @@ export const RESOLUTION_FALLBACK: Readonly<Record<ResolutionCode, string>> = {
     'Allow outbound HTTPS to Docker Hub (registry-1.docker.io, auth.docker.io, production.cloudflare.docker.com).',
   CONTACT_SUPPORT_WITH_DETAILS:
     'Contact MOLO17 support and attach the technical details.',
+  FREE_DISK_SPACE:
+    'Free up disk space on the volume that holds the Gluesync folder (docker-compose.yml), then try again.',
 };

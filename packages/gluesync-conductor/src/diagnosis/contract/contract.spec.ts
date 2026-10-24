@@ -99,6 +99,35 @@ describe('diagnosis contract files', () => {
 });
 
 describe('diagnosis catalog', () => {
+  it('words the disk-full diagnosis with the sizes it was given', () => {
+    const { summary } = DIAGNOSIS_CATALOG.DISK_FULL;
+
+    assert.match(
+      summary({
+        path: '/srv/docker-compose.yml',
+        neededBytes: 52428800,
+        availableBytes: 1048576,
+      }),
+      /not enough free disk space to write \/srv\/docker-compose\.yml \(50\.0 MiB needed, 1\.0 MiB available\)\. Nothing was changed\./,
+    );
+    assert.match(summary({ neededBytes: 2048 }), /\(2 KiB needed\)/);
+  });
+
+  it('words the disk-full diagnosis without sizes when the write knew none', () => {
+    const summary = DIAGNOSIS_CATALOG.DISK_FULL.summary({});
+
+    assert.ok(!summary.includes('undefined'), summary);
+    assert.ok(!summary.includes('?'), summary);
+    assert.ok(!summary.includes('('), summary);
+  });
+
+  it('keeps the phrase the sandbox and old UIs match on in the disk-full title', () => {
+    assert.match(
+      DIAGNOSIS_CATALOG.DISK_FULL.title,
+      /not enough free disk space/i,
+    );
+  });
+
   DIAGNOSIS_CODES.forEach(code => {
     const entry = DIAGNOSIS_CATALOG[code];
 
@@ -160,7 +189,7 @@ describe('diagnosis catalog', () => {
   it('only uses HTTP statuses that mean "this request failed" (except the OK code)', () => {
     DIAGNOSIS_CODES.filter(code => code !== 'CONNECTIVITY_OK').forEach(code => {
       assert.ok(
-        [502, 503].includes(DIAGNOSIS_CATALOG[code].httpStatus),
+        [500, 502, 503, 507].includes(DIAGNOSIS_CATALOG[code].httpStatus),
         `${code} -> ${DIAGNOSIS_CATALOG[code].httpStatus}`,
       );
     });

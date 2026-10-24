@@ -9,7 +9,7 @@ import type { UpdateConductorOnly } from './updateConductorOnly.model';
 
 const here = (p: string): string => path.resolve(__dirname, p);
 
-const load = () => {
+const load = (rollbackOutcomes: unknown[] = []) => {
   const edits: unknown[][] = [];
   const rollbacks: unknown[][] = [];
   let updateModeEnabled = 0;
@@ -32,7 +32,7 @@ const load = () => {
         {
           default: async (...args: unknown[]) => {
             rollbacks.push(args);
-            return [];
+            return rollbackOutcomes;
           },
         },
     },
@@ -104,6 +104,32 @@ describe('updateConductorOnly', () => {
       ],
     });
     assert.equal(enabled(), 0);
+  });
+
+  it('reports a compose file that could not be restored next to the pull error', async () => {
+    const { update } = load([
+      {
+        id: 'gluesync-conductor',
+        image: 'conductor:1',
+        ok: false,
+        error: 'compose file could not be restored: not enough free disk space',
+      },
+    ]);
+    const result = await update(
+      async () => {
+        throw { exitCode: 1, err: 'pull access denied' };
+      },
+      info,
+      compose,
+    );
+    assert.deepEqual(result.results, [
+      {
+        status: 'rejected',
+        reason: {
+          err: 'pull access denied Compose file could not be put back on conductor:1: compose file could not be restored: not enough free disk space',
+        },
+      },
+    ]);
   });
 
   it('has nothing to restore when the compose file has no previous image', async () => {

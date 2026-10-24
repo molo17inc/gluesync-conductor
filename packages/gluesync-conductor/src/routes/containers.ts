@@ -9,6 +9,10 @@ import {
 } from '../models/conductor.model';
 import normalizeReleaseChannel from '../helpers/normalizeReleaseChannel/normalizeReleaseChannerl';
 import { requireContainerAction } from '../security';
+import {
+  DIAGNOSIS_REPLY_PROPERTY,
+  DISK_FULL_REPLY_SCHEMA,
+} from '../diagnosis/diagnosisReplySchema';
 
 const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
   // Register ComposeFile schema
@@ -268,6 +272,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
               success: { type: 'boolean' },
               error: { type: 'string' },
               details: { type: 'string' },
+              diagnosis: DIAGNOSIS_REPLY_PROPERTY,
             },
           },
         },
@@ -372,6 +377,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
           },
           additionalProperties: true,
         },
+        507: DISK_FULL_REPLY_SCHEMA,
         500: {
           type: 'object',
           properties: {
@@ -387,6 +393,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
               type: 'string',
               description: 'Additional error details',
             },
+            diagnosis: DIAGNOSIS_REPLY_PROPERTY,
           },
           additionalProperties: false,
         },

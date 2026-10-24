@@ -3,6 +3,8 @@ import path from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import { AxiosError } from 'axios';
 
+import { ComposeFileCorruptError } from '../../../helpers/composeFile/ensureValidCompose/composeFile.errors';
+import { DiskFullError } from '../../../helpers/file/safeWriteFile/safeWriteFile.errors';
 import loadWithStubs from '../../../testing/loadWithStubs';
 import type { DoContainersActionHandler } from './doContainersAction.model';
 
@@ -27,6 +29,7 @@ type Options = {
   bulk?: { orderedIds: string[]; results: PromiseSettledResult<unknown>[] };
   rebootError?: unknown;
   restartError?: unknown;
+  availableBytes?: number;
 };
 
 const ENV_KEYS = ['IS_WINDOWS', 'HELPER_IMAGE_BASE', 'CORE_HUB_NAME'];
@@ -68,6 +71,7 @@ const load = (options: Options = {}) => {
     restartLinux: [] as Call[],
     restartWindows: [] as Call[],
     updateMode: 0,
+    freeSpace: [] as Call[],
     logs: [] as string[],
   };
   const log =
@@ -169,6 +173,19 @@ const load = (options: Options = {}) => {
         },
       },
       [helper('getRootPath/getRootPath')]: { default: () => '/host/project' },
+      [helper('composeFile/composeBackup/composeBackup')]: {
+        composeFilePath: () => '/host/project/docker-compose.yml',
+      },
+      [helper('file/ensureFreeSpace/ensureFreeSpace')]: {
+        getUpdateMinFreeBytes: () => 1000,
+        default: async (paths: readonly string[], needed: number) => {
+          calls.freeSpace.push([paths, needed]);
+          const available = options.availableBytes ?? 1e12;
+          if (available < needed) {
+            throw new DiskFullError(paths[0], needed, available);
+          }
+        },
+      },
       [helper('restartAllServices/windowsRestart')]: {
         default: async (...args: unknown[]) => {
           calls.restartWindows.push(args);
@@ -968,5 +985,110 @@ describe('doContainersAction migration', () => {
     });
     const reply = await run(loaded, { action: 'update', ids: ['a'] });
     assert.equal(reply.statusCode, 200);
+  });
+});
+
+describe('doContainersAction update disk pre-flight', () => {
+  const full = () =>
+    load({
+      availableBytes: 10,
+      modules: {
+        'gluesync-conductor': {
+          needsUpdate: true,
+          id: 'gluesync-conductor',
+          availableVersion: '3.0.0',
+        },
+      },
+    });
+
+  it('checks the compose file system before reading anything', async () => {
+    const loaded = load();
+    const reply = await run(loaded, { action: 'update', ids: ['a'] });
+    assert.equal(reply.statusCode, 200);
+    assert.deepEqual(loaded.calls.freeSpace, [
+      [['/host/project/docker-compose.yml'], 1000],
+    ]);
+  });
+
+  it('refuses the update when the disk is too full, touching nothing', async () => {
+    const loaded = full();
+    const reply = await run(loaded, { action: 'update', ids: [] });
+    assert.equal(reply.statusCode, 507);
+    assert.equal(body(reply).success, false);
+    assert.equal(body(reply).error, 'Failed to do containers action');
+    assert.match(body(reply).details, /not enough free disk space/);
+    assert.match(body(reply).details, /docker-compose\.yml/);
+    assert.equal(body(reply).diagnosis.code, 'DISK_FULL');
+    assert.deepEqual(body(reply).diagnosis.params, {
+      path: '/host/project/docker-compose.yml',
+      neededBytes: 1000,
+      availableBytes: 10,
+    });
+    assert.equal(loaded.calls.createActions.length, 1); // the generic action lookup only
+    assert.deepEqual(loaded.calls.checked, []);
+    assert.equal(loaded.calls.bulk.length, 0);
+    assert.equal(loaded.calls.conductorOnly.length, 0);
+    assert.equal(loaded.calls.migration.length, 0);
+    assert.equal(loaded.calls.updateMode, 0);
+  });
+
+  it('does not pre-flight other actions', async () => {
+    const loaded = load({
+      availableBytes: 10,
+      actions: { stop: async () => 'stopped' },
+    });
+    const reply = await run(loaded, { action: 'stop', ids: ['a'] });
+    assert.equal(reply.statusCode, 200);
+    assert.equal(loaded.calls.freeSpace.length, 0);
+  });
+});
+
+describe('doContainersAction failures on this install', () => {
+  it('answers a kernel EDQUOT with the disk-full diagnosis', async () => {
+    const quota = Object.assign(new Error('write EDQUOT'), {
+      code: 'EDQUOT',
+    });
+    const reply = await run(load({ composeError: quota }), {
+      action: 'update',
+      ids: [],
+    });
+
+    assert.equal(reply.statusCode, 507);
+    assert.equal(body(reply).diagnosis.code, 'DISK_FULL');
+    assert.match(body(reply).details, /not enough free disk space/);
+  });
+
+  it('answers a corrupt compose file with its diagnosis', async () => {
+    const reply = await run(
+      load({
+        composeError: new ComposeFileCorruptError(
+          '/host/project/docker-compose.yml',
+          'the file is empty',
+        ),
+      }),
+      { action: 'update', ids: [] },
+    );
+
+    assert.equal(reply.statusCode, 500);
+    assert.equal(body(reply).error, 'Failed to do containers action');
+    assert.equal(body(reply).diagnosis.code, 'COMPOSE_FILE_CORRUPT');
+    assert.deepEqual(body(reply).diagnosis.params, {
+      path: '/host/project/docker-compose.yml',
+      problem: 'the file is empty',
+    });
+  });
+
+  it('keeps the disk-full diagnosis when the migration runs out of space', async () => {
+    const reply = await run(
+      load({
+        needsMigration: true,
+        migrationError: new DiskFullError('/host/project/.env', 4096, 0),
+      }),
+      { action: 'update', ids: [] },
+    );
+
+    assert.equal(reply.statusCode, 507);
+    assert.equal(body(reply).error, 'Migration failed');
+    assert.equal(body(reply).diagnosis.code, 'DISK_FULL');
   });
 });

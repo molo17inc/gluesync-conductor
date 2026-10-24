@@ -14,6 +14,9 @@ export const env = {
   runDir,
   kitDir: path.join(runDir, 'kit'),
   stateDir: path.join(runDir, 'state'),
+  // The conductor keeps its last valid compose file in <root-folder>/.conductor, and the
+  // kit mounts the kit directory as the root folder.
+  lastGoodFile: path.join(runDir, 'kit', '.conductor', 'docker-compose.last-good.yml'),
   reportsDir: path.join(sandboxDir, 'reports'),
 
   dindName: 'conductor-sandbox-dind',
@@ -44,6 +47,10 @@ export const env = {
     return caCache;
   },
 };
+
+// Phrases the conductor contract fixes (see the disk-full and compose-blanked profiles).
+export const DISK_FULL_TEXT = 'not enough free disk space';
+export const RESTORED_LOG = 'restored docker-compose.yml from last-good backup';
 
 // The services the default kit ships, keyed by compose service name.
 // `short` is what the conductor asks the backoffice for (image name minus "gluesync-").

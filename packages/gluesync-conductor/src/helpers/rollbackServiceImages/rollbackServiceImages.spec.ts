@@ -7,7 +7,10 @@ import type { RollbackServiceImages } from './rollbackServiceImages.model';
 
 const here = (p: string): string => path.resolve(__dirname, p);
 
-const load = (upFails: ReadonlySet<string> = new Set()) => {
+const load = ({
+  upFails = new Set<string>(),
+  writeError,
+}: { upFails?: ReadonlySet<string>; writeError?: Error } = {}) => {
   const written: unknown[] = [];
   const recreated: string[] = [];
   const rollback = loadWithStubs<{ default: RollbackServiceImages }>(
@@ -24,6 +27,9 @@ const load = (upFails: ReadonlySet<string> = new Set()) => {
       },
       [here('../composeFile/writeComposeFile/writeComposeFile')]: {
         default: async (compose: unknown) => {
+          if (writeError) {
+            throw writeError;
+          }
           written.push(compose);
         },
       },
@@ -68,7 +74,7 @@ describe('rollbackServiceImages', () => {
   });
 
   it('recreates each service and reports the ones that fail', async () => {
-    const { rollback, recreated } = load(new Set(['chronos']));
+    const { rollback, recreated } = load({ upFails: new Set(['chronos']) });
     const result = await rollback(
       [
         { id: 'grafana', image: 'grafana:old' },
@@ -86,5 +92,25 @@ describe('rollbackServiceImages', () => {
         error: 'up chronos failed',
       },
     ]);
+  });
+
+  it('reports a compose file it cannot write instead of throwing, and does not recreate', async () => {
+    const full = Object.assign(new Error('write ENOSPC'), { code: 'ENOSPC' });
+    const { rollback, written, recreated } = load({ writeError: full });
+    const result = await rollback(
+      [
+        { id: 'grafana', image: 'grafana:old' },
+        { id: 'chronos', image: 'chronos:0' },
+      ],
+      { recreate: true },
+    );
+    assert.equal(written.length, 0);
+    assert.deepEqual(recreated, []);
+    assert.equal(result.length, 2);
+    result.forEach(outcome => {
+      assert.equal(outcome.ok, false);
+      assert.match(outcome.error ?? '', /compose file could not be restored/);
+      assert.match(outcome.error ?? '', /not enough free disk space/);
+    });
   });
 });

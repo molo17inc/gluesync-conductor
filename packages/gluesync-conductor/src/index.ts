@@ -8,6 +8,7 @@ import gluesyncPlugin from './plugins/gluesync';
 import apiBlockerAsUpdatingPlugin, {
   disableUpdateMode,
 } from './plugins/apiBlockerAsUpdating';
+import localErrorHandlerPlugin from './plugins/localErrorHandler';
 import tzFix from './plugins/tzFix';
 import fakeErrorInjectorPlugin from './plugins/fakeErrorInjector';
 
@@ -30,6 +31,10 @@ import { getLogger, logFatalAndExit } from './utils/logger';
 import autoAdoptServices from './helpers/autoAdoptServices/autoAdoptServices';
 import { autoReboot } from './helpers/autoReboot/autoReboot';
 import getRootPath from './helpers/getRootPath/getRootPath';
+import {
+  guardComposeAtStartup,
+  runStartupStep,
+} from './helpers/composeFile/guardComposeAtStartup/guardComposeAtStartup';
 import healConductorConf from './helpers/healConductorConf/healConductorConf';
 import syncCollectLogsScripts from './helpers/syncCollectLogsScripts/syncCollectLogsScripts';
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
@@ -84,6 +89,9 @@ const startServer = async (): Promise<void> => {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
+
+  // A full disk or a corrupt compose file thrown out of any route gets its diagnosis
+  await server.register(localErrorHandlerPlugin);
 
   // Register Swagger plugins first
   await server.register(swaggerPlugin);
@@ -209,7 +217,17 @@ const startServer = async (): Promise<void> => {
   );
   logger.info(`Gluesync Conductor server started on port ${port}`);
 
-  const result = await autoAdoptServices();
+  await guardComposeAtStartup();
+
+  const result = await runStartupStep(
+    'auto-adopt services',
+    autoAdoptServices,
+    {
+      success: false,
+      updatedIds: [] as readonly string[],
+      unmatchedIds: [] as readonly string[],
+    },
+  );
 
   if (result.success) {
     const { updatedIds, unmatchedIds } = result;
@@ -250,7 +268,11 @@ const startServer = async (): Promise<void> => {
     logger.warn('[collect-logs-sync] sync failed');
   }
 
-  const rebootNeeded = await healConductorConf();
+  const rebootNeeded = await runStartupStep(
+    'conductor-healer',
+    healConductorConf,
+    false,
+  );
 
   logger.info(
     `[conductor-healer] ${rebootNeeded ? 'reboot needed to heal' : 'nothing to heal'}`,

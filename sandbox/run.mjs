@@ -7,6 +7,7 @@
 //        --seed N          (default: time based; printed so a run can be replayed)
 //        --profiles a,b    only these chaos profiles (default: all non-destructive)
 //        --destructive     also run profiles that can leave the conductor down
+//   node sandbox/run.mjs enospc                  real-kernel ENOSPC test of safeWriteFile on a 64 KiB tmpfs (needs the sandbox up)
 //   node sandbox/run.mjs status                  containers, versions, chaos state
 //   node sandbox/run.mjs down [--purge]          remove the sandbox daemon (and run/ with --purge)
 
@@ -14,6 +15,7 @@ import { env } from './lib/env.mjs';
 import { backofficeAdmin, down, up, dindRunning } from './lib/setup.mjs';
 import { snapshot, corehub, dockerProxy } from './lib/stack.mjs';
 import { iterate } from './lib/iterate.mjs';
+import { enospc } from './lib/enospc.mjs';
 import { describeState, say } from './lib/util.mjs';
 
 const [, , command = 'help', ...rest] = process.argv;
@@ -53,6 +55,9 @@ const main = async () => {
         destructive: flag('destructive'),
       });
       break;
+    case 'enospc':
+      await enospc();
+      break;
     case 'status':
       await status();
       break;
@@ -60,7 +65,7 @@ const main = async () => {
       await down({ purge: flag('purge') });
       break;
     default:
-      process.stdout.write(`usage: node sandbox/run.mjs <up|iterate|status|down>\nsandbox dir: ${env.sandboxDir}\n`);
+      process.stdout.write(`usage: node sandbox/run.mjs <up|iterate|enospc|status|down>\nsandbox dir: ${env.sandboxDir}\n`);
   }
 };
 

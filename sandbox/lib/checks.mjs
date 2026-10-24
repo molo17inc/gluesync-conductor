@@ -1,7 +1,9 @@
 // Invariants evaluated after every iteration. A check is { area, id, ok, severity, detail, evidence }.
 // severity: fail (a real defect), warn (degraded / risky), info (worth knowing).
 
-import { env, SERVICES } from './env.mjs';
+import fs from 'node:fs';
+import { DISK_FULL_TEXT, env, RESTORED_LOG, SERVICES } from './env.mjs';
+import { composeProblem } from './composeSampler.mjs';
 import { describeState } from './util.mjs';
 
 // severity is what a failure means; it defaults to 'fail'.
@@ -209,6 +211,139 @@ const stackChecks = x => {
 
   if (plan.customization) out.push(...customizationChecks(post));
   return out;
+};
+
+// ---------------------------------------------------------------- compose safety
+
+// Whatever the iteration did, the compose file the conductor sees was never blank or broken
+// (sampled every ~25ms, see lib/composeSampler.mjs).
+const neverBlankCheck = it => {
+  const s = it.sampler;
+  if (!s?.samples) return result('compose', 'compose.never-blank', false, 'the compose sampler recorded no samples', 'warn');
+  if (s.badCount === 0) {
+    const torn = s.torn ? ` (${s.torn} read(s) caught a write half way and were fine at the next sample)` : '';
+    return result('compose', 'compose.never-blank', true, `${s.samples} samples of the compose file, none blank or invalid${torn}`);
+  }
+  const problems = [...new Set(s.bad.map(b => b.problem))].join(', ');
+  return result(
+    'compose',
+    'compose.never-blank',
+    false,
+    `the compose file was unusable in ${s.badCount} of ${s.samples} samples: ${problems}`,
+    'fail',
+    s.bad,
+  );
+};
+
+// The conductor keeps its last valid compose file in <kit>/.conductor; it is what restores a blanked one.
+const lastGoodCheck = () => {
+  if (!fs.existsSync(env.lastGoodFile)) return result('compose', 'compose.last-good-present', false, `no last-good backup at ${env.lastGoodFile}`);
+  const text = fs.readFileSync(env.lastGoodFile, 'utf8');
+  const problem = composeProblem(text);
+  return result(
+    'compose',
+    'compose.last-good-present',
+    !problem,
+    problem ? `last-good backup is unusable: ${problem}` : `last-good backup present (${Buffer.byteLength(text)} bytes, every service)`,
+  );
+};
+
+// disk-full and disk-almost-full: the first update is refused up front and changes nothing.
+const refusalCheck = (it, plan) => {
+  const r = it.refusal;
+  if (!r) return result('compose', 'compose.disk-full-refused', false, 'no update round was recorded under the disk fault');
+  const problems = [];
+  if (!r.refused) {
+    problems.push(`the update was not refused with "${plan.refusal.phrase}" (round ${r.round}: ${r.statuses?.join('/')} ${r.text || ''})`);
+  }
+  // The UI words the refusal from the diagnosis code, not from the English text: it must be there.
+  if (r.refused && !r.diagnoses?.every(code => code === plan.refusal.code)) {
+    problems.push(`the refusal does not carry diagnosis.code "${plan.refusal.code}" (got ${JSON.stringify(r.diagnoses)})`);
+  }
+  if (r.refused && !r.statuses?.every(status => status === plan.refusal.status)) {
+    problems.push(`the refusal was not answered with HTTP ${plan.refusal.status} (got ${r.statuses?.join('/')})`);
+  }
+  if (!r.composeUnchanged) problems.push('the compose bytes changed (or could not be read) while the disk was full');
+  if (!r.containersUnchanged) problems.push(`containers changed during the refused update: ${r.changedContainers.join(', ')}`);
+  if (r.servicesStatus !== 200) problems.push(`the conductor answered ${r.servicesStatus} afterwards (update mode not released)`);
+  return result(
+    'compose',
+    'compose.disk-full-refused',
+    problems.length === 0,
+    problems.length ? problems.join('; ') : `update refused ("${plan.refusal.phrase}", HTTP ${plan.refusal.status}, ${plan.refusal.code}), compose identical (${r.composeBytes} bytes), no container touched`,
+    'fail',
+    problems.length ? r : undefined,
+  );
+};
+
+// disk-flapping: every update that failed while the disk flapped must say why.
+const flappingCheck = it => {
+  const f = it.flapping;
+  if (f?.startRound === undefined) {
+    return result('compose', 'compose.disk-full-refused', false, 'the flapping fault was never injected (no bulk round ran)', 'warn');
+  }
+  const inWindow = a => {
+    const n = Number(/update round (\d+)/.exec(a.label)?.[1]);
+    return n >= f.startRound && n < (f.stopRound ?? Infinity);
+  };
+  const failed = updateCalls(it)
+    .filter(inWindow)
+    .filter(a => a.status >= 400 || (a.json?.data?.containers || []).some(c => c.status === 'ERROR'));
+  const unexplained = failed.filter(a => !JSON.stringify(a.json ?? a.text ?? '').includes(DISK_FULL_TEXT));
+  const describeFailure = a => `${a.label} -> ${a.status} ${JSON.stringify(a.json ?? a.text).slice(0, 200)}`;
+  const detail = unexplained.length
+    ? `${unexplained.length} of ${failed.length} update(s) that failed while the disk flapped do not say "${DISK_FULL_TEXT}": ${unexplained.map(describeFailure).join(' | ')}`
+    : `${failed.length} update(s) failed while the disk flapped (rounds ${f.startRound}-${f.stopRound ?? 'end'}), all saying "${DISK_FULL_TEXT}"`;
+  return result('compose', 'compose.disk-full-refused', unexplained.length === 0, detail);
+};
+
+// compose-blanked: restored from last-good, byte for byte, logged, never replaced by a stub.
+const blankedCheck = (it, conductorLogs) => {
+  const b = it.blanked;
+  if (!b) return result('compose', 'compose.blanked-restored', false, 'the profile did not record the blanking');
+  const logged = conductorLogs.filter(l => l.line.includes(RESTORED_LOG));
+  const problems = [];
+  if (b.lastGoodBytes === null) problems.push('there was no last-good backup before the compose was blanked');
+  if (b.restoredMs === null) {
+    problems.push(`the compose file was not restored within the time limit${b.repairedByRunner ? ' (the runner put the original back)' : ''}`);
+  } else if (!b.byteEqual) {
+    problems.push('the restored compose differs from the last-good backup');
+  }
+  if (b.stubs.length) problems.push(`a compose that is neither blank nor the last-good bytes appeared: ${b.stubs[0].head.replaceAll('\n', ' ').slice(0, 120)}`);
+  if (!logged.length) problems.push(`the conductor never logged "${RESTORED_LOG}"`);
+  else if (!logged.some(l => /"level":(50|60)/.test(l.line))) problems.push(`"${RESTORED_LOG}" was not logged at error level`);
+  return result(
+    'compose',
+    'compose.blanked-restored',
+    problems.length === 0,
+    problems.length ? problems.join('; ') : `restored ${b.restoredMs}ms after the conductor started, byte-equal to last-good, logged at error level`,
+    'fail',
+    problems.length ? b : undefined,
+  );
+};
+
+// conductor-crash-mid-update: what the SIGKILL left behind and what the restarted conductor made of it.
+const crashComposeCheck = it => {
+  const c = it.crashCompose;
+  const problems = [c.afterKill && `right after the kill: ${c.afterKill}`, c.afterRestart && `after the restart: ${c.afterRestart}`].filter(Boolean);
+  return result(
+    'compose',
+    'compose.valid-after-crash',
+    problems.length === 0,
+    problems.length ? `compose file not usable ${problems.join('; ')}` : 'compose file valid right after the kill and after the conductor restarted',
+  );
+};
+
+const composeSafetyChecks = x => {
+  const { it, plan, conductorLogs } = x;
+  return [
+    neverBlankCheck(it),
+    lastGoodCheck(),
+    ...(plan.refusal ? [refusalCheck(it, plan)] : []),
+    ...(plan.flapping ? [flappingCheck(it)] : []),
+    ...(plan.blanked ? [blankedCheck(it, conductorLogs)] : []),
+    ...(it.crashCompose ? [crashComposeCheck(it)] : []),
+  ];
 };
 
 // ---------------------------------------------------------------- API error handling
@@ -508,4 +643,4 @@ const loggingChecks = x => {
   return out;
 };
 
-export const runChecks = x => [...stackChecks(x), ...apiChecks(x), ...resilienceChecks(x), ...loggingChecks(x)];
+export const runChecks = x => [...stackChecks(x), ...composeSafetyChecks(x), ...apiChecks(x), ...resilienceChecks(x), ...loggingChecks(x)];

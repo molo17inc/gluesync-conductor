@@ -28,6 +28,8 @@ export const DIAGNOSIS_CODES = [
   'OTA_SERVICE_DOWN',
   'BACKOFFICE_REQUEST_REJECTED',
   'UNKNOWN',
+  'DISK_FULL',
+  'COMPOSE_FILE_CORRUPT',
 ] as const;
 
 export type DiagnosisCode = (typeof DIAGNOSIS_CODES)[number];
@@ -61,6 +63,7 @@ export const RESOLUTION_CODES = [
   'TRUST_CORPORATE_CA',
   'CHECK_DOCKER_HUB_ACCESS',
   'CONTACT_SUPPORT_WITH_DETAILS',
+  'FREE_DISK_SPACE',
 ] as const;
 
 export type ResolutionCode = (typeof RESOLUTION_CODES)[number];
