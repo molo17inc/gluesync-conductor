@@ -318,10 +318,12 @@ const startNow = async (ctx, it, { freeKiB, sizeKiB = 256, flap = false }) => {
   let r = await inConductor(c.pid, setupScript(sizeKiB, freeKiB));
   // It can go stale between the check and the mount: heal once and retry once.
   if (r.code !== 0 && (await bindStale(c.pid))) {
-    c = await healStaleBind(c, it).catch(async e => {
+    try {
+      c = await healStaleBind(c, it);
+    } catch (e) {
       await releaseNow(it).catch(() => {});
       throw e;
-    });
+    }
     Object.assign(state, { pid: c.pid, containerId: c.id });
     r = await inConductor(c.pid, setupScript(sizeKiB, freeKiB));
   }
