@@ -22,14 +22,19 @@
 // held across the conductor's self-update: its helper container recreates the
 // conductor from the HOST compose file. Profiles therefore only inject the fault
 // when no self-update is about to run (or when the update is refused up front).
+//
+// Docker Desktop for Mac (gRPC FUSE) leaves that single-file bind "stale" a few seconds
+// after the host file is written (mountinfo root ends in //deleted) and the kernel then
+// refuses the bind in step 3. startNow detects it and restarts the conductor container
+// (same id, sandbox only) to re-resolve the bind; native Linux binds never go stale.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { env } from './env.mjs';
 import { composeProblem } from './composeSampler.mjs';
-import { conductorContainer } from './stack.mjs';
-import { dockerBin, run, sleep } from './util.mjs';
+import { conductorContainer, waitConductor } from './stack.mjs';
+import { docker, dockerBin, run, sleep } from './util.mjs';
 
 const COMPOSE = '/opt/gluesync-conductor/docker-compose.yml';
 const MOUNT_DIR = '/run/sbx-disk';
@@ -64,6 +69,7 @@ const inConductor = async (pid, script, opts = {}) => {
 const PRELUDE = `
 F=${COMPOSE}
 M=${MOUNT_DIR}
+stale() { awk -v f="$F" '$5 == f && $4 ~ "//deleted$" && !/ - tmpfs ${TMPFS} /' /proc/self/mountinfo | wc -l | tr -d ' '; }
 mine() { awk -v f="$F" '$5 == f && / - tmpfs ${TMPFS} /' /proc/self/mountinfo | wc -l | tr -d ' '; }
 avail() { df -k "$M" | awk 'NR==2 {print $4}'; }
 fill_to() {
@@ -80,6 +86,11 @@ fill_to() {
 const setupScript = (sizeKiB, freeKiB) => `set -e
 ${PRELUDE}
 mkdir -p "$M"
+i=0
+while awk -v m="$M" '$5 == m {f=1} END {exit !f}' /proc/self/mountinfo && [ $i -lt 4 ]; do
+  umount "$M" || umount -l "$M" || break
+  i=$((i + 1))
+done
 mount -t tmpfs -o size=${sizeKiB}k ${TMPFS} "$M"
 cat "$F" > "$M/compose.yml"
 mount -o bind "$M/compose.yml" "$F"
@@ -106,6 +117,10 @@ const grabScript = `${PRELUDE}
 if [ "$(mine)" -eq 0 ]; then echo NOMOUNT; exit 0; fi
 echo MOUNT
 base64 "$F"
+`;
+
+const staleScript = `${PRELUDE}
+echo "stale=$(stale)"
 `;
 
 const teardownScript = `${PRELUDE}
@@ -276,12 +291,42 @@ export const releaseDiskFault = it => exclusive(() => releaseNow(it));
 
 // ---------------------------------------------------------------- start
 
+// True when the conductor's own compose bind is stale (see the header): the kernel
+// would refuse to mount over it. A failed probe counts as not stale.
+const bindStale = async pid => {
+  const r = await inConductor(pid, staleScript);
+  return r.code === 0 && /stale=[1-9]/.test(r.out);
+};
+
+// Restarts the conductor container (same id, RestartCount untouched) so Docker
+// re-resolves the compose bind, then waits for /health. Returns the fresh container.
+const healStaleBind = async (c, it) => {
+  const r = await docker(['restart', c.id], { timeoutMs: 90000 });
+  if (r.code !== 0) throw new Error(`could not restart conductor ${c.id} to refresh its stale compose bind: ${(r.err || r.out).slice(-400)}`);
+  const up = await waitConductor({ timeoutMs: 120000 });
+  if (!up.ok) throw new Error(`conductor ${c.id} did not answer /health after the restart that refreshes its stale compose bind (last: ${up.last})`);
+  it?.notes.push(`disk fault: Docker Desktop file sharing left the conductor's compose bind stale; restarted conductor ${c.id} to re-resolve it (sandbox only)`);
+  return up.value;
+};
+
 const startNow = async (ctx, it, { freeKiB, sizeKiB = 256, flap = false }) => {
   await releaseNow(it);
-  const c = await conductorContainer();
+  let c = await conductorContainer();
   if (!c) throw new Error('no running conductor to inject the disk fault into');
+  if (await bindStale(c.pid)) c = await healStaleBind(c, it);
   Object.assign(state, { pid: c.pid, containerId: c.id, sampler: ctx.sampler || null });
-  const r = await inConductor(c.pid, setupScript(sizeKiB, freeKiB));
+  let r = await inConductor(c.pid, setupScript(sizeKiB, freeKiB));
+  // It can go stale between the check and the mount: heal once and retry once.
+  if (r.code !== 0 && (await bindStale(c.pid))) {
+    try {
+      c = await healStaleBind(c, it);
+    } catch (e) {
+      await releaseNow(it).catch(() => {});
+      throw e;
+    }
+    Object.assign(state, { pid: c.pid, containerId: c.id });
+    r = await inConductor(c.pid, setupScript(sizeKiB, freeKiB));
+  }
   if (r.code !== 0) {
     await releaseNow(it).catch(() => {});
     throw new Error(`could not set up the disk fault in conductor ${c.id}: ${(r.err || r.out).slice(-400)}`);
