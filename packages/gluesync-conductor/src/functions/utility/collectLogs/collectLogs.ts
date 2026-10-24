@@ -31,6 +31,7 @@ import axiosWithRetry from '../../../utils/axiosWithRetry';
 import collectLogsByScript from '../../../helpers/collectLogsByScript/collectLogsByScript';
 import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
 import getOrchestrator from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator';
+import type { Orchestrator } from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator.model';
 import swarmReportCommands from '../../../helpers/swarm/swarmReportCommands/swarmReportCommands';
 import exportSwarmServiceLogs from '../../../helpers/swarm/exportSwarmServiceLogs/exportSwarmServiceLogs';
 
@@ -63,6 +64,14 @@ type SwarmLogsSource = Readonly<{
   docker: Readonly<Docker>;
   namespace: string;
 }>;
+
+const swarmLogsSourceOf = (
+  orchestrator: Orchestrator,
+  docker: Readonly<Docker>,
+): SwarmLogsSource | undefined =>
+  orchestrator.mode === 'swarm'
+    ? { docker, namespace: orchestrator.namespace }
+    : undefined;
 
 type CollectLogsOptions = Readonly<{
   ticketId?: string;
@@ -2104,10 +2113,7 @@ const handler: CollectLogsHandler = async (req, reply) => {
       email,
       localOnly,
       logger: req.log as unknown as Logger,
-      swarm:
-        orchestrator.mode === 'swarm'
-          ? { docker: req.server.docker, namespace: orchestrator.namespace }
-          : undefined,
+      swarm: swarmLogsSourceOf(orchestrator, req.server.docker),
     });
 
     return reply.code(200).send({
