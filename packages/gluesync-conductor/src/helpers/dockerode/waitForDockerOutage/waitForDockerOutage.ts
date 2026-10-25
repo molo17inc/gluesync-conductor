@@ -10,7 +10,8 @@ const DEFAULT_DOCKER_WAIT_MS = 60000;
  */
 export const dockerWaitMs = (): number => {
   const raw = process.env.CONDUCTOR_DOCKER_WAIT_MS;
-  const parsed = raw === undefined || raw.trim() === '' ? NaN : Number(raw);
+  const parsed =
+    raw === undefined || raw.trim() === '' ? Number.NaN : Number(raw);
   return Number.isFinite(parsed) && parsed >= 0
     ? parsed
     : DEFAULT_DOCKER_WAIT_MS;

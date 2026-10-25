@@ -105,8 +105,8 @@ export const runCmd: RunCmd = async (
     : commonOptions;
 
   const exec = (): Promise<unknown> =>
-    cmdFn(options).then(failOnExitCode, (failure: unknown) => {
-      throw toComposeError(failure);
+    cmdFn(options).then(failOnExitCode, (error_: unknown) => {
+      throw toComposeError(error_);
     });
 
   const final = await retryCmd(1, maxRetries, exec, getLogger(), id, () =>

@@ -82,18 +82,23 @@ const customizationChecks = post => {
   ];
 };
 
-const stackChecks = x => {
-  const { pre, post, target, plan } = x;
-  const out = [];
+// A lagging service may stay on its old tag or reach the target; every other must reach the target.
+const versionProblems = ({ pre, post, target, plan }) => {
   const lagging = new Set(plan.lagging || []);
-  const crash = new Set(plan.crashImages || []);
-
-  const wrong = Object.keys(SERVICES).flatMap(s => {
+  return Object.keys(SERVICES).flatMap(s => {
     const tag = post.byService[s]?.tag;
     if (!tag) return [`${s}: no container`];
     if (lagging.has(s)) return tag === target[s] || tag === pre.byService[s]?.tag ? [] : [`${s}: ${tag} (neither old nor target)`];
     return tag === target[s] ? [] : [`${s}: running ${tag}, expected ${target[s]}`];
   });
+};
+
+const stackChecks = x => {
+  const { pre, post, plan } = x;
+  const out = [];
+  const crash = new Set(plan.crashImages || []);
+
+  const wrong = versionProblems(x);
   out.push(result('stack', 'stack.target-versions', wrong.length === 0, wrong.length ? wrong.join('; ') : `all services at expected versions (${plan.expect})`));
 
   const services = post.compose.parsed?.services || {};

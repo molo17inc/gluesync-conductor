@@ -25,7 +25,7 @@ export const fingerprintServices: FingerprintServices = async (docker, ids) => {
       const list = await containersOf(docker, id);
       const fingerprint = list
         .map(c => `${c.Id}@${c.ImageID}`)
-        .sort()
+        .sort((a, b) => a.localeCompare(b))
         .join(',');
       return [id, fingerprint] as const;
     }),
