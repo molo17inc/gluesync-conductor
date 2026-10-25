@@ -76,9 +76,10 @@ const updateNormalBulk: UpdateNormalBulk = async (
 
   // Compose, or a Swarm stack whose services can be fingerprinted and restored
   const restorable = Boolean(docker) && (!swarm || Boolean(namespace));
+  const stack = swarm ? namespace : undefined;
   const before =
     docker && restorable
-      ? await snapshotBefore(docker, orderedIds, swarm ? namespace : undefined)
+      ? await snapshotBefore(docker, orderedIds, stack)
       : undefined;
   const results = await Promise.allSettled(orderedIds.map(action));
 
