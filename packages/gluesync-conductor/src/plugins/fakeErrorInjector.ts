@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyPluginCallback } from 'fastify';
 import fp from 'fastify-plugin';
 import buildDiagnosis from '../diagnosis/buildDiagnosis';
 import {
@@ -217,9 +217,11 @@ export const buildFakeErrorReply = (rule: FakeErrorRule): FakeErrorReply => {
   };
 };
 
-const fakeErrorInjectorPlugin = async (
-  fastify: Readonly<FastifyInstance>,
-): Promise<void> => {
+const fakeErrorInjectorPlugin: FastifyPluginCallback = (
+  fastify,
+  _opts,
+  done,
+) => {
   const logger = getLogger();
   const rules = parseFakeErrorRules(process.env.GLUESYNC_FAKE_ERROR);
   const updateRules = parseFakeUpdateRules(process.env.GLUESYNC_FAKE_ERROR);
@@ -229,22 +231,23 @@ const fakeErrorInjectorPlugin = async (
     '[fake-error] GLUESYNC_FAKE_ERROR is set: OTA failures and updates are being FAKED. Unset it for normal operation.',
   );
 
-  fastify.addHook('preSerialization', async (req, _reply, payload) => {
+  fastify.addHook('preSerialization', (req, _reply, payload, hookDone) => {
     const rule = findFakeUpdate(updateRules, {
       method: req.method,
       path: req.url.split('?')[0],
     });
 
     if (!rule) {
-      return payload;
+      hookDone(null, payload);
+      return;
     }
 
     logger.warn({ rule }, '[fake-error] signalling a fake available update');
 
-    return withFakeUpdate(payload, rule);
+    hookDone(null, withFakeUpdate(payload, rule));
   });
 
-  fastify.addHook('preHandler', async (req, reply) => {
+  fastify.addHook('preHandler', (req, reply, hookDone) => {
     const rule = findFakeError(rules, {
       method: req.method,
       path: req.url.split('?')[0],
@@ -252,15 +255,19 @@ const fakeErrorInjectorPlugin = async (
     });
 
     if (!rule) {
-      return undefined;
+      hookDone();
+      return;
     }
 
     logger.warn({ rule }, '[fake-error] injecting a fake failure');
 
     const { statusCode, body } = buildFakeErrorReply(rule);
 
-    return reply.code(statusCode).send(body);
+    // Answering from the hook ends the request: no hookDone
+    reply.code(statusCode).send(body);
   });
+
+  done();
 };
 
 export default fp(fakeErrorInjectorPlugin, {

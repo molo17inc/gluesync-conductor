@@ -135,6 +135,20 @@ const buildFinalLabels = (
   ];
 };
 
+export const hasConductorTypeLabel = (
+  service:
+    | Readonly<{ labels?: NonNullable<Parameters<typeof toLabelStrings>[0]> }>
+    | undefined,
+): boolean => {
+  if (!service) {
+    return false;
+  }
+
+  return toLabelStrings(service.labels).some(label =>
+    label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`),
+  );
+};
+
 /**
  * Function to apply Conductor labels to services in docker-compose.yml.
  * Services with type labels will be handled by Conductor.
@@ -176,7 +190,7 @@ const autoAdoptServices = async (): Promise<{
       process.env.GLUESYNC_HOST ?? 'gluesync-core-hub';
     const conductorServiceName =
       process.env.CONDUCTOR_NAME || 'gluesync-conductor';
-    const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
+    const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
 
     // Network name is still computed, but applied only on Windows.
     const networkName = isWindows ? 'gluesync-windows-net' : 'gluesync-net';
@@ -232,18 +246,9 @@ const autoAdoptServices = async (): Promise<{
       addEnvFileToServices(servicesWithChronosHost, allServiceIds);
 
     // Services that ALREADY have a conductor type label
-    const alreadyLabeledIds = allServiceIds.filter(id => {
-      const service = servicesWithChronosHost?.[id];
-      if (!service) {
-        return false;
-      }
-
-      const labelStrings = toLabelStrings(service.labels);
-
-      return labelStrings.some(label =>
-        label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`),
-      );
-    });
+    const alreadyLabeledIds = allServiceIds.filter(id =>
+      hasConductorTypeLabel(servicesWithChronosHost?.[id]),
+    );
 
     // Exclude conductor + third-party from platform adjustments.
     const adjustedIds = alreadyLabeledIds.filter(

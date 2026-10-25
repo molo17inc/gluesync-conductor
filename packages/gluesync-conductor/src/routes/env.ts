@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyPluginCallback } from 'fastify';
 
 import getLegacyUpdate from '../functions/env/legacyUpdate/getLegacyUpdate';
 import setLegacyUpdate from '../functions/env/legacyUpdate/setLegacyUpdate';
@@ -8,7 +8,7 @@ import {
   DISK_FULL_REPLY_SCHEMA,
 } from '../diagnosis/diagnosisReplySchema';
 
-const envRoutes = async (fastify: Readonly<FastifyInstance>) => {
+const envRoutes: FastifyPluginCallback = (fastify, _opts, done) => {
   fastify.get('/env/legacy-update', {
     schema: {
       tags: ['env'],
@@ -97,6 +97,8 @@ const envRoutes = async (fastify: Readonly<FastifyInstance>) => {
     preHandler: [requireConfig()],
     handler: setLegacyUpdate,
   });
+
+  done();
 };
 
 export default envRoutes;

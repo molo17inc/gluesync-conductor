@@ -47,13 +47,14 @@ const runTcpProbe = (
 
     socket.once('error', error => {
       const failure = classifyProbeError(error);
+      const codeSuffix = failure.code ? ` (${failure.code})` : '';
 
       finish({
         reachable: false,
         healthy: false,
         errorKind: failure.kind,
         errorCode: failure.code,
-        detail: `${host}:${port} ${failure.kind ?? 'failed'}${failure.code ? ` (${failure.code})` : ''}`,
+        detail: `${host}:${port} ${failure.kind ?? 'failed'}${codeSuffix}`,
       });
     });
   });
