@@ -10,8 +10,14 @@ export interface UpdateConductorOnlyResult {
   results: PromiseSettledResult<any>[];
 }
 
+export type UpdateConductorOnlyOptions = Readonly<{
+  // Docker Swarm replaces the task itself: no update mode, no watchdog
+  swarm?: boolean;
+}>;
+
 export type UpdateConductorOnly = (
   action: (id: string) => Promise<any>,
   conductorInfo: Readonly<ConductorInfo>,
   composeJson: RawComposeFile,
+  options?: UpdateConductorOnlyOptions,
 ) => Promise<UpdateConductorOnlyResult>;

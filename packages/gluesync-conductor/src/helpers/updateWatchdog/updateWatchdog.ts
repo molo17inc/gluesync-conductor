@@ -229,7 +229,7 @@ const validateRuntimeState = async (
       };
     }
 
-    const { tag: composeTag } = parseImage(service.image);
+    const { tag: composeTag, interpolatedTag } = parseImage(service.image);
 
     const runningVersion = await getCurrentVersion(
       docker,
@@ -241,7 +241,8 @@ const validateRuntimeState = async (
     const expected = normalizeVersion(composeTag);
     const actual = normalizeVersion(runningVersion);
 
-    if (expected !== actual) {
+    // An interpolated tag (`${TAG}`) is not a version to hold the container to
+    if (!interpolatedTag && expected !== actual) {
       logger.warn(
         {
           serviceName,

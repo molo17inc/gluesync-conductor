@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { env, SERVICES, versionsFor } from './env.mjs';
 import { backofficeAdmin, catalogFor, dindRunning, ensureImages, kitCompose } from './setup.mjs';
-import { LogCollector, callConductor, conductorContainer, containers, corehub, health, settle, snapshot, waitConductor, waitStackReady } from './stack.mjs';
+import { LogCollector, callConductor, conductorContainer, containers, corehub, health, settle, snapshot, waitConductor, waitConductorStartup, waitKitSettled, waitStackReady } from './stack.mjs';
 import { PROFILES, resetChaos } from './scenarios.mjs';
 import { ComposeSampler } from './composeSampler.mjs';
 import { readLiveCompose, releaseDiskFault } from './diskFault.mjs';
@@ -272,6 +272,10 @@ const runIteration = async (ctx, i, profile, k) => {
   try {
     // Mounts or filler files a failed earlier iteration (or runner) left in the conductor.
     await releaseDiskFault(it);
+    // The conductor may have restarted (and adopted the kit again) since the last iteration: the
+    // `pre` snapshot below must not catch containers in the middle of that. A service left down on
+    // purpose by the previous profile is that profile's business, so only stability is required (`strict: false`).
+    await waitKitSettled({ strict: false });
     await ensureImages(target, { skip: plan.skipImages || [], crash: plan.crashImages || [] });
     const catalogVersions = { ...target, ...plan.catalog };
     await backofficeAdmin('/__sandbox/catalog', catalogFor(catalogVersions));
@@ -438,6 +442,10 @@ export const iterate = async ({ iterations, seed, profiles, destructive, shard: 
   // Same wait as the end of `up`: a runner that reaches this line right after `up` must not meet a
   // fake that is still starting.
   await waitStackReady();
+  // Iteration 1's snapshot must not race the Conductor's startup recreates (auto-adoption).
+  await waitConductorStartup();
+  // ...and every kit service has one running container whose id and image stay the same.
+  await waitKitSettled();
   const collector = new LogCollector(path.join(dir, 'logs'));
   collector.start();
   // The collector's timer and its `docker logs -f` children keep the process alive: whatever

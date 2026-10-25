@@ -58,6 +58,17 @@ export const containerStateValues = [
 
 export type ContainerState = (typeof containerStateValues)[number];
 
+// What only Swarm knows about a service (GET /containers in swarm mode)
+export type SwarmContainerInfo = Readonly<{
+  serviceId: string;
+  // Hostname of the node the shown task runs on (node id when unknown)
+  node?: string;
+  // Tasks running now / wanted
+  replicas: number;
+  desiredReplicas: number;
+  updateState?: string;
+}>;
+
 export type ContainerInfo = Readonly<{
   id: string;
   name: string;
@@ -76,6 +87,7 @@ export type ContainerInfo = Readonly<{
   networkSettings: NetworkSettings;
   mounts: ReadonlyArray<VolumeMount>;
   parsedImage: ParseImageResult;
+  swarm?: SwarmContainerInfo;
 }>;
 
 // export type ContainerListItem = Readonly<{

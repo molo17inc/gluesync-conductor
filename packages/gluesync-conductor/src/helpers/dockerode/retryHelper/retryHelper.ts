@@ -30,6 +30,13 @@ export const delay = (ms: number): Promise<void> =>
   });
 
 /**
+ * Pause before the next attempt: 1s, 2s, 4s... (`1000 ** attempt` was a flat
+ * 1s that turned into minutes of waiting by itself).
+ */
+export const retryDelayMs = (attempt: number): number =>
+  1000 * 2 ** (attempt - 1);
+
+/**
  * Functional recursive retry (no loops, no let, no mutation)
  * Uses unknown to avoid eslint-plugin-functional deep type inspection.
  */
@@ -58,7 +65,7 @@ export const retryCmd: RetryCmd = (
         `Docker-compose command transient failure (attempt ${attempt}/${maxRetries}), retrying...`,
       );
 
-      await delay(1000 ** attempt);
+      await delay(retryDelayMs(attempt));
 
       return retryCmd(attempt + 1, maxRetries, fn, logger, id);
     });

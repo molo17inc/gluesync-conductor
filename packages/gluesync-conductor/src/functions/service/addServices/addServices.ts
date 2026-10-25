@@ -1,3 +1,5 @@
+import { getDecidedOrchestrator } from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator';
+import buildModeUnknownReply from '../../../helpers/orchestrator/buildModeUnknownReply/buildModeUnknownReply';
 import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import processServices from '../../../helpers/processService/processService';
@@ -14,6 +16,14 @@ import cleanResults from '../../../helpers/cleanResults/cleanResults';
 import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
 
 const handler: AddServicesHandler = async (req, reply) => {
+  // Not knowing compose from swarm, the file would be written for the wrong one
+  const orchestrator = await getDecidedOrchestrator(req.server.docker);
+
+  if (!orchestrator) {
+    reply.code(503).send(buildModeUnknownReply());
+    return;
+  }
+
   try {
     const { raw } = castObject<AddServicesQuerystring>(req.query) || false;
     const services: ReadonlyArray<Service> = req.body.services ?? [];
@@ -36,6 +46,7 @@ const handler: AddServicesHandler = async (req, reply) => {
           ...service,
           id: service.id,
           resources: { reservations, limits },
+          ...(orchestrator.mode === 'swarm' && { swarm: {} }),
         }),
     );
 

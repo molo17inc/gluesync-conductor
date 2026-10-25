@@ -42,7 +42,9 @@
         "BACKOFFICE_REQUEST_REJECTED",
         "UNKNOWN",
         "DISK_FULL",
-        "COMPOSE_FILE_CORRUPT"
+        "COMPOSE_FILE_CORRUPT",
+        "SWARM_NOT_MANAGER",
+        "SWARM_UNSUPPORTED"
       ]
     },
     "owner": {
@@ -103,7 +105,8 @@
           "TRUST_CORPORATE_CA",
           "CHECK_DOCKER_HUB_ACCESS",
           "CONTACT_SUPPORT_WITH_DETAILS",
-          "FREE_DISK_SPACE"
+          "FREE_DISK_SPACE",
+          "RUN_CONDUCTOR_ON_SWARM_MANAGER"
         ]
       }
     },
@@ -356,6 +359,20 @@
       "params": [
         "path",
         "problem"
+      ]
+    },
+    "SWARM_NOT_MANAGER": {
+      "owner": "local",
+      "resolutionCodes": [
+        "RUN_CONDUCTOR_ON_SWARM_MANAGER"
+      ],
+      "params": []
+    },
+    "SWARM_UNSUPPORTED": {
+      "owner": "local",
+      "resolutionCodes": [],
+      "params": [
+        "feature"
       ]
     }
   }

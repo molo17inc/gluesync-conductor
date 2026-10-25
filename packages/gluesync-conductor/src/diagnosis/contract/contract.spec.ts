@@ -189,7 +189,8 @@ describe('diagnosis catalog', () => {
   it('only uses HTTP statuses that mean "this request failed" (except the OK code)', () => {
     DIAGNOSIS_CODES.filter(code => code !== 'CONNECTIVITY_OK').forEach(code => {
       assert.ok(
-        [500, 502, 503, 507].includes(DIAGNOSIS_CATALOG[code].httpStatus),
+        // 501: a request this deployment mode does not implement (Swarm)
+        [500, 501, 502, 503, 507].includes(DIAGNOSIS_CATALOG[code].httpStatus),
         `${code} -> ${DIAGNOSIS_CATALOG[code].httpStatus}`,
       );
     });
@@ -205,6 +206,7 @@ describe('diagnosis catalog', () => {
       'COREHUB_UNAVAILABLE',
       'DOCKER_NOT_READY',
       'OTA_SERVICE_DOWN',
+      'SWARM_NOT_MANAGER',
     ]);
   });
 });

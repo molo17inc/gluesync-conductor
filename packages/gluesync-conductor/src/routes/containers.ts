@@ -111,6 +111,9 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                           restart: { type: 'string' },
                           deploy: {
                             type: 'object',
+                            // Swarm stack files carry replicas, placement,
+                            // labels, update_config...
+                            additionalProperties: true,
                             properties: {
                               resources: {
                                 type: 'object',
@@ -254,6 +257,22 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                                 name: { type: 'string' },
                                 driver: { type: 'string' },
                               },
+                            },
+                          },
+                          swarm: {
+                            type: 'object',
+                            description:
+                              'Swarm mode only: the service behind this container',
+                            additionalProperties: true,
+                            properties: {
+                              serviceId: { type: 'string' },
+                              node: { type: 'string' },
+                              replicas: {
+                                type: 'number',
+                                description: 'Tasks running now',
+                              },
+                              desiredReplicas: { type: 'number' },
+                              updateState: { type: 'string' },
                             },
                           },
                         },

@@ -23,12 +23,17 @@ import {
   dirname,
 } from 'node:path';
 import { AxiosError } from 'axios';
+import type Docker from 'dockerode';
 import { text } from 'stream/consumers';
 import { CollectLogsHandler } from './collectLogs.model';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 import axiosWithRetry from '../../../utils/axiosWithRetry';
 import collectLogsByScript from '../../../helpers/collectLogsByScript/collectLogsByScript';
 import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
+import getOrchestrator from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator';
+import type { Orchestrator } from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator.model';
+import swarmReportCommands from '../../../helpers/swarm/swarmReportCommands/swarmReportCommands';
+import exportSwarmServiceLogs from '../../../helpers/swarm/exportSwarmServiceLogs/exportSwarmServiceLogs';
 
 type Logger = Readonly<{
   debug: (
@@ -54,11 +59,26 @@ type CollectLogsResult = Readonly<{
   archivePath?: string;
 }>;
 
+// Set in swarm mode: the logs come from the services of the stack
+type SwarmLogsSource = Readonly<{
+  docker: Readonly<Docker>;
+  namespace: string;
+}>;
+
+const swarmLogsSourceOf = (
+  orchestrator: Orchestrator,
+  docker: Readonly<Docker>,
+): SwarmLogsSource | undefined =>
+  orchestrator.mode === 'swarm'
+    ? { docker, namespace: orchestrator.namespace }
+    : undefined;
+
 type CollectLogsOptions = Readonly<{
   ticketId?: string;
   email?: string;
   localOnly: boolean;
   logger?: Logger;
+  swarm?: SwarmLogsSource;
 }>;
 
 type CollectLogsError = Error &
@@ -697,7 +717,10 @@ const writeFileDump = async (
   );
 };
 
-const writeDockerReport = async (outputPath: string): Promise<void> => {
+const writeDockerReport = async (
+  outputPath: string,
+  swarm?: SwarmLogsSource,
+): Promise<void> => {
   const commands: ReadonlyArray<DockerCommand> = [
     { cmd: 'docker', args: ['--version'] },
     { cmd: 'docker', args: ['info'] },
@@ -706,6 +729,7 @@ const writeDockerReport = async (outputPath: string): Promise<void> => {
     { cmd: 'docker', args: ['stats', '--no-stream'] },
     { cmd: 'docker', args: ['compose', 'version'] },
     { cmd: 'docker-compose', args: ['--version'] },
+    ...(swarm ? swarmReportCommands(swarm.namespace) : []),
   ];
 
   const sections = await Promise.all(
@@ -1361,10 +1385,55 @@ const filterReadableFiles = async (
   return checks.filter((filePath): filePath is string => filePath !== null);
 };
 
+// Swarm mode exports the logs of the stack services, compose mode the ones of
+// the containers
+const exportContainerOrServiceLogs = async (
+  outputDirectory: string,
+  sinceHours: number,
+  tailLines: number | undefined,
+  logger?: Logger,
+  swarm?: SwarmLogsSource,
+): Promise<ReadonlyArray<string>> => {
+  if (!swarm) {
+    return exportDockerContainerLogs(
+      outputDirectory,
+      sinceHours,
+      tailLines,
+      logger,
+    );
+  }
+
+  try {
+    return await exportSwarmServiceLogs(swarm.docker, swarm.namespace, {
+      outputDirectory,
+      sinceHours,
+      tailLines,
+    });
+  } catch (error: unknown) {
+    // Like `docker ps` failing in compose mode: the other sources and the
+    // report still make a useful archive
+    logger?.warn({ error }, 'Failed to export swarm service logs');
+
+    return [];
+  }
+};
+
+const describeDockerCollection = (
+  sinceHours: number,
+  tailLines: number | undefined,
+  swarm?: SwarmLogsSource,
+): string => {
+  const lines =
+    typeof tailLines === 'number' ? `${tailLines} tail lines` : 'all lines';
+  const unit = swarm ? 'service' : 'container';
+
+  return `Collecting logs from Docker (since ${sinceHours}h, ${lines} per ${unit}).`;
+};
+
 const collectLogsInternally = async (
   options: CollectLogsOptions,
 ): Promise<CollectLogsResult> => {
-  const { ticketId, email, localOnly, logger } = options;
+  const { ticketId, email, localOnly, logger, swarm } = options;
   const ticket = ticketId ?? '';
   const emailAddr = email ?? '';
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
@@ -1429,15 +1498,16 @@ const collectLogsInternally = async (
         excludeDir: extraDir,
         isWindows,
       }),
-      writeDockerReport(dockerReportPath),
+      writeDockerReport(dockerReportPath, swarm),
     ]);
 
     // Docker logs
-    const dockerLogFiles = await exportDockerContainerLogs(
+    const dockerLogFiles = await exportContainerOrServiceLogs(
       containerLogsDir,
       dockerSinceHours,
       dockerTailLines,
       logger,
+      swarm,
     );
 
     // Optional file-based logs.
@@ -1897,7 +1967,7 @@ const collectLogsInternally = async (
           [
             'Local-only mode enabled. Credential pre-check skipped.',
             `Collecting logs from last ${logLookbackDays} day(s).`,
-            `Collecting logs from Docker (since ${dockerSinceHours}h, ${typeof dockerTailLines === 'number' ? `${dockerTailLines} tail lines` : 'all lines'} per container).`,
+            describeDockerCollection(dockerSinceHours, dockerTailLines, swarm),
             collectLogsFromFiles
               ? 'File-based log collection enabled (default).'
               : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
@@ -1977,7 +2047,7 @@ const collectLogsInternally = async (
         [
           'Credential pre-check succeeded.',
           `Collecting logs from last ${logLookbackDays} day(s).`,
-          `Collecting logs from Docker (since ${dockerSinceHours}h, ${typeof dockerTailLines === 'number' ? `${dockerTailLines} tail lines` : 'all lines'} per container).`,
+          describeDockerCollection(dockerSinceHours, dockerTailLines, swarm),
           collectLogsFromFiles
             ? 'File-based log collection enabled (default).'
             : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
@@ -1996,6 +2066,22 @@ const collectLogsInternally = async (
   }
 };
 
+const validateCollectLogsRequest = (
+  localOnly: boolean,
+  ticketId: string | undefined,
+  email: string | undefined,
+): string | undefined => {
+  if (localOnly) {
+    return undefined;
+  }
+
+  if (!ticketId || !email) {
+    return 'ticketId and email are required unless localOnly is true';
+  }
+
+  return /^[^@\s]+@[^@\s]+$/.test(email) ? undefined : 'invalid email format';
+};
+
 const handler: CollectLogsHandler = async (req, reply) => {
   const {
     ticketId,
@@ -2007,18 +2093,10 @@ const handler: CollectLogsHandler = async (req, reply) => {
     localOnly?: boolean;
   }>;
 
-  if (!localOnly && (!ticketId || !email)) {
-    return reply.code(400).send({
-      success: false,
-      error: 'ticketId and email are required unless localOnly is true',
-    });
-  }
+  const requestError = validateCollectLogsRequest(localOnly, ticketId, email);
 
-  if (!localOnly && email && !/^[^@\s]+@[^@\s]+$/.test(email)) {
-    return reply.code(400).send({
-      success: false,
-      error: 'invalid email format',
-    });
+  if (requestError) {
+    return reply.code(400).send({ success: false, error: requestError });
   }
 
   try {
@@ -2036,11 +2114,14 @@ const handler: CollectLogsHandler = async (req, reply) => {
       'Calling collectLogs internally',
     );
 
+    const orchestrator = await getOrchestrator(req.server.docker);
+
     const result = await collectLogsInternally({
       ticketId,
       email,
       localOnly,
       logger: req.log as unknown as Logger,
+      swarm: swarmLogsSourceOf(orchestrator, req.server.docker),
     });
 
     return reply.code(200).send({

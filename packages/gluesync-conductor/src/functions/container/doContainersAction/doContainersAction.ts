@@ -36,6 +36,15 @@ import createActionGate from '../../../helpers/actionGate/actionGate';
 import { ActionOutcome } from '../../../helpers/actionGate/actionGate.model';
 import { RawComposeFile } from '../../../models/composeFile.model';
 import { ReleaseChannelTypes } from '../../../models/conductor.model';
+import { getDecidedOrchestrator } from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator';
+import {
+  Orchestrator,
+  SwarmOrchestrator,
+} from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator.model';
+import buildMigrationRefusedOnSwarmReply from '../../../helpers/orchestrator/buildMigrationRefusedOnSwarmReply/buildMigrationRefusedOnSwarmReply';
+import buildModeUnknownReply from '../../../helpers/orchestrator/buildModeUnknownReply/buildModeUnknownReply';
+import forceUpdateService from '../../../helpers/swarm/forceUpdateService/forceUpdateService';
+import restartSwarmStack from '../../../helpers/swarm/restartSwarmStack/restartSwarmStack';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
@@ -211,14 +220,36 @@ const pruneImages = (docker: Readonly<Docker>): Promise<PruneOutcome> =>
       }),
     );
 
+// Pruning through the Docker API only reaches the manager this Conductor runs
+// on: the other nodes keep their images, so it would be a partial clean-up
+const skipPruneOnSwarm = (): PruneOutcome => {
+  logger.info(
+    '[update-handler] swarm mode: not pruning images, only the manager would be pruned',
+  );
+
+  return {};
+};
+
 // If the grafana image carries the new embedded-dashboard tag, its host bind
 // mounts are stripped and the container recreated so the baked-in
 // dashboards/datasources are used. Idempotent no-op otherwise.
 const recreateGrafanaIfEmbedded = async (
   req: Readonly<Request>,
+  orchestrator: Readonly<Orchestrator>,
 ): Promise<ReadonlyArray<DoContainersActionItem>> => {
+  // On Swarm the service is changed through the Swarm API, never recreated by
+  // docker compose
   const grafanaEmbedded: HandleGrafanaEmbeddedDashboardResult =
-    await handleGrafanaEmbeddedDashboard();
+    await handleGrafanaEmbeddedDashboard(
+      orchestrator.mode === 'swarm'
+        ? {
+            swarm: {
+              docker: req.server.docker,
+              namespace: orchestrator.namespace,
+            },
+          }
+        : undefined,
+    );
 
   if (!grafanaEmbedded.applied) {
     return [];
@@ -238,11 +269,88 @@ const recreateGrafanaIfEmbedded = async (
   ];
 };
 
+const migrationRefusedOnSwarm = (): Outcome => ({
+  statusCode: 501,
+  body: buildMigrationRefusedOnSwarmReply(),
+});
+
+type ConductorRefusalSplit = Readonly<{
+  refusedItems: ReadonlyArray<DoContainersActionItem>;
+  wantedIds: Ids;
+  nothingToUpdate: boolean;
+}>;
+
+// Swarm only (compose never sets a refusal): the Conductor is not moved to a
+// version that is not newer than itself, the rest of the request goes on
+const splitConductorRefusal = (
+  conductorRefusal: string | undefined,
+  requestIds: Ids,
+): ConductorRefusalSplit => {
+  const conductorAsked =
+    requestIds.length === 0 || requestIds.includes(CONDUCTOR_NAME);
+  const refusedItems: ReadonlyArray<DoContainersActionItem> =
+    conductorRefusal && conductorAsked
+      ? [{ id: CONDUCTOR_NAME, status: 'ERROR', message: conductorRefusal }]
+      : [];
+  const wantedIds = conductorRefusal
+    ? requestIds.filter(id => id !== CONDUCTOR_NAME)
+    : requestIds;
+
+  return {
+    refusedItems,
+    wantedIds,
+    // Only the Conductor was asked for: an empty list must not mean "all"
+    nothingToUpdate:
+      Boolean(conductorRefusal) &&
+      requestIds.length > 0 &&
+      wantedIds.length === 0,
+  };
+};
+
+type UpdateBranchArgs = Readonly<{
+  nothingToUpdate: boolean;
+  conductorInfo: CheckModuleUpdateResult | null;
+  composeJson: RawComposeFile;
+  wantedIds: Ids;
+  bulkIds: Ids;
+  releaseChannel: ReleaseChannelTypes;
+  swarm: boolean;
+}>;
+
+const runUpdateBranch = async (
+  updateAction: ContainerAction,
+  {
+    nothingToUpdate,
+    conductorInfo,
+    composeJson,
+    wantedIds,
+    bulkIds,
+    releaseChannel,
+    swarm,
+  }: UpdateBranchArgs,
+) => {
+  if (nothingToUpdate) {
+    return { orderedIds: [], results: [] };
+  }
+
+  if (isConductorOnlyUpdate(conductorInfo, wantedIds)) {
+    return updateConductorOnly(updateAction, conductorInfo, composeJson, {
+      swarm,
+    });
+  }
+
+  return updateNormalBulk(updateAction, composeJson, bulkIds, releaseChannel, {
+    swarm,
+  });
+};
+
 const performUpdate = async (
   req: Readonly<Request>,
   requestIds: Ids,
   releaseChannel: ReleaseChannelTypes,
+  orchestrator: Readonly<Orchestrator>,
 ): Promise<Outcome> => {
+  const swarm = orchestrator.mode === 'swarm';
   logger.info('[update-handler] Update action triggered');
 
   // Before anything is pulled or written: a disk that fills up halfway is what
@@ -291,23 +399,31 @@ const performUpdate = async (
   const modulesCurrent =
     !conductorInfo?.needsUpdate && !chronosInfo?.needsUpdate;
   if (modulesCurrent && coreHubEligible && (await migrationFlowNeeded())) {
-    return runMigration(requestIds, releaseChannel, req.server.docker);
+    return swarm
+      ? migrationRefusedOnSwarm()
+      : runMigration(requestIds, releaseChannel, req.server.docker);
   }
 
   logger.debug('[update-handler] Entering  NORMAL UPDATE FLOW');
 
+  const { refusedItems, wantedIds, nothingToUpdate } = splitConductorRefusal(
+    swarm ? conductorInfo?.refusal : undefined,
+    requestIds,
+  );
+
   const bulkIds =
-    requestIds.length === 0 && chronosInfo?.needsUpdate
+    wantedIds.length === 0 && chronosInfo?.needsUpdate
       ? [CHRONOS_NAME]
-      : requestIds;
-  const branchResult = isConductorOnlyUpdate(conductorInfo, requestIds)
-    ? await updateConductorOnly(updateAction, conductorInfo, composeJson)
-    : await updateNormalBulk(
-        updateAction,
-        composeJson,
-        bulkIds,
-        releaseChannel,
-      );
+      : wantedIds;
+  const branchResult = await runUpdateBranch(updateAction, {
+    nothingToUpdate,
+    conductorInfo,
+    composeJson,
+    wantedIds,
+    bulkIds,
+    releaseChannel,
+    swarm,
+  });
 
   const ids =
     'id' in branchResult ? [branchResult.id] : branchResult.orderedIds;
@@ -315,14 +431,16 @@ const performUpdate = async (
 
   req.log.debug(`Container action update: ${JSON.stringify(results)}`);
 
-  const grafanaItems = await recreateGrafanaIfEmbedded(req);
-  const pruneOutcome = await pruneImages(req.server.docker);
+  const grafanaItems = await recreateGrafanaIfEmbedded(req, orchestrator);
+  const pruneOutcome = swarm
+    ? skipPruneOnSwarm()
+    : await pruneImages(req.server.docker);
 
   return ok({
     success: true,
     data: {
       ...pruneOutcome,
-      containers: [...toItems(ids, results), ...grafanaItems],
+      containers: [...toItems(ids, results), ...refusedItems, ...grafanaItems],
     },
   });
 };
@@ -335,13 +453,41 @@ const conductorRestartItem = (serviceName: string): DoContainersActionItem => ({
   message: `Conductor ${serviceName} restart initiated.`,
 });
 
+// Swarm replaces the task of its own service: no helper container, and no
+// update mode either, Swarm rolls back a task that does not start
+const restartSelfOnSwarm = (
+  req: Readonly<Request>,
+  orchestrator: Readonly<SwarmOrchestrator>,
+): void => {
+  const { namespace, selfService } = orchestrator;
+
+  req.log.info(
+    { service: selfService },
+    '[conductor-restart] swarm: restarting the conductor service',
+  );
+
+  setImmediate(() => {
+    forceUpdateService(req.server.docker, `${namespace}_${selfService}`).catch(
+      error => {
+        req.log.error({ error }, '[conductor-restart] service restart failed');
+      },
+    );
+  });
+};
+
 // Reboots the conductor once the reply has gone out: the reply is sent as soon
 // as the outcome is returned, before the next macrotask. Update mode blocks
 // incoming requests meanwhile.
 const rebootConductorAfterReply = (
   req: Readonly<Request>,
   serviceName: string,
+  orchestrator: Readonly<Orchestrator>,
 ): void => {
+  if (orchestrator.mode === 'swarm') {
+    restartSelfOnSwarm(req, orchestrator);
+    return;
+  }
+
   req.log.info(
     { service: serviceName },
     '[conductor-restart] triggering conductor restart',
@@ -390,20 +536,57 @@ const restartFullStack = (req: Readonly<Request>): Outcome => {
   });
 };
 
+// No ids on Swarm: every stack service, the conductor last, all after the
+// reply (the rollouts take longer than a request should)
+const restartFullStackOnSwarm = (
+  req: Readonly<Request>,
+  orchestrator: Readonly<SwarmOrchestrator>,
+): Outcome => {
+  req.log.info('[conductor-restart] swarm: full stack restart requested');
+
+  setImmediate(() => {
+    restartSwarmStack(req.server.docker, orchestrator)
+      .then(results => {
+        req.log.info(
+          { results },
+          '[conductor-restart] swarm: full stack restart done',
+        );
+      })
+      .catch(error => {
+        req.log.error({ error }, '[conductor-restart] full restart failed');
+      });
+  });
+
+  return ok({
+    success: true,
+    data: {
+      containers: [
+        { id: 'ALL', status: 'OK', message: 'Full stack restart initiated.' },
+      ],
+    },
+  });
+};
+
 const performRestart = async (
   req: Readonly<Request>,
   action: ContainerAction,
   requestIds: Ids,
+  orchestrator: Readonly<Orchestrator>,
 ): Promise<Outcome> => {
-  const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
+  const CONDUCTOR_SERVICE =
+    orchestrator.mode === 'swarm'
+      ? orchestrator.selfService
+      : process.env.CONDUCTOR_NAME || 'gluesync-conductor';
 
   if (requestIds.length === 0) {
-    return restartFullStack(req);
+    return orchestrator.mode === 'swarm'
+      ? restartFullStackOnSwarm(req, orchestrator)
+      : restartFullStack(req);
   }
 
   // Only the conductor: nothing to restart in-process, just the reboot.
   if (requestIds.length === 1 && requestIds[0] === CONDUCTOR_SERVICE) {
-    rebootConductorAfterReply(req, CONDUCTOR_SERVICE);
+    rebootConductorAfterReply(req, CONDUCTOR_SERVICE, orchestrator);
     return ok({
       success: true,
       data: { containers: [conductorRestartItem(CONDUCTOR_SERVICE)] },
@@ -423,7 +606,7 @@ const performRestart = async (
     return ok({ success: true, data: { containers: serviceContainers } });
   }
 
-  rebootConductorAfterReply(req, CONDUCTOR_SERVICE);
+  rebootConductorAfterReply(req, CONDUCTOR_SERVICE, orchestrator);
 
   return ok({
     success: true,
@@ -518,6 +701,14 @@ const perform = async (req: Readonly<Request>): Promise<Outcome> => {
       };
     }
 
+    // Docker not answering is not "compose": the healing a compose Conductor
+    // does would recreate containers inside a swarm
+    const orchestrator = await getDecidedOrchestrator(req.server.docker);
+
+    if (!orchestrator) {
+      return { statusCode: 503, body: buildModeUnknownReply() };
+    }
+
     const action = createActions({ docker: req.server.docker })[
       containerAction
     ];
@@ -527,11 +718,11 @@ const perform = async (req: Readonly<Request>): Promise<Outcome> => {
     }
 
     if (containerAction === 'update') {
-      return await performUpdate(req, requestIds, releaseChannel);
+      return await performUpdate(req, requestIds, releaseChannel, orchestrator);
     }
 
     if (containerAction === 'restart') {
-      return await performRestart(req, action, requestIds);
+      return await performRestart(req, action, requestIds, orchestrator);
     }
 
     const results = await Promise.allSettled(

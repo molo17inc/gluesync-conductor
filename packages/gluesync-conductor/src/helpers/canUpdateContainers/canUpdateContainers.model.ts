@@ -1,10 +1,17 @@
 import { RawComposeFile } from '../../models/composeFile.model';
 import { ReleaseChannelTypes } from '../../models/conductor.model';
 
+export type CanUpdateContainersOptions = Readonly<{
+  // The stack file has no type label to add: a service without one is typed
+  // from its image, as autoAdoptServices would have done in compose mode
+  swarm?: boolean;
+}>;
+
 export type CanUpdateContainers = (
   containerIds: ReadonlyArray<string>,
   composeJson: RawComposeFile,
   releaseChannel: ReleaseChannelTypes,
+  options?: CanUpdateContainersOptions,
 ) => Promise<{
   success: boolean;
   errors: (string | null)[];

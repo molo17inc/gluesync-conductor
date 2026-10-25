@@ -5,6 +5,10 @@ export type CheckModuleUpdateResult = Readonly<{
   needsUpdate: boolean;
   id: string;
   availableVersion: string | null;
+  // Swarm mode only: why the Conductor must not move to `availableVersion`
+  // (not newer than the running one, or the running one is a dev build). Then
+  // `needsUpdate` is false.
+  refusal?: string;
 }>;
 
 export type CheckModuleUpdateParams = Readonly<{

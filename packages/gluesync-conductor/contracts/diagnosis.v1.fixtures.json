@@ -720,5 +720,73 @@
       "service": "gluesync-conductor"
     },
     "at": "2026-01-01T00:00:00.000Z"
+  },
+  "SWARM_NOT_MANAGER": {
+    "schemaVersion": 1,
+    "code": "SWARM_NOT_MANAGER",
+    "owner": "local",
+    "confidence": "high",
+    "params": {},
+    "resolutionCodes": [
+      "RUN_CONDUCTOR_ON_SWARM_MANAGER"
+    ],
+    "fallback": {
+      "title": "Conductor is not running on a swarm manager",
+      "summary": "Docker Swarm services can only be managed from a manager node, and this Conductor runs on a worker.",
+      "steps": [
+        "Deploy the Conductor service with the placement constraint node.role == manager."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "SWARM_UNSUPPORTED": {
+    "schemaVersion": 1,
+    "code": "SWARM_UNSUPPORTED",
+    "owner": "local",
+    "confidence": "high",
+    "params": {
+      "feature": "migration to 2.x"
+    },
+    "resolutionCodes": [],
+    "fallback": {
+      "title": "Not available on Docker Swarm",
+      "summary": "migration to 2.x is not supported when Gluesync runs as a Docker Swarm stack.",
+      "steps": []
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
   }
 }

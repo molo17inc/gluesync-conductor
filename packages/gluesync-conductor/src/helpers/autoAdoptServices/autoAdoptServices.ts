@@ -8,7 +8,7 @@ import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
 import fetchAllServicesInCompose from '../fetchAllServicesInCompose/fetchAllServicesInCompose';
 import { THIRD_PARTY_SERVICES } from '../fetchAllServicesInCompose/fetchAllServicesInCompose.model';
 import parseImage from '../parseImage/parseImage';
-import agentsJson from '../../../agents.json';
+import { inferTypeFromAgentsJson } from '../inferServiceType/inferServiceType';
 import extractKeyValue from '../composeFile/extractKeyValue/extractKeyValue';
 import removeDependsOnFromServices from '../removeDependsOnFromServices/removeDependsOnFromServices';
 import addGluesyncHostToAgents from '../addGluesyncHostToAgents/addGluesyncHostToAgents';
@@ -452,38 +452,8 @@ const autoAdoptServices = async (): Promise<{
 
         const { imageName } = parseImage(service.image);
 
-        const agentEntry = (agentsJson.data || []).find(
-          (agent: any) => agent.dockerHubRepoName === imageName,
-        );
-
-        if (!agentEntry) {
-          return {
-            id,
-            updated: false,
-            unmatched: true,
-            service: { ...service, labels: initialLabels },
-          };
-        }
-
-        // Decide conductor type
-        const conductorType: ConductorServiceTypes | null = (() => {
-          if (agentEntry.dockerHubRepoName === 'gluesync-core-hub') {
-            return 'core-hub';
-          }
-
-          const isTargetValid = typeof agentEntry.isTarget === 'boolean';
-          const isSourceValid = typeof agentEntry.isSource === 'boolean';
-
-          if (isTargetValid && isSourceValid) {
-            if (agentEntry.isTarget || agentEntry.isSource) {
-              return 'agent';
-            }
-            return 'module';
-          }
-
-          // If neither property is a boolean, we consider it unmatched
-          return null;
-        })();
+        // Same decision swarm mode makes on read (inferServiceType)
+        const conductorType = inferTypeFromAgentsJson(imageName);
 
         if (!conductorType) {
           return {

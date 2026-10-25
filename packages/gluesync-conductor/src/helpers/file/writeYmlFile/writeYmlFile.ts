@@ -2,9 +2,11 @@ import { readFile } from 'node:fs/promises';
 import { isDeepStrictEqual } from 'node:util';
 import {
   Document,
+  SchemaOptions,
   isMap,
   isNode,
   isScalar,
+  isSeq,
   parseDocument,
   stringify,
 } from 'yaml';
@@ -15,6 +17,32 @@ import ensureValidCompose from '../../composeFile/ensureValidCompose/ensureValid
 import inspectCompose from '../../composeFile/inspectCompose/inspectCompose';
 import safeWriteFile from '../safeWriteFile/safeWriteFile';
 import { UnsafeWriteError } from '../safeWriteFile/safeWriteFile.errors';
+
+const NUMBER_TAGS: ReadonlySet<string> = new Set([
+  'tag:yaml.org,2002:int',
+  'tag:yaml.org,2002:float',
+]);
+
+// The library writes every number back from its value, so an untouched
+// `mode: 0444` (decimal 444 for YAML 1.2) would come out as `444`, which
+// Docker reads as another permission. A number that was parsed keeps its source.
+const keepNumberSource: NonNullable<SchemaOptions['customTags']> = tags =>
+  (tags as ReadonlyArray<any>).map(tag =>
+    NUMBER_TAGS.has(tag.tag) && typeof tag.stringify === 'function'
+      ? {
+          ...tag,
+          stringify: (node: any, ctx: any, onComment: any, onChompKeep: any) =>
+            typeof node.source === 'string' &&
+            Number(node.source) === node.value
+              ? node.source
+              : tag.stringify(node, ctx, onComment, onChompKeep),
+        }
+      : tag,
+  ) as any;
+
+// lineWidth 0: no folding, so a long label stays on its line instead of being
+// wrapped (same value, but a noisy diff for a customer comparing their kit)
+const WRITE_OPTIONS = { indent: 2, lineWidth: 0 } as const;
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
@@ -39,6 +67,18 @@ const syncNode = (
     Object.entries(value)
       .filter(([, child]) => child !== undefined)
       .forEach(([key, child]) => syncNode(doc, [...path, key], child));
+    return;
+  }
+
+  // Same length: only the elements that differ are touched. Replacing the
+  // whole sequence re-serialises its unchanged siblings, and a secret's
+  // `mode: 0444` (read as decimal 444 by YAML 1.2) would come back as `444`.
+  if (
+    isSeq(current) &&
+    Array.isArray(value) &&
+    current.items.length === value.length
+  ) {
+    value.forEach((child, index) => syncNode(doc, [...path, index], child));
     return;
   }
 
@@ -70,7 +110,9 @@ const readExisting = async (path: string): Promise<Document | null> => {
     await ensureValidCompose(path);
   }
   try {
-    const doc = parseDocument(await readFile(path, 'utf8'));
+    const doc = parseDocument(await readFile(path, 'utf8'), {
+      customTags: keepNumberSource,
+    });
     return doc.errors.length === 0 && doc.contents ? doc : null;
   } catch {
     return null;
@@ -110,12 +152,12 @@ const writeYmlFile: WriteYmlFile = async (json, filename) => {
 
   // Merging needs a mapping on both sides (always the case for compose files).
   if (!existing || !isMap(existing.contents) || !isPlainObject(json)) {
-    await safeWriteFile(path, stringify(json, { indent: 2 }), { validate });
+    await safeWriteFile(path, stringify(json, WRITE_OPTIONS), { validate });
     return;
   }
 
   syncNode(existing, [], json);
-  await safeWriteFile(path, existing.toString({ indent: 2 }), { validate });
+  await safeWriteFile(path, existing.toString(WRITE_OPTIONS), { validate });
 };
 
 export default writeYmlFile;

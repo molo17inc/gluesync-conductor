@@ -13,11 +13,13 @@ const updateNormalBulk: UpdateNormalBulk = async (
   composeJson,
   requestIds,
   releaseChannel,
+  { swarm = false } = {},
 ) => {
   const { effectiveIds, skipped } = await prepareComposeUpdate(
     composeJson,
     requestIds,
     releaseChannel,
+    { swarm },
   );
 
   const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
@@ -28,12 +30,15 @@ const updateNormalBulk: UpdateNormalBulk = async (
   const results = await Promise.allSettled(orderedIds.map(action));
 
   // Services that failed to pull, start or stay up go back to their previous
-  // image, in the compose file and on the running container.
+  // image, in the compose file and on the running container. On Swarm the
+  // update action has done the second part (Swarm's own rollback).
   const rollbacks = orderedIds
     .filter((_, index) => results[index].status === 'rejected')
     .map(id => ({ id, image: composeJson.services?.[id]?.image ?? '' }))
     .filter(r => r.image !== '');
-  const outcomes = await rollbackServiceImages(rollbacks, { recreate: true });
+  const outcomes = await rollbackServiceImages(rollbacks, {
+    recreate: !swarm,
+  });
 
   const finalResults = results.map((result, index) => {
     if (result.status === 'fulfilled') {

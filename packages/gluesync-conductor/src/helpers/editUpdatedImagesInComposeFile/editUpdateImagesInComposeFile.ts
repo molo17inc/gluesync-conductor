@@ -2,11 +2,13 @@ import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
 import parseImage from '../parseImage/parseImage';
 import { EditUpdateImagesInComposeFile } from './editUpdateImagesInComposeFile.model';
 import { LabelPrefix } from '../../models/composeFile.model';
+import stackServiceType from '../swarm/stackServiceType/stackServiceType';
 
 const editUpdateImagesInComposeFile: EditUpdateImagesInComposeFile = async (
   containerIds,
   composeJson,
   versions,
+  { swarm = false } = {},
 ) => {
   const services = containerIds.map(id => {
     const service = composeJson.services?.[id];
@@ -16,12 +18,23 @@ const editUpdateImagesInComposeFile: EditUpdateImagesInComposeFile = async (
 
     const imageParts = parseImage(service.image);
 
+    // `image:${TAG:-2.3.0}` is the customer's to change: rewriting it would
+    // drop the variable
+    if (imageParts.interpolatedTag) {
+      return [id, service] as const;
+    }
+
     const labels = Array.isArray(service.labels)
       ? service.labels
       : Object.entries(service.labels || {}).map(([k, v]) => `${k}=${v}`);
 
-    const isAgent = labels.includes(`${LabelPrefix.CONDUCTOR}.type=agent`);
-    const isCoreHub = labels.includes(`${LabelPrefix.CONDUCTOR}.type=core-hub`);
+    const swarmType = swarm ? stackServiceType(id, service) : undefined;
+    const isAgent = swarm
+      ? swarmType === 'agent'
+      : labels.includes(`${LabelPrefix.CONDUCTOR}.type=agent`);
+    const isCoreHub = swarm
+      ? swarmType === 'core-hub'
+      : labels.includes(`${LabelPrefix.CONDUCTOR}.type=core-hub`);
 
     const newVersion =
       isAgent || isCoreHub

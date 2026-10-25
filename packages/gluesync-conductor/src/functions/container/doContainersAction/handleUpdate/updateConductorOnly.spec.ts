@@ -146,4 +146,14 @@ describe('updateConductorOnly', () => {
       { status: 'rejected', reason: { err: 'boom' } },
     ]);
   });
+
+  it('does not enable update mode on Swarm, which replaces the task itself', async () => {
+    const { update, edits, enabled } = load();
+    const result = await update(async id => `${id} ok`, info, compose, {
+      swarm: true,
+    });
+    assert.equal(edits.length, 1);
+    assert.equal(result.results[0].status, 'fulfilled');
+    assert.equal(enabled(), 0);
+  });
 });
