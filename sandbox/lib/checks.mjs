@@ -156,9 +156,6 @@ const stackChecks = x => {
         ? `compose references images that do not exist in the registry (next restart of these services fails): ${unpublished.join('; ')}`
         : 'every image in the compose file exists',
     ),
-  );
-
-  out.push(
     ...badReleaseChecks(pre, post, plan),
     ...containerStateChecks(pre, post, plan, crash),
     result(
