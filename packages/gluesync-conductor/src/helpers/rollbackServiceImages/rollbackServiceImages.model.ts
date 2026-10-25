@@ -1,5 +1,8 @@
 import type Docker from 'dockerode';
-import type { Fingerprints } from '../serviceContainers/serviceContainers.model';
+import type {
+  FingerprintServices,
+  Fingerprints,
+} from '../serviceContainers/serviceContainers.model';
 
 export type RollbackOutcome = Readonly<{
   id: string;
@@ -24,7 +27,31 @@ export type RollbackOptions =
       docker: Readonly<Docker>;
       before?: Fingerprints;
       services: ReadonlyArray<string>;
+      // The services are Swarm services of this stack: the containers are put
+      // back through the Swarm API instead of `compose up`.
+      swarm?: Readonly<{ namespace: string }>;
     }>;
+
+// A service that is not as the stack or compose file says.
+export type Broken = Readonly<{ id: string; reason: string }>;
+
+// What differs between the orchestrators when a failed update is undone.
+export type RestoreStrategy = Readonly<{
+  // The state of the services before and after the update, to tell the ones it
+  // touched.
+  fingerprint: FingerprintServices;
+  // Brings a service to the image the file names; resolves to the failure.
+  bringUp: (
+    docker: Readonly<Docker>,
+    id: string,
+  ) => Promise<string | undefined>;
+  // Why the service is not running the file's image (null when it is).
+  problemWith: (
+    docker: Readonly<Docker>,
+    id: string,
+    image?: string,
+  ) => Promise<Broken | null>;
+}>;
 
 export type RollbackServiceImages = (
   rollbacks: ReadonlyArray<Readonly<{ id: string; image: string }>>,

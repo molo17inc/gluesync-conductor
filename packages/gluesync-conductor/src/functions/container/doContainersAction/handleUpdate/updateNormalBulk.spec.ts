@@ -42,6 +42,7 @@ const load = (
 ) => {
   const rollbackCalls: unknown[][] = [];
   const prepareCalls: unknown[][] = [];
+  const swarmSnapshots: string[] = [];
   const bulk = loadWithStubs<{ default: UpdateNormalBulk }>(
     here('./updateNormalBulk'),
     {
@@ -54,6 +55,14 @@ const load = (
       [here('../../../../helpers/serviceContainers/serviceContainers')]: {
         fingerprintServices: snapshot,
       },
+      [here(
+        '../../../../helpers/swarm/fingerprintSwarmServices/fingerprintSwarmServices',
+      )]: {
+        default: async (_docker: unknown, namespace: string) => {
+          swarmSnapshots.push(namespace);
+          return { grafana: 'swarm-before' };
+        },
+      },
       [here('../../../../helpers/rollbackServiceImages/rollbackServiceImages')]:
         {
           default: async (...args: unknown[]) => {
@@ -63,7 +72,7 @@ const load = (
         },
     },
   ).default;
-  return { bulk, rollbackCalls, prepareCalls };
+  return { bulk, rollbackCalls, prepareCalls, swarmSnapshots };
 };
 
 describe('updateNormalBulk', () => {
@@ -291,6 +300,34 @@ describe('updateNormalBulk', () => {
     );
     assert.deepEqual(rollbackCalls, [
       [[{ id: 'grafana', image: 'grafana:1' }], { recreate: false }],
+    ]);
+  });
+
+  it('restores the services through the Swarm API when it knows the stack', async () => {
+    const { bulk, rollbackCalls, swarmSnapshots } = load({
+      effectiveIds: ['grafana'],
+    });
+    await bulk(
+      async () => {
+        throw new Error('not stable');
+      },
+      compose,
+      [],
+      'ga',
+      { swarm: true, namespace: 'gs', docker },
+    );
+    assert.deepEqual(swarmSnapshots, ['gs']);
+    assert.deepEqual(rollbackCalls, [
+      [
+        [{ id: 'grafana', image: 'grafana:1' }],
+        {
+          recreate: true,
+          docker,
+          before: { grafana: 'swarm-before' },
+          services: ['grafana'],
+          swarm: { namespace: 'gs' },
+        },
+      ],
     ]);
   });
 

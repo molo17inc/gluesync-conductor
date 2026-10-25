@@ -5,6 +5,7 @@ import { RollbackOutcome } from '../../../../helpers/rollbackServiceImages/rollb
 import describeFailure from '../../../../helpers/describeFailure/describeFailure';
 import isTransientDockerConnError from '../../../../helpers/dockerode/isTransientDockerConnError/isTransientDockerConnError';
 import { fingerprintServices } from '../../../../helpers/serviceContainers/serviceContainers';
+import fingerprintSwarmServices from '../../../../helpers/swarm/fingerprintSwarmServices/fingerprintSwarmServices';
 import type { Fingerprints } from '../../../../helpers/serviceContainers/serviceContainers.model';
 import { getLogger } from '../../../../utils/logger';
 import { UpdateNormalBulk } from './updateNormalBulk.model';
@@ -20,9 +21,12 @@ const rejected = (err: string): PromiseRejectedResult => ({
 const snapshotBefore = async (
   docker: Readonly<Docker>,
   ids: ReadonlyArray<string>,
+  namespace?: string,
 ): Promise<Fingerprints | undefined> => {
   try {
-    return await fingerprintServices(docker, ids);
+    return namespace
+      ? await fingerprintSwarmServices(docker, namespace, ids)
+      : await fingerprintServices(docker, ids);
   } catch (error) {
     getLogger().warn(
       { error: describeFailure(error) },
@@ -56,7 +60,7 @@ const updateNormalBulk: UpdateNormalBulk = async (
   composeJson,
   requestIds,
   releaseChannel,
-  { swarm = false, docker } = {},
+  { swarm = false, namespace, docker } = {},
 ) => {
   const { effectiveIds, skipped } = await prepareComposeUpdate(
     composeJson,
@@ -70,24 +74,35 @@ const updateNormalBulk: UpdateNormalBulk = async (
     ? [coreHubName, ...effectiveIds.filter(id => id !== coreHubName)]
     : effectiveIds;
 
+  // Compose, or a Swarm stack whose services can be fingerprinted and restored
+  const restorable = Boolean(docker) && (!swarm || Boolean(namespace));
   const before =
-    docker && !swarm ? await snapshotBefore(docker, orderedIds) : undefined;
+    docker && restorable
+      ? await snapshotBefore(docker, orderedIds, swarm ? namespace : undefined)
+      : undefined;
   const results = await Promise.allSettled(orderedIds.map(action));
 
   // Services that failed to pull, start or stay up go back to their previous
   // image, in the compose file and on the running container (after Docker
   // answers again; only the ones the update actually touched). Then every
   // service of the update set is checked to be running. On Swarm the update
-  // action has done the container part (Swarm's own rollback).
+  // action has already used Swarm's own rollback: what is left is the outage
+  // case, and the final check of every service.
   const rollbacks = orderedIds
     .filter((_, index) => results[index].status === 'rejected')
     .map(id => ({ id, image: composeJson.services?.[id]?.image ?? '' }))
     .filter(r => r.image !== '');
   const outcomes = await rollbackServiceImages(
     rollbacks,
-    swarm || !docker
-      ? { recreate: false }
-      : { recreate: true, docker, before, services: orderedIds },
+    docker && restorable
+      ? {
+          recreate: true,
+          docker,
+          before,
+          services: orderedIds,
+          ...(swarm && namespace && { swarm: { namespace } }),
+        }
+      : { recreate: false },
   );
 
   const finalResults = results.map((result, index) => {

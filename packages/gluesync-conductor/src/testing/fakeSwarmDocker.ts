@@ -17,9 +17,14 @@ export type FakeSwarmOptions = Readonly<{
   services?: ReadonlyArray<FakeService> | (() => ReadonlyArray<FakeService>);
   tasks?: ReadonlyArray<FakeTask> | (() => ReadonlyArray<FakeTask>);
   nodes?: ReadonlyArray<Record<string, any>>;
-  // Rejects `service.update` with this error (once per entry)
-  updateErrors?: ReadonlyArray<Error>;
+  // Rejects `service.update` with this error (once per entry; an undefined
+  // entry lets that call through)
+  updateErrors?: ReadonlyArray<Error | undefined>;
   listNodesFails?: boolean;
+  // Rejects `ping` with these errors, one per call, then answers
+  pingErrors?: ReadonlyArray<Error>;
+  // The daemon never answers a ping
+  pingDown?: boolean;
   // The image of the container this process runs in (`Config.Image` of
   // `getContainer(hostname).inspect()`); unset, no container is found (404)
   selfImage?: string;
@@ -143,6 +148,8 @@ const fakeSwarmDocker = ({
   nodes = [],
   updateErrors = [],
   listNodesFails = false,
+  pingErrors = [],
+  pingDown = false,
   selfImage,
   selfInspectFails = false,
 }: FakeSwarmOptions = {}) => {
@@ -154,11 +161,25 @@ const fakeSwarmDocker = ({
     removed: [],
   };
   const pendingErrors = [...updateErrors];
+  const pendingPingErrors = [...pingErrors];
 
   const find = (id: string): FakeService | undefined =>
     resolve(services).find(s => s.ID === id || s.Spec.Name === id);
 
   const docker = {
+    ping: async () => {
+      const error = pendingPingErrors.shift();
+      if (error ?? pingDown) {
+        throw (
+          error ??
+          Object.assign(new Error('connect ECONNREFUSED'), {
+            code: 'ECONNREFUSED',
+          })
+        );
+      }
+
+      return 'OK';
+    },
     listServices: async (options?: { filters?: Filters }) => {
       calls.listServices.push(options);
       const labels = options?.filters?.label ?? [];

@@ -1,6 +1,9 @@
 import type Docker from 'dockerode';
 
 import { getLogger } from '../../../utils/logger';
+import describeFailure from '../../describeFailure/describeFailure';
+import isTransientDockerConnError from '../../dockerode/isTransientDockerConnError/isTransientDockerConnError';
+import waitForDockerOutage from '../../dockerode/waitForDockerOutage/waitForDockerOutage';
 import getService from '../getService/getService';
 import getServiceTasks from '../getServiceTasks/getServiceTasks';
 import { SwarmService, SwarmTask } from '../swarm.model';
@@ -117,6 +120,7 @@ const waitForServiceConverged: WaitForServiceConverged = async (
   const pollMs = options?.pollMs ?? 2000;
   const sleep = options?.sleep ?? sleepMs;
   const now = options?.now ?? Date.now;
+  const waitForDocker = options?.waitForDocker ?? waitForDockerOutage;
   const logger = getLogger();
   const started = now();
 
@@ -133,6 +137,33 @@ const waitForServiceConverged: WaitForServiceConverged = async (
     }
   };
 
+  // A Docker API that dropped says nothing about the service: wait for it
+  // (CONDUCTOR_DOCKER_WAIT_MS) instead of judging the service meanwhile.
+  // Resolves to why Docker did not come back, when it did not.
+  const outageFailure = async (
+    observation: Observation,
+  ): Promise<string | undefined> => {
+    if (
+      observation.kind !== 'error' ||
+      !isTransientDockerConnError(observation.error)
+    ) {
+      return undefined;
+    }
+
+    logger.warn(
+      { service: fullName, error: describeFailure(observation.error) },
+      '[swarm] Docker did not answer, waiting for it',
+    );
+
+    try {
+      await waitForDocker(docker);
+
+      return undefined;
+    } catch (error) {
+      return describeFailure(error);
+    }
+  };
+
   const fail = async (reason: string): Promise<ConvergeResult> => ({
     ok: false,
     reason: `${reason}${await latestFailure(docker, fullName)}`,
@@ -144,6 +175,12 @@ const waitForServiceConverged: WaitForServiceConverged = async (
 
     if (observation.kind === 'error' && isNotFound(observation.error)) {
       return { ok: false, reason: `${fullName} does not exist` };
+    }
+
+    const down = await outageFailure(observation);
+
+    if (down) {
+      return fail(`${fullName}: Docker is not reachable: ${down}`);
     }
 
     // The daemon can be briefly unreachable (a manager restarting): keep trying

@@ -12,7 +12,10 @@ import {
   observeService,
 } from '../serviceContainers/serviceContainers';
 import type { Fingerprints } from '../serviceContainers/serviceContainers.model';
+import swarmRestore from '../swarm/swarmRestore/swarmRestore';
 import {
+  Broken,
+  RestoreStrategy,
   RollbackOutcome,
   RollbackServiceImages,
 } from './rollbackServiceImages.model';
@@ -28,7 +31,6 @@ type Restore = Readonly<{
   before?: Fingerprints;
   services: ReadonlyArray<string>;
 }>;
-type Broken = Readonly<{ id: string; reason: string }>;
 
 // A failure here (full disk, unreadable compose) must not replace the error
 // that made the update fail: it is logged and reported next to it instead.
@@ -70,10 +72,12 @@ const bringUp = async (id: string): Promise<string | undefined> => {
 };
 
 const recreate = async (
+  docker: Readonly<Docker>,
+  strategy: RestoreStrategy,
   id: string,
   image: string,
 ): Promise<RollbackOutcome> => {
-  const failure = await bringUp(id);
+  const failure = await strategy.bringUp(docker, id);
   if (failure === undefined) {
     getLogger().warn({ service: id, image }, '[update] rolled back service');
     return { id, image, ok: true };
@@ -102,13 +106,14 @@ const dockerStillDown = async (
 // answer now) every service counts as touched.
 const touchedServices = async (
   { docker, before }: Restore,
+  strategy: RestoreStrategy,
   ids: ReadonlyArray<string>,
 ): Promise<ReadonlySet<string>> => {
   if (!before) {
     return new Set(ids);
   }
   try {
-    const now = await fingerprintServices(docker, ids);
+    const now = await strategy.fingerprint(docker, ids);
     return new Set(ids.filter(id => now[id] !== before[id]));
   } catch (error) {
     getLogger().warn(
@@ -135,11 +140,11 @@ const imagesInCompose = async (): Promise<
 const comparable = (image?: string): string | undefined =>
   image && !image.includes('$') ? image : undefined;
 
-const problemWith = async (
-  docker: Readonly<Docker>,
-  id: string,
-  image?: string,
-): Promise<Broken | null> => {
+const composeProblemWith: RestoreStrategy['problemWith'] = async (
+  docker,
+  id,
+  image,
+) => {
   try {
     const seen = await observeService(docker, id);
     if (!seen.running) {
@@ -165,12 +170,13 @@ const problemWith = async (
 // those). Anything that cannot be checked counts as broken.
 const brokenServices = async (
   docker: Readonly<Docker>,
+  strategy: RestoreStrategy,
   ids: ReadonlyArray<string>,
 ): Promise<ReadonlyArray<Broken>> => {
   try {
     const images = await imagesInCompose();
     const found = await Promise.all(
-      ids.map(id => problemWith(docker, id, images[id])),
+      ids.map(id => strategy.problemWith(docker, id, images[id])),
     );
     return found.filter((problem): problem is Broken => problem !== null);
   } catch (error) {
@@ -184,10 +190,11 @@ const brokenServices = async (
 // resolves to what is still wrong.
 const reconcile = async (
   docker: Readonly<Docker>,
+  strategy: RestoreStrategy,
   ids: ReadonlyArray<string>,
   attemptsLeft: number = RECONCILE_ATTEMPTS,
 ): Promise<ReadonlyArray<Broken>> => {
-  const broken = await brokenServices(docker, ids);
+  const broken = await brokenServices(docker, strategy, ids);
   if (broken.length === 0 || attemptsLeft === 0) {
     return broken;
   }
@@ -195,8 +202,8 @@ const reconcile = async (
     { problems: broken.map(b => b.reason) },
     '[update] services are not as the compose file says after the rollback: starting them',
   );
-  await inSequence(broken, ({ id }) => bringUp(id));
-  return reconcile(docker, ids, attemptsLeft - 1);
+  await inSequence(broken, ({ id }) => strategy.bringUp(docker, id));
+  return reconcile(docker, strategy, ids, attemptsLeft - 1);
 };
 
 // What the final check still found wrong: a rollback that looked fine is not,
@@ -221,9 +228,16 @@ const withProblems = (
     .map(b => ({ id: b.id, image: '', ok: false, error: b.reason })),
 ];
 
+const composeStrategy: RestoreStrategy = {
+  fingerprint: fingerprintServices,
+  bringUp: (_docker, id) => bringUp(id),
+  problemWith: composeProblemWith,
+};
+
 const restoreContainers = async (
   rollbacks: Rollbacks,
   restore: Restore,
+  strategy: RestoreStrategy,
 ): Promise<ReadonlyArray<RollbackOutcome>> => {
   // The failure that triggered this is often a Docker outage: recreating
   // before it is back would only fail again and leave half-done containers.
@@ -234,11 +248,12 @@ const restoreContainers = async (
 
   const touched = await touchedServices(
     restore,
+    strategy,
     rollbacks.map(r => r.id),
   );
   const outcomes = await inSequence(rollbacks, ({ id, image }) =>
     touched.has(id)
-      ? recreate(id, image)
+      ? recreate(restore.docker, strategy, id, image)
       : Promise.resolve<RollbackOutcome>({
           id,
           image,
@@ -251,6 +266,7 @@ const restoreContainers = async (
   const ids = [...new Set([...restore.services, ...rollbacks.map(r => r.id)])];
   const broken = await reconcile(
     restore.docker,
+    strategy,
     ids.filter(id => id !== conductor),
   );
   return withProblems(outcomes, broken);
@@ -283,7 +299,11 @@ const rollbackServiceImages: RollbackServiceImages = async (
   if (!options.recreate) {
     return rollbacks.map(({ id, image }) => ({ id, image, ok: true }));
   }
-  return restoreContainers(rollbacks, options);
+  return restoreContainers(
+    rollbacks,
+    options,
+    options.swarm ? swarmRestore(options.swarm.namespace) : composeStrategy,
+  );
 };
 
 export default rollbackServiceImages;

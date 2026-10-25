@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 
 import fakeSwarmDocker, {
   FakeService,
@@ -25,6 +25,9 @@ type Setup = Readonly<{
   fileServices?: Record<string, unknown>;
   converged?: ConvergeResult;
   stopped?: ConvergeResult;
+  updateErrors?: ReadonlyArray<Error | undefined>;
+  pingErrors?: ReadonlyArray<Error>;
+  pingDown?: boolean;
 }>;
 
 const flush = (): Promise<void> =>
@@ -37,8 +40,16 @@ const load = ({
   fileServices = {},
   converged = { ok: true },
   stopped = { ok: true },
+  updateErrors,
+  pingErrors,
+  pingDown,
 }: Setup = {}) => {
-  const { docker, calls } = fakeSwarmDocker({ services });
+  const { docker, calls } = fakeSwarmDocker({
+    services,
+    updateErrors,
+    pingErrors,
+    pingDown,
+  });
   const deploys: unknown[][] = [];
   const written: unknown[] = [];
   const waited: string[] = [];
@@ -441,6 +452,92 @@ describe('createSwarmActions', () => {
         'molo17/gluesync-conductor:2.4.0',
       );
       assert.deepEqual(waited, []);
+    });
+  });
+  describe('a Docker outage', () => {
+    const fileServices = {
+      'gluesync-core-hub': { image: 'molo17/gluesync-core-hub:2.4.0' },
+    };
+    const old = buildService('gluesync-core-hub', {
+      image: 'molo17/gluesync-core-hub:2.3.0',
+      previousSpec: { Name: 'gs_gluesync-core-hub' },
+    });
+    const refused = (): Error =>
+      Object.assign(new Error('connect ECONNREFUSED /var/run/docker.sock'), {
+        code: 'ECONNREFUSED',
+      });
+
+    afterEach(() => {
+      delete process.env.CONDUCTOR_DOCKER_WAIT_MS;
+    });
+
+    it('retries an update that met a dropped connection, once Docker answers', async () => {
+      const { actions, calls } = load({
+        services: [old],
+        fileServices,
+        updateErrors: [refused()],
+      });
+
+      assert.equal(
+        await actions.update('gluesync-core-hub'),
+        'Agent gluesync-core-hub updated and restarted.',
+      );
+      assert.equal(calls.updates.length, 1);
+    });
+
+    it('does not retry a real error', async () => {
+      const { actions, calls } = load({
+        services: [old],
+        fileServices,
+        // A second attempt would succeed: only a retry could hide this error
+        updateErrors: [new Error('invalid reference format')],
+      });
+
+      await assert.rejects(
+        actions.update('gluesync-core-hub'),
+        /invalid reference format/,
+      );
+      assert.equal(calls.updates.length, 0);
+    });
+
+    it('fails before touching anything when Docker is down at the start', async () => {
+      process.env.CONDUCTOR_DOCKER_WAIT_MS = '300';
+      const { actions, calls } = load({
+        services: [old],
+        fileServices,
+        pingDown: true,
+      });
+
+      await assert.rejects(
+        actions.update('gluesync-core-hub'),
+        /Docker daemon not ready within 300ms/,
+      );
+      assert.equal(calls.updates.length, 0);
+    });
+
+    it('leaves the rollback to the final restore when Docker is gone for it', async () => {
+      const { actions } = load({
+        services: [old],
+        fileServices,
+        converged: { ok: false, reason: 'gs_gluesync-core-hub not stable' },
+        // The update lands, then the rollback meets a Docker that stays down
+        updateErrors: [undefined, refused(), refused(), refused()],
+      });
+
+      await assert.rejects(
+        actions.update('gluesync-core-hub'),
+        /not stable\. Docker was unavailable for the rollback to molo17\/gluesync-core-hub:2\.3\.0\./,
+      );
+    });
+
+    it('retries a restart that met a dropped connection', async () => {
+      const { actions, calls } = load({
+        services: [old],
+        updateErrors: [refused()],
+      });
+
+      await actions.restart('gluesync-core-hub');
+      assert.equal(calls.updates.length, 1);
     });
   });
 });

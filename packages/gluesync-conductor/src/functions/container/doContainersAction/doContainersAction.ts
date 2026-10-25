@@ -315,6 +315,7 @@ type UpdateBranchArgs = Readonly<{
   bulkIds: Ids;
   releaseChannel: ReleaseChannelTypes;
   swarm: boolean;
+  namespace?: string;
   docker: Readonly<Docker>;
 }>;
 
@@ -328,6 +329,7 @@ const runUpdateBranch = async (
     bulkIds,
     releaseChannel,
     swarm,
+    namespace,
     docker,
   }: UpdateBranchArgs,
 ) => {
@@ -343,6 +345,7 @@ const runUpdateBranch = async (
 
   return updateNormalBulk(updateAction, composeJson, bulkIds, releaseChannel, {
     swarm,
+    namespace,
     docker,
   });
 };
@@ -426,6 +429,8 @@ const performUpdate = async (
     bulkIds,
     releaseChannel,
     swarm,
+    namespace:
+      orchestrator.mode === 'swarm' ? orchestrator.namespace : undefined,
     docker: req.server.docker,
   });
 

@@ -27,6 +27,7 @@ import createSwarmActions from '../../swarm/createSwarmActions/createSwarmAction
 import waitForDockerOutage, {
   dockerWaitMs,
 } from '../waitForDockerOutage/waitForDockerOutage';
+import { PREFLIGHT_MAX_MS } from '../waitForDockerPreflight/waitForDockerPreflight';
 import { getDocker } from '../../../utils/docker/getDocker';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
@@ -63,10 +64,6 @@ const failOnExitCode = (
   }
   return result;
 };
-
-// How long a preflight check waits for the Docker API before an update starts
-// (the full CONDUCTOR_DOCKER_WAIT_MS is for outages in the middle of one).
-const PREFLIGHT_MAX_MS = 15000;
 
 /**
  * Executes a docker-compose command with functional retry logic. A Docker API
