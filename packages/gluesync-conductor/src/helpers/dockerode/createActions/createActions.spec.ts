@@ -20,6 +20,7 @@ type Result = { out: string; err: string; exitCode: number | null };
 
 type Setup = Readonly<{
   failing?: ReadonlySet<string>;
+  dockerDown?: Error;
   stableError?: Error;
   rebootError?: Error;
   // Compose unless told otherwise; `null` is "Docker not answering"
@@ -28,6 +29,7 @@ type Setup = Readonly<{
 
 const load = ({
   failing = new Set(),
+  dockerDown,
   stableError,
   rebootError,
   orchestrator = { mode: 'compose' },
@@ -36,6 +38,7 @@ const load = ({
   const swarmCalls: Array<{ options: unknown; action: string; id: string }> =
     [];
   const stable: string[] = [];
+  const dockerWaits: number[] = [];
   const reboots: unknown[] = [];
   const logs: Array<{ level: string; args: unknown[] }> = [];
   const windowsRestarts: unknown[][] = [];
@@ -119,6 +122,18 @@ const load = ({
             },
           ),
       },
+      [here('../waitForDockerOutage/waitForDockerOutage')]: {
+        default: async (_docker: unknown, budgetMs: number) => {
+          dockerWaits.push(budgetMs);
+          if (dockerDown) {
+            throw dockerDown;
+          }
+        },
+        dockerWaitMs: () => 60000,
+      },
+      [here('../../../utils/docker/getDocker')]: {
+        getDocker: () => ({}),
+      },
       [here('../retryHelper/retryHelper')]: {
         retryCmd: (
           _attempt: number,
@@ -143,6 +158,7 @@ const load = ({
     calls,
     swarmCalls,
     stable,
+    dockerWaits,
     reboots,
     logs,
     windowsRestarts,
@@ -200,6 +216,29 @@ describe('createActions', () => {
     ]);
     assert.deepEqual(stable, ['grafana']);
     assert.equal(reboots.length, 0);
+  });
+
+  it('checks the Docker API answers before it touches anything on update', async () => {
+    const { createActions, calls, dockerWaits } = load();
+    await createActions({ docker }).update('grafana');
+    // A short wait, not the full outage budget.
+    assert.deepEqual(dockerWaits, [15000]);
+    assert.equal(calls[0], 'pullAll --include-deps grafana');
+  });
+
+  it('does not pull or recreate while Docker is down', async () => {
+    const down = Object.assign(
+      new Error('Docker daemon not ready within 15000ms'),
+      {
+        code: 'ETIMEDOUT',
+      },
+    );
+    const { createActions, calls } = load({ dockerDown: down });
+    await assert.rejects(
+      createActions({ docker }).update('grafana'),
+      /Docker daemon not ready/,
+    );
+    assert.deepEqual(calls, []);
   });
 
   it('fails the update when the new container does not stay up', async () => {

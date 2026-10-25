@@ -18,6 +18,9 @@
 //   minRounds     keep clicking (after a failed or stalled round) until at least this many rounds
 //   flapping      the profile toggles a fault while the bulk update runs (see beforeRound)
 //   blanked       the profile blanks the compose file before the update (see compose-blanked)
+//   faultActive   (on the profile, not the plan) (ctx, it) => boolean | Promise<boolean>: true while the
+//                 profile's Docker fault is in effect. The driver waits for it to end before it judges
+//                 a round, so rounds that fail inside the fault do not count as "no progress"
 //
 // before/during/after get (ctx, it). `during` runs alongside the update driver and
 // can watch ctx.inflight to strike while an update request is in progress.
@@ -42,6 +45,61 @@ const bulkInFlight = (ctx, timeoutMs = 300000) =>
     timeoutMs,
     intervalMs: 250,
   });
+
+// The conductor log shows compose recreating a service of the bulk update: `Container gluesync-grafana-1 Recreated`.
+const RECREATED = /Container \S+ Recreated/;
+
+// The sandbox's Docker socket proxy container, in the infra project (the conductor's DOCKER_HOST points at its socket).
+const dockerProxyContainer = async () => {
+  const found = await docker([
+    'ps',
+    '-aq',
+    '--filter',
+    'label=com.docker.compose.project=conductor-sandbox-infra',
+    '--filter',
+    'label=com.docker.compose.service=dockerproxy',
+  ]);
+  return found.out.split('\n').find(Boolean);
+};
+
+// Starts the Docker socket proxy again (a no-op when it runs) and waits until its admin API answers.
+export const startDockerProxyContainer = async () => {
+  const id = await dockerProxyContainer();
+  if (id) await docker(['start', id]);
+  return waitFor('docker proxy admin', async () => (await dockerProxy()).status === 200, { timeoutMs: 30000, intervalMs: 500 });
+};
+
+// docker-proxy-down: the Docker API is not refusing connections, it is gone: the proxy container
+// is stopped for `downMs`, right after compose recreated a service of the bulk update.
+const DOCKER_PROXY_DOWN_MS = 10000;
+const stopProxyAfterRecreate = async (ctx, it) => {
+  const bulk = await waitFor('bulk round in flight', async () => ctx.inflight?.phase === 'bulk' && ctx.inflight, {
+    timeoutMs: 300000,
+    intervalMs: 250,
+  });
+  if (!bulk.ok) return;
+  const since = new Date(bulk.value.startedAt).toISOString();
+  const seen = await waitFor(
+    'recreate in the conductor log',
+    async () => ctx.collector.since('gluesync-conductor', since).find(l => RECREATED.test(l.line)),
+    { timeoutMs: 120000, intervalMs: 25 },
+  );
+  const id = await dockerProxyContainer();
+  if (!seen.ok || !id) {
+    it.notes.push(seen.ok ? 'docker proxy container not found' : 'no recreate seen in the conductor log: the proxy was not stopped');
+    return;
+  }
+  it.dockerFault = { active: true };
+  try {
+    const stopped = await docker(['stop', '-t', '0', id]);
+    it.notes.push(`docker proxy stopped (exit ${stopped.code}) at ${now()} after: ${seen.value.line.trim()}`);
+    await sleep(DOCKER_PROXY_DOWN_MS);
+  } finally {
+    const back = await startDockerProxyContainer();
+    it.notes.push(`docker proxy started again at ${now()}${back.ok ? '' : ' (admin API did not answer)'}`);
+    it.dockerFault = { active: false };
+  }
+};
 
 const containerOf = async service => (await containers()).find(c => c.service === service && c.state === 'running');
 
@@ -207,6 +265,7 @@ export const PROFILES = [
     name: 'docker-socket-blip',
     description: 'Docker API refuses connections for 10s mid-update; GET /version and /containers are called during the blip.',
     plan: () => ({ expect: 'updated' }),
+    faultActive: async () => (await dockerProxy()).json?.effective === 'refuse',
     during: async (ctx, it) => {
       if (!(await bulkInFlight(ctx)).ok) return;
       await sleep(1500);
@@ -214,6 +273,15 @@ export const PROFILES = [
       await callConductor(it, 'during blip: /containers', 'GET', '/containers?type=all', { token: ctx.adminToken });
       await callConductor(it, 'during blip: /version', 'GET', '/version', { token: ctx.adminToken });
     },
+  },
+  {
+    name: 'docker-proxy-down',
+    description:
+      'The Docker socket proxy container is stopped for 10s right after compose recreated a service of the bulk update (the Docker API is gone, not just refusing). The update must end with every service running, on its new image or rolled back, the compose file matching the containers and nothing left stopped or created-not-started; the next click converges.',
+    // The user keeps clicking after a round that failed inside the outage.
+    plan: () => ({ expect: 'updated', minRounds: 8 }),
+    faultActive: (ctx, it) => it.dockerFault?.active === true,
+    during: stopProxyAfterRecreate,
   },
   {
     name: 'concurrent-update',
@@ -357,5 +425,7 @@ export const resetChaos = async () => {
   const state = (await backofficeAdmin('/__sandbox/state')).json;
   const clear = Object.fromEntries(Object.keys(state?.chaos || {}).map(k => [k, null]));
   if (Object.keys(clear).length) await backofficeAdmin('/__sandbox/chaos', clear);
+  // A profile that was cut short may have left the proxy container stopped.
+  await startDockerProxyContainer();
   await dockerProxy({ mode: 'pass' });
 };

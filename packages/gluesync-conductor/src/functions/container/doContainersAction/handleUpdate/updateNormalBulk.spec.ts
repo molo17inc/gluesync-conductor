@@ -28,12 +28,17 @@ const compose = {
   },
 } as unknown as RawComposeFile;
 
+const docker = {} as never;
+
 const load = (
   prepared: {
     effectiveIds: readonly string[];
     skipped?: ReadonlyArray<{ id: string; reason: string }>;
   },
   outcomes: ReadonlyArray<RollbackOutcome> = [],
+  snapshot: () => Promise<Record<string, string>> = async () => ({
+    grafana: 'before',
+  }),
 ) => {
   const rollbackCalls: unknown[][] = [];
   const prepareCalls: unknown[][] = [];
@@ -45,6 +50,9 @@ const load = (
           prepareCalls.push(args);
           return { skipped: [], ...prepared };
         },
+      },
+      [here('../../../../helpers/serviceContainers/serviceContainers')]: {
+        fingerprintServices: snapshot,
       },
       [here('../../../../helpers/rollbackServiceImages/rollbackServiceImages')]:
         {
@@ -72,6 +80,7 @@ describe('updateNormalBulk', () => {
       compose,
       [],
       'ga',
+      { docker },
     );
     assert.deepEqual(order, ['gluesync-core-hub', 'grafana', 'chronos']);
     assert.deepEqual(orderedIds, order);
@@ -79,13 +88,29 @@ describe('updateNormalBulk', () => {
       results.map(r => (r.status === 'fulfilled' ? r.value : null)),
       ['gluesync-core-hub done', 'grafana done', 'chronos done'],
     );
-    assert.deepEqual(rollbackCalls, [[[], { recreate: true }]]);
+    assert.deepEqual(rollbackCalls, [
+      [
+        [],
+        {
+          recreate: true,
+          docker,
+          before: { grafana: 'before' },
+          services: ['gluesync-core-hub', 'grafana', 'chronos'],
+        },
+      ],
+    ]);
   });
 
   it('honours CORE_HUB_NAME when ordering', async () => {
     process.env.CORE_HUB_NAME = 'my-hub';
     const { bulk } = load({ effectiveIds: ['grafana', 'my-hub'] });
-    const { orderedIds } = await bulk(async id => id, compose, [], 'ga');
+    const { orderedIds } = await bulk(
+      async id => id,
+      compose,
+      [],
+      'ga',
+      { docker },
+    );
     assert.deepEqual(orderedIds, ['my-hub', 'grafana']);
   });
 
@@ -113,6 +138,7 @@ describe('updateNormalBulk', () => {
       compose,
       [],
       'ga',
+      { docker },
     );
     assert.deepEqual(orderedIds, [
       'gluesync-core-hub',
@@ -126,7 +152,12 @@ describe('updateNormalBulk', () => {
           { id: 'grafana', image: 'grafana:1' },
           { id: 'chronos', image: 'chronos:1' },
         ],
-        { recreate: true },
+        {
+          recreate: true,
+          docker,
+          before: { grafana: 'before' },
+          services: ['gluesync-core-hub', 'grafana', 'chronos', 'noimage'],
+        },
       ],
     ]);
     assert.equal(results[0].status, 'fulfilled');
@@ -157,6 +188,7 @@ describe('updateNormalBulk', () => {
       compose,
       ['grafana', 'redis'],
       'ga',
+      { docker },
     );
     assert.deepEqual(orderedIds, ['grafana', 'redis']);
     assert.equal(results[0].status, 'fulfilled');
@@ -164,6 +196,88 @@ describe('updateNormalBulk', () => {
       status: 'rejected',
       reason: {
         err: 'Could not get the latest version of redis. Not updated.',
+      },
+    });
+  });
+
+  it('says nothing was changed when Docker was down and no container was touched', async () => {
+    const { bulk } = load({ effectiveIds: ['grafana', 'chronos'] }, [
+      { id: 'grafana', image: 'grafana:1', ok: true, untouched: true },
+      { id: 'chronos', image: 'chronos:1', ok: true, untouched: true },
+    ]);
+    const { results } = await bulk(
+      async id => {
+        if (id === 'grafana') {
+          throw {
+            exitCode: 1,
+            err: 'error during connect: Get "http://docker.sock/v1.47/info": EOF',
+          };
+        }
+        throw { exitCode: 1, err: 'pull access denied for chronos' };
+      },
+      compose,
+      [],
+      'ga',
+      { docker },
+    );
+    assert.equal(
+      (results[0] as PromiseRejectedResult).reason.err,
+      'error during connect: Get "http://docker.sock/v1.47/info": EOF Docker was unavailable; nothing was changed.',
+    );
+    // Not a Docker failure: the compose file went back, the container was never touched.
+    assert.equal(
+      (results[1] as PromiseRejectedResult).reason.err,
+      'pull access denied for chronos Compose file restored to chronos:1; the running container was not touched.',
+    );
+  });
+
+  it('carries on without a snapshot when Docker does not answer before the update', async () => {
+    const { bulk, rollbackCalls } = load(
+      { effectiveIds: ['grafana'] },
+      [{ id: 'grafana', image: 'grafana:1', ok: true }],
+      async () => {
+        throw new Error('connect ECONNREFUSED');
+      },
+    );
+    await bulk(
+      async () => {
+        throw new Error('did not stay up');
+      },
+      compose,
+      [],
+      'ga',
+      { docker },
+    );
+    const options = rollbackCalls[0][1] as { before?: unknown };
+    assert.equal(options.before, undefined);
+  });
+
+  it('never reports OK for a service that is broken after the rollback', async () => {
+    const { bulk } = load({ effectiveIds: ['grafana', 'chronos'] }, [
+      { id: 'grafana', image: 'grafana:1', ok: true },
+      {
+        id: 'chronos',
+        image: '',
+        ok: false,
+        error: 'chronos is not running (exited)',
+      },
+    ]);
+    const { results } = await bulk(
+      async id => {
+        if (id === 'grafana') {
+          throw new Error('did not stay up');
+        }
+        return 'chronos updated';
+      },
+      compose,
+      [],
+      'ga',
+      { docker },
+    );
+    assert.deepEqual(results[1], {
+      status: 'rejected',
+      reason: {
+        err: 'chronos updated But now: chronos is not running (exited)',
       },
     });
   });
@@ -177,7 +291,7 @@ describe('updateNormalBulk', () => {
       compose,
       [],
       'ga',
-      { swarm: true },
+      { swarm: true, docker },
     );
     assert.deepEqual(rollbackCalls, [
       [[{ id: 'grafana', image: 'grafana:1' }], { recreate: false }],
@@ -189,7 +303,7 @@ describe('updateNormalBulk', () => {
     const onCompose = load({ effectiveIds: [] });
 
     await swarm.bulk(async id => id, compose, [], 'ga', { swarm: true });
-    await onCompose.bulk(async id => id, compose, [], 'ga');
+    await onCompose.bulk(async id => id, compose, [], 'ga', { docker });
 
     assert.deepEqual(swarm.prepareCalls[0][3], { swarm: true });
     assert.deepEqual(onCompose.prepareCalls[0][3], { swarm: false });
