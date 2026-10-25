@@ -1,5 +1,5 @@
 import Docker from 'dockerode';
-import stream from 'stream';
+import stream from 'node:stream';
 import { getLogger } from '../../utils/logger';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import parseImage from '../parseImage/parseImage';
@@ -14,6 +14,9 @@ import {
   PollWatchdog,
   RuntimeValidationResult,
   StartUpdateWatchdog,
+  PollState,
+  RecoveryFunction,
+  WatchdogResult,
 } from './updateWatchdog.model';
 
 const sleep = async (ms: number): Promise<void> =>
@@ -373,6 +376,244 @@ export const attemptRecover = async (
   return attemptRecoverRecursive(serviceName, recoveryFn, 1, maxAttempts);
 };
 
+type PollContext = Readonly<{
+  docker: Readonly<Docker>;
+  serviceName: string;
+  helperImageOrName?: string;
+  pollIntervalMs: number;
+  updateModeGraceMs: number;
+  recoveryFunction?: RecoveryFunction;
+  state: PollState;
+  now: number;
+}>;
+
+type PollNext = (next: PollState) => Promise<WatchdogResult>;
+
+const sleepThenPoll = async (
+  poll: PollNext,
+  sleepMs: number,
+  next: PollState,
+): Promise<WatchdogResult> => {
+  await sleep(sleepMs);
+  return poll(next);
+};
+
+const waitAndPoll = (
+  ctx: PollContext,
+  poll: PollNext,
+  next: PollState = ctx.state,
+): Promise<WatchdogResult> => sleepThenPoll(poll, ctx.pollIntervalMs, next);
+
+const evaluateValidatedRunning = async (
+  ctx: PollContext,
+  poll: PollNext,
+  status: HealthStatus,
+): Promise<WatchdogResult> => {
+  const { serviceName } = ctx;
+
+  if (status.health === 'healthy') {
+    await sleep(1500);
+    logger.info(
+      { serviceName },
+      '[watchdog] service healthy or recovered — disabling update mode',
+    );
+    disableUpdateMode();
+    return { ok: true, reason: 'healthy' };
+  }
+
+  if (status.health === 'none' || status.health === undefined) {
+    logger.info(
+      { serviceName },
+      '[watchdog] running without healthcheck but runtime validated — disabling update mode',
+    );
+    disableUpdateMode();
+    return { ok: true, reason: 'running-validated-no-healthcheck' };
+  }
+
+  // Still starting or healthy-ish, wait and recurse
+  return waitAndPoll(ctx, poll);
+};
+
+// Returns undefined when the mismatch is not handled here (no recovery function)
+const evaluateVersionMismatch = async (
+  ctx: PollContext,
+  poll: PollNext,
+): Promise<WatchdogResult | undefined> => {
+  const { serviceName, state, now, updateModeGraceMs, recoveryFunction } = ctx;
+  const firstNotRunningAt = state.firstNotRunningAt ?? now;
+  const staleForMs = now - firstNotRunningAt;
+
+  if (staleForMs < updateModeGraceMs) {
+    logger.info(
+      { serviceName, staleForMs, updateModeGraceMs },
+      '[watchdog] version mismatch detected but still within grace window',
+    );
+    return waitAndPoll(ctx, poll, { ...state, firstNotRunningAt });
+  }
+
+  if (recoveryFunction) {
+    logger.warn(
+      { serviceName, staleForMs },
+      '[watchdog] running stale version after grace window, attempting recovery',
+    );
+    await attemptRecover(serviceName, recoveryFunction);
+    return waitAndPoll(ctx, poll, {
+      ...state,
+      firstNotRunningAt,
+      recoveryAttempts: state.recoveryAttempts + 1,
+    });
+  }
+
+  return undefined;
+};
+
+const evaluateRunning = async (
+  ctx: PollContext,
+  poll: PollNext,
+  status: HealthStatus,
+): Promise<WatchdogResult> => {
+  const { docker, serviceName, state, recoveryFunction } = ctx;
+  const validation = await validateRuntimeState(docker, serviceName);
+
+  logger.info(
+    {
+      serviceName,
+      running: status.running,
+      health: status.health,
+      validation,
+    },
+    '[watchdog] running-state evaluation',
+  );
+
+  if (validation.ok) {
+    return evaluateValidatedRunning(ctx, poll, status);
+  }
+
+  if (validation.reason === 'pull-in-progress') {
+    return waitAndPoll(ctx, poll);
+  }
+
+  if (validation.reason === 'version-mismatch') {
+    const mismatchResult = await evaluateVersionMismatch(ctx, poll);
+
+    if (mismatchResult) {
+      return mismatchResult;
+    }
+  }
+
+  if (recoveryFunction) {
+    logger.warn(
+      { serviceName, reason: validation.reason },
+      '[watchdog] runtime validation failed, attempting recovery',
+    );
+    await attemptRecover(serviceName, recoveryFunction);
+    return waitAndPoll(ctx, poll, {
+      ...state,
+      recoveryAttempts: state.recoveryAttempts + 1,
+    });
+  }
+
+  return waitAndPoll(ctx, poll);
+};
+
+const attemptNotRunningRecovery = async (
+  ctx: PollContext,
+  poll: PollNext,
+  recoveryFunction: RecoveryFunction,
+  firstNotRunningAt: number,
+  downForMs: number,
+): Promise<WatchdogResult> => {
+  const { docker, serviceName, state, pollIntervalMs } = ctx;
+  const nextAttempts = state.recoveryAttempts + 1;
+
+  try {
+    logger.warn(
+      { recoveryAttempts: nextAttempts, downForMs, serviceName },
+      '[watchdog] service still down, attempting recovery',
+    );
+
+    const recovered = await attemptRecover(serviceName, recoveryFunction);
+
+    if (recovered) {
+      await sleep(5000);
+      const postInfo = await getContainerByServiceName(docker, serviceName);
+      const postStatus = await getContainerHealthStatus(
+        docker,
+        postInfo ? postInfo.Id : serviceName,
+      );
+
+      if (
+        postStatus.running &&
+        (postStatus.health === 'healthy' || postStatus.health === 'none')
+      ) {
+        return { ok: true, reason: 'recovered' };
+      }
+    }
+
+    // Exponential-ish backoff
+    return await sleepThenPoll(
+      poll,
+      Math.min(pollIntervalMs * nextAttempts, 15000),
+      { ...state, firstNotRunningAt, recoveryAttempts: nextAttempts },
+    );
+  } catch (error) {
+    logger.warn(
+      { error, recoveryAttempts: nextAttempts, serviceName },
+      '[watchdog] recovery attempt failed, continuing poll',
+    );
+    return sleepThenPoll(poll, Math.min(pollIntervalMs * nextAttempts, 15000), {
+      ...state,
+      firstNotRunningAt,
+      recoveryAttempts: nextAttempts,
+    });
+  }
+};
+
+const evaluateNotRunning = async (
+  ctx: PollContext,
+  poll: PollNext,
+): Promise<WatchdogResult> => {
+  const {
+    docker,
+    serviceName,
+    helperImageOrName,
+    state,
+    now,
+    updateModeGraceMs,
+    recoveryFunction,
+  } = ctx;
+  const firstNotRunningAt = state.firstNotRunningAt ?? now;
+  const downForMs = now - firstNotRunningAt;
+  const withinGrace = downForMs < updateModeGraceMs;
+
+  const pulling = await isPullInProgress(
+    docker,
+    serviceName,
+    helperImageOrName,
+  );
+
+  if (pulling || withinGrace) {
+    logger.debug(
+      { downForMs, serviceName, pulling, withinGrace },
+      '[watchdog] deferring recovery (pulling or within grace window)',
+    );
+    return waitAndPoll(ctx, poll, { ...state, firstNotRunningAt });
+  }
+
+  if (!recoveryFunction) {
+    return waitAndPoll(ctx, poll, { ...state, firstNotRunningAt });
+  }
+
+  // Attempt Recovery
+  return attemptNotRunningRecovery(
+    ctx,
+    poll,
+    recoveryFunction,
+    firstNotRunningAt,
+    downForMs,
+  );
+};
+
 const pollWatchdog: PollWatchdog = async (docker, opts, state) => {
   const {
     serviceName,
@@ -402,166 +643,22 @@ const pollWatchdog: PollWatchdog = async (docker, opts, state) => {
   const containerIdOrName = containerInfo ? containerInfo.Id : serviceName;
   const status = await getContainerHealthStatus(docker, containerIdOrName);
 
-  // --- BRANCH: Container is RUNNING ---
-  if (status.running) {
-    const validation = await validateRuntimeState(docker, serviceName);
-
-    logger.info(
-      {
-        serviceName,
-        running: status.running,
-        health: status.health,
-        validation,
-      },
-      '[watchdog] running-state evaluation',
-    );
-
-    if (validation.ok) {
-      if (status.health === 'healthy') {
-        await sleep(1500);
-        logger.info(
-          { serviceName },
-          '[watchdog] service healthy or recovered — disabling update mode',
-        );
-        disableUpdateMode();
-        return { ok: true, reason: 'healthy' };
-      }
-
-      if (status.health === 'none' || status.health === undefined) {
-        logger.info(
-          { serviceName },
-          '[watchdog] running without healthcheck but runtime validated — disabling update mode',
-        );
-        disableUpdateMode();
-        return { ok: true, reason: 'running-validated-no-healthcheck' };
-      }
-
-      // Still starting or healthy-ish, wait and recurse
-      await sleep(pollIntervalMs);
-      return pollWatchdog(docker, opts, state);
-    }
-
-    if (validation.reason === 'pull-in-progress') {
-      await sleep(pollIntervalMs);
-      return pollWatchdog(docker, opts, state);
-    }
-
-    if (validation.reason === 'version-mismatch') {
-      const firstNotRunningAt = state.firstNotRunningAt ?? now;
-      const staleForMs = now - firstNotRunningAt;
-
-      if (staleForMs < updateModeGraceMs) {
-        logger.info(
-          { serviceName, staleForMs, updateModeGraceMs },
-          '[watchdog] version mismatch detected but still within grace window',
-        );
-        await sleep(pollIntervalMs);
-        return pollWatchdog(docker, opts, { ...state, firstNotRunningAt });
-      }
-
-      if (recoveryFunction) {
-        logger.warn(
-          { serviceName, staleForMs },
-          '[watchdog] running stale version after grace window, attempting recovery',
-        );
-        await attemptRecover(serviceName, recoveryFunction);
-        await sleep(pollIntervalMs);
-        return pollWatchdog(docker, opts, {
-          ...state,
-          firstNotRunningAt,
-          recoveryAttempts: state.recoveryAttempts + 1,
-        });
-      }
-    }
-
-    if (recoveryFunction) {
-      logger.warn(
-        { serviceName, reason: validation.reason },
-        '[watchdog] runtime validation failed, attempting recovery',
-      );
-      await attemptRecover(serviceName, recoveryFunction);
-      await sleep(pollIntervalMs);
-      return pollWatchdog(docker, opts, {
-        ...state,
-        recoveryAttempts: state.recoveryAttempts + 1,
-      });
-    }
-
-    await sleep(pollIntervalMs);
-    return pollWatchdog(docker, opts, state);
-  }
-
-  // --- BRANCH: Container is NOT RUNNING ---
-  const firstNotRunningAt = state.firstNotRunningAt ?? now;
-  const downForMs = now - firstNotRunningAt;
-  const withinGrace = downForMs < updateModeGraceMs;
-
-  const pulling = await isPullInProgress(
+  const ctx: PollContext = {
     docker,
     serviceName,
     helperImageOrName,
-  );
+    pollIntervalMs,
+    updateModeGraceMs,
+    recoveryFunction,
+    state,
+    now,
+  };
+  const poll: PollNext = next => pollWatchdog(docker, opts, next);
 
-  if (pulling || withinGrace) {
-    logger.debug(
-      { downForMs, serviceName, pulling, withinGrace },
-      '[watchdog] deferring recovery (pulling or within grace window)',
-    );
-    await sleep(pollIntervalMs);
-    return pollWatchdog(docker, opts, { ...state, firstNotRunningAt });
-  }
-
-  if (!recoveryFunction) {
-    await sleep(pollIntervalMs);
-    return pollWatchdog(docker, opts, { ...state, firstNotRunningAt });
-  }
-
-  // Attempt Recovery
-  try {
-    const nextAttempts = state.recoveryAttempts + 1;
-    logger.warn(
-      { recoveryAttempts: nextAttempts, downForMs, serviceName },
-      '[watchdog] service still down, attempting recovery',
-    );
-
-    const recovered = await attemptRecover(serviceName, recoveryFunction);
-
-    if (recovered) {
-      await sleep(5000);
-      const postInfo = await getContainerByServiceName(docker, serviceName);
-      const postStatus = await getContainerHealthStatus(
-        docker,
-        postInfo ? postInfo.Id : serviceName,
-      );
-
-      if (
-        postStatus.running &&
-        (postStatus.health === 'healthy' || postStatus.health === 'none')
-      ) {
-        return { ok: true, reason: 'recovered' };
-      }
-    }
-
-    // Exponential-ish backoff
-    await sleep(Math.min(pollIntervalMs * nextAttempts, 15000));
-    return pollWatchdog(docker, opts, {
-      ...state,
-      firstNotRunningAt,
-      recoveryAttempts: nextAttempts,
-    });
-  } catch (error) {
-    const nextAttempts = state.recoveryAttempts + 1;
-    logger.warn(
-      { error, recoveryAttempts: nextAttempts, serviceName },
-      '[watchdog] recovery attempt failed, continuing poll',
-    );
-    await sleep(Math.min(pollIntervalMs * nextAttempts, 15000));
-    return pollWatchdog(docker, opts, {
-      ...state,
-      firstNotRunningAt,
-      recoveryAttempts: nextAttempts,
-    });
-  }
+  // Container RUNNING vs NOT RUNNING
+  return status.running
+    ? evaluateRunning(ctx, poll, status)
+    : evaluateNotRunning(ctx, poll);
 };
 
 export const startUpdateWatchdog: StartUpdateWatchdog = async (docker, opts) =>

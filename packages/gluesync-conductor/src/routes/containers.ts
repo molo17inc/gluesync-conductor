@@ -419,7 +419,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
       },
     },
     preHandler: [requireContainerAction()],
-    preValidation: async (request, reply) => {
+    preValidation: (request, reply, done) => {
       const body = request.body as {
         action: ContainerActions;
         ids: ReadonlyArray<string>;
@@ -437,6 +437,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
           details: `Allowed values: ${releaseChannelTypes.join(', ')}`,
         });
 
+        // Answering from the hook ends the request: no done
         return;
       }
 
@@ -445,6 +446,8 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
         ...body,
         releaseChannel: normalizedReleaseChannel,
       };
+
+      done();
     },
     handler: doContainersAction,
   });

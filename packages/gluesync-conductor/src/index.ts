@@ -61,7 +61,9 @@ declare module 'fastify' {
   interface FastifyInstance extends FastifyServices, FastifyMethods {}
 }
 
-const port: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 50000;
+const port: number = process.env.PORT
+  ? Number.parseInt(process.env.PORT, 10)
+  : 50000;
 const host: string = process.env.HOST || '0.0.0.0';
 
 /*
@@ -343,9 +345,10 @@ const startServer = async (): Promise<void> => {
   updateModeEmitter.on('updateModeDisabled', onUpdateDisabled);
 
   // Remove listeners on server close to avoid leaks
-  server.addHook('onClose', async () => {
+  server.addHook('onClose', (_instance, done) => {
     updateModeEmitter.off('updateModeEnabled', onUpdateEnabled);
     updateModeEmitter.off('updateModeDisabled', onUpdateDisabled);
+    done();
   });
 
   await server.register(systemRoutes);

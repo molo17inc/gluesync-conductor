@@ -12,6 +12,7 @@ import {
 import { createReadStream, createWriteStream } from 'node:fs';
 import { finished } from 'node:stream/promises';
 import { tmpdir } from 'node:os';
+import { randomInt } from 'node:crypto';
 import {
   basename,
   extname,
@@ -24,7 +25,7 @@ import {
 } from 'node:path';
 import { AxiosError } from 'axios';
 import type Docker from 'dockerode';
-import { text } from 'stream/consumers';
+import { text } from 'node:stream/consumers';
 import { CollectLogsHandler } from './collectLogs.model';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 import axiosWithRetry from '../../../utils/axiosWithRetry';
@@ -250,40 +251,42 @@ const runCommandCapture = async (
 
     const initialState: StreamState = { stdout: '', stderr: '' };
 
+    const settle = (exitCode: number, fallbackStderr: string): void => {
+      Promise.all([stdoutPromise, stderrPromise]).then(
+        ([stdout, stderr]) => {
+          const afterStdout = appendEvent(initialState, {
+            type: 'stdout',
+            chunk: stdout,
+          });
+          const finalState = appendEvent(afterStdout, {
+            type: 'stderr',
+            chunk: stderr,
+          });
+          resolve({
+            exitCode,
+            stdout: finalState.stdout,
+            stderr: finalState.stderr || fallbackStderr,
+          });
+        },
+        (streamError: unknown) => {
+          resolve({
+            exitCode: 1,
+            stdout: '',
+            stderr:
+              streamError instanceof Error
+                ? streamError.message
+                : String(streamError),
+          });
+        },
+      );
+    };
+
     child.once('error', error => {
-      Promise.all([stdoutPromise, stderrPromise]).then(([stdout, stderr]) => {
-        const afterStdout = appendEvent(initialState, {
-          type: 'stdout',
-          chunk: stdout,
-        });
-        const finalState = appendEvent(afterStdout, {
-          type: 'stderr',
-          chunk: stderr,
-        });
-        resolve({
-          exitCode: 1,
-          stdout: finalState.stdout,
-          stderr: finalState.stderr || error.message,
-        });
-      });
+      settle(1, error.message);
     });
 
     child.once('close', code => {
-      Promise.all([stdoutPromise, stderrPromise]).then(([stdout, stderr]) => {
-        const afterStdout = appendEvent(initialState, {
-          type: 'stdout',
-          chunk: stdout,
-        });
-        const finalState = appendEvent(afterStdout, {
-          type: 'stderr',
-          chunk: stderr,
-        });
-        resolve({
-          exitCode: code ?? 1,
-          stdout: finalState.stdout,
-          stderr: finalState.stderr,
-        });
-      });
+      settle(code ?? 1, '');
     });
 
     if (child.stdin) {
@@ -1000,15 +1003,15 @@ const createArchive = async (
     if (isWindows) {
       logger?.info({ zipPath }, 'Trying Compress-Archive (Windows primary)');
 
-      const psScript = `
+      const psScript = String.raw`
         $ErrorActionPreference = "Stop";
 
-        $source = "${searchDir.replace(/"/g, '""')}";
-        $dest = "${zipPath.replace(/"/g, '""')}";
+        $source = "${searchDir.replaceAll('"', '""')}";
+        $dest = "${zipPath.replaceAll('"', '""')}";
 
         if (Test-Path $dest) { Remove-Item $dest -Force }
 
-        Compress-Archive -Path "$source\\*" -DestinationPath $dest -Force
+        Compress-Archive -Path "$source\*" -DestinationPath $dest -Force
       `;
 
       const zipResult = await runCommandCapture(
@@ -1278,7 +1281,7 @@ const uploadArchive = async (
           : `WebDAV upload network error: ${axiosErr.message}`;
 
         if (attempt < maxRetries) {
-          const jitter = Math.floor(Math.random() * 100);
+          const jitter = randomInt(100);
           const delay = Math.min(
             15_000,
             backoffBaseMs * 2 ** (attempt - 1) + jitter,
@@ -1354,10 +1357,13 @@ const uploadArchive = async (
   const ftpResult = await runCommandCapture('curl', ftpArgs);
 
   if (ftpResult.exitCode !== 0) {
+    const webDavDetailPrefix = webDavResult.detail
+      ? `${webDavResult.detail}\n`
+      : '';
     throw createCollectLogsError(
       'Failed to upload to FTP after WebDAV failure.',
       formatOutput(
-        `${webDavResult.detail ? `${webDavResult.detail}\n` : ''}${ftpFailureHint(ftpResult.exitCode, ftpResult.stderr)}\n${ftpResult.stdout}\n${ftpResult.stderr}`,
+        `${webDavDetailPrefix}${ftpFailureHint(ftpResult.exitCode, ftpResult.stderr)}\n${ftpResult.stdout}\n${ftpResult.stderr}`,
       ),
     );
   }
@@ -1430,6 +1436,510 @@ const describeDockerCollection = (
   return `Collecting logs from Docker (since ${sinceHours}h, ${lines} per ${unit}).`;
 };
 
+type DirScan = Readonly<{ path: string; exists: boolean; matched: number }>;
+
+type DirScanResult = Readonly<{
+  files: ReadonlyArray<string>;
+  scan: DirScan;
+}>;
+
+const isLogOrErrFile = (filePath: string): boolean => {
+  const extension = extname(filePath).toLowerCase();
+  return extension === '.log' || extension === '.err';
+};
+
+const isLogOrArchivedLogFile = (filePath: string): boolean => {
+  const extension = extname(filePath).toLowerCase();
+  const name = basename(filePath).toLowerCase();
+  return (
+    extension === '.log' || extension === '.err' || name.endsWith('.log.gz')
+  );
+};
+
+const collectFromDirSafe = async (
+  dir: string,
+  options: FileCollectionOptions,
+): Promise<DirScanResult> => {
+  try {
+    const dirStat = await stat(dir);
+    if (!dirStat.isDirectory()) {
+      return {
+        files: [],
+        scan: { path: dir, exists: false, matched: 0 },
+      };
+    }
+  } catch {
+    return {
+      files: [],
+      scan: { path: dir, exists: false, matched: 0 },
+    };
+  }
+
+  const matched = await collectFilesRecursively(dir, isLogOrErrFile, options);
+
+  return {
+    files: matched,
+    scan: { path: dir, exists: true, matched: matched.length },
+  };
+};
+
+const filterRecentFiles = async (
+  files: ReadonlyArray<string>,
+  cutoffMs: number,
+): Promise<ReadonlyArray<string>> => {
+  const candidates = await Promise.all(
+    files.map(async filePath => {
+      try {
+        const fileStats = await stat(filePath);
+        return fileStats.mtimeMs >= cutoffMs ? filePath : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return candidates.filter((filePath): filePath is string => filePath !== null);
+};
+
+// Snapshot files (copy into snapshotDir) and return list of targets.
+//
+// Strategy (per file, in order):
+//   1. On Windows: robocopy /B (backup mode) — uses the Windows backup
+//      API and bypasses share-mode restrictions on files that are open
+//      for writing by another process (e.g. Logback file appender or
+//      the Docker daemon). On Linux: plain `cp -p` — preserves mtimes
+//      and streams without loading into memory.
+//   2. Fallback: Node readFile + writeFile. Slower / not lock-friendly
+//      on Windows but works when robocopy/cp are not on PATH.
+//
+// Failed snapshots are excluded from the archive and recorded in the
+// collection report so support can see exactly what was dropped and why.
+type SnapshotResult =
+  | Readonly<{
+      ok: true;
+      target: string;
+      source: string;
+      method: 'robocopy' | 'cp' | 'node';
+    }>
+  | Readonly<{ ok: false; source: string; reason: string }>;
+
+type SnapshotSuccess = Extract<SnapshotResult, { ok: true }>;
+type SnapshotFailure = Extract<SnapshotResult, { ok: false }>;
+
+type NativeCopyResult = Readonly<{ ok: true } | { ok: false; reason: string }>;
+
+const copyRenamedRobocopyTarget = async (
+  copied: string,
+  targetFile: string,
+): Promise<NativeCopyResult> => {
+  try {
+    const buf = await readFile(copied);
+    await writeFile(targetFile, buf);
+    await rm(copied, { force: true });
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `robocopy rename failed: ${err instanceof Error ? err.message : 'unknown'}`,
+    };
+  }
+};
+
+const safeCopyWithRobocopy = async (
+  sourceFile: string,
+  targetFile: string,
+): Promise<NativeCopyResult> => {
+  const sourceDirName = dirname(sourceFile);
+  const sourceFileName = basename(sourceFile);
+  const targetDirName = dirname(targetFile);
+  const targetFileName = basename(targetFile);
+
+  // /B          backup mode — opens via the Windows backup API,
+  //             bypasses share-mode locks on files open for writing
+  // /R:1 /W:1   one retry, one second wait (don't hang forever)
+  // /NJH /NJS   no job header / summary noise in stdout
+  // /NP /NDL    no progress / no directory list
+  // /COPY:DAT   data + attributes + timestamps; skip ACL/owner/audit
+  const args = [
+    sourceDirName,
+    targetDirName,
+    sourceFileName,
+    '/B',
+    '/R:1',
+    '/W:1',
+    '/NJH',
+    '/NJS',
+    '/NP',
+    '/NDL',
+    '/COPY:DAT',
+  ];
+
+  const result = await runCommandCapture('robocopy', args);
+
+  // robocopy exit codes 0..7 are "success-ish" (0/1 = no/files copied,
+  // 2/4 = extras/mismatched, 8+ = real failure). We accept 0..7.
+  if (result.exitCode >= 0 && result.exitCode <= 7) {
+    // robocopy preserves the original filename; rename if target differs.
+    if (sourceFileName !== targetFileName) {
+      const renamed = await copyRenamedRobocopyTarget(
+        join(targetDirName, sourceFileName),
+        targetFile,
+      );
+      if (!renamed.ok) {
+        return renamed;
+      }
+    }
+    try {
+      await access(targetFile, constants.F_OK);
+    } catch {
+      return {
+        ok: false,
+        reason: `robocopy reported success (exit ${result.exitCode}) but target file was not created — robocopy may not be available`,
+      };
+    }
+    return { ok: true };
+  }
+
+  return {
+    ok: false,
+    reason: `robocopy exit ${result.exitCode}: ${(result.stderr || result.stdout).trim().slice(0, 300)}`,
+  };
+};
+
+const safeCopyWithCp = async (
+  sourceFile: string,
+  targetFile: string,
+): Promise<NativeCopyResult> => {
+  const result = await runCommandCapture('cp', ['-p', sourceFile, targetFile]);
+
+  if (result.exitCode === 0) {
+    return { ok: true };
+  }
+
+  return {
+    ok: false,
+    reason: `cp exit ${result.exitCode}: ${(result.stderr || result.stdout).trim().slice(0, 300)}`,
+  };
+};
+
+const resolveSnapshotRelativePath = (
+  file: string,
+  searchDir: string,
+  extraDir: string,
+): string => {
+  const rel = relative(searchDir, file);
+  const relExtra = relative(extraDir, file);
+
+  if (rel && !rel.startsWith('..') && !isAbsolute(rel)) {
+    return rel;
+  }
+
+  if (!relExtra.startsWith('..')) {
+    return join('diagnostics', relExtra);
+  }
+
+  return basename(file);
+};
+
+type SnapshotContext = Readonly<{
+  searchDir: string;
+  extraDir: string;
+  snapshotDir: string;
+  isWindows: boolean;
+  logger?: Logger;
+}>;
+
+const snapshotFile = async (
+  file: string,
+  context: SnapshotContext,
+): Promise<SnapshotResult> => {
+  const { searchDir, extraDir, snapshotDir, isWindows, logger } = context;
+  const target = join(
+    snapshotDir,
+    resolveSnapshotRelativePath(file, searchDir, extraDir),
+  );
+
+  try {
+    await mkdir(dirname(target), { recursive: true });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : 'unknown error';
+    logger?.warn(
+      { file, reason },
+      'Failed to create snapshot directory, excluding from archive',
+    );
+    return { ok: false, source: file, reason };
+  }
+
+  // 1) Try platform-native safe copy (robocopy /B on Windows, cp on Linux).
+  const nativeCopy = isWindows
+    ? await safeCopyWithRobocopy(file, target)
+    : await safeCopyWithCp(file, target);
+
+  if (nativeCopy.ok) {
+    return {
+      ok: true,
+      target,
+      source: file,
+      method: isWindows ? 'robocopy' : 'cp',
+    };
+  }
+
+  logger?.debug(
+    { file, reason: nativeCopy.reason },
+    'Native safe-copy failed, falling back to Node readFile/writeFile',
+  );
+
+  // 2) Fallback to Node-level readFile/writeFile.
+  try {
+    const buf = await readFile(file);
+    await writeFile(target, buf);
+    return { ok: true, target, source: file, method: 'node' };
+  } catch (err) {
+    const nodeReason = err instanceof Error ? err.message : 'unknown error';
+    const reason = `native-copy: ${nativeCopy.reason} | node-copy: ${nodeReason}`;
+    logger?.warn(
+      { file, reason },
+      'Failed to snapshot file, excluding from archive',
+    );
+    return { ok: false, source: file, reason };
+  }
+};
+
+type CollectionReportInput = Readonly<{
+  isWindows: boolean;
+  logLookbackDays: number;
+  dockerSinceHours: number;
+  dockerTailLines: number | undefined;
+  collectLogsFromFiles: boolean;
+  candidateCount: number;
+  readableCount: number;
+  searchDir: string;
+  wellKnownLogDirsScanned: ReadonlyArray<DirScan>;
+  successfulSnapshots: ReadonlyArray<SnapshotSuccess>;
+  snapshotFailures: ReadonlyArray<SnapshotFailure>;
+}>;
+
+const buildCollectionReportLines = (
+  input: CollectionReportInput,
+): ReadonlyArray<string> => {
+  const {
+    isWindows,
+    logLookbackDays,
+    dockerSinceHours,
+    dockerTailLines,
+    collectLogsFromFiles,
+    candidateCount,
+    readableCount,
+    searchDir,
+    wellKnownLogDirsScanned,
+    successfulSnapshots,
+    snapshotFailures,
+  } = input;
+
+  const methodCounts = successfulSnapshots.reduce<Record<string, number>>(
+    (acc, r) => ({ ...acc, [r.method]: (acc[r.method] ?? 0) + 1 }),
+    {},
+  );
+
+  return [
+    'Gluesync Log Collection Report',
+    `Generated on: ${new Date().toISOString()}`,
+    `Platform: ${isWindows ? 'Windows' : 'Linux'}`,
+    `Log lookback: ${logLookbackDays} day(s)`,
+    `Docker log window: last ${dockerSinceHours}h`,
+    `Docker tail lines: ${
+      typeof dockerTailLines === 'number' ? String(dockerTailLines) : 'all'
+    }`,
+    `File-based log collection: ${
+      collectLogsFromFiles ? 'enabled' : 'disabled'
+    }`,
+    '',
+    '--- Enumerated candidates ---',
+    `Total candidates found:   ${candidateCount}`,
+    `Readable (passed access check): ${readableCount}`,
+    `Successfully snapshotted: ${successfulSnapshots.length}`,
+    `Failed to snapshot:       ${snapshotFailures.length}`,
+    '',
+    ...(snapshotFailures.length > 0
+      ? [
+          '--- Snapshot failures (files excluded from archive) ---',
+          ...snapshotFailures.flatMap(f => [
+            `  FAILED  ${f.source}`,
+            `    reason: ${f.reason}`,
+          ]),
+          '',
+        ]
+      : []),
+    '--- Search roots ---',
+    `  searchDir: ${searchDir}`,
+    ...(wellKnownLogDirsScanned.length > 0
+      ? [
+          '  Well-known mount points:',
+          ...wellKnownLogDirsScanned.map(
+            d =>
+              `    ${d.exists ? 'PRESENT' : 'MISSING'}  ${d.path}  (matched ${d.matched})`,
+          ),
+        ]
+      : []),
+    '',
+    '--- Snapshot method breakdown ---',
+    `  robocopy: ${methodCounts.robocopy ?? 0}`,
+    `  cp:       ${methodCounts.cp ?? 0}`,
+    `  node:     ${methodCounts.node ?? 0}`,
+    '',
+    '--- Files included in archive ---',
+    ...successfulSnapshots.map(r => `  OK  [${r.method}]  ${r.source}`),
+    '',
+  ];
+};
+
+type ArchiveCreationResult = Readonly<{
+  archivePath?: string;
+  legacyFallback?: boolean;
+  output?: string;
+}>;
+
+type CollectLogsContext = Readonly<{
+  ticket: string;
+  email: string;
+  isWindows: boolean;
+  localOnly: boolean;
+  logger?: Logger;
+}>;
+
+// Create archive with fallback to legacy script
+const createArchiveWithFallback = async (
+  snapshotDir: string,
+  outputDir: string,
+  allFilesToArchive: ReadonlyArray<string>,
+  context: CollectLogsContext,
+): Promise<ArchiveCreationResult> => {
+  const { ticket, email, isWindows, localOnly, logger } = context;
+
+  try {
+    const archivePath = await createArchive(
+      snapshotDir,
+      outputDir,
+      allFilesToArchive,
+      isWindows,
+      logger,
+    );
+    return { archivePath };
+  } catch (error) {
+    logger?.warn(
+      { error },
+      'Internal archive creation failed, falling back to legacy script',
+    );
+
+    if (localOnly) {
+      throw error;
+    }
+
+    const legacyResult = await collectLogsByScript({
+      ticketId: ticket,
+      email,
+    });
+
+    if (legacyResult.success) {
+      return {
+        legacyFallback: true,
+        output: formatOutput(
+          [
+            'Internal archive creation failed.',
+            'Legacy collect logs script completed successfully.',
+            legacyResult.output,
+          ].join('\n'),
+        ),
+      };
+    }
+
+    throw createCollectLogsError(
+      'Archive creation failed and legacy fallback also failed.',
+      legacyResult.output,
+    );
+  }
+};
+
+type UploadWithFallbackResult = Readonly<{
+  uploadedVia?: 'webdav' | 'ftp';
+  legacyFallback?: boolean;
+  output?: string;
+}>;
+
+// Upload with fallback to legacy script
+const uploadWithFallback = async (
+  archivePath: string,
+  context: CollectLogsContext,
+): Promise<UploadWithFallbackResult> => {
+  const { ticket, email, isWindows, logger } = context;
+
+  try {
+    // uploadArchive expects string args; use normalized ticket/email
+    const uploadedVia = await uploadArchive(
+      archivePath,
+      ticket,
+      email,
+      isWindows,
+      logger,
+    );
+
+    await rm(archivePath, { force: true });
+
+    return { uploadedVia };
+  } catch (error) {
+    logger?.warn(
+      { error },
+      'Internal upload failed, falling back to legacy collect logs script',
+    );
+
+    await rm(archivePath, { force: true });
+
+    const legacyResult = await collectLogsByScript({
+      ticketId: ticket,
+      email,
+    });
+
+    if (legacyResult.success) {
+      return {
+        legacyFallback: true,
+        output: formatOutput(
+          [
+            'Internal collector upload failed.',
+            'Legacy collect logs script completed successfully.',
+            legacyResult.output,
+          ].join('\n'),
+        ),
+      };
+    }
+
+    throw createCollectLogsError(
+      'Internal collector upload failed and legacy fallback also failed.',
+      legacyResult.output,
+    );
+  }
+};
+
+const validateCollectLogsInput = async (
+  options: CollectLogsOptions,
+  isWindows: boolean,
+): Promise<void> => {
+  const { ticketId, email, localOnly, logger } = options;
+
+  if (localOnly) {
+    return;
+  }
+
+  if (!ticketId || !email) {
+    throw createCollectLogsError(
+      'ticketId and email are required unless localOnly is true.',
+    );
+  }
+
+  if (!process.env.PROXY_HTTPS && !process.env.PROXY_HTTP) {
+    await validateCredentialConnectivity(ticketId, email, isWindows, logger);
+  }
+};
+
 const collectLogsInternally = async (
   options: CollectLogsOptions,
 ): Promise<CollectLogsResult> => {
@@ -1444,20 +1954,7 @@ const collectLogsInternally = async (
   const dockerSinceHours = parseDockerLogSinceHours(logLookbackDays);
   const dockerTailLines = parseDockerTailLines();
 
-  if (!localOnly && (!ticketId || !email)) {
-    throw createCollectLogsError(
-      'ticketId and email are required unless localOnly is true.',
-    );
-  }
-
-  if (
-    !localOnly &&
-    ticketId &&
-    email &&
-    !(!!process.env.PROXY_HTTPS || !!process.env.PROXY_HTTP)
-  ) {
-    await validateCredentialConnectivity(ticketId, email, isWindows, logger);
-  }
+  await validateCollectLogsInput(options, isWindows);
 
   const searchDir = await resolveSearchDir(isWindows);
 
@@ -1529,44 +2026,13 @@ const collectLogsInternally = async (
         )
       : [];
 
-    const collectFromDirSafe = async (
-      dir: string,
-    ): Promise<{
-      files: ReadonlyArray<string>;
-      scan: Readonly<{ path: string; exists: boolean; matched: number }>;
-    }> => {
-      try {
-        const dirStat = await stat(dir);
-        if (!dirStat.isDirectory()) {
-          return {
-            files: [],
-            scan: { path: dir, exists: false, matched: 0 },
-          };
-        }
-      } catch {
-        return {
-          files: [],
-          scan: { path: dir, exists: false, matched: 0 },
-        };
-      }
-
-      const matched = await collectFilesRecursively(
-        dir,
-        filePath => {
-          const extension = extname(filePath).toLowerCase();
-          return extension === '.log' || extension === '.err';
-        },
-        { excludeDir: extraDir, isWindows },
-      );
-
-      return {
-        files: matched,
-        scan: { path: dir, exists: true, matched: matched.length },
-      };
+    const scanOptions: FileCollectionOptions = {
+      excludeDir: extraDir,
+      isWindows,
     };
 
     const dirScanResults = await Promise.all(
-      wellKnownLogDirs.map(collectFromDirSafe),
+      wellKnownLogDirs.map(dir => collectFromDirSafe(dir, scanOptions)),
     );
     const wellKnownLogDirsScanned = dirScanResults.map(r => r.scan);
     const wellKnownLogFiles = dirScanResults.flatMap(r => r.files);
@@ -1574,19 +2040,8 @@ const collectLogsInternally = async (
     const recursiveLogFiles = collectLogsFromFiles
       ? await collectFilesRecursively(
           searchDir,
-          filePath => {
-            const extension = extname(filePath).toLowerCase();
-            const name = basename(filePath).toLowerCase();
-            return (
-              extension === '.log' ||
-              extension === '.err' ||
-              name.endsWith('.log.gz')
-            );
-          },
-          {
-            excludeDir: extraDir,
-            isWindows,
-          },
+          isLogOrArchivedLogFile,
+          scanOptions,
         )
       : [];
 
@@ -1594,19 +2049,9 @@ const collectLogsInternally = async (
       new Set([...wellKnownLogFiles, ...recursiveLogFiles]),
     );
 
-    const recentFileLogCandidates = await Promise.all(
-      fileLogFiles.map(async filePath => {
-        try {
-          const fileStats = await stat(filePath);
-          return fileStats.mtimeMs >= fileLogsCutoffMs ? filePath : null;
-        } catch {
-          return null;
-        }
-      }),
-    );
-
-    const recentFileLogs = recentFileLogCandidates.filter(
-      (filePath): filePath is string => filePath !== null,
+    const recentFileLogs = await filterRecentFiles(
+      fileLogFiles,
+      fileLogsCutoffMs,
     );
 
     // Diagnostics from extraDir
@@ -1630,302 +2075,61 @@ const collectLogsInternally = async (
       );
     }
 
-    // Snapshot files (copy into snapshotDir) and return list of targets.
-    //
-    // Strategy (per file, in order):
-    //   1. On Windows: robocopy /B (backup mode) — uses the Windows backup
-    //      API and bypasses share-mode restrictions on files that are open
-    //      for writing by another process (e.g. Logback file appender or
-    //      the Docker daemon). On Linux: plain `cp -p` — preserves mtimes
-    //      and streams without loading into memory.
-    //   2. Fallback: Node readFile + writeFile. Slower / not lock-friendly
-    //      on Windows but works when robocopy/cp are not on PATH.
-    //
-    // Failed snapshots are excluded from the archive and recorded in the
-    // collection report so support can see exactly what was dropped and why.
-    type SnapshotResult =
-      | Readonly<{
-          ok: true;
-          target: string;
-          source: string;
-          method: 'robocopy' | 'cp' | 'node';
-        }>
-      | Readonly<{ ok: false; source: string; reason: string }>;
-
-    const safeCopyWithRobocopy = async (
-      sourceFile: string,
-      targetFile: string,
-    ): Promise<Readonly<{ ok: true } | { ok: false; reason: string }>> => {
-      const sourceDirName = dirname(sourceFile);
-      const sourceFileName = basename(sourceFile);
-      const targetDirName = dirname(targetFile);
-      const targetFileName = basename(targetFile);
-
-      // /B          backup mode — opens via the Windows backup API,
-      //             bypasses share-mode locks on files open for writing
-      // /R:1 /W:1   one retry, one second wait (don't hang forever)
-      // /NJH /NJS   no job header / summary noise in stdout
-      // /NP /NDL    no progress / no directory list
-      // /COPY:DAT   data + attributes + timestamps; skip ACL/owner/audit
-      const args = [
-        sourceDirName,
-        targetDirName,
-        sourceFileName,
-        '/B',
-        '/R:1',
-        '/W:1',
-        '/NJH',
-        '/NJS',
-        '/NP',
-        '/NDL',
-        '/COPY:DAT',
-      ];
-
-      const result = await runCommandCapture('robocopy', args);
-
-      // robocopy exit codes 0..7 are "success-ish" (0/1 = no/files copied,
-      // 2/4 = extras/mismatched, 8+ = real failure). We accept 0..7.
-      if (result.exitCode >= 0 && result.exitCode <= 7) {
-        // robocopy preserves the original filename; rename if target differs.
-        if (sourceFileName !== targetFileName) {
-          const copied = join(targetDirName, sourceFileName);
-          try {
-            const buf = await readFile(copied);
-            await writeFile(targetFile, buf);
-            await rm(copied, { force: true });
-          } catch (err) {
-            return {
-              ok: false,
-              reason: `robocopy rename failed: ${err instanceof Error ? err.message : 'unknown'}`,
-            };
-          }
-        }
-        try {
-          await access(targetFile, constants.F_OK);
-        } catch {
-          return {
-            ok: false,
-            reason: `robocopy reported success (exit ${result.exitCode}) but target file was not created — robocopy may not be available`,
-          };
-        }
-        return { ok: true };
-      }
-
-      return {
-        ok: false,
-        reason: `robocopy exit ${result.exitCode}: ${(result.stderr || result.stdout).trim().slice(0, 300)}`,
-      };
-    };
-
-    const safeCopyWithCp = async (
-      sourceFile: string,
-      targetFile: string,
-    ): Promise<Readonly<{ ok: true } | { ok: false; reason: string }>> => {
-      const result = await runCommandCapture('cp', [
-        '-p',
-        sourceFile,
-        targetFile,
-      ]);
-
-      if (result.exitCode === 0) {
-        return { ok: true };
-      }
-
-      return {
-        ok: false,
-        reason: `cp exit ${result.exitCode}: ${(result.stderr || result.stdout).trim().slice(0, 300)}`,
-      };
+    const snapshotContext: SnapshotContext = {
+      searchDir,
+      extraDir,
+      snapshotDir,
+      isWindows,
+      logger,
     };
 
     const snapshotResults = await Promise.all(
-      readableFiles.map(async (file): Promise<SnapshotResult> => {
-        const rel = relative(searchDir, file);
-        const relExtra = relative(extraDir, file);
-
-        const safeRel = (() => {
-          if (rel && !rel.startsWith('..') && !isAbsolute(rel)) {
-            return rel;
-          }
-
-          if (!relExtra.startsWith('..')) {
-            return join('diagnostics', relExtra);
-          }
-
-          return basename(file);
-        })();
-
-        const target = join(snapshotDir, safeRel);
-
-        try {
-          await mkdir(dirname(target), { recursive: true });
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : 'unknown error';
-          logger?.warn(
-            { file, reason },
-            'Failed to create snapshot directory, excluding from archive',
-          );
-          return { ok: false, source: file, reason };
-        }
-
-        // 1) Try platform-native safe copy (robocopy /B on Windows, cp on Linux).
-        const nativeCopy = isWindows
-          ? await safeCopyWithRobocopy(file, target)
-          : await safeCopyWithCp(file, target);
-
-        if (nativeCopy.ok) {
-          return {
-            ok: true,
-            target,
-            source: file,
-            method: isWindows ? 'robocopy' : 'cp',
-          };
-        }
-
-        logger?.debug(
-          { file, reason: nativeCopy.reason },
-          'Native safe-copy failed, falling back to Node readFile/writeFile',
-        );
-
-        // 2) Fallback to Node-level readFile/writeFile.
-        try {
-          const buf = await readFile(file);
-          await writeFile(target, buf);
-          return { ok: true, target, source: file, method: 'node' };
-        } catch (err) {
-          const nodeReason =
-            err instanceof Error ? err.message : 'unknown error';
-          const reason = `native-copy: ${nativeCopy.reason} | node-copy: ${nodeReason}`;
-          logger?.warn(
-            { file, reason },
-            'Failed to snapshot file, excluding from archive',
-          );
-          return { ok: false, source: file, reason };
-        }
-      }),
+      readableFiles.map(file => snapshotFile(file, snapshotContext)),
     );
 
-    const filesToArchive = snapshotResults
-      .filter((r): r is Extract<SnapshotResult, { ok: true }> => r.ok)
-      .map(r => r.target);
+    const successfulSnapshots = snapshotResults.filter(
+      (r): r is SnapshotSuccess => r.ok,
+    );
+    const filesToArchive = successfulSnapshots.map(r => r.target);
 
     const snapshotFailures = snapshotResults.filter(
-      (r): r is Extract<SnapshotResult, { ok: false }> => !r.ok,
+      (r): r is SnapshotFailure => !r.ok,
     );
 
     // Write collection report into snapshotDir so it is always included in the archive.
     const collectionReportPath = join(snapshotDir, 'collection-report.txt');
-    const successfulSnapshots = snapshotResults.filter(
-      (r): r is Extract<SnapshotResult, { ok: true }> => r.ok,
-    );
 
-    const methodCounts = successfulSnapshots.reduce<Record<string, number>>(
-      (acc, r) => ({ ...acc, [r.method]: (acc[r.method] ?? 0) + 1 }),
-      {},
-    );
-
-    const reportLines = [
-      'Gluesync Log Collection Report',
-      `Generated on: ${new Date().toISOString()}`,
-      `Platform: ${isWindows ? 'Windows' : 'Linux'}`,
-      `Log lookback: ${logLookbackDays} day(s)`,
-      `Docker log window: last ${dockerSinceHours}h`,
-      `Docker tail lines: ${
-        typeof dockerTailLines === 'number' ? String(dockerTailLines) : 'all'
-      }`,
-      `File-based log collection: ${
-        collectLogsFromFiles ? 'enabled' : 'disabled'
-      }`,
-      '',
-      '--- Enumerated candidates ---',
-      `Total candidates found:   ${candidateFiles.length}`,
-      `Readable (passed access check): ${readableFiles.length}`,
-      `Successfully snapshotted: ${filesToArchive.length}`,
-      `Failed to snapshot:       ${snapshotFailures.length}`,
-      '',
-      ...(snapshotFailures.length > 0
-        ? [
-            '--- Snapshot failures (files excluded from archive) ---',
-            ...snapshotFailures.flatMap(f => [
-              `  FAILED  ${f.source}`,
-              `    reason: ${f.reason}`,
-            ]),
-            '',
-          ]
-        : []),
-      '--- Search roots ---',
-      `  searchDir: ${searchDir}`,
-      ...(wellKnownLogDirsScanned.length > 0
-        ? [
-            '  Well-known mount points:',
-            ...wellKnownLogDirsScanned.map(
-              d =>
-                `    ${d.exists ? 'PRESENT' : 'MISSING'}  ${d.path}  (matched ${d.matched})`,
-            ),
-          ]
-        : []),
-      '',
-      '--- Snapshot method breakdown ---',
-      `  robocopy: ${methodCounts.robocopy ?? 0}`,
-      `  cp:       ${methodCounts.cp ?? 0}`,
-      `  node:     ${methodCounts.node ?? 0}`,
-      '',
-      '--- Files included in archive ---',
-      ...successfulSnapshots.map(r => `  OK  [${r.method}]  ${r.source}`),
-      '',
-    ];
+    const reportLines = buildCollectionReportLines({
+      isWindows,
+      logLookbackDays,
+      dockerSinceHours,
+      dockerTailLines,
+      collectLogsFromFiles,
+      candidateCount: candidateFiles.length,
+      readableCount: readableFiles.length,
+      searchDir,
+      wellKnownLogDirsScanned,
+      successfulSnapshots,
+      snapshotFailures,
+    });
 
     await writeFile(collectionReportPath, reportLines.join('\n'), 'utf8');
     const allFilesToArchive = [...filesToArchive, collectionReportPath];
 
-    // Create archive with fallback to legacy script
-    const archiveCreationResult: {
-      archivePath?: string;
-      legacyFallback?: boolean;
-      output?: string;
-    } = await (async () => {
-      try {
-        const archivePath = await createArchive(
-          snapshotDir,
-          outputDir,
-          allFilesToArchive,
-          isWindows,
-          logger,
-        );
-        return { archivePath };
-      } catch (error) {
-        logger?.warn(
-          { error },
-          'Internal archive creation failed, falling back to legacy script',
-        );
+    const collectContext: CollectLogsContext = {
+      ticket,
+      email: emailAddr,
+      isWindows,
+      localOnly,
+      logger,
+    };
 
-        if (localOnly) {
-          throw error;
-        }
-
-        const legacyResult = await collectLogsByScript({
-          ticketId: ticket,
-          email: emailAddr,
-        });
-
-        if (legacyResult.success) {
-          return {
-            legacyFallback: true,
-            output: formatOutput(
-              [
-                'Internal archive creation failed.',
-                'Legacy collect logs script completed successfully.',
-                legacyResult.output,
-              ].join('\n'),
-            ),
-          };
-        }
-
-        throw createCollectLogsError(
-          'Archive creation failed and legacy fallback also failed.',
-          legacyResult.output,
-        );
-      }
-    })();
+    const archiveCreationResult = await createArchiveWithFallback(
+      snapshotDir,
+      outputDir,
+      allFilesToArchive,
+      collectContext,
+    );
 
     // If legacy fallback succeeded, return immediately
     if (archiveCreationResult.legacyFallback) {
@@ -1960,18 +2164,22 @@ const collectLogsInternally = async (
       );
     }
 
+    const collectionSummaryLines = [
+      `Collecting logs from last ${logLookbackDays} day(s).`,
+      describeDockerCollection(dockerSinceHours, dockerTailLines, swarm),
+      collectLogsFromFiles
+        ? 'File-based log collection enabled (default).'
+        : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
+      `Archive created: ${archivePath}`,
+    ];
+
     // Local-only branch: return without upload
     if (localOnly) {
       return {
         output: formatOutput(
           [
             'Local-only mode enabled. Credential pre-check skipped.',
-            `Collecting logs from last ${logLookbackDays} day(s).`,
-            describeDockerCollection(dockerSinceHours, dockerTailLines, swarm),
-            collectLogsFromFiles
-              ? 'File-based log collection enabled (default).'
-              : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
-            `Archive created: ${archivePath}`,
+            ...collectionSummaryLines,
             'Upload skipped (local-only mode).',
             `Archive available at: ${archivePath}`,
           ].join('\n'),
@@ -1980,62 +2188,7 @@ const collectLogsInternally = async (
       };
     }
 
-    // Upload with fallback to legacy script
-    const uploadResult: {
-      uploadedVia?: 'webdav' | 'ftp';
-      legacyFallback?: boolean;
-      output?: string;
-    } = await (async () => {
-      try {
-        // uploadArchive expects string args; use normalized ticket/email
-        const uploadedVia = await uploadArchive(
-          archivePath,
-          ticket,
-          emailAddr,
-          isWindows,
-          logger,
-        );
-
-        // only attempt to remove the archive if archivePath is a non-empty string
-        if (archivePath) {
-          await rm(archivePath, { force: true });
-        }
-
-        return { uploadedVia };
-      } catch (error) {
-        logger?.warn(
-          { error },
-          'Internal upload failed, falling back to legacy collect logs script',
-        );
-
-        if (archivePath) {
-          await rm(archivePath, { force: true });
-        }
-
-        const legacyResult = await collectLogsByScript({
-          ticketId: ticket,
-          email: emailAddr,
-        });
-
-        if (legacyResult.success) {
-          return {
-            legacyFallback: true,
-            output: formatOutput(
-              [
-                'Internal collector upload failed.',
-                'Legacy collect logs script completed successfully.',
-                legacyResult.output,
-              ].join('\n'),
-            ),
-          };
-        }
-
-        throw createCollectLogsError(
-          'Internal collector upload failed and legacy fallback also failed.',
-          legacyResult.output,
-        );
-      }
-    })();
+    const uploadResult = await uploadWithFallback(archivePath, collectContext);
 
     if (uploadResult.legacyFallback) {
       return { output: uploadResult.output! };
@@ -2046,12 +2199,7 @@ const collectLogsInternally = async (
       output: formatOutput(
         [
           'Credential pre-check succeeded.',
-          `Collecting logs from last ${logLookbackDays} day(s).`,
-          describeDockerCollection(dockerSinceHours, dockerTailLines, swarm),
-          collectLogsFromFiles
-            ? 'File-based log collection enabled (default).'
-            : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
-          `Archive created: ${archivePath}`,
+          ...collectionSummaryLines,
           uploadResult.uploadedVia === 'webdav'
             ? 'Archive uploaded successfully via WebDAV.'
             : 'Archive uploaded successfully via FTP fallback.',

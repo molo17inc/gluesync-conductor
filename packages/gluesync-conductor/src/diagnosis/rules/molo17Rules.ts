@@ -40,7 +40,7 @@ export const unexpectedResponse: Rule = facts => {
     isNon2xx,
   );
 
-  if (!observed || observed.httpStatus === undefined) {
+  if (observed?.httpStatus === undefined) {
     return undefined;
   }
 

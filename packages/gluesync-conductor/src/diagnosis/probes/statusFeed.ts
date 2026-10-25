@@ -123,10 +123,12 @@ export const interpretStatusFeed = (
       ? service.reason
       : undefined;
 
+  const reasonSuffix = reason ? `: ${reason}` : '';
+
   return withVerdict(
     result,
     'down',
-    `${serviceId} reported down${reason ? `: ${reason}` : ''}${age}`,
+    `${serviceId} reported down${reasonSuffix}${age}`,
     { reason, ageMinutes },
   );
 };

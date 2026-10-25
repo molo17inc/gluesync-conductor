@@ -1,5 +1,9 @@
 // The user may be empty (`http://:token@proxy`), the password may be missing.
-const CREDENTIALS_IN_URL = /([a-z][a-z0-9+.-]*:\/\/)[^/\s:@]*(?::[^/\s@]*)?@/gi;
+// A scheme starts at the first letter of a run of scheme characters. The
+// lookbehinds only let the match start there, so a long run without `://`
+// is scanned once instead of once per character (no quadratic backtracking).
+const CREDENTIALS_IN_URL =
+  /(?:(?<![a-z0-9+.-])|(?<=(?<![a-z0-9+.-])[0-9+.-]+))([a-z][a-z0-9+.-]*:\/\/)[^/\s:@]*(?::[^/\s@]*)?@/gi;
 
 /**
  * Masks `user:password@` embedded in any URL found in free text
@@ -24,7 +28,8 @@ export const describeProxyUrl = (value: string): RedactedProxy | undefined => {
 
     return {
       host: url.hostname,
-      port: parseInt(url.port, 10) || (url.protocol === 'https:' ? 443 : 80),
+      port:
+        Number.parseInt(url.port, 10) || (url.protocol === 'https:' ? 443 : 80),
       authenticated: url.username !== '',
     };
   } catch {
