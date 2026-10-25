@@ -135,9 +135,9 @@ const buildFinalLabels = (
   ];
 };
 
-const hasConductorTypeLabel = (
+export const hasConductorTypeLabel = (
   service:
-    | Readonly<{ labels?: Parameters<typeof toLabelStrings>[0] }>
+    | Readonly<{ labels?: NonNullable<Parameters<typeof toLabelStrings>[0]> }>
     | undefined,
 ): boolean => {
   if (!service) {

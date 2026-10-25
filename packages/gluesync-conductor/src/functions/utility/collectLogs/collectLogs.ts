@@ -2301,4 +2301,20 @@ const handler: CollectLogsHandler = async (req, reply) => {
   }
 };
 
+// Exposed so the specs can exercise the helpers without going through Fastify
+export const collectLogsInternals = {
+  runCommandCapture,
+  createArchive,
+  collectFromDirSafe,
+  filterRecentFiles,
+  snapshotFile,
+  safeCopyWithRobocopy,
+  safeCopyWithCp,
+  buildCollectionReportLines,
+  createArchiveWithFallback,
+  uploadWithFallback,
+  validateCollectLogsInput,
+  collectLogsInternally,
+};
+
 export default handler;
