@@ -441,7 +441,7 @@ describe('updateNormalBulk', () => {
       COMPOSE,
       [AGENT, CHRONOS, CORE_HUB],
       'ga',
-      dockerRunning({}),
+      { docker: dockerRunning({}) },
     );
 
     assert.deepEqual(orderedIds, [CORE_HUB, AGENT, CHRONOS]);
@@ -469,7 +469,7 @@ describe('updateNormalBulk', () => {
       }),
       [CORE_HUB],
       'ga',
-      dockerRunning({}),
+      { docker: dockerRunning({}) },
     );
 
     assert.equal(
@@ -487,7 +487,7 @@ describe('updateNormalBulk', () => {
       withServices({ sidecar: { image: 'busybox:1.36' } }),
       [],
       'ga',
-      dockerRunning({}),
+      { docker: dockerRunning({}) },
     );
 
     assert.deepEqual(orderedIds, [CORE_HUB, AGENT, CHRONOS, 'grafana']);
@@ -503,7 +503,7 @@ describe('updateNormalBulk', () => {
       COMPOSE,
       [CORE_HUB, CHRONOS],
       'beta',
-      dockerRunning({}),
+      { docker: dockerRunning({}) },
     );
 
     assert.deepEqual(orderedIds, [CORE_HUB]);
@@ -519,13 +519,9 @@ describe('updateNormalBulk', () => {
     const { calls, action } = recordingAction();
 
     await assert.rejects(
-      updateNormalBulk(
-        action,
-        COMPOSE,
-        [CORE_HUB, AGENT],
-        'ga',
-        dockerRunning({}),
-      ),
+      updateNormalBulk(action, COMPOSE, [CORE_HUB, AGENT], 'ga', {
+        docker: dockerRunning({}),
+      }),
       /Agent versions mismatch/,
     );
     assert.deepEqual(calls, []);
@@ -540,7 +536,7 @@ describe('updateNormalBulk', () => {
       COMPOSE,
       [CORE_HUB, AGENT, CHRONOS],
       'ga',
-      dockerUnreachable(),
+      { docker: dockerUnreachable() },
     );
 
     assert.deepEqual(

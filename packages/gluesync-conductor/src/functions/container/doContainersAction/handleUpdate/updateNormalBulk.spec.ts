@@ -104,13 +104,9 @@ describe('updateNormalBulk', () => {
   it('honours CORE_HUB_NAME when ordering', async () => {
     process.env.CORE_HUB_NAME = 'my-hub';
     const { bulk } = load({ effectiveIds: ['grafana', 'my-hub'] });
-    const { orderedIds } = await bulk(
-      async id => id,
-      compose,
-      [],
-      'ga',
-      { docker },
-    );
+    const { orderedIds } = await bulk(async id => id, compose, [], 'ga', {
+      docker,
+    });
     assert.deepEqual(orderedIds, ['my-hub', 'grafana']);
   });
 
