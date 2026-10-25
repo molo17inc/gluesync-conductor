@@ -83,14 +83,18 @@ const customizationChecks = post => {
 };
 
 // A lagging service may stay on its old tag or reach the target; every other must reach the target.
-const versionProblems = ({ pre, post, target, plan }) => {
-  const lagging = new Set(plan.lagging || []);
-  return Object.keys(SERVICES).flatMap(s => {
-    const tag = post.byService[s]?.tag;
-    if (!tag) return [`${s}: no container`];
-    if (lagging.has(s)) return tag === target[s] || tag === pre.byService[s]?.tag ? [] : [`${s}: ${tag} (neither old nor target)`];
-    return tag === target[s] ? [] : [`${s}: running ${tag}, expected ${target[s]}`];
-  });
+const versionProblem = (s, tag, { pre, target }, lagging) => {
+  if (!tag) return `${s}: no container`;
+  if (!lagging.has(s)) return tag === target[s] ? null : `${s}: running ${tag}, expected ${target[s]}`;
+  const allowed = tag === target[s] || tag === pre.byService[s]?.tag;
+  return allowed ? null : `${s}: ${tag} (neither old nor target)`;
+};
+
+const versionProblems = x => {
+  const lagging = new Set(x.plan.lagging || []);
+  return Object.keys(SERVICES)
+    .map(s => versionProblem(s, x.post.byService[s]?.tag, x, lagging))
+    .filter(Boolean);
 };
 
 const stackChecks = x => {
