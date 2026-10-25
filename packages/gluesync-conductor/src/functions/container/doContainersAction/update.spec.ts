@@ -180,6 +180,7 @@ const ENV_KEYS = [
   'IS_WINDOWS',
   'CORE_HUB_NAME',
   'DOCKER_HOST',
+  'CONDUCTOR_DOCKER_WAIT_MS',
 ] as const;
 const savedEnv = Object.fromEntries(
   ENV_KEYS.map(key => [key, process.env[key]]),
@@ -215,6 +216,8 @@ beforeEach(async () => {
   process.env.DOCKER_HOST = `unix://${join(projectDir, 'no-docker.sock')}`;
   delete process.env.IS_WINDOWS;
   delete process.env.CORE_HUB_NAME;
+  // ... and the wait for that Docker to come back must not take a minute.
+  process.env.CONDUCTOR_DOCKER_WAIT_MS = '200';
 });
 
 afterEach(async () => {
@@ -438,6 +441,7 @@ describe('updateNormalBulk', () => {
       COMPOSE,
       [AGENT, CHRONOS, CORE_HUB],
       'ga',
+      { docker: dockerRunning({}) },
     );
 
     assert.deepEqual(orderedIds, [CORE_HUB, AGENT, CHRONOS]);
@@ -465,6 +469,7 @@ describe('updateNormalBulk', () => {
       }),
       [CORE_HUB],
       'ga',
+      { docker: dockerRunning({}) },
     );
 
     assert.equal(
@@ -482,6 +487,7 @@ describe('updateNormalBulk', () => {
       withServices({ sidecar: { image: 'busybox:1.36' } }),
       [],
       'ga',
+      { docker: dockerRunning({}) },
     );
 
     assert.deepEqual(orderedIds, [CORE_HUB, AGENT, CHRONOS, 'grafana']);
@@ -497,6 +503,7 @@ describe('updateNormalBulk', () => {
       COMPOSE,
       [CORE_HUB, CHRONOS],
       'beta',
+      { docker: dockerRunning({}) },
     );
 
     assert.deepEqual(orderedIds, [CORE_HUB]);
@@ -512,7 +519,9 @@ describe('updateNormalBulk', () => {
     const { calls, action } = recordingAction();
 
     await assert.rejects(
-      updateNormalBulk(action, COMPOSE, [CORE_HUB, AGENT], 'ga'),
+      updateNormalBulk(action, COMPOSE, [CORE_HUB, AGENT], 'ga', {
+        docker: dockerRunning({}),
+      }),
       /Agent versions mismatch/,
     );
     assert.deepEqual(calls, []);
@@ -527,6 +536,7 @@ describe('updateNormalBulk', () => {
       COMPOSE,
       [CORE_HUB, AGENT, CHRONOS],
       'ga',
+      { docker: dockerUnreachable() },
     );
 
     assert.deepEqual(

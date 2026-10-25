@@ -10,6 +10,8 @@ export type WaitForServiceConvergedOptions = Readonly<{
   pollMs?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  // Waits for a Docker API that dropped (default: waitForDockerOutage)
+  waitForDocker?: (docker: Readonly<Docker>) => Promise<void>;
 }>;
 
 export type ConvergeResult =

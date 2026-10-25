@@ -105,6 +105,15 @@ const followSelfUpdate = async (it, entry, target, plan, oldId) => {
   return true;
 };
 
+// While a profile's Docker fault is in effect a round that fails is not "no progress": the driver
+// waits for the fault to end (profile.faultActive) before it judges the round.
+const waitFaultEnd = async (ctx, it) => {
+  const active = ctx.profile?.faultActive;
+  if (!active) return;
+  const ended = await waitFor('docker fault to end', async () => !(await active(ctx, it)), { timeoutMs: 60000, intervalMs: 500 });
+  if (!ended.ok) it.notes.push('docker fault still active 60s after the round ended');
+};
+
 // One "update all" click (sent `plan.concurrent` times in parallel). Returns whether
 // the user clicks again. `state` carries the retry and no-progress counters across rounds.
 const driveRound = async (ctx, it, target, plan, state, round) => {
@@ -141,6 +150,7 @@ const driveRound = async (ctx, it, target, plan, state, round) => {
   };
   it.rounds.push(entry);
   say(`  round ${round} (${phase}) -> ${entry.statuses.join(',')} in ${Math.round(entry.ms / 1000)}s ${entry.items.join(' ')}`);
+  await waitFaultEnd(ctx, it);
 
   // A profile that expects the first round to be refused: it is not an outage to wait out;
   // `drive` looks at what the refusal left behind, lifts the fault and goes on.

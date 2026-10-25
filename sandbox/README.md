@@ -63,7 +63,8 @@ The kit (`kit/docker-compose.template.yml`) mirrors `debug-container/linux/docke
 | corehub-auth-outage | `/authentication/me` returns 500 for 25s |
 | corehub-down | CoreHub container stopped for 40s, including across the conductor's own restart |
 | docker-socket-slow | 3s delay on every Docker API connection for 90s |
-| docker-socket-blip | Docker API refuses connections for 10s; `/version` and `/containers` are called during the blip |
+| docker-socket-blip | Docker API refuses connections for 10s; `/version` and `/containers` are called during the blip. The driver waits for the blip to end (`faultActive`) before it judges a round, so rounds that fail inside it do not count as "no progress" |
+| docker-proxy-down | the Docker socket proxy **container is stopped** for 10s (the API is gone, not just refusing) right after the conductor log shows compose recreating a service of the bulk update (`Container gluesync-grafana-1 Recreated`). The update must end with every service running, on its new image or rolled back (`stack.no-stopped-services`: nothing `created`-never-started or `exited`; `compose.matches-runtime`; no duplicates), and the next click converges (`minRounds: 8`). Without the conductor's Docker-outage handling it leaves services stopped, half recreated or on an image the compose file does not name |
 | concurrent-update | every update request is sent twice in parallel |
 | conductor-crash-mid-update | SIGKILL right after the conductor rewrites the compose file; the compose must be valid right after the kill and after the restart |
 | disk-full | the compose file's filesystem has 0 bytes free when the update is sent; the update must be refused with HTTP 507, `not enough free disk space` and `diagnosis.code` `DISK_FULL`, touching nothing; after the space is freed the retry updates everything |
@@ -76,6 +77,8 @@ The kit (`kit/docker-compose.template.yml`) mirrors `debug-container/linux/docke
 | conductor-bad-release | *(only with `--destructive`)* the new conductor image crashes on start |
 
 Pick profiles with `--profiles a,b`. Replay a run with the same `--seed`.
+
+A profile that injects a Docker fault can expose `faultActive(ctx, it)` (true while the fault is in effect, sync or async): after each update round the driver waits (up to 60s) for it to turn false before comparing the containers with those before the round. `docker-socket-blip` reads the socket proxy's chaos mode, `docker-proxy-down` the flag it sets while the proxy container is stopped. `resetChaos` also starts the proxy container again if a profile was cut short while it was stopped.
 
 `--profiles all` runs every non-destructive profile once, in the order of the table, minus `--exclude a,b` and `SANDBOX_EXCLUDE_PROFILES` (comma separated; an unknown name is an error). `--shard i/n` (1-based) keeps the profiles at positions `k` of that list with `k % n == i-1`, and implies `--profiles all`; `--iterations` is ignored for `all` and for a shard. `iterate` exits 1 if any iteration FAILs (WARN does not), and writes `junit.xml` next to `report.md`: one test case per iteration, named after the profile.
 

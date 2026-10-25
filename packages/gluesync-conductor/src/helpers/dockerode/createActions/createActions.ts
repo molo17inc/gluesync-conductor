@@ -20,10 +20,15 @@ import { autoReboot } from '../../autoReboot/autoReboot';
 import ensureVolumeDirs from '../../ensureVolumeDirs/ensureVolumeDirs';
 import { enableUpdateMode } from '../../../plugins/apiBlockerAsUpdating';
 import restartWindowsDependentServices from '../restartWindowsDependentServices/restartWindowsDependentServices';
-import { retryCmd, shouldRetryError } from '../retryHelper/retryHelper';
+import { retryCmd } from '../retryHelper/retryHelper';
 import verifyServiceStable from '../../verifyServiceStable/verifyServiceStable';
 import { getDecidedOrchestrator } from '../../orchestrator/getOrchestrator/getOrchestrator';
 import createSwarmActions from '../../swarm/createSwarmActions/createSwarmActions';
+import waitForDockerOutage, {
+  dockerWaitMs,
+} from '../waitForDockerOutage/waitForDockerOutage';
+import { PREFLIGHT_MAX_MS } from '../waitForDockerPreflight/waitForDockerPreflight';
+import { getDocker } from '../../../utils/docker/getDocker';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
@@ -32,8 +37,39 @@ const CHRONOS_SERVICE = process.env.CHRONOS_NAME || 'gluesync-chronos';
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
 
+// docker-compose (the npm package) rejects with a plain { exitCode, err, out }
+// object, not an Error: nothing downstream (the retry check, the logs) could
+// read a message from it. The compose output becomes the message, so a Docker
+// connection error is recognised as one.
+export const toComposeError = (failure: unknown): Error => {
+  if (failure instanceof Error) {
+    return failure;
+  }
+  const { err, out, exitCode } = (failure ?? {}) as Partial<
+    Record<'err' | 'out' | 'exitCode', unknown>
+  >;
+  const message = [err, out]
+    .map(text => (typeof text === 'string' ? text.trim() : ''))
+    .find(text => text !== '');
+  return Object.assign(new Error(message ?? 'docker-compose failed'), {
+    exitCode: typeof exitCode === 'number' ? exitCode : null,
+  });
+};
+
+const failOnExitCode = (
+  result: Readonly<IDockerComposeResult>,
+): IDockerComposeResult => {
+  if (result.exitCode === null || result.exitCode > 0) {
+    throw toComposeError(result);
+  }
+  return result;
+};
+
 /**
- * Executes a docker-compose command with functional retry logic
+ * Executes a docker-compose command with functional retry logic. A Docker API
+ * that drops (the compose CLI says "error during connect", "connection refused",
+ * ...) is waited for and the command tried again; any other failure (a bad
+ * image, a port conflict) is final.
  */
 export const runCmd: RunCmd = async (
   cmdFn,
@@ -65,32 +101,16 @@ export const runCmd: RunCmd = async (
       }
     : commonOptions;
 
-  const logger = getLogger();
-
   const exec = (): Promise<unknown> =>
-    cmdFn(options).then((result: Readonly<unknown>) => {
-      const typed = result as Readonly<IDockerComposeResult>;
-      const msg = typed.out.trim() || typed.err.trim();
-
-      if (typed.exitCode === null || typed.exitCode > 0) {
-        if (!isWindows || !shouldRetryError(typed, msg)) {
-          throw new Error(msg);
-        }
-        throw new Error(msg);
-      }
-
-      return typed;
+    cmdFn(options).then(failOnExitCode, (error_: unknown) => {
+      throw toComposeError(error_);
     });
 
-  const final = await retryCmd(1, maxRetries, exec, logger, id);
+  const final = await retryCmd(1, maxRetries, exec, getLogger(), id, () =>
+    waitForDockerOutage(getDocker()),
+  );
 
-  const finalMessage = final.out.trim() || final.err.trim();
-
-  if (final.exitCode === null || final.exitCode > 0) {
-    throw new Error(finalMessage);
-  }
-
-  return finalMessage;
+  return final.out.trim() || final.err.trim();
 };
 
 const composeActions = ({
@@ -128,6 +148,13 @@ const composeActions = ({
       return `Agent ${id} undeployed successfully`;
     },
     update: async (id: string) => {
+      // Nothing is touched while the Docker API is down: this fails early, with
+      // an error that says so, instead of halfway through the update.
+      await waitForDockerOutage(
+        docker,
+        Math.min(dockerWaitMs(), PREFLIGHT_MAX_MS),
+      );
+
       await runCmd(pullAll, id, filename, ['--include-deps']);
 
       if (id === CONDUCTOR_SERVICE) {

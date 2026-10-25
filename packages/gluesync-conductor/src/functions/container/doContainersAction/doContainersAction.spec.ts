@@ -1245,7 +1245,7 @@ describe('doContainersAction on Docker Swarm', () => {
       assert.equal(reply.statusCode, 200);
       assert.equal(pruned, 0);
       assert.equal(body(reply).data.pruneResult, undefined);
-      assert.deepEqual(loaded.calls.bulk[0][4], { swarm: true });
+      assert.equal((loaded.calls.bulk[0][4] as { swarm: boolean }).swarm, true);
       assert.equal(loaded.calls.updateMode, 0);
       assert.ok(
         loaded.calls.logs.some(l => /swarm mode: not pruning images/.test(l)),

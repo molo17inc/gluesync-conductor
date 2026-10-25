@@ -82,18 +82,51 @@ const customizationChecks = post => {
   ];
 };
 
+// A lagging service may stay on its old tag or reach the target; every other must reach the target.
+const versionProblem = (s, tag, { pre, target }, lagging) => {
+  if (!tag) return `${s}: no container`;
+  if (!lagging.has(s)) return tag === target[s] ? null : `${s}: running ${tag}, expected ${target[s]}`;
+  const allowed = tag === target[s] || tag === pre.byService[s]?.tag;
+  return allowed ? null : `${s}: ${tag} (neither old nor target)`;
+};
+
+const versionProblems = x => {
+  const lagging = new Set(x.plan.lagging || []);
+  return Object.keys(SERVICES)
+    .map(s => versionProblem(s, x.post.byService[s]?.tag, x, lagging))
+    .filter(Boolean);
+};
+
+// Containers left stopped, never started, or restarting on their own after the update.
+const containerStateChecks = (pre, post, plan, crash) => {
+  const looping = post.containers
+    .filter(c => !crash.has(c.service) && c.service !== 'gluesync-conductor')
+    .filter(c => {
+      const before = pre.containers.find(p => p.id === c.id);
+      return c.state === 'restarting' || (before && c.restartCount > before.restartCount);
+    })
+    .map(c => `${c.service} (${c.state}, restarts ${c.restartCount})`);
+  const idle = post.containers
+    .filter(c => !crash.has(c.service) && !(plan.conductorMayDie && c.service === 'gluesync-conductor'))
+    .filter(c => ['created', 'exited', 'dead', 'paused'].includes(c.state))
+    .map(c => `${c.service} (${c.name}: ${c.state}, image ${c.image})`);
+  return [
+    result(
+      'stack',
+      'stack.no-stopped-services',
+      idle.length === 0,
+      idle.length ? `containers left stopped or created but never started: ${idle.join('; ')}` : 'every kit container is running',
+    ),
+    result('stack', 'stack.no-crash-loops', looping.length === 0, looping.length ? looping.join('; ') : 'no unexpected restarts'),
+  ];
+};
+
 const stackChecks = x => {
-  const { pre, post, target, plan } = x;
+  const { pre, post, plan } = x;
   const out = [];
-  const lagging = new Set(plan.lagging || []);
   const crash = new Set(plan.crashImages || []);
 
-  const wrong = Object.keys(SERVICES).flatMap(s => {
-    const tag = post.byService[s]?.tag;
-    if (!tag) return [`${s}: no container`];
-    if (lagging.has(s)) return tag === target[s] || tag === pre.byService[s]?.tag ? [] : [`${s}: ${tag} (neither old nor target)`];
-    return tag === target[s] ? [] : [`${s}: running ${tag}, expected ${target[s]}`];
-  });
+  const wrong = versionProblems(x);
   out.push(result('stack', 'stack.target-versions', wrong.length === 0, wrong.length ? wrong.join('; ') : `all services at expected versions (${plan.expect})`));
 
   const services = post.compose.parsed?.services || {};
@@ -125,16 +158,9 @@ const stackChecks = x => {
     ),
   );
 
-  const looping = post.containers
-    .filter(c => !crash.has(c.service) && c.service !== 'gluesync-conductor')
-    .filter(c => {
-      const before = pre.containers.find(p => p.id === c.id);
-      return c.state === 'restarting' || (before && c.restartCount > before.restartCount);
-    })
-    .map(c => `${c.service} (${c.state}, restarts ${c.restartCount})`);
   out.push(
     ...badReleaseChecks(pre, post, plan),
-    result('stack', 'stack.no-crash-loops', looping.length === 0, looping.length ? looping.join('; ') : 'no unexpected restarts'),
+    ...containerStateChecks(pre, post, plan, crash),
     result(
       'stack',
       'stack.no-duplicate-containers',

@@ -46,6 +46,7 @@ export const retryCmd: RetryCmd = (
   fn,
   logger,
   id,
+  beforeRetry,
 ): Promise<IDockerComposeResult> =>
   fn()
     .then(result => result as IDockerComposeResult)
@@ -66,6 +67,8 @@ export const retryCmd: RetryCmd = (
       );
 
       await delay(retryDelayMs(attempt));
+      // e.g. wait for the Docker API to answer again before the next attempt.
+      await beforeRetry?.();
 
-      return retryCmd(attempt + 1, maxRetries, fn, logger, id);
+      return retryCmd(attempt + 1, maxRetries, fn, logger, id, beforeRetry);
     });

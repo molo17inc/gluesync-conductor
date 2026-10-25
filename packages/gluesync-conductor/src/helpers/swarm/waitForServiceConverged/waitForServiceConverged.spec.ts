@@ -404,6 +404,34 @@ describe('waitForServiceConverged', () => {
     );
   });
 
+  it('waits for Docker through a dropped connection and fails when it does not come back', async () => {
+    const { now, sleep } = clock();
+    const waits: string[] = [];
+    const { docker } = fakeSwarmDocker({
+      services: () => {
+        throw Object.assign(new Error('connect ECONNREFUSED'), {
+          code: 'ECONNREFUSED',
+        });
+      },
+    });
+
+    const result = await waitForServiceConverged(docker, NAME, {
+      ...options,
+      now,
+      sleep,
+      waitForDocker: async () => {
+        waits.push('wait');
+        throw new Error('Docker daemon not ready within 60000ms');
+      },
+    });
+
+    assert.deepEqual(waits, ['wait']);
+    assert.match(
+      (result as { reason: string }).reason,
+      /Docker is not reachable: Docker daemon not ready within 60000ms/,
+    );
+  });
+
   it('does not wait for the window when UPDATE_VERIFY_SECONDS is 0', async () => {
     process.env.UPDATE_VERIFY_SECONDS = '0';
     const { state, now, sleep } = clock();
