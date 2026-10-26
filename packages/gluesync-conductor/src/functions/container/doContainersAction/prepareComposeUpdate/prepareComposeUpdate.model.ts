@@ -5,4 +5,11 @@ export type PrepareComposeUpdate = (
   composeJson: RawComposeFile,
   requestIds: readonly string[],
   releaseChannel: ReleaseChannelTypes,
-) => Promise<readonly string[]>;
+  options?: Readonly<{ swarm?: boolean }>,
+) => Promise<
+  Readonly<{
+    effectiveIds: readonly string[];
+    // Requested services left out of this update, with the reason.
+    skipped: ReadonlyArray<Readonly<{ id: string; reason: string }>>;
+  }>
+>;

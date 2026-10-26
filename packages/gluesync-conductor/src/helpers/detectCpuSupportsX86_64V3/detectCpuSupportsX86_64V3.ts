@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 const REQUIRED_FLAGS = [
@@ -23,7 +23,9 @@ const detectCpuSupportsX8664V3 = (): boolean => {
 
   const arch = (() => {
     try {
-      const value = execSync('uname -m', { encoding: 'utf8' }).trim();
+      const value = execFileSync('/bin/uname', ['-m'], {
+        encoding: 'utf8',
+      }).trim();
       console.log(`[CPU] uname -m → ${value}`);
       return value;
     } catch (err) {

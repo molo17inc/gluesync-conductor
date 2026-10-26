@@ -1,12 +1,17 @@
 import {
   ComposePort,
+  ComposeServiceDeploy,
   ComposeVolume,
   LabelPrefix,
 } from '../../../models/composeFile.model';
+import { ConductorServiceTypes } from '../../../models/conductor.model';
 import { sanitizeChronosRouterLabels } from '../../healChronosTraefikRule/chronosRouterRule';
 import buildEnvFileConf from '../../buildEnvFileConf/buildEnvFileConf';
 import mergeComposeKeyValueField from '../mergeKeyValueStrings/mergeKeyValueStrings';
-import { CreateComposeService } from './createComposeService.model';
+import {
+  CreateComposeService,
+  CreateComposeServiceOptions,
+} from './createComposeService.model';
 
 // Universal port mapper function
 const mapPorts = (ports: ReadonlyArray<string> | ReadonlyArray<ComposePort>) =>
@@ -94,6 +99,124 @@ const mapVolumes = (
     return acc;
   }, []);
 
+type Resources = Readonly<NonNullable<ComposeServiceDeploy['resources']>>;
+
+type PlatformPaths = Readonly<{
+  sharedPath: string;
+  dataPath: string;
+  logsPath: string;
+}>;
+
+const resolvePlatformPaths = (isWindows: boolean): PlatformPaths => {
+  const basePath = isWindows ? String.raw`C:\opt\gluesync` : '/opt/gluesync';
+
+  return {
+    sharedPath: isWindows
+      ? String.raw`${basePath}\shared`
+      : `${basePath}/shared`,
+    dataPath: isWindows ? String.raw`${basePath}\data` : `${basePath}/data`,
+    logsPath: isWindows ? String.raw`${basePath}\logs` : `${basePath}/logs`,
+  };
+};
+
+// Not a `/\/+$/` replace: that one is quadratic on a long run of slashes
+const stripTrailingSlashes = (value: string): string =>
+  value.slice(0, value.split('').findLastIndex(char => char !== '/') + 1);
+
+const buildDefaultVolumes = (
+  serviceType: ConductorServiceTypes,
+  serviceId: string,
+  isWindows: boolean,
+  { sharedPath, dataPath, logsPath }: PlatformPaths,
+): ReadonlyArray<string> => {
+  const configDir = stripTrailingSlashes(
+    process.env.GLUESYNC_CONFIG_DIR || '.',
+  );
+  const separator = isWindows ? '\\' : '/';
+
+  const mountLegacyFileConfig =
+    process.env.MOUNT_LEGACY_FILE_CONFIG?.toLowerCase() === 'true';
+
+  const agentVolumes =
+    serviceType === 'agent'
+      ? [`./logs/${serviceId}:${logsPath}`, `./data/${serviceId}:${dataPath}`]
+      : [];
+
+  return mountLegacyFileConfig
+    ? [
+        `${configDir}/gs-license.dat:${dataPath}${separator}gs-license.dat:ro`,
+        `${configDir}/logback.xml:${dataPath}${separator}logback.xml:ro`,
+        `${configDir}/security-config.json:${dataPath}${separator}security-config.json:ro`,
+        `${configDir}/gluesync.com.jks:${dataPath}${separator}gluesync.com.jks:ro`,
+        ...agentVolumes,
+      ]
+    : [`${configDir}:${sharedPath}:ro`, ...agentVolumes];
+};
+
+const hasResourceSettings = (resources: Resources): boolean =>
+  Object.keys(resources.limits || {}).length > 0 ||
+  Object.keys(resources.reservations || {}).length > 0;
+
+// Swarm ignores `restart:`, `depends_on` and the container name: the
+// restart policy lives in `deploy`, and tasks find each other by service name
+// on the overlay network the stack declares
+const buildSwarmDeploy = (
+  resources: Resources,
+  currentDeploy?: ComposeServiceDeploy,
+) => ({
+  ...currentDeploy,
+  restart_policy: currentDeploy?.restart_policy ?? {
+    condition: 'on-failure' as const,
+  },
+  // What the request says replaces the old limits, like in compose mode
+  resources: hasResourceSettings(resources) ? resources : undefined,
+});
+
+const buildDeploy = (
+  resources: Resources,
+  swarm: CreateComposeServiceOptions['swarm'],
+) => {
+  if (swarm) {
+    return buildSwarmDeploy(resources, swarm.currentDeploy);
+  }
+
+  return hasResourceSettings(resources) ? { resources } : undefined;
+};
+
+const buildEnvironment = (
+  serviceType: ConductorServiceTypes,
+  {
+    id,
+    serviceId,
+    agentType,
+    nickname,
+    environment,
+    isWindows,
+    sharedPath,
+  }: Readonly<
+    Pick<
+      CreateComposeServiceOptions,
+      'id' | 'serviceId' | 'agentType' | 'nickname'
+    > & {
+      environment: Readonly<Record<string, string>>;
+      isWindows: boolean;
+      sharedPath: string;
+    }
+  >,
+): ReadonlyArray<string> =>
+  Object.entries({
+    ...environment,
+    ...(agentType && { TYPE: agentType }),
+    TAG: nickname || serviceId,
+    ...(serviceType === 'agent' && {
+      INITIAL_AGENT_ID: id,
+      LOG_CONFIG_FILE: isWindows
+        ? String.raw`${sharedPath}\logback.xml`
+        : '/opt/gluesync/shared/logback.xml',
+      ...(isWindows && { GLUESYNC_HOST: ['gluesync-core-hub'] }),
+    }),
+  }).map(([key, value]) => `${key}=${value}`);
+
 const createComposeService: CreateComposeService = (
   serviceType,
   {
@@ -110,6 +233,7 @@ const createComposeService: CreateComposeService = (
     resources = {},
     healthcheck,
     dependsOn,
+    swarm,
   },
 ) => {
   const labelsForCompose = sanitizeChronosRouterLabels(labels);
@@ -120,59 +244,18 @@ const createComposeService: CreateComposeService = (
   };
 
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
-
-  const basePath = isWindows ? 'C:\\opt\\gluesync' : '/opt/gluesync';
-  const sharedPath = isWindows ? `${basePath}\\shared` : `${basePath}/shared`;
-  const dataPath = isWindows ? `${basePath}\\data` : `${basePath}/data`;
-  const logsPath = isWindows ? `${basePath}\\logs` : `${basePath}/logs`;
-
-  const configDir = (process.env.GLUESYNC_CONFIG_DIR || '.').replace(
-    /\/+$/,
-    '',
+  const paths = resolvePlatformPaths(isWindows);
+  const defaultVolumes = buildDefaultVolumes(
+    serviceType,
+    serviceId,
+    isWindows,
+    paths,
   );
-
-  const mountLegacyFileConfig =
-    process.env.MOUNT_LEGACY_FILE_CONFIG?.toLowerCase() === 'true';
-
-  const defaultVolumes = mountLegacyFileConfig
-    ? [
-        `${configDir}/gs-license.dat:${dataPath}${
-          isWindows ? '\\' : '/'
-        }gs-license.dat:ro`,
-        `${configDir}/logback.xml:${dataPath}${
-          isWindows ? '\\' : '/'
-        }logback.xml:ro`,
-        `${configDir}/security-config.json:${dataPath}${
-          isWindows ? '\\' : '/'
-        }security-config.json:ro`,
-        `${configDir}/gluesync.com.jks:${dataPath}${
-          isWindows ? '\\' : '/'
-        }gluesync.com.jks:ro`,
-        ...(serviceType === 'agent'
-          ? [
-              `./logs/${serviceId}:${logsPath}`,
-              `./data/${serviceId}:${dataPath}`,
-            ]
-          : []),
-      ]
-    : [
-        `${configDir}:${sharedPath}:ro`,
-        ...(serviceType === 'agent'
-          ? [
-              `./logs/${serviceId}:${logsPath}`,
-              `./data/${serviceId}:${dataPath}`,
-            ]
-          : []),
-      ];
 
   return {
     image: `molo17/${imageName}:${tag || 'latest'}`,
-    restart: 'unless-stopped',
-    deploy:
-      Object.keys(resources.limits || {}).length > 0 ||
-      Object.keys(resources.reservations || {}).length > 0
-        ? { resources }
-        : undefined,
+    ...(!swarm && { restart: 'unless-stopped' }),
+    deploy: buildDeploy(resources, swarm),
     labels: Object.entries({
       ...labelsForCompose,
       ...defaultLabels,
@@ -180,18 +263,15 @@ const createComposeService: CreateComposeService = (
       (acc, [key, value]) => (value ? [...acc, `${key}=${value}`] : acc),
       [],
     ),
-    environment: Object.entries({
-      ...environment,
-      ...(agentType && { TYPE: agentType }),
-      TAG: nickname || serviceId,
-      ...(serviceType === 'agent' && {
-        INITIAL_AGENT_ID: id,
-        LOG_CONFIG_FILE: isWindows
-          ? `${sharedPath}\\logback.xml`
-          : '/opt/gluesync/shared/logback.xml',
-        ...(isWindows && { GLUESYNC_HOST: ['gluesync-core-hub'] }),
-      }),
-    }).map(([key, value]) => `${key}=${value}`),
+    environment: buildEnvironment(serviceType, {
+      id,
+      serviceId,
+      agentType,
+      nickname,
+      environment,
+      isWindows,
+      sharedPath: paths.sharedPath,
+    }),
     ...(ports && ports.length > 0 && { ports: mapPorts(ports) }),
     volumes: mergeComposeKeyValueField(
       'volumes',
@@ -199,9 +279,9 @@ const createComposeService: CreateComposeService = (
       mapVolumes(volumes),
     ),
 
-    networks: [isWindows ? 'gluesync-windows-net' : 'gluesync-net'],
+    networks: [isWindows && !swarm ? 'gluesync-windows-net' : 'gluesync-net'],
     healthcheck,
-    depends_on: dependsOn,
+    depends_on: swarm ? undefined : dependsOn,
     env_file: buildEnvFileConf(),
   };
 };

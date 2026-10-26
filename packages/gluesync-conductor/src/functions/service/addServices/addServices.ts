@@ -1,3 +1,5 @@
+import { getDecidedOrchestrator } from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator';
+import buildModeUnknownReply from '../../../helpers/orchestrator/buildModeUnknownReply/buildModeUnknownReply';
 import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import processServices from '../../../helpers/processService/processService';
@@ -11,8 +13,17 @@ import createService from '../../../helpers/processService/service.factory';
 import serviceValidation from '../../../helpers/serviceValidation/serviceValidation';
 import { castObject } from '../../../helpers/composeFile/extractKeyValue/extractKeyValue';
 import cleanResults from '../../../helpers/cleanResults/cleanResults';
+import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
 
 const handler: AddServicesHandler = async (req, reply) => {
+  // Not knowing compose from swarm, the file would be written for the wrong one
+  const orchestrator = await getDecidedOrchestrator(req.server.docker);
+
+  if (!orchestrator) {
+    reply.code(503).send(buildModeUnknownReply());
+    return;
+  }
+
   try {
     const { raw } = castObject<AddServicesQuerystring>(req.query) || false;
     const services: ReadonlyArray<Service> = req.body.services ?? [];
@@ -35,6 +46,7 @@ const handler: AddServicesHandler = async (req, reply) => {
           ...service,
           id: service.id,
           resources: { reservations, limits },
+          ...(orchestrator.mode === 'swarm' && { swarm: {} }),
         }),
     );
 
@@ -45,9 +57,20 @@ const handler: AddServicesHandler = async (req, reply) => {
 
     reply.code(200).send(response);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const local = buildLocalErrorReply(
+      error,
+      `Failed to add services: ${message}`,
+    );
+
+    if (local) {
+      reply.code(local.statusCode).send(local.body);
+      return;
+    }
+
     reply.code(500).send({
       success: false,
-      error: `Failed to add services: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Failed to add services: ${message}`,
     });
   }
 };

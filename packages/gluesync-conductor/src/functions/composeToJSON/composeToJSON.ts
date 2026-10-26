@@ -11,6 +11,7 @@ import { redactServices } from '../../helpers/redactedServices/redactedServices'
 import { readComposeFile } from '../../helpers/composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../../helpers/composeFile/writeComposeFile/writeComposeFile';
 import { castObject } from '../../helpers/composeFile/extractKeyValue/extractKeyValue';
+import buildLocalErrorReply from '../../diagnosis/buildLocalErrorReply';
 
 const handler: ComposeToJSONHandler = async (req, reply) => {
   try {
@@ -42,10 +43,21 @@ const handler: ComposeToJSONHandler = async (req, reply) => {
     req.log.error(
       `Error getting compose file: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
     );
+    const message = error instanceof Error ? error.message : String(error);
+    const local = buildLocalErrorReply(
+      error,
+      `Failed to get compose file: ${message}`,
+    );
+
+    if (local) {
+      reply.code(local.statusCode).send(local.body);
+      return;
+    }
+
     reply.code(500);
     reply.send({
       success: false,
-      error: `Failed to get compose file: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Failed to get compose file: ${message}`,
     });
   }
 };

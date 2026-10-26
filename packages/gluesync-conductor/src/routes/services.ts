@@ -4,6 +4,10 @@ import editServices from '../functions/service/editServices/editServices';
 import getServices from '../functions/service/getServices/getServices';
 import getAgentVersion from '../functions/service/getServiceVersion/getServiceVersion';
 import { requireManage } from '../security';
+import {
+  DIAGNOSIS_REPLY_PROPERTY,
+  DISK_FULL_REPLY_SCHEMA,
+} from '../diagnosis/diagnosisReplySchema';
 
 const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.post('/services', {
@@ -143,12 +147,14 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
           required: ['success', 'error'],
           additionalProperties: false,
         },
+        507: DISK_FULL_REPLY_SCHEMA,
         500: {
           type: 'object',
           properties: {
             success: { type: 'boolean', const: false },
             error: { type: 'string' },
             details: { type: 'string', nullable: true },
+            diagnosis: DIAGNOSIS_REPLY_PROPERTY,
           },
           required: ['success', 'error'],
           additionalProperties: false,
@@ -295,12 +301,14 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
           required: ['success', 'error'],
           additionalProperties: false,
         },
+        507: DISK_FULL_REPLY_SCHEMA,
         500: {
           type: 'object',
           properties: {
             success: { type: 'boolean', const: false },
             error: { type: 'string' },
             details: { type: 'string', nullable: true },
+            diagnosis: DIAGNOSIS_REPLY_PROPERTY,
           },
           required: ['success', 'error'],
           additionalProperties: false,
@@ -358,6 +366,7 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
             success: { type: 'boolean', const: false },
             error: { type: 'string' },
             details: { type: 'string', nullable: true },
+            diagnosis: DIAGNOSIS_REPLY_PROPERTY,
           },
           required: ['success', 'error'],
           additionalProperties: false,
@@ -420,6 +429,7 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
             success: { type: 'boolean', const: false },
             error: { type: 'string' },
             details: { type: 'string', nullable: true },
+            diagnosis: DIAGNOSIS_REPLY_PROPERTY,
           },
           required: ['success', 'error'],
           additionalProperties: false,
@@ -484,10 +494,26 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
         },
         502: {
           type: 'object',
+          description:
+            'The update service could not be reached or answered unexpectedly. `diagnosis` explains who is at fault and what to do.',
           properties: {
             success: { type: 'boolean', const: false },
             error: { type: 'string' },
             details: { type: 'string', nullable: true },
+            diagnosis: { type: 'object', additionalProperties: true },
+          },
+          required: ['success', 'error'],
+          additionalProperties: true,
+        },
+        503: {
+          type: 'object',
+          description:
+            'The MOLO17 update service is down, or Conductor itself is not ready (updating, Docker starting). `diagnosis.owner` tells which.',
+          properties: {
+            success: { type: 'boolean', const: false },
+            error: { type: 'string' },
+            details: { type: 'string', nullable: true },
+            diagnosis: { type: 'object', additionalProperties: true },
           },
           required: ['success', 'error'],
           additionalProperties: true,
@@ -498,6 +524,7 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
             success: { type: 'boolean', const: false },
             error: { type: 'string' },
             details: { type: 'string', nullable: true },
+            diagnosis: DIAGNOSIS_REPLY_PROPERTY,
           },
           required: ['success', 'error'],
           additionalProperties: true,

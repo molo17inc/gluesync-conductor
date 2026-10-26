@@ -1,3 +1,5 @@
+import { getDecidedOrchestrator } from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator';
+import buildModeUnknownReply from '../../../helpers/orchestrator/buildModeUnknownReply/buildModeUnknownReply';
 import serviceValidation from '../../../helpers/serviceValidation/serviceValidation';
 import cleanResults from '../../../helpers/cleanResults/cleanResults';
 import createComposeService from '../../../helpers/composeFile/createComposeService/createComposeService';
@@ -10,8 +12,17 @@ import {
   EditServicesQuerystring,
   EditServicesSuccessResponse,
 } from './editServices.model';
+import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
 
 const handler: EditServicesHandler = async (req, reply) => {
+  // Not knowing compose from swarm, the file would be written for the wrong one
+  const orchestrator = await getDecidedOrchestrator(req.server.docker);
+
+  if (!orchestrator) {
+    reply.code(503).send(buildModeUnknownReply());
+    return;
+  }
+
   const { raw } = castObject<EditServicesQuerystring>(req.query) || false;
   const services: ReadonlyArray<Service> = req.body.services ?? [];
   const rawComposeJson = await readComposeFile({ raw: true });
@@ -34,6 +45,13 @@ const handler: EditServicesHandler = async (req, reply) => {
             ? (service.serviceId.split('-').at(-1) ?? '')
             : '',
           resources: { reservations, limits },
+          ...(orchestrator.mode === 'swarm' && {
+            swarm: {
+              currentDeploy: service.serviceId
+                ? rawComposeJson.services?.[service.serviceId]?.deploy
+                : undefined,
+            },
+          }),
         }),
     );
 
@@ -44,9 +62,20 @@ const handler: EditServicesHandler = async (req, reply) => {
 
     reply.code(200).send(response);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const local = buildLocalErrorReply(
+      error,
+      `Failed to edit services: ${message}`,
+    );
+
+    if (local) {
+      reply.code(local.statusCode).send(local.body);
+      return;
+    }
+
     reply.code(500).send({
       success: false,
-      error: `Failed to edit services: ${error instanceof Error ? error.message : String(error)}`,
+      error: `Failed to edit services: ${message}`,
     });
   }
 };

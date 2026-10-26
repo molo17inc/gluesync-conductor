@@ -1,0 +1,792 @@
+{
+  "CONNECTIVITY_OK": {
+    "schemaVersion": 1,
+    "code": "CONNECTIVITY_OK",
+    "owner": "none",
+    "confidence": "high",
+    "params": {},
+    "resolutionCodes": [],
+    "fallback": {
+      "title": "All connectivity checks passed",
+      "summary": "This host can reach the MOLO17 services it needs.",
+      "steps": []
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": true,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "TRANSIENT_FAILURE": {
+    "schemaVersion": 1,
+    "code": "TRANSIENT_FAILURE",
+    "owner": "unknown",
+    "confidence": "high",
+    "params": {
+      "errorKind": "timeout"
+    },
+    "resolutionCodes": [
+      "WAIT_AND_RETRY",
+      "CONTACT_SUPPORT_WITH_DETAILS"
+    ],
+    "fallback": {
+      "title": "A request failed but the services are reachable now",
+      "summary": "The request failed (timeout) but every connectivity check passes now. This is usually a temporary network interruption.",
+      "steps": [
+        "Wait a few minutes and try again.",
+        "Contact MOLO17 support and attach the technical details."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "CONDUCTOR_UPDATING": {
+    "schemaVersion": 1,
+    "code": "CONDUCTOR_UPDATING",
+    "owner": "local",
+    "confidence": "high",
+    "params": {},
+    "resolutionCodes": [
+      "WAIT_FOR_CONDUCTOR_UPDATE"
+    ],
+    "fallback": {
+      "title": "Conductor is updating",
+      "summary": "Conductor is applying an update and temporarily refuses requests.",
+      "steps": [
+        "Wait for the Conductor update to finish. The page recovers on its own."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "DOCKER_NOT_READY": {
+    "schemaVersion": 1,
+    "code": "DOCKER_NOT_READY",
+    "owner": "local",
+    "confidence": "high",
+    "params": {},
+    "resolutionCodes": [
+      "WAIT_AND_RETRY",
+      "CHECK_DOCKER_DAEMON"
+    ],
+    "fallback": {
+      "title": "Docker is not ready yet",
+      "summary": "Conductor cannot reach the Docker daemon yet. This is common right after a restart.",
+      "steps": [
+        "Wait a few minutes and try again.",
+        "Make sure the Docker service is running on this host."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "COREHUB_UNAVAILABLE": {
+    "schemaVersion": 1,
+    "code": "COREHUB_UNAVAILABLE",
+    "owner": "local",
+    "confidence": "high",
+    "params": {},
+    "resolutionCodes": [
+      "WAIT_AND_RETRY",
+      "CHECK_COREHUB_RUNNING"
+    ],
+    "fallback": {
+      "title": "Core Hub is not responding",
+      "summary": "Conductor could not verify your session with Core Hub.",
+      "steps": [
+        "Wait a few minutes and try again.",
+        "Make sure the Core Hub service is running."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "PROXY_UNREACHABLE": {
+    "schemaVersion": 1,
+    "code": "PROXY_UNREACHABLE",
+    "owner": "customer",
+    "confidence": "high",
+    "params": {
+      "host": "proxy.example.com",
+      "port": 3128
+    },
+    "resolutionCodes": [
+      "CHECK_PROXY_SETTINGS",
+      "CONTACT_SUPPORT_WITH_DETAILS"
+    ],
+    "fallback": {
+      "title": "The configured proxy cannot be reached",
+      "summary": "Conductor cannot open a connection to the proxy proxy.example.com:3128.",
+      "steps": [
+        "Verify the PROXY_HTTPS / PROXY_HTTP settings of Conductor and that the proxy allows these hosts.",
+        "Contact MOLO17 support and attach the technical details."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "PROXY_AUTH_REQUIRED": {
+    "schemaVersion": 1,
+    "code": "PROXY_AUTH_REQUIRED",
+    "owner": "customer",
+    "confidence": "high",
+    "params": {},
+    "resolutionCodes": [
+      "CHECK_PROXY_CREDENTIALS",
+      "CHECK_PROXY_SETTINGS"
+    ],
+    "fallback": {
+      "title": "The proxy requires valid credentials",
+      "summary": "The proxy rejected the request with HTTP 407.",
+      "steps": [
+        "Verify the proxy username and password in PROXY_HTTPS / PROXY_HTTP.",
+        "Verify the PROXY_HTTPS / PROXY_HTTP settings of Conductor and that the proxy allows these hosts."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "NO_INTERNET": {
+    "schemaVersion": 1,
+    "code": "NO_INTERNET",
+    "owner": "customer",
+    "confidence": "high",
+    "params": {
+      "viaProxy": false
+    },
+    "resolutionCodes": [
+      "CHECK_INTERNET_CONNECTION",
+      "CHECK_PROXY_SETTINGS"
+    ],
+    "fallback": {
+      "title": "This host has no internet access",
+      "summary": "Neither the connection by address nor the one by name could be established.",
+      "steps": [
+        "Check this host's network connection and default gateway.",
+        "Verify the PROXY_HTTPS / PROXY_HTTP settings of Conductor and that the proxy allows these hosts."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "DNS_FAILURE": {
+    "schemaVersion": 1,
+    "code": "DNS_FAILURE",
+    "owner": "customer",
+    "confidence": "high",
+    "params": {
+      "host": "api.backoffice.molo17.com"
+    },
+    "resolutionCodes": [
+      "CHECK_DNS_SETTINGS"
+    ],
+    "fallback": {
+      "title": "Host names cannot be resolved",
+      "summary": "This host reaches the internet by address but cannot resolve api.backoffice.molo17.com.",
+      "steps": [
+        "Check the DNS servers configured on this host."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "TLS_INSPECTION": {
+    "schemaVersion": 1,
+    "code": "TLS_INSPECTION",
+    "owner": "customer",
+    "confidence": "high",
+    "params": {
+      "host": "api.backoffice.molo17.com"
+    },
+    "resolutionCodes": [
+      "TRUST_CORPORATE_CA",
+      "ALLOWLIST_MOLO17_HOSTS"
+    ],
+    "fallback": {
+      "title": "A secure connection could not be verified",
+      "summary": "The certificate presented for api.backoffice.molo17.com is not trusted. This usually means a corporate proxy or firewall is inspecting HTTPS traffic.",
+      "steps": [
+        "Install your organisation's root certificate on this host, or exclude the MOLO17 hosts from HTTPS inspection.",
+        "Ask your network team to allow outbound HTTPS (port 443) to the hosts listed in the connectivity details."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "MOLO17_HOSTS_BLOCKED": {
+    "schemaVersion": 1,
+    "code": "MOLO17_HOSTS_BLOCKED",
+    "owner": "customer",
+    "confidence": "high",
+    "params": {
+      "hosts": [
+        "api.backoffice.molo17.com"
+      ]
+    },
+    "resolutionCodes": [
+      "ALLOWLIST_MOLO17_HOSTS",
+      "CHECK_PROXY_SETTINGS"
+    ],
+    "fallback": {
+      "title": "MOLO17 services are blocked from this host",
+      "summary": "The internet is reachable but api.backoffice.molo17.com cannot be. A firewall or proxy is probably blocking them.",
+      "steps": [
+        "Ask your network team to allow outbound HTTPS (port 443) to the hosts listed in the connectivity details.",
+        "Verify the PROXY_HTTPS / PROXY_HTTP settings of Conductor and that the proxy allows these hosts."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "BACKOFFICE_UNREACHABLE_FROM_HOST": {
+    "schemaVersion": 1,
+    "code": "BACKOFFICE_UNREACHABLE_FROM_HOST",
+    "owner": "customer",
+    "confidence": "high",
+    "params": {
+      "host": "api.backoffice.molo17.com"
+    },
+    "resolutionCodes": [
+      "ALLOWLIST_MOLO17_HOSTS",
+      "CHECK_PROXY_SETTINGS"
+    ],
+    "fallback": {
+      "title": "The update service cannot be reached from this host",
+      "summary": "MOLO17 reports no problem, but this host cannot reach api.backoffice.molo17.com.",
+      "steps": [
+        "Ask your network team to allow outbound HTTPS (port 443) to the hosts listed in the connectivity details.",
+        "Verify the PROXY_HTTPS / PROXY_HTTP settings of Conductor and that the proxy allows these hosts."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "REGISTRY_UNREACHABLE": {
+    "schemaVersion": 1,
+    "code": "REGISTRY_UNREACHABLE",
+    "owner": "customer",
+    "confidence": "high",
+    "params": {
+      "host": "registry-1.docker.io"
+    },
+    "resolutionCodes": [
+      "CHECK_DOCKER_HUB_ACCESS",
+      "CHECK_PROXY_SETTINGS"
+    ],
+    "fallback": {
+      "title": "The image registry cannot be reached",
+      "summary": "This host cannot reach the container registry registry-1.docker.io, so new images cannot be downloaded.",
+      "steps": [
+        "Allow outbound HTTPS to Docker Hub (registry-1.docker.io, auth.docker.io, production.cloudflare.docker.com).",
+        "Verify the PROXY_HTTPS / PROXY_HTTP settings of Conductor and that the proxy allows these hosts."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "UNEXPECTED_RESPONSE_FROM_INTERMEDIARY": {
+    "schemaVersion": 1,
+    "code": "UNEXPECTED_RESPONSE_FROM_INTERMEDIARY",
+    "owner": "customer",
+    "confidence": "high",
+    "params": {
+      "status": 503,
+      "viaProxy": true
+    },
+    "resolutionCodes": [
+      "CHECK_PROXY_SETTINGS",
+      "ALLOWLIST_MOLO17_HOSTS"
+    ],
+    "fallback": {
+      "title": "A proxy or firewall answered instead of MOLO17",
+      "summary": "The request was answered with HTTP 503 by a device between this host and MOLO17, not by MOLO17 itself.",
+      "steps": [
+        "Verify the PROXY_HTTPS / PROXY_HTTP settings of Conductor and that the proxy allows these hosts.",
+        "Ask your network team to allow outbound HTTPS (port 443) to the hosts listed in the connectivity details."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "OTA_SERVICE_DOWN": {
+    "schemaVersion": 1,
+    "code": "OTA_SERVICE_DOWN",
+    "owner": "molo17",
+    "confidence": "high",
+    "params": {
+      "status": 503,
+      "host": "api.backoffice.molo17.com"
+    },
+    "resolutionCodes": [
+      "CHECK_STATUS_PAGE",
+      "WAIT_AND_RETRY"
+    ],
+    "fallback": {
+      "title": "The MOLO17 update service is temporarily unavailable",
+      "summary": "The update service is not responding correctly. This is on the MOLO17 side and nothing needs to change on your system.",
+      "steps": [
+        "Check the MOLO17 status page for ongoing incidents.",
+        "Wait a few minutes and try again."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "BACKOFFICE_REQUEST_REJECTED": {
+    "schemaVersion": 1,
+    "code": "BACKOFFICE_REQUEST_REJECTED",
+    "owner": "molo17",
+    "confidence": "high",
+    "params": {
+      "status": 404,
+      "host": "api.backoffice.molo17.com"
+    },
+    "resolutionCodes": [
+      "CONTACT_SUPPORT_WITH_DETAILS"
+    ],
+    "fallback": {
+      "title": "The update service rejected the request",
+      "summary": "The update service answered HTTP 404. This is not a network problem.",
+      "steps": [
+        "Contact MOLO17 support and attach the technical details."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "UNKNOWN": {
+    "schemaVersion": 1,
+    "code": "UNKNOWN",
+    "owner": "unknown",
+    "confidence": "high",
+    "params": {},
+    "resolutionCodes": [
+      "CONTACT_SUPPORT_WITH_DETAILS"
+    ],
+    "fallback": {
+      "title": "The problem could not be identified",
+      "summary": "The checks did not point to a single cause. Share the technical details with support.",
+      "steps": [
+        "Contact MOLO17 support and attach the technical details."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "DISK_FULL": {
+    "schemaVersion": 1,
+    "code": "DISK_FULL",
+    "owner": "customer",
+    "confidence": "high",
+    "params": {
+      "path": "/opt/gluesync/docker-compose.yml",
+      "neededBytes": 52428800,
+      "availableBytes": 1048576
+    },
+    "resolutionCodes": [
+      "FREE_DISK_SPACE",
+      "CONTACT_SUPPORT_WITH_DETAILS"
+    ],
+    "fallback": {
+      "title": "Not enough free disk space",
+      "summary": "There is not enough free disk space to write /opt/gluesync/docker-compose.yml (50.0 MiB needed, 1.0 MiB available). Nothing was changed.",
+      "steps": [
+        "Free up disk space on the volume that holds the Gluesync folder (docker-compose.yml), then try again.",
+        "Contact MOLO17 support and attach the technical details."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "COMPOSE_FILE_CORRUPT": {
+    "schemaVersion": 1,
+    "code": "COMPOSE_FILE_CORRUPT",
+    "owner": "local",
+    "confidence": "high",
+    "params": {
+      "path": "/opt/gluesync/docker-compose.yml",
+      "problem": "the file is empty"
+    },
+    "resolutionCodes": [
+      "CONTACT_SUPPORT_WITH_DETAILS"
+    ],
+    "fallback": {
+      "title": "docker-compose.yml is empty or corrupt",
+      "summary": "/opt/gluesync/docker-compose.yml is unusable (the file is empty) and no last-good backup could restore it. Conductor refused to write over it.",
+      "steps": [
+        "Contact MOLO17 support and attach the technical details."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "SWARM_NOT_MANAGER": {
+    "schemaVersion": 1,
+    "code": "SWARM_NOT_MANAGER",
+    "owner": "local",
+    "confidence": "high",
+    "params": {},
+    "resolutionCodes": [
+      "RUN_CONDUCTOR_ON_SWARM_MANAGER"
+    ],
+    "fallback": {
+      "title": "Conductor is not running on a swarm manager",
+      "summary": "Docker Swarm services can only be managed from a manager node, and this Conductor runs on a worker.",
+      "steps": [
+        "Deploy the Conductor service with the placement constraint node.role == manager."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "SWARM_UNSUPPORTED": {
+    "schemaVersion": 1,
+    "code": "SWARM_UNSUPPORTED",
+    "owner": "local",
+    "confidence": "high",
+    "params": {
+      "feature": "migration to 2.x"
+    },
+    "resolutionCodes": [],
+    "fallback": {
+      "title": "Not available on Docker Swarm",
+      "summary": "migration to 2.x is not supported when Gluesync runs as a Docker Swarm stack.",
+      "steps": []
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  }
+}

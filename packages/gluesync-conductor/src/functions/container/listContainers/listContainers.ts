@@ -9,6 +9,8 @@ import {
 import containerInfoMapper from '../../../helpers/dockerode/containerInfoMapper/containerInfoMapper';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import getSystemInfo from '../../../helpers/dockerode/getSystemInfo/getSystemInfo';
+import buildDiagnosis from '../../../diagnosis/buildDiagnosis';
+import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
 import { castObject } from '../../../helpers/composeFile/extractKeyValue/extractKeyValue';
 import parseServiceType from '../../../helpers/composeFile/parseServiceType/parseServiceType';
 import {
@@ -23,6 +25,8 @@ import {
   canModifyConfiguration,
 } from '../../../security';
 import { redactService } from '../../../helpers/redactedServices/redactedServices';
+import getOrchestrator from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator';
+import listSwarmContainers from '../../../helpers/swarm/listSwarmContainers/listSwarmContainers';
 
 const handler: ListContainersHandler = async (req, reply) => {
   try {
@@ -37,49 +41,28 @@ const handler: ListContainersHandler = async (req, reply) => {
       perAttemptTimeoutMs: 800,
     });
 
-    const safeFetch = async () =>
-      Promise.all([
-        getSystemInfo(req.server.docker, logger),
-        req.server.docker.listContainers({ all: true }),
-      ]);
+    const composeContainers = (
+      containerList: ReadonlyArray<ContainerInfo>,
+    ): ListContainersSuccessResponse['containers'] => {
+      const containerListMap = containerList.reduce<
+        Record<string, ContainerInfo>
+      >((acc, container) => {
+        const serviceName =
+          container.Labels?.[`${LabelPrefix.COMPOSE}.service`];
 
-    const [systemInfo, containerList] = await (async () => {
-      try {
-        return await safeFetch();
-      } catch (error) {
-        if (isTransientDockerConnError(error)) {
-          req.log.warn('[list-containers] docker pipe busy — retrying');
+        return serviceName ? { ...acc, [serviceName]: container } : acc;
+      }, {});
 
-          await waitForDockerDaemon(req.server.docker, logger, {
-            totalTimeoutMs: 4000,
-            perAttemptTimeoutMs: 800,
-          });
+      const allServicesNames = [
+        ...new Set([
+          ...dockerComposeServicesNames,
+          ...containerList
+            .map(c => c.Labels?.[`${LabelPrefix.COMPOSE}.service`])
+            .filter(Boolean),
+        ]),
+      ];
 
-          return safeFetch();
-        }
-        throw error;
-      }
-    })();
-
-    const containerListMap = containerList.reduce<
-      Record<string, ContainerInfo>
-    >((acc, container) => {
-      const serviceName = container.Labels?.[`${LabelPrefix.COMPOSE}.service`];
-
-      return serviceName ? { ...acc, [serviceName]: container } : acc;
-    }, {});
-
-    const allServicesNames = [
-      ...new Set([
-        ...dockerComposeServicesNames,
-        ...containerList
-          .map(c => c.Labels?.[`${LabelPrefix.COMPOSE}.service`])
-          .filter(Boolean),
-      ]),
-    ];
-
-    const containers: ListContainersSuccessResponse['containers'] =
-      allServicesNames.map(id => {
+      return allServicesNames.map(id => {
         const service = composeJson.services?.[id];
         const info = containerInfoMapper(containerListMap[id]);
 
@@ -103,6 +86,61 @@ const handler: ListContainersHandler = async (req, reply) => {
           info,
         };
       });
+    };
+
+    const orchestrator = await getOrchestrator(req.server.docker);
+
+    // One attempt, and a second one after a busy pipe (Windows cold boot)
+    const withRetry = async <T>(fetch: () => Promise<T>): Promise<T> => {
+      try {
+        return await fetch();
+      } catch (error) {
+        if (isTransientDockerConnError(error)) {
+          req.log.warn('[list-containers] docker pipe busy — retrying');
+
+          await waitForDockerDaemon(req.server.docker, logger, {
+            totalTimeoutMs: 4000,
+            perAttemptTimeoutMs: 800,
+          });
+
+          return fetch();
+        }
+        throw error;
+      }
+    };
+
+    const systemInfoAndContainers = async (): Promise<
+      readonly [
+        Awaited<ReturnType<typeof getSystemInfo>>,
+        ListContainersSuccessResponse['containers'],
+      ]
+    > => {
+      if (orchestrator.mode === 'swarm') {
+        // The containers of this node say nothing about the stack: the
+        // services and their tasks do
+        return withRetry(() =>
+          Promise.all([
+            getSystemInfo(req.server.docker, logger),
+            listSwarmContainers(
+              req.server.docker,
+              orchestrator.namespace,
+              composeJson,
+            ),
+          ]),
+        );
+      }
+
+      const [info, containerList] = await withRetry(() =>
+        Promise.all([
+          getSystemInfo(req.server.docker, logger),
+          req.server.docker.listContainers({ all: true }),
+        ]),
+      );
+
+      return [info, composeContainers(containerList)];
+    };
+
+    const [systemInfo, containers] = await systemInfoAndContainers();
 
     const filteredContainers = containers.filter(({ type: currentType }) => {
       if (!type || type === 'all') {
@@ -144,6 +182,13 @@ const handler: ListContainersHandler = async (req, reply) => {
       }`,
     );
 
+    const local = buildLocalErrorReply(error, 'Failed to list containers');
+
+    if (local) {
+      reply.code(local.statusCode).send(local.body);
+      return;
+    }
+
     const transient = isTransientDockerConnError(error);
 
     reply.code(transient ? 503 : 500).send({
@@ -152,6 +197,9 @@ const handler: ListContainersHandler = async (req, reply) => {
         ? 'Docker daemon not ready yet'
         : 'Failed to list containers',
       details: error instanceof Error ? error.message : String(error),
+      ...(transient
+        ? { diagnosis: buildDiagnosis({ code: 'DOCKER_NOT_READY' }) }
+        : {}),
     });
   }
 };

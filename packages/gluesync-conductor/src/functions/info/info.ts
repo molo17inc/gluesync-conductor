@@ -7,8 +7,15 @@ const handler: RouteHandlerMethod = async (req, reply) => {
     reply.code(200);
     reply.send({ success: true, data: info });
   } catch (error) {
-    req.log.error(`Error: ${JSON.stringify(error)}`);
-    process.exit(1);
+    // A Docker daemon that is restarting or overloaded is not a reason to kill
+    // the conductor (and any update it is running): answer 503 and stay up.
+    req.log.error({ error }, 'Docker info unavailable');
+    reply.code(503);
+    reply.send({
+      success: false,
+      error: 'Docker daemon unavailable',
+      details: error instanceof Error ? error.message : String(error),
+    });
   }
 };
 

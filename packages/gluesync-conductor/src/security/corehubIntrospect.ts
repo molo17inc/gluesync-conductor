@@ -1,10 +1,11 @@
 import axios, { type AxiosInstance, AxiosError } from 'axios';
-import * as https from 'https';
+import * as https from 'node:https';
 
 import { type CurrentUser } from './types';
 import { UserRole, parseRole } from './userRole';
 import { getGluesyncSdkClient } from '../gluesyncSdkClient';
 import { getLogger } from '../utils/logger';
+import stripTrailingSlashes from '../utils/stripTrailingSlashes';
 
 interface IntrospectOptions {
   readonly cookieHeader: string | undefined;
@@ -33,7 +34,7 @@ const envInt = (name: string, defaultValue: number): number => {
   if (!raw) {
     return defaultValue;
   }
-  const parsed = parseInt(raw, 10);
+  const parsed = Number.parseInt(raw, 10);
   return Number.isNaN(parsed) ? defaultValue : parsed;
 };
 
@@ -84,7 +85,9 @@ const createCacheKey = (opts: Readonly<IntrospectOptions>): string | null => {
 
 export const createIntrospector = (config: Readonly<IntrospectorConfig>) => {
   const cacheTtl =
-    config.cacheTtlSeconds ?? envInt('CONDUCTOR_AUTH_CACHE_TTL', 30);
+    // Short on purpose: a logout or role change at CoreHub must take effect
+    // within seconds, not half a minute.
+    config.cacheTtlSeconds ?? envInt('CONDUCTOR_AUTH_CACHE_TTL', 5);
   const timeoutMs =
     config.timeoutMs ?? envInt('CONDUCTOR_AUTH_TIMEOUT_MS', 5000);
   const verifySsl = config.verifySsl ?? shouldVerifySsl();
@@ -152,7 +155,7 @@ export const createIntrospector = (config: Readonly<IntrospectorConfig>) => {
       );
     }
 
-    const url = base.replace(/\/+$/, '') + AUTH_ME_PATH;
+    const url = stripTrailingSlashes(base) + AUTH_ME_PATH;
     const headers: Readonly<Record<string, string>> = {
       ...(opts.authorizationHeader
         ? { Authorization: opts.authorizationHeader }
@@ -224,10 +227,26 @@ const buildDefaultIntrospector = (): Introspector => {
       return override;
     }
     try {
-      return getGluesyncSdkClient(getLogger()).coreHubUrl;
+      const discovered = getGluesyncSdkClient(getLogger()).coreHubUrl;
+      if (discovered) {
+        return discovered;
+      }
     } catch {
+      /* fall through to the configured address */
+    }
+    // While the SDK is (re)connecting, the configured address is still where
+    // CoreHub lives; without it every request failed during a reconnect.
+    const configured =
+      process.env.GLUESYNC_HOST?.trim() || process.env.CORE_HUB_ADDRESS?.trim();
+    if (!configured) {
       return null;
     }
+    if (/^https?:\/\//.test(configured)) {
+      return configured;
+    }
+    const scheme =
+      process.env.SSL_ENABLED?.toLowerCase() === 'true' ? 'https' : 'http';
+    return `${scheme}://${configured}:1717`;
   };
 
   return createIntrospector({

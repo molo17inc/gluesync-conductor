@@ -1,4 +1,8 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type {
+  FastifyPluginCallback,
+  FastifyReply,
+  FastifyRequest,
+} from 'fastify';
 import fp from 'fastify-plugin';
 
 import { type CurrentUser } from './types';
@@ -10,6 +14,7 @@ import {
 } from './userRole';
 import { getIntrospector } from './corehubIntrospect';
 import { getLogger } from '../utils/logger';
+import buildDiagnosis from '../diagnosis/buildDiagnosis';
 
 const BYPASS_PATHS: ReadonlySet<string> = new Set([
   '/health',
@@ -38,9 +43,7 @@ export interface AuthenticatedRequest extends FastifyRequest {
   currentUser?: CurrentUser;
 }
 
-const authPlugin = async (
-  fastify: Readonly<FastifyInstance>,
-): Promise<void> => {
+const authPlugin: FastifyPluginCallback = (fastify, _opts, done) => {
   fastify.addHook(
     'onRequest',
     async (
@@ -95,6 +98,7 @@ const authPlugin = async (
           success: false,
           error: 'CoreHub unavailable',
           details: authResult.error,
+          diagnosis: buildDiagnosis({ code: 'COREHUB_UNAVAILABLE' }),
         });
       }
 
@@ -109,6 +113,8 @@ const authPlugin = async (
       return undefined;
     },
   );
+
+  done();
 };
 
 export default fp(authPlugin, {
@@ -118,66 +124,95 @@ export default fp(authPlugin, {
 
 export const requireManage =
   () =>
-  async (
-    req: Readonly<AuthenticatedRequest>,
-    reply: Readonly<FastifyReply>,
-  ) => {
+  (req: Readonly<AuthenticatedRequest>, reply: Readonly<FastifyReply>) => {
     const user = req.currentUser;
     if (!user) {
-      return reply.code(401).send({
-        success: false,
-        error: 'Not authenticated',
-      });
+      return Promise.resolve(
+        reply.code(401).send({
+          success: false,
+          error: 'Not authenticated',
+        }),
+      );
     }
     if (!canManage(user.role)) {
-      return reply.code(403).send({
-        success: false,
-        error: `Role ${user.role} cannot manage`,
-      });
+      return Promise.resolve(
+        reply.code(403).send({
+          success: false,
+          error: `Role ${user.role} cannot manage`,
+        }),
+      );
     }
-    return undefined;
+    return Promise.resolve(undefined);
   };
 
 export const requireControl =
   () =>
-  async (
-    req: Readonly<AuthenticatedRequest>,
-    reply: Readonly<FastifyReply>,
-  ) => {
+  (req: Readonly<AuthenticatedRequest>, reply: Readonly<FastifyReply>) => {
     const user = req.currentUser;
     if (!user) {
-      return reply.code(401).send({
-        success: false,
-        error: 'Not authenticated',
-      });
+      return Promise.resolve(
+        reply.code(401).send({
+          success: false,
+          error: 'Not authenticated',
+        }),
+      );
     }
     if (!canControl(user.role)) {
-      return reply.code(403).send({
-        success: false,
-        error: `Role ${user.role} cannot control`,
-      });
+      return Promise.resolve(
+        reply.code(403).send({
+          success: false,
+          error: `Role ${user.role} cannot control`,
+        }),
+      );
     }
-    return undefined;
+    return Promise.resolve(undefined);
   };
 
 export const requireConfig =
+  () =>
+  (req: Readonly<AuthenticatedRequest>, reply: Readonly<FastifyReply>) => {
+    const user = req.currentUser;
+    if (!user) {
+      return Promise.resolve(
+        reply.code(401).send({
+          success: false,
+          error: 'Not authenticated',
+        }),
+      );
+    }
+    if (!canModifyConfiguration(user.role)) {
+      return Promise.resolve(
+        reply.code(403).send({
+          success: false,
+          error: `Role ${user.role} cannot modify configuration`,
+        }),
+      );
+    }
+    return Promise.resolve(undefined);
+  };
+
+// Day-to-day operations a MONITOR may run, like starting and stopping
+// replication. Everything else (update, pull, kill, remove, undeploy, network
+// cleanup) changes what is deployed and needs a role that can manage: the UI
+// only offers those actions to SUPER_ADMIN and MANAGER, and Chronos calls in as
+// EXTERNAL_MODULE.
+const OPERATIONAL_CONTAINER_ACTIONS: ReadonlySet<string> = new Set([
+  'restart',
+  'start',
+  'stop',
+]);
+
+export const requireContainerAction =
   () =>
   async (
     req: Readonly<AuthenticatedRequest>,
     reply: Readonly<FastifyReply>,
   ) => {
-    const user = req.currentUser;
-    if (!user) {
-      return reply.code(401).send({
-        success: false,
-        error: 'Not authenticated',
-      });
-    }
-    if (!canModifyConfiguration(user.role)) {
-      return reply.code(403).send({
-        success: false,
-        error: `Role ${user.role} cannot modify configuration`,
-      });
-    }
-    return undefined;
+    // A non-string action matches no operational action, so it needs manage.
+    const requested = (req.body as { action?: unknown } | undefined)?.action;
+    const action = typeof requested === 'string' ? requested : '';
+    const guard = OPERATIONAL_CONTAINER_ACTIONS.has(action)
+      ? requireControl()
+      : requireManage();
+    return guard(req, reply);
   };

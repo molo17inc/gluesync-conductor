@@ -1,6 +1,7 @@
 stages:
   - build
   - quality
+  - sandbox
   - deploy
   - update_version
   - build-sonar
@@ -69,9 +70,56 @@ quality:
     
     - echo "Running type-check..."
     - yarn type-check
+
+    - echo "Running unit tests with coverage..."
+    - yarn workspace gluesync-conductor test:coverage
+    # Sonar reads lcov paths from the repository root
+    - sed -i 's#^SF:src/#SF:packages/gluesync-conductor/src/#' packages/gluesync-conductor/coverage/lcov.info
+  artifacts:
+    paths:
+      - packages/gluesync-conductor/coverage/lcov.info
+    expire_in: 1 day
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "push"
+
+# The conductor sandbox (sandbox/README.md): the real conductor against fakes of every service,
+# 20 update iterations under injected faults, split over 4 shards; shard 1 also runs the
+# real-kernel ENOSPC test. Each job runs its OWN dockerd (privileged, docker:dind image), so
+# concurrent pipelines never share a daemon and the sandbox's bind-mount paths under
+# $CI_PROJECT_DIR exist for the daemon that mounts them. Everything happens in ci/sandbox-job.sh,
+# which is also how to reproduce a shard locally; the profile exclusions live there.
+# Nothing comes from Docker Hub or the npm registry: the job image (ci/sandbox-ci.Dockerfile) has
+# node, yarn and the sandbox's npm dependencies, and SANDBOX_IMAGE_MIRROR makes the sandbox pull
+# every image it runs from Nexus. The only download left is the conductor image's own `apk add`
+# (Alpine CDN, packages/gluesync-conductor/Dockerfile).
+sandbox:
+  stage: sandbox
+  image:
+    name: nexus.hq.molo17.com/molo17-local/conductor-sandbox-ci:1
+    # The script starts dockerd itself through the image's entrypoint script.
+    entrypoint: ['']
+  needs:
+    - job: build_artifacts
+      artifacts: true
+  interruptible: true
+  timeout: 60m
+  parallel: 4
+  variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
+    SANDBOX_IMAGE_MIRROR: nexus.hq.molo17.com/molo17-local
+  script:
+    # parallel: 4 sets CI_NODE_INDEX (1-based) and CI_NODE_TOTAL; the script reads them.
+    - sh ci/sandbox-job.sh
+  artifacts:
+    when: always
+    expire_in: 2 weeks
+    paths:
+      - sandbox/reports/
+    reports:
+      junit: sandbox/reports/*/junit.xml
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 docker_images:
   stage: deploy
@@ -310,6 +358,9 @@ build-sonar:
   image:
     name: sonarsource/sonar-scanner-cli:11
     entrypoint: ['']
+  needs:
+    - job: quality
+      artifacts: true
   variables:
     GIT_DEPTH: '0'
   cache:

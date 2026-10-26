@@ -2,6 +2,8 @@ import parseImage from '../parseImage/parseImage';
 import { LabelPrefix } from '../../models/composeFile.model';
 import isTransientDockerConnError from '../dockerode/isTransientDockerConnError/isTransientDockerConnError';
 import { getLogger } from '../../utils/logger';
+import getOrchestrator from '../orchestrator/getOrchestrator/getOrchestrator';
+import getService from '../swarm/getService/getService';
 import { GetCurrentVersion } from './getCurrentVersion.model';
 
 const logger = getLogger();
@@ -26,7 +28,29 @@ const getCurrentVersion: GetCurrentVersion = async (
     return fallback();
   }
 
+  // The tag the service spec asks for, which is what Swarm runs or is about
+  // to run (a rolling update changes it before the first new task is up)
+  const swarmTag = async (namespace: string): Promise<string | null> => {
+    try {
+      const { image } = await getService(docker, `${namespace}_${serviceId}`);
+
+      return parseImage(image).tag || fallback();
+    } catch (error) {
+      if ((error as { statusCode?: number })?.statusCode === 404) {
+        return fallback();
+      }
+
+      throw error;
+    }
+  };
+
   const attempt = async (): Promise<string | null> => {
+    const orchestrator = await getOrchestrator(docker);
+
+    if (orchestrator.mode === 'swarm') {
+      return swarmTag(orchestrator.namespace);
+    }
+
     const containers = await docker.listContainers({
       all: true,
       filters: {

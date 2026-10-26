@@ -27,6 +27,7 @@ const parseComposeFile: ParseComposeFile = composeFile => ({
           extractKeyValue(
             composeServiceFieldConfig.volumes.separator,
             service.volumes,
+            'volumes',
           ),
         ).map(([key, value]) => ({
           host: key,
@@ -36,6 +37,7 @@ const parseComposeFile: ParseComposeFile = composeFile => ({
           extractKeyValue(
             composeServiceFieldConfig.ports.separator,
             service.ports,
+            'ports',
           ),
         ).map(([key, value]) => ({
           host: key,

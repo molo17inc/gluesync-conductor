@@ -14,6 +14,7 @@ import {
   LegacyUpdateEnvErrorResponse,
   SetLegacyUpdateEnvBody,
 } from './legacyUpdate.model';
+import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
 
 const setLegacyUpdate: RouteHandlerMethod = async (req, reply) => {
   try {
@@ -66,6 +67,13 @@ const setLegacyUpdate: RouteHandlerMethod = async (req, reply) => {
   } catch (error) {
     const logger = getLogger();
     logger.error({ error }, '[legacy-update] Failed to write .env file');
+
+    const local = buildLocalErrorReply(error, 'Failed to write .env file');
+
+    if (local) {
+      reply.code(local.statusCode).send(local.body);
+      return;
+    }
 
     reply.code(500).send({
       success: false,

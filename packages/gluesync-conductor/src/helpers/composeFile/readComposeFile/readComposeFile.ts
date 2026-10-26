@@ -1,5 +1,6 @@
 import { ComposeFile, RawComposeFile } from '../../../models/composeFile.model';
-import readYmlFile from '../../file/readYmlFile/readYmlFile';
+import getRootPath from '../../getRootPath/getRootPath';
+import ensureValidCompose from '../ensureValidCompose/ensureValidCompose';
 import parseComposeFile from '../parseComposeFile/parseComposeFile';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
@@ -34,8 +35,11 @@ export async function readComposeFile({
 }: { filename?: string; raw?: boolean } = {}): Promise<
   Partial<RawComposeFile> | Partial<ComposeFile>
 > {
+  // A missing file reads as empty; an empty or corrupt one is restored or throws.
   const composeData =
-    (await readYmlFile<Partial<RawComposeFile>>(filename)) || {};
+    ((await ensureValidCompose(getRootPath({ filename }))) as
+      | Partial<RawComposeFile>
+      | undefined) ?? {};
 
   return raw ? composeData : parseComposeFile(composeData);
 }

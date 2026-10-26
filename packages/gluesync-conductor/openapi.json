@@ -120,6 +120,60 @@
         }
       }
     },
+    "/connectivity": {
+      "get": {
+        "summary": "Check connectivity to MOLO17 services",
+        "tags": [
+          "system"
+        ],
+        "description": "Probes the proxy, the internet, the MOLO17 backoffice, the image registry and the public status feed from this host, then returns a diagnosis: who is at fault (customer network, MOLO17, or this install) and what to do. Results are cached for a short time; `refresh` forces a new run within a minimum interval.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ota"
+              ],
+              "default": "ota"
+            },
+            "in": "query",
+            "name": "scope",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "in": "query",
+            "name": "refresh",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json)",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/compose-to-json": {
       "get": {
         "tags": [
@@ -142,6 +196,70 @@
                       "type": "object"
                     }
                   }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The compose file cannot be read. `diagnosis.code` is COMPOSE_FILE_CORRUPT when it is empty or corrupt with no backup to restore.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "The compose file cannot be read. `diagnosis.code` is COMPOSE_FILE_CORRUPT when it is empty or corrupt with no backup to restore.",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
                 }
               }
             }
@@ -469,6 +587,11 @@
                     "details": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   },
                   "required": [
@@ -476,6 +599,42 @@
                     "error"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
                 }
               }
             }
@@ -738,6 +897,11 @@
                     "details": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   },
                   "required": [
@@ -745,6 +909,42 @@
                     "error"
                   ],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
                 }
               }
             }
@@ -854,6 +1054,11 @@
                     "details": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   },
                   "required": [
@@ -981,6 +1186,11 @@
                     "details": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   },
                   "required": [
@@ -1066,6 +1276,9 @@
                         },
                         "releaseChannel": {
                           "type": "string"
+                        },
+                        "changelog": {
+                          "type": "string"
                         }
                       }
                     }
@@ -1119,23 +1332,29 @@
                     "details": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   },
                   "required": [
                     "success",
                     "error"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             }
           },
           "502": {
-            "description": "Default Response",
+            "description": "The update service could not be reached or answered unexpectedly. `diagnosis` explains who is at fault and what to do.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "description": "The update service could not be reached or answered unexpectedly. `diagnosis` explains who is at fault and what to do.",
                   "properties": {
                     "success": {
                       "type": "boolean",
@@ -1149,13 +1368,52 @@
                     "details": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "additionalProperties": true
                     }
                   },
                   "required": [
                     "success",
                     "error"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The MOLO17 update service is down, or Conductor itself is not ready (updating, Docker starting). `diagnosis.owner` tells which.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "The MOLO17 update service is down, or Conductor itself is not ready (updating, Docker starting). `diagnosis.owner` tells which.",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
                 }
               }
             }
@@ -1206,6 +1464,11 @@
                       },
                       "details": {
                         "type": "string"
+                      },
+                      "diagnosis": {
+                        "type": "object",
+                        "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                        "additionalProperties": true
                       }
                     }
                   },
@@ -1636,6 +1899,34 @@
               }
             }
           },
+          "409": {
+            "description": "A different container action is already running (one at a time). A retry of the same action on the same ids joins the running one instead. The Retry-After header says when to ask again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "A different container action is already running (one at a time). A retry of the same action on the same ids joins the running one instead. The Retry-After header says when to ask again.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error message"
+                    },
+                    "details": {
+                      "type": "string",
+                      "description": "Which action is running and since when"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
           "500": {
             "description": "Default Response",
             "content": {
@@ -1656,9 +1947,82 @@
                     "details": {
                       "type": "string",
                       "description": "Additional error details"
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   },
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The conductor is updating itself (only restart is accepted until it is back), or the MOLO17 update service is down. `diagnosis.owner` tells which.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The conductor is updating itself (only restart is accepted until it is back), or the MOLO17 update service is down. `diagnosis.owner` tells which.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "Error message"
+                    },
+                    "details": {
+                      "type": "string",
+                      "description": "Additional error details"
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
                 }
               }
             }
@@ -1738,6 +2102,9 @@
                         },
                         "releaseChannel": {
                           "type": "string"
+                        },
+                        "changelog": {
+                          "type": "string"
                         }
                       }
                     }
@@ -1797,7 +2164,7 @@
                     "success",
                     "error"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             }
@@ -1827,7 +2194,7 @@
                     "success",
                     "error"
                   ],
-                  "additionalProperties": false
+                  "additionalProperties": true
                 }
               }
             }
@@ -1847,10 +2214,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "ticketId",
-                  "email"
-                ],
                 "additionalProperties": false,
                 "properties": {
                   "ticketId": {
@@ -1860,12 +2223,15 @@
                   "email": {
                     "type": "string",
                     "description": "User email sending the logs"
+                  },
+                  "localOnly": {
+                    "type": "boolean",
+                    "description": "If true, collects and archives logs locally without credential validation or upload"
                   }
                 }
               }
             }
-          },
-          "required": true
+          }
         },
         "parameters": [
           {
@@ -1897,6 +2263,9 @@
                       ]
                     },
                     "output": {
+                      "type": "string"
+                    },
+                    "archivePath": {
                       "type": "string"
                     }
                   }
@@ -1956,8 +2325,49 @@
                     },
                     "details": {
                       "type": "string"
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
                     }
                   }
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
                 }
               }
             }
@@ -2024,6 +2434,233 @@
                       "type": "string"
                     }
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/env/legacy-update": {
+      "get": {
+        "summary": "Get legacy update flag",
+        "tags": [
+          "env"
+        ],
+        "description": "Returns whether GS_LEGACY_TLS=1 is currently set in the .env file.",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "enabled"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Set legacy update flag",
+        "tags": [
+          "env"
+        ],
+        "description": "Adds or removes GS_LEGACY_TLS=1 from the .env file.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
                 }
               }
             }

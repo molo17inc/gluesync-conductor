@@ -1,6 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import collectLogs from '../functions/utility/collectLogs/collectLogs';
 import { requireManage } from '../security';
+import {
+  DIAGNOSIS_REPLY_PROPERTY,
+  DISK_FULL_REPLY_SCHEMA,
+} from '../diagnosis/diagnosisReplySchema';
 
 const utilityRoutes = async (fastify: Readonly<FastifyInstance>) => {
   fastify.post('/collect-logs', {
@@ -56,6 +60,7 @@ const utilityRoutes = async (fastify: Readonly<FastifyInstance>) => {
             details: { type: 'string' },
           },
         },
+        507: DISK_FULL_REPLY_SCHEMA,
         500: {
           type: 'object',
           required: ['success', 'error'],
@@ -64,6 +69,7 @@ const utilityRoutes = async (fastify: Readonly<FastifyInstance>) => {
             success: { type: 'boolean', const: false },
             error: { type: 'string' },
             details: { type: 'string' },
+            diagnosis: DIAGNOSIS_REPLY_PROPERTY,
           },
         },
       },

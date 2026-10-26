@@ -12,12 +12,19 @@ const sleep = (ms: number): Promise<void> =>
 /**
  * Promise timeout wrapper
  */
+// A ping that does not answer in time is a slow daemon, not a broken one: it is
+// retried like a refused connection. The code makes isTransientDockerConnError
+// recognise it.
 const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> =>
   Promise.race([
     p,
     new Promise<T>((_, reject) => {
       setTimeout(() => {
-        reject(new Error(`Timeout after ${ms}ms`));
+        reject(
+          Object.assign(new Error(`Timeout after ${ms}ms`), {
+            code: 'ETIMEDOUT',
+          }),
+        );
       }, ms);
     }),
   ]);
@@ -26,6 +33,16 @@ const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> =>
  * Wait until the Docker daemon responds to ping.
  * Fully cross‑platform with exponential backoff.
  */
+// Callers treat this like any other transient Docker error (fall back to the
+// compose file, retry later) instead of failing hard.
+const notReady = (totalTimeoutMs: number): Error =>
+  Object.assign(
+    new Error(`Docker daemon not ready within ${totalTimeoutMs}ms`),
+    {
+      code: 'ETIMEDOUT',
+    },
+  );
+
 const waitForDockerDaemon: WaitForDockerDaemon = async (docker, log, opts) => {
   const totalTimeoutMs = opts?.totalTimeoutMs ?? 15000;
   const perAttemptTimeoutMs = opts?.perAttemptTimeoutMs ?? 1500;
@@ -38,7 +55,7 @@ const waitForDockerDaemon: WaitForDockerDaemon = async (docker, log, opts) => {
     const remaining = deadline - Date.now();
 
     if (remaining <= 0) {
-      throw new Error(`Docker daemon not ready within ${totalTimeoutMs}ms`);
+      throw notReady(totalTimeoutMs);
     }
 
     const tryPing = async (): Promise<void> => {
@@ -106,7 +123,7 @@ const waitForDockerDaemon: WaitForDockerDaemon = async (docker, log, opts) => {
       }
 
       if (cappedDelay <= 0) {
-        throw new Error(`Docker daemon not ready within ${totalTimeoutMs}ms`);
+        throw notReady(totalTimeoutMs);
       }
 
       await sleep(cappedDelay);

@@ -5,6 +5,8 @@ import getCurrentVersion from '../getCurrentVersion/getCurrentVersion';
 import { CheckModuleUpdate } from './checkModuleUpdate.model';
 import waitForDockerDaemon from '../dockerode/waitForDockerDaemon/waitForDockerDaemon';
 import isTransientDockerConnError from '../dockerode/isTransientDockerConnError/isTransientDockerConnError';
+import getOrchestrator from '../orchestrator/getOrchestrator/getOrchestrator';
+import conductorUpdateRefusal from '../swarm/conductorUpdateRefusal/conductorUpdateRefusal';
 import { getLogger } from '../../utils/logger';
 
 const logger = getLogger();
@@ -49,11 +51,14 @@ const checkModuleUpdate: CheckModuleUpdate = async (
   })();
 
   // Always returns either running tag OR compose fallback
+  const {
+    shortImageName,
+    tag: composeTag,
+    interpolatedTag,
+  } = parseImage(service.image);
   const currentTag =
     (await getCurrentVersion(docker, composeJson, serviceName, dockerReady)) ||
-    parseImage(service.image).tag;
-
-  const { shortImageName } = parseImage(service.image);
+    composeTag;
 
   // Compare only semantic version part
   const dashIndex = currentTag.indexOf('-');
@@ -65,12 +70,30 @@ const checkModuleUpdate: CheckModuleUpdate = async (
 
   const availableVersion = getVersionByChannel(info, releaseChannel);
 
-  const needsUpdate = !!availableVersion && currentVersion !== availableVersion;
+  // `image:${TAG}` has no version to compare while nothing runs
+  const wantsUpdate =
+    !!availableVersion &&
+    !(interpolatedTag && !currentVersion) &&
+    currentVersion !== availableVersion;
+
+  // The catalog's Conductor may predate Swarm support: a Swarm Conductor never
+  // moves to a version that is not newer than itself
+  const refusal =
+    wantsUpdate &&
+    shortImageName === 'conductor' &&
+    (await getOrchestrator(docker)).mode === 'swarm'
+      ? conductorUpdateRefusal(currentTag, availableVersion)
+      : null;
+
+  if (refusal) {
+    logger.warn({ service: serviceName, refusal }, '[checkModuleUpdate]');
+  }
 
   return {
-    needsUpdate,
+    needsUpdate: wantsUpdate && !refusal,
     id: serviceName,
     availableVersion,
+    ...(refusal ? { refusal } : {}),
   };
 };
 

@@ -1,8 +1,9 @@
-import { existsSync } from 'fs';
-import { readFile, writeFile } from 'fs/promises';
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import getRootPath from '../getRootPath/getRootPath';
+import safeWriteFile from '../file/safeWriteFile/safeWriteFile';
 
 import {
   DisableLegacyUpdate,
@@ -103,7 +104,9 @@ const writeEnvFile: WriteEnvFile = async lines => {
   const content = lines.join('\n');
   const normalized = content.endsWith('\n') ? content : `${content}\n`;
 
-  await writeFile(await getEnvFilePath(), normalized, 'utf8');
+  await safeWriteFile(await getEnvFilePath(), normalized, {
+    allowEmpty: true,
+  });
 };
 
 const isLegacyUpdateEnabled: IsLegacyUpdateEnabled = lines =>

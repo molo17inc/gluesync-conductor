@@ -21,7 +21,32 @@ export type CommonComposeFile = Readonly<{
   name?: string;
 }>;
 
+export type ComposeUpdateConfig = Readonly<{
+  parallelism?: number;
+  delay?: string;
+  failure_action?: 'continue' | 'pause' | 'rollback';
+  monitor?: string;
+  max_failure_ratio?: number;
+  order?: 'stop-first' | 'start-first';
+}>;
+
 export type ComposeServiceDeploy = Readonly<{
+  mode?: 'replicated' | 'global' | 'replicated-job' | 'global-job';
+  replicas?: number;
+  labels?: ReadonlyArray<string> | Record<string, any>;
+  placement?: Readonly<{
+    constraints?: ReadonlyArray<string>;
+    preferences?: ReadonlyArray<Record<string, any>>;
+    max_replicas_per_node?: number;
+  }>;
+  restart_policy?: Readonly<{
+    condition?: 'none' | 'on-failure' | 'any';
+    delay?: string;
+    max_attempts?: number;
+    window?: string;
+  }>;
+  update_config?: ComposeUpdateConfig;
+  rollback_config?: ComposeUpdateConfig;
   resources?: {
     reservations?: {
       cpus?: number | null;
@@ -53,6 +78,24 @@ export interface ComposeHealthcheck {
   start_period?: string; // e.g., '20s' (grace period)
   disable?: boolean; // If true, disables healthcheck
 }
+
+// Long syntax of a volume / port entry (`volumes:` / `ports:` as objects).
+// Stack files deployed to Swarm commonly use it.
+export type LongVolume = Readonly<{
+  type?: 'volume' | 'bind' | 'tmpfs' | 'npipe' | 'cluster';
+  source?: string;
+  target: string;
+  read_only?: boolean;
+  [option: string]: unknown;
+}>;
+
+export type LongPort = Readonly<{
+  target: number | string;
+  published?: number | string;
+  protocol?: string;
+  mode?: 'host' | 'ingress';
+  [option: string]: unknown;
+}>;
 
 export type EnvFileElement = string | { path: string; required?: boolean };
 
@@ -86,7 +129,7 @@ export type RawComposeService = Readonly<
     Partial<
       Record<
         Extract<ComposeServiceFieldName, 'volumes' | 'ports'>,
-        ReadonlyArray<string>
+        ReadonlyArray<string | LongVolume | LongPort>
       > &
         Record<
           Extract<ComposeServiceFieldName, 'environment' | 'labels'>,
