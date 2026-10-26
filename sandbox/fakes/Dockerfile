@@ -1,4 +1,4 @@
-FROM node:24.16.0-alpine
+FROM node:24.22.1-alpine
 WORKDIR /fake
 # `ws` is one of the sandbox's own npm dependencies (sandbox/package.json). setup.mjs stages it
 # next to this file as ./ws, so the build downloads nothing: no npm registry.

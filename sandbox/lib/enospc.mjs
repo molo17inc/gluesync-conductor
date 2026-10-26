@@ -3,7 +3,7 @@
 // safeWriteFile's statfs pre-flight normally refuses a write before the kernel ever
 // returns ENOSPC, and its unit tests use an in-memory fake fs. This puts the real
 // bundle on a real 64 KiB tmpfs filled to 0 bytes free, inside a privileged
-// node:24.16.0-alpine container of the sandbox daemon, with statfs reporting ENOSYS (a
+// node:24.22.1-alpine container of the sandbox daemon, with statfs reporting ENOSYS (a
 // supported production path) so the write itself meets the kernel's ENOSPC.
 //
 //   A  single-file bind mount, in place, growing by a page: DiskFullError, bytes and inode untouched
