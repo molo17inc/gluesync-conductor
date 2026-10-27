@@ -61,4 +61,71 @@ describe('conductorUpdateRefusal', () => {
       /not newer/,
     );
   });
+
+  describe('switching release channel', () => {
+    it('moves an alpha build to the beta or GA release of its version', () => {
+      assert.equal(conductorUpdateRefusal('0.14.0.814e5b87', '0.14.0'), null);
+    });
+
+    it('moves an alpha build to a newer release or a newer alpha', () => {
+      assert.equal(conductorUpdateRefusal('0.14.0.814e5b87', '0.15.0'), null);
+      assert.equal(
+        conductorUpdateRefusal('0.14.0.814e5b87', '0.15.0.a1b2c3d4'),
+        null,
+      );
+    });
+
+    it('moves a release to the alpha of a newer version', () => {
+      assert.equal(conductorUpdateRefusal('0.14.0', '0.15.0.a1b2c3d4'), null);
+    });
+
+    it('does not move a release back to an alpha build of its own version', () => {
+      assert.match(
+        conductorUpdateRefusal('0.14.0', '0.14.0.814e5b87') ?? '',
+        /not newer/,
+      );
+    });
+
+    it('refuses an older release from an alpha build', () => {
+      const reason = conductorUpdateRefusal('0.14.0.814e5b87', '0.13.2');
+
+      assert.match(reason ?? '', /not newer/);
+      assert.match(reason ?? '', /0\.14\.0\.814e5b87/);
+    });
+
+    it('refuses another alpha build of the same version', () => {
+      assert.match(
+        conductorUpdateRefusal('0.14.0.814e5b87', '0.14.0.a1b2c3d4') ?? '',
+        /both alpha builds of 0\.14\.0/,
+      );
+    });
+
+    it('has nothing to refuse when the alpha build is the running one', () => {
+      assert.equal(
+        conductorUpdateRefusal('0.14.0.814e5b87', '0.14.0.814e5b87'),
+        null,
+      );
+    });
+
+    it('reads the alpha build behind a Windows image variant', () => {
+      assert.equal(
+        conductorUpdateRefusal(
+          '0.14.0.814e5b87-win-nanoserver-ltsc2022',
+          '0.14.0',
+        ),
+        null,
+      );
+    });
+
+    it('accepts a commit made of digits only', () => {
+      assert.equal(conductorUpdateRefusal('0.14.0.0123456', '0.14.0'), null);
+    });
+
+    it('still refuses a tag that is no version, like develop', () => {
+      assert.match(
+        conductorUpdateRefusal('develop', '0.15.0') ?? '',
+        /not a release version/,
+      );
+    });
+  });
 });
