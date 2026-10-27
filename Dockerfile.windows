@@ -29,7 +29,11 @@ SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
 
 # Install Docker CLI + Compose, then remove npm, npx, corepack and the yarn/pnpm
 # shims (plus the bundled npm dependencies and the corepack cache) from C:\nodejs:
-# the runtime only runs `node index.js`, so they are only CVE surface
+# the runtime only runs `node index.js`, so they are only CVE surface.
+# Only the paths that exist are removed: `pwsh -Command` exits 1, with no message,
+# when its last command fails, even one silenced with -ErrorAction SilentlyContinue.
+# No double quotes in the RUN: Docker passes it on a Windows command line, which
+# strips them before PowerShell parses the script.
 RUN $dockerZip = 'https://download.docker.com/win/static/stable/x86_64/docker-29.9.2.zip'; `
   $composeExe = 'https://github.com/docker/compose/releases/download/v5.6.1/docker-compose-windows-x86_64.exe'; `
   Invoke-WebRequest -Uri $dockerZip -OutFile C:/docker.zip; `
@@ -40,14 +44,15 @@ RUN $dockerZip = 'https://download.docker.com/win/static/stable/x86_64/docker-29
   Invoke-WebRequest -Uri $composeExe -OutFile C:/Windows/System32/docker-compose.exe; `
   $nodeDir = 'C:\nodejs'; `
   foreach ($name in 'npm', 'npx', 'corepack', 'yarn', 'yarnpkg', 'pnpm', 'pnpx') { `
-  Get-ChildItem -Path $nodeDir -Filter "$name*" -File -ErrorAction SilentlyContinue | `
+  Get-ChildItem -Path $nodeDir -Filter ($name + '*') -File -ErrorAction SilentlyContinue | `
   Remove-Item -Force `
   }; `
-  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue -Path `
-  "$nodeDir\node_modules\npm", `
-  "$nodeDir\node_modules\corepack", `
-  "$env:LOCALAPPDATA\node\corepack", `
-  'C:\Users\ContainerAdministrator\AppData\Local\node\corepack'
+  @(($nodeDir + '\node_modules\npm'), `
+  ($nodeDir + '\node_modules\corepack'), `
+  ($env:LOCALAPPDATA + '\node\corepack'), `
+  'C:\Users\ContainerAdministrator\AppData\Local\node\corepack') | `
+  Where-Object { Test-Path $_ } | `
+  Remove-Item -Recurse -Force
 
 # Environment variables (one per line)
 ENV NODE_ENV=production
