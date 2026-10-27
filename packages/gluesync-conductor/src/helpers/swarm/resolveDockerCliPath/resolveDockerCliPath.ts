@@ -12,9 +12,13 @@ const LINUX_CANDIDATES: ReadonlyArray<string> = [
 // Dockerfile.windows copies the CLI into System32; a Docker Engine installed
 // from the static zip keeps it in Program Files
 const windowsCandidates = (): ReadonlyArray<string> => [
-  win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'docker.exe'),
   win32.join(
-    process.env.ProgramFiles || 'C:\\Program Files',
+    process.env.SystemRoot || String.raw`C:\Windows`,
+    'System32',
+    'docker.exe',
+  ),
+  win32.join(
+    process.env.ProgramFiles || String.raw`C:\Program Files`,
     'docker',
     'docker.exe',
   ),
