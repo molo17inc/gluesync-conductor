@@ -7,6 +7,8 @@ export type WaitForServiceConvergedOptions = Readonly<{
   windowMs?: number;
   // Give up after this long (UPDATE_VERIFY_MAX_WAIT_SECONDS, 180s)
   maxWaitMs?: number;
+  // Longest image pull, not counted in maxWaitMs (UPDATE_PULL_MAX_WAIT_SECONDS, 1200s)
+  maxPullMs?: number;
   pollMs?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;

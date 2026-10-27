@@ -453,4 +453,127 @@ describe('waitForServiceConverged', () => {
 
     assert.equal(state.t, 6_000);
   });
+
+  describe('while Swarm pulls the new image', () => {
+    // The new task is `preparing` (pulling) until pulledAt, then runs
+    const pullingUntil =
+      (pulledAt: number, extra: Parameters<typeof buildTask>[1] = {}) =>
+      (t: number): Scene => ({
+        service: buildService('core-hub', {
+          state: t < pulledAt ? 'updating' : 'completed',
+        }),
+        tasks: [
+          buildTask('core-hub', {
+            state: t < pulledAt ? 'preparing' : 'running',
+            ...extra,
+          }),
+        ],
+      });
+
+    it('does not count the pull against the converge time', async () => {
+      const { state, now, sleep } = clock();
+      // A 90 s pull, longer than the 60 s maxWait of these options
+      const docker = dockerShowing(pullingUntil(90_000), now);
+
+      const result = await waitForServiceConverged(docker, NAME, {
+        ...options,
+        now,
+        sleep,
+      });
+
+      assert.deepEqual(result, { ok: true });
+      assert.ok(state.t >= 110_000, `waited ${state.t}ms`);
+    });
+
+    it('fails a pull that takes longer than the pull limit', async () => {
+      const { state, now, sleep } = clock();
+      const docker = dockerShowing(pullingUntil(Number.POSITIVE_INFINITY), now);
+
+      const result = await waitForServiceConverged(docker, NAME, {
+        ...options,
+        maxPullMs: 300_000,
+        now,
+        sleep,
+      });
+
+      assert.equal(result.ok, false);
+      assert.match(
+        (result as { reason: string }).reason,
+        /gs_core-hub image pull did not finish within 300s/,
+      );
+      assert.ok(state.t >= 300_000, `waited ${state.t}ms`);
+      assert.ok(state.t < 310_000, `waited ${state.t}ms`);
+    });
+
+    it('still counts a task that cannot be scheduled (pending)', async () => {
+      const { state, now, sleep } = clock();
+      const docker = dockerShowing(
+        () => ({
+          service: buildService('core-hub', { state: 'updating' }),
+          tasks: [buildTask('core-hub', { state: 'pending' })],
+        }),
+        now,
+      );
+
+      const result = await waitForServiceConverged(docker, NAME, {
+        ...options,
+        now,
+        sleep,
+      });
+
+      assert.equal(result.ok, false);
+      assert.match(
+        (result as { reason: string }).reason,
+        /did not converge within 60s/,
+      );
+      assert.ok(state.t < 70_000, `waited ${state.t}ms`);
+    });
+
+    it('counts a preparing task that reports an error', async () => {
+      const { state, now, sleep } = clock();
+      const docker = dockerShowing(
+        pullingUntil(Number.POSITIVE_INFINITY, {
+          err: 'No such image: molo17/gluesync-core-hub:2.3.0',
+        }),
+        now,
+      );
+
+      const result = await waitForServiceConverged(docker, NAME, {
+        ...options,
+        now,
+        sleep,
+      });
+
+      assert.equal(result.ok, false);
+      assert.match(
+        (result as { reason: string }).reason,
+        /did not converge within 60s/,
+      );
+      assert.ok(state.t < 70_000, `waited ${state.t}ms`);
+    });
+
+    it('only pauses the clock for a task of the current spec', async () => {
+      const { state, now, sleep } = clock();
+      // An old-spec task still pulling says nothing about the new version
+      const docker = dockerShowing(
+        () => ({
+          service: buildService('core-hub', {
+            image: 'molo17/gluesync-core-hub:2.3.1',
+            state: 'updating',
+          }),
+          tasks: [buildTask('core-hub', { state: 'preparing' })],
+        }),
+        now,
+      );
+
+      const result = await waitForServiceConverged(docker, NAME, {
+        ...options,
+        now,
+        sleep,
+      });
+
+      assert.equal(result.ok, false);
+      assert.ok(state.t < 70_000, `waited ${state.t}ms`);
+    });
+  });
 });
