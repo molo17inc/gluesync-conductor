@@ -30,6 +30,11 @@ export type FakeSwarmOptions = Readonly<{
   selfImage?: string;
   // Makes the inspect of the own container fail with a daemon error
   selfInspectFails?: boolean;
+  // Registry digests `getImage(name).distribution()` answers with, by image;
+  // an image without one is not found on its registry
+  digests?: Readonly<Record<string, string>>;
+  // Rejects `distribution()` of every image with this error
+  distributionError?: Error;
 }>;
 
 // What the helpers asked of the fake, for the specs to look at
@@ -44,6 +49,8 @@ export type SwarmCalls = {
     body: Record<string, any>;
   }>;
   removed: string[];
+  // Images whose registry digest was asked for
+  distributions: string[];
 };
 
 // A replicated service of the `gs` stack the way `GET /services` returns it
@@ -152,6 +159,8 @@ const fakeSwarmDocker = ({
   pingDown = false,
   selfImage,
   selfInspectFails = false,
+  digests = {},
+  distributionError,
 }: FakeSwarmOptions = {}) => {
   const calls: SwarmCalls = {
     listServices: [],
@@ -159,6 +168,7 @@ const fakeSwarmDocker = ({
     listNodes: 0,
     updates: [],
     removed: [],
+    distributions: [],
   };
   const pendingErrors = [...updateErrors];
   const pendingPingErrors = [...pingErrors];
@@ -221,6 +231,28 @@ const fakeSwarmDocker = ({
         }
 
         return { Id: id, Config: { Image: selfImage, Labels: {} } };
+      },
+    }),
+    getImage: (name: string) => ({
+      distribution: async () => {
+        calls.distributions.push(name);
+        if (distributionError) {
+          throw distributionError;
+        }
+        if (!digests[name]) {
+          throw Object.assign(new Error(`(HTTP code 401) no such image`), {
+            statusCode: 401,
+          });
+        }
+
+        return {
+          Descriptor: {
+            mediaType: 'application/vnd.oci.image.index.v1+json',
+            digest: digests[name],
+            size: 1,
+          },
+          Platforms: [],
+        };
       },
     }),
     getService: (id: string) => ({

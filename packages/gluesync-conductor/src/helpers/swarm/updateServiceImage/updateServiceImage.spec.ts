@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import fakeSwarmDocker, {
   buildService,
 } from '../../../testing/fakeSwarmDocker';
+import { STACK_IMAGE_LABEL, UPDATE_CONFIG_LABEL } from '../swarm.model';
 import updateServiceImage, {
   MIN_UPDATE_MONITOR_NS,
 } from './updateServiceImage';
@@ -129,5 +130,114 @@ describe('updateServiceImage', () => {
 
     assert.equal(calls.updates.length, 1);
     assert.equal(calls.updates[0].body.UpdateConfig.FailureAction, 'rollback');
+  });
+
+  describe('the spec `docker stack deploy` would write', () => {
+    it('pins the image to its registry digest, as --resolve-image always does', async () => {
+      const { docker, calls } = fakeSwarmDocker({
+        services: [buildService('core-hub')],
+        digests: { 'molo17/hub:2': 'sha256:feed' },
+      });
+
+      await updateServiceImage(docker, 'gs_core-hub', 'molo17/hub:2');
+
+      assert.equal(
+        calls.updates[0].body.TaskTemplate.ContainerSpec.Image,
+        'molo17/hub:2@sha256:feed',
+      );
+    });
+
+    it('labels the service with the image of the stack file', async () => {
+      const { docker, calls } = fakeSwarmDocker({
+        services: [
+          buildService('core-hub', {
+            labels: { [STACK_IMAGE_LABEL]: 'molo17/hub:1' },
+          }),
+        ],
+        digests: { 'molo17/hub:2': 'sha256:feed' },
+      });
+
+      await updateServiceImage(docker, 'gs_core-hub', 'molo17/hub:2');
+
+      assert.equal(
+        calls.updates[0].body.Labels[STACK_IMAGE_LABEL],
+        'molo17/hub:2',
+      );
+    });
+
+    it('adds no stack image label to a service that was not deployed as a stack', async () => {
+      const { docker, calls } = fakeSwarmDocker({
+        services: [buildService('core-hub')],
+      });
+
+      await updateServiceImage(docker, 'gs_core-hub', 'molo17/hub:2');
+
+      assert.equal(STACK_IMAGE_LABEL in calls.updates[0].body.Labels, false);
+    });
+
+    it('stashes the update settings of the service for restoreUpdateConfig', async () => {
+      const own = {
+        Parallelism: 1,
+        FailureAction: 'pause',
+        Monitor: 5_000_000_000,
+        MaxFailureRatio: 0,
+        Order: 'stop-first',
+      };
+      const { docker, calls } = fakeSwarmDocker({
+        services: [buildService('core-hub', { updateConfig: own })],
+      });
+
+      await updateServiceImage(docker, 'gs_core-hub', 'molo17/hub:2');
+
+      assert.deepEqual(
+        JSON.parse(calls.updates[0].body.Labels[UPDATE_CONFIG_LABEL]),
+        own,
+      );
+    });
+
+    it('stashes null for a service with no update settings', async () => {
+      const { docker, calls } = fakeSwarmDocker({
+        services: [buildService('core-hub')],
+      });
+
+      await updateServiceImage(docker, 'gs_core-hub', 'molo17/hub:2');
+
+      assert.equal(calls.updates[0].body.Labels[UPDATE_CONFIG_LABEL], 'null');
+    });
+
+    it('does not stash the rollback settings over the ones a retry finds stashed', async () => {
+      const { docker, calls } = fakeSwarmDocker({
+        services: [
+          buildService('core-hub', {
+            labels: { [UPDATE_CONFIG_LABEL]: '{"FailureAction":"pause"}' },
+            updateConfig: { FailureAction: 'rollback', Monitor: 1 },
+          }),
+        ],
+      });
+
+      await updateServiceImage(docker, 'gs_core-hub', 'molo17/hub:2');
+
+      assert.equal(
+        calls.updates[0].body.Labels[UPDATE_CONFIG_LABEL],
+        '{"FailureAction":"pause"}',
+      );
+    });
+
+    it('keeps the pinned image of a service already on it', async () => {
+      const { docker, calls } = fakeSwarmDocker({
+        services: [
+          buildService('core-hub', { image: 'molo17/hub:2@sha256:abc' }),
+        ],
+        digests: { 'molo17/hub:2': 'sha256:other' },
+      });
+
+      await updateServiceImage(docker, 'gs_core-hub', 'molo17/hub:2');
+
+      assert.equal(
+        calls.updates[0].body.TaskTemplate.ContainerSpec.Image,
+        'molo17/hub:2@sha256:abc',
+      );
+      assert.deepEqual(calls.distributions, []);
+    });
   });
 });
