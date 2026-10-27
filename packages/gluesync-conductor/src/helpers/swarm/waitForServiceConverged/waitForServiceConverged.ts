@@ -43,8 +43,12 @@ type Observation =
 
 type Verdict =
   | Readonly<{ kind: 'converged' }>
-  | Readonly<{ kind: 'pending'; detail: string }>
+  // pulling: a task of the current spec is still getting its image
+  | Readonly<{ kind: 'pending'; detail: string; pulling: boolean }>
   | Readonly<{ kind: 'failed'; reason: string }>;
+
+// Swarm pulls the image of a task while the task is `preparing`
+const PULLING_STATE = 'preparing';
 
 const judge = (
   fullName: string,
@@ -68,10 +72,15 @@ const judge = (
   const forceUpdate = service.spec.TaskTemplate?.ForceUpdate ?? 0;
   // Right after an update call the status is still empty and the old tasks
   // still run: they do not count
-  const onCurrentSpec = tasks.every(
-    task => task.image === service.image && task.forceUpdate === forceUpdate,
+  const isCurrent = (task: Readonly<SwarmTask>): boolean =>
+    task.image === service.image && task.forceUpdate === forceUpdate;
+  const onCurrentSpec = tasks.every(isCurrent);
+  const pulling = tasks.some(
+    task => isCurrent(task) && task.state === PULLING_STATE && !task.err,
   );
-  const detail = `update ${state ?? 'none'}, ${running}/${expected} tasks running`;
+  const detail = `update ${state ?? 'none'}, ${running}/${expected} tasks running${
+    pulling ? ', pulling the image' : ''
+  }`;
 
   return (!state || state === 'completed') &&
     onCurrentSpec &&
@@ -79,7 +88,7 @@ const judge = (
     tasks.length === expected &&
     (service.replicas !== undefined || expected > 0)
     ? { kind: 'converged' }
-    : { kind: 'pending', detail };
+    : { kind: 'pending', detail, pulling };
 };
 
 // Failed tasks are replaced and no longer "should run", so ask for them to say why
@@ -108,6 +117,12 @@ const latestFailure = async (
  * as many tasks run as the service wants, they come from the current spec, and
  * all that stays true for UPDATE_VERIFY_SECONDS within
  * UPDATE_VERIFY_MAX_WAIT_SECONDS. Rolled back or paused updates fail at once.
+ *
+ * Swarm pulls the new image while the task is starting, unlike `compose pull`
+ * before `up`: the time spent pulling does not count against
+ * UPDATE_VERIFY_MAX_WAIT_SECONDS, so a large image (a Windows one is gigabytes)
+ * is not rolled back for being slow to download. UPDATE_PULL_MAX_WAIT_SECONDS
+ * bounds the pull itself.
  */
 const waitForServiceConverged: WaitForServiceConverged = async (
   docker,
@@ -117,6 +132,8 @@ const waitForServiceConverged: WaitForServiceConverged = async (
   const windowMs = options?.windowMs ?? envMs('UPDATE_VERIFY_SECONDS', 20);
   const maxWaitMs =
     options?.maxWaitMs ?? envMs('UPDATE_VERIFY_MAX_WAIT_SECONDS', 180);
+  const maxPullMs =
+    options?.maxPullMs ?? envMs('UPDATE_PULL_MAX_WAIT_SECONDS', 1200);
   const pollMs = options?.pollMs ?? 2000;
   const sleep = options?.sleep ?? sleepMs;
   const now = options?.now ?? Date.now;
@@ -169,7 +186,13 @@ const waitForServiceConverged: WaitForServiceConverged = async (
     reason: `${reason}${await latestFailure(docker, fullName)}`,
   });
 
-  const poll = async (stableSince: number | null): Promise<ConvergeResult> => {
+  // stableSince: converged since then; pulledMs: time spent pulling so far,
+  // up to lastAt, the time of the previous look
+  const poll = async (
+    stableSince: number | null,
+    pulledMs: number,
+    lastAt: number,
+  ): Promise<ConvergeResult> => {
     const observation = await observe();
     const at = now();
 
@@ -189,6 +212,7 @@ const waitForServiceConverged: WaitForServiceConverged = async (
         ? {
             kind: 'pending',
             detail: `Docker error: ${observation.error instanceof Error ? observation.error.message : String(observation.error)}`,
+            pulling: false,
           }
         : judge(fullName, observation.service, observation.tasks);
 
@@ -197,6 +221,8 @@ const waitForServiceConverged: WaitForServiceConverged = async (
     }
 
     const since = verdict.kind === 'converged' ? (stableSince ?? at) : null;
+    const pulling = verdict.kind === 'pending' && verdict.pulling;
+    const pulled = pulledMs + (pulling ? at - lastAt : 0);
 
     if (since !== null && at - since >= windowMs) {
       logger.info(
@@ -207,7 +233,13 @@ const waitForServiceConverged: WaitForServiceConverged = async (
       return { ok: true };
     }
 
-    if (at - started >= maxWaitMs) {
+    if (pulling && pulled >= maxPullMs) {
+      return fail(
+        `${fullName} image pull did not finish within ${Math.round(maxPullMs / 1000)}s`,
+      );
+    }
+
+    if (at - started - pulled >= maxWaitMs) {
       return fail(
         `${fullName} did not converge within ${Math.round(maxWaitMs / 1000)}s (${
           verdict.kind === 'pending' ? verdict.detail : 'not stable long enough'
@@ -217,10 +249,10 @@ const waitForServiceConverged: WaitForServiceConverged = async (
 
     await sleep(pollMs);
 
-    return poll(since);
+    return poll(since, pulled, at);
   };
 
-  return poll(null);
+  return poll(null, 0, started);
 };
 
 export default waitForServiceConverged;

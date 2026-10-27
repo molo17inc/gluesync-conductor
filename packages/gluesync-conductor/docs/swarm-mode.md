@@ -141,6 +141,13 @@ desired replicas, and that stays true for `UPDATE_VERIFY_SECONDS` (default 20)
 within `UPDATE_VERIFY_MAX_WAIT_SECONDS` (default 180). `rollback_completed`,
 `rollback_paused` or `paused` count as failure.
 
+Swarm pulls the new image while the task starts (compose pulls before `up`), so
+the time a task of the new spec spends in `preparing` without an error does not
+count against `UPDATE_VERIFY_MAX_WAIT_SECONDS`: a large image, such as a Windows
+one of a few gigabytes, is not rolled back for downloading slowly. The pull itself
+is bounded by `UPDATE_PULL_MAX_WAIT_SECONDS` (default 1200). A task that cannot be
+scheduled stays `pending` and still counts.
+
 ## Other routes
 
 - `GET /containers`: one entry per stack service (`type` as under Identity); `info` is built from the
