@@ -2,6 +2,14 @@ import type Docker from 'dockerode';
 
 export const STACK_NAMESPACE_LABEL = 'com.docker.stack.namespace';
 
+// The image of the stack file, as `docker stack deploy` labels the service
+export const STACK_IMAGE_LABEL = 'com.docker.stack.image';
+
+// The service's own UpdateConfig (JSON, `null` when it had none) while an
+// image update runs with the rollback settings: restoreUpdateConfig puts it
+// back, so the next `docker stack deploy` finds the spec it wrote
+export const UPDATE_CONFIG_LABEL = 'com.molo17.conductor.update-config';
+
 export type SwarmService = Readonly<{
   // Conductor service id: the name without the `<namespace>_` prefix
   id: string;

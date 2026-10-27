@@ -9,6 +9,7 @@ import { getLogger } from '../../../utils/logger';
 import forceUpdateService from '../forceUpdateService/forceUpdateService';
 import getService from '../getService/getService';
 import removeService from '../removeService/removeService';
+import restoreUpdateConfig from '../restoreUpdateConfig/restoreUpdateConfig';
 import retryOnDockerOutage from '../retryOnDockerOutage/retryOnDockerOutage';
 import rollbackService from '../rollbackService/rollbackService';
 import scaleService from '../scaleService/scaleService';
@@ -143,6 +144,22 @@ const createSwarmActions: CreateSwarmActions = ({
   const alreadyOn = async (id: string, image: string): Promise<boolean> =>
     (await imageOf(id)) === stripImageDigest(image);
 
+  // The update is done and good: the service gets its own UpdateConfig back.
+  // Not putting it back costs a needless rollout on the next stack deploy,
+  // never the update itself.
+  const restoreUpdateSettings = async (id: string): Promise<void> => {
+    try {
+      await retried(`restore update settings of ${id}`, () =>
+        restoreUpdateConfig(docker, fullName(id)),
+      );
+    } catch (error) {
+      logger.warn(
+        { error, service: id },
+        '[swarm] could not restore the update settings of the service',
+      );
+    }
+  };
+
   const updateOtherService = async (id: string): Promise<string> => {
     const image = await imageInStackFile(id);
     // Read once, before the update: a retry after a dropped connection may
@@ -163,6 +180,8 @@ const createSwarmActions: CreateSwarmActions = ({
         `${converged.reason}. ${await rollBackFailedUpdate(id, previousImage)}`,
       );
     }
+
+    await restoreUpdateSettings(id);
 
     return `Agent ${id} updated and restarted.`;
   };

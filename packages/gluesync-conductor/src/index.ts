@@ -41,6 +41,7 @@ import syncCollectLogsScripts from './helpers/syncCollectLogsScripts/syncCollect
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
 import awaitDecidedOrchestrator from './helpers/orchestrator/awaitDecidedOrchestrator/awaitDecidedOrchestrator';
 import reconcileSelfImage from './helpers/swarm/reconcileSelfImage/reconcileSelfImage';
+import { restoreSelfUpdateConfig } from './helpers/swarm/restoreUpdateConfig/restoreUpdateConfig';
 import migrateRoutes from './routes/migrate';
 import envRoutes from './routes/env';
 import updateModeEmitter from './plugins/updateModeEmitter';
@@ -131,6 +132,13 @@ const prepareForOrchestrator = async (
     // A self update that Swarm rolled back leaves the stack file on the bad image
     if (orchestrator.isManager) {
       await reconcileSelfImage(docker, orchestrator);
+
+      // After a self update the rollback settings are still on the service:
+      // back to its own once Swarm calls the update good, in the background
+      restoreSelfUpdateConfig(
+        docker,
+        `${orchestrator.namespace}_${orchestrator.selfService}`,
+      ).catch(() => undefined);
     }
   } else if (!orchestrator) {
     logger.warn(

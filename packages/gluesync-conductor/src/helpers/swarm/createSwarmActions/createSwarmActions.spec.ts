@@ -316,6 +316,29 @@ describe('createSwarmActions', () => {
       assert.deepEqual(waited, ['converged gs_gluesync-core-hub']);
     });
 
+    it('gives the service its own update settings back after a good rollout', async () => {
+      const own = { Parallelism: 1, FailureAction: 'pause', Monitor: 5 };
+      const { actions, calls } = load({
+        services: [
+          current({
+            labels: {
+              'com.molo17.conductor.update-config': JSON.stringify(own),
+            },
+          }),
+        ],
+        fileServices,
+      });
+
+      await actions.update('gluesync-core-hub');
+
+      assert.equal(calls.updates.length, 2);
+      assert.deepEqual(calls.updates[1].body.UpdateConfig, own);
+      assert.equal(
+        'com.molo17.conductor.update-config' in calls.updates[1].body.Labels,
+        false,
+      );
+    });
+
     it('rolls the service back when the new version does not converge', async () => {
       const { actions, calls } = load({
         services: [current()],
