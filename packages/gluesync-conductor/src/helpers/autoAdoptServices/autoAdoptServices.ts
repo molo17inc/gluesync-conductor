@@ -25,6 +25,7 @@ import applyCoreHubProductionTweaks from '../applyCoreHubProductionTweaks/applyC
 import addEnvToGrafana from '../addEnvToGrafana/addEnvToGrafana';
 import applyCpuCompatibilityToImage from '../applyCpuCompatibilityToImage/applyCpuCompatibilityToImage';
 import addPortToCoreHub from '../addPortToCoreHub/addPortToCoreHub';
+import addStackMountToCoreHub from '../addStackMountToCoreHub/addStackMountToCoreHub';
 import healTraefikConf, {
   findProxyServiceName,
 } from '../healTraefikConf/healTraefikConf';
@@ -597,6 +598,14 @@ const autoAdoptServices = async (): Promise<{
         services: portAddedLabeledServices,
         updatedIds: portAddedLabeledIds,
       } = addPortToCoreHub(cpuCompatibleLabeledServices, adjustedIds);
+      const {
+        services: stackMountedLabeledServices,
+        updatedIds: stackMountedLabeledIds,
+      } = addStackMountToCoreHub(
+        portAddedLabeledServices,
+        adjustedIds,
+        isWindows,
+      );
 
       if (
         allEmpty([
@@ -610,6 +619,7 @@ const autoAdoptServices = async (): Promise<{
           coreHubTweakedIds,
           cpuCompatibilityLabeledIds,
           portAddedLabeledIds,
+          stackMountedLabeledIds,
           chronosUpdatedIds,
           traefikUpdatedIds,
         ])
@@ -629,6 +639,7 @@ const autoAdoptServices = async (): Promise<{
               coreHubTweakedServices,
               cpuCompatibleLabeledServices,
               portAddedLabeledServices,
+              stackMountedLabeledServices,
             ]),
           },
           networkName,
@@ -651,6 +662,7 @@ const autoAdoptServices = async (): Promise<{
           ...coreHubTweakedIds,
           ...cpuCompatibilityLabeledIds,
           ...portAddedLabeledIds,
+          ...stackMountedLabeledIds,
           ...chronosUpdatedIds,
           ...traefikUpdatedIds,
         ],
@@ -721,12 +733,14 @@ const autoAdoptServices = async (): Promise<{
 
     const { services: portAddedServices, updatedIds: portAddedIds } =
       addPortToCoreHub(cpuCompatibleServices, allServiceIds);
+    const { services: stackMountedServices, updatedIds: stackMountedIds } =
+      addStackMountToCoreHub(portAddedServices, allServiceIds, isWindows);
 
     await writeAndRecreateChronos(
       ensureNetworkDefinition(
         {
           ...composeJson,
-          services: portAddedServices,
+          services: stackMountedServices,
         },
         networkName,
         isWindows,
@@ -745,6 +759,7 @@ const autoAdoptServices = async (): Promise<{
         ...networkAllUpdatedIds,
         ...cpuCompatibilityUpdatedIds,
         ...portAddedIds,
+        ...stackMountedIds,
         ...chronosUpdatedIds,
         ...traefikUpdatedIds,
       ],
