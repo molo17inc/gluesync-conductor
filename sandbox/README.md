@@ -130,7 +130,7 @@ Unset (a developer's Mac), every image comes from Docker Hub on first use. Set i
 | Daemon | Images |
 |---|---|
 | host (the job's own `dockerd`, or Docker Desktop) | `docker:28.3.3-dind` (the sandbox DinD, and the certificate step, which uses its `openssl`) |
-| sandbox (inside the DinD) | `registry:2.8.3`, `node:24.16.0-alpine` (FROM of the fakes and of the conductor image, and the ENOSPC test), `alpine:3.20` (nsenter fallback of the disk-full fault), `docker:28` and `docker:cli` (the helper images the conductor itself runs for self-update and "restart all"; it pulls them from Docker Hub when absent) |
+| sandbox (inside the DinD) | `registry:2.8.3`, `node:24.22.1-alpine` (FROM of the fakes and of the conductor image, and the ENOSPC test), `alpine:3.20` (nsenter fallback of the disk-full fault), `docker:28` and `docker:cli` (the helper images the conductor itself runs for self-update and "restart all"; it pulls them from Docker Hub when absent) |
 
 `up` also creates a stopped `keep-*` container per image, because the conductor prunes every unused image after an update and would otherwise delete the seeded helpers. Because the names are canonical and present, `docker build` (no `--pull`) uses the local image for `FROM` without contacting a registry, so neither Dockerfile needed changes for that. The fakes' `ws` package comes from the sandbox's own npm dependencies (staged into the build context), not from `npm install` in the image build. The mirror must hold every name above with the same tag; mirror a new image there before adding it to `requiredImages`.
 

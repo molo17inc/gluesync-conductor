@@ -24,7 +24,7 @@ const sandboxName = process.env.SANDBOX_NAME || 'conductor-sandbox';
 // every name below, with the same tag. Keep this list complete: it is what the CI job needs offline.
 const DIND_IMAGE = 'docker:28.3.3-dind';
 // Also the image the real-kernel ENOSPC test runs in, and the base of the fakes and the conductor.
-const NODE_IMAGE = 'node:24.16.0-alpine';
+const NODE_IMAGE = 'node:24.22.1-alpine';
 export const requiredImages = {
   // The host's daemon: the sandbox's own Docker-in-Docker, and the certificate step (it has openssl).
   outer: [DIND_IMAGE],
