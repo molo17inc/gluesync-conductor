@@ -91,6 +91,48 @@ const judge = (
     : { kind: 'pending', detail, pulling };
 };
 
+// The daemon can be briefly unreachable (a manager restarting): keep trying
+const verdictOf = (fullName: string, observation: Observation): Verdict =>
+  observation.kind === 'error'
+    ? {
+        kind: 'pending',
+        detail: `Docker error: ${observation.error instanceof Error ? observation.error.message : String(observation.error)}`,
+        pulling: false,
+      }
+    : judge(fullName, observation.service, observation.tasks);
+
+type TimeSpent = Readonly<{
+  // Since the wait started, pulls included
+  elapsedMs: number;
+  // Of which spent pulling the new image
+  pulledMs: number;
+  maxWaitMs: number;
+  maxPullMs: number;
+}>;
+
+// Why the wait gives up now, if it does: the pull has its own limit, and the
+// converge limit leaves out the time spent pulling
+const timeLimitReason = (
+  fullName: string,
+  verdict: Verdict,
+  { elapsedMs, pulledMs, maxWaitMs, maxPullMs }: TimeSpent,
+): string | undefined => {
+  const pulling = verdict.kind === 'pending' && verdict.pulling;
+
+  if (pulling && pulledMs >= maxPullMs) {
+    return `${fullName} image pull did not finish within ${Math.round(maxPullMs / 1000)}s`;
+  }
+
+  if (elapsedMs - pulledMs < maxWaitMs) {
+    return undefined;
+  }
+
+  const state =
+    verdict.kind === 'pending' ? verdict.detail : 'not stable long enough';
+
+  return `${fullName} did not converge within ${Math.round(maxWaitMs / 1000)}s (${state})`;
+};
+
 // Failed tasks are replaced and no longer "should run", so ask for them to say why
 const latestFailure = async (
   docker: Readonly<Docker>,
@@ -206,23 +248,16 @@ const waitForServiceConverged: WaitForServiceConverged = async (
       return fail(`${fullName}: Docker is not reachable: ${down}`);
     }
 
-    // The daemon can be briefly unreachable (a manager restarting): keep trying
-    const verdict: Verdict =
-      observation.kind === 'error'
-        ? {
-            kind: 'pending',
-            detail: `Docker error: ${observation.error instanceof Error ? observation.error.message : String(observation.error)}`,
-            pulling: false,
-          }
-        : judge(fullName, observation.service, observation.tasks);
+    const verdict = verdictOf(fullName, observation);
 
     if (verdict.kind === 'failed') {
       return fail(verdict.reason);
     }
 
     const since = verdict.kind === 'converged' ? (stableSince ?? at) : null;
-    const pulling = verdict.kind === 'pending' && verdict.pulling;
-    const pulled = pulledMs + (pulling ? at - lastAt : 0);
+    const pulled =
+      pulledMs +
+      (verdict.kind === 'pending' && verdict.pulling ? at - lastAt : 0);
 
     if (since !== null && at - since >= windowMs) {
       logger.info(
@@ -233,18 +268,15 @@ const waitForServiceConverged: WaitForServiceConverged = async (
       return { ok: true };
     }
 
-    if (pulling && pulled >= maxPullMs) {
-      return fail(
-        `${fullName} image pull did not finish within ${Math.round(maxPullMs / 1000)}s`,
-      );
-    }
+    const timedOut = timeLimitReason(fullName, verdict, {
+      elapsedMs: at - started,
+      pulledMs: pulled,
+      maxWaitMs,
+      maxPullMs,
+    });
 
-    if (at - started - pulled >= maxWaitMs) {
-      return fail(
-        `${fullName} did not converge within ${Math.round(maxWaitMs / 1000)}s (${
-          verdict.kind === 'pending' ? verdict.detail : 'not stable long enough'
-        })`,
-      );
+    if (timedOut) {
+      return fail(timedOut);
     }
 
     await sleep(pollMs);
