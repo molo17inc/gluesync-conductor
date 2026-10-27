@@ -6,6 +6,7 @@ import type { RestoreStrategy } from '../../rollbackServiceImages/rollbackServic
 import fingerprintSwarmServices from '../fingerprintSwarmServices/fingerprintSwarmServices';
 import getService from '../getService/getService';
 import getServiceTasks from '../getServiceTasks/getServiceTasks';
+import restoreUpdateConfig from '../restoreUpdateConfig/restoreUpdateConfig';
 import retryOnDockerOutage from '../retryOnDockerOutage/retryOnDockerOutage';
 import stripImageDigest from '../stripImageDigest/stripImageDigest';
 import updateServiceImage from '../updateServiceImage/updateServiceImage';
@@ -139,7 +140,18 @@ const swarmRestore: SwarmRestore = namespace => {
       updateServiceImage(docker, fullName(id), image),
     );
 
-    return settle(docker, id, image, Date.now() + settleMs());
+    const problem = await settle(docker, id, image, Date.now() + settleMs());
+
+    // Put back the service's own update settings, as after any good rollout
+    if (!problem) {
+      await retryOnDockerOutage(
+        docker,
+        `restore update settings of ${id}`,
+        () => restoreUpdateConfig(docker, fullName(id)),
+      );
+    }
+
+    return problem;
   };
 
   return {
