@@ -144,7 +144,8 @@ describe('createSwarmActions', () => {
       await actions.start('gluesync-new');
 
       assert.deepEqual(deploys, [
-        ['gs', '/root/stack.yml', '/opt/gluesync-conductor/root-folder/.env'],
+        // .env next to the stack file, wherever the kit keeps it
+        ['gs', '/root/stack.yml', '/root/.env'],
       ]);
       assert.equal(calls.updates.length, 0);
       assert.deepEqual(waited, ['converged gs_gluesync-new']);

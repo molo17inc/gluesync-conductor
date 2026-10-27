@@ -1,3 +1,5 @@
+import { dirname, join } from 'node:path';
+
 import { readComposeFile } from '../../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../../composeFile/writeComposeFile/writeComposeFile';
 import getRootPath from '../../getRootPath/getRootPath';
@@ -24,9 +26,11 @@ import {
   SwarmContainerActions,
 } from './createSwarmActions.model';
 
-// The kit mounts the root folder here (docs/swarm-mode.md), `docker stack
-// deploy` does not read the .env that sits in it
-const STACK_ENV_FILE = '/opt/gluesync-conductor/root-folder/.env';
+// The kits keep .env next to the stack file, in the root folder they mount
+// (docs/swarm-mode.md). `docker stack deploy` does not read it by itself, and the
+// Windows kit has it under C:\, so it is found from the stack file's path.
+const stackEnvFile = (stackFile: string): string =>
+  join(dirname(stackFile), '.env');
 
 const isNotFound = (error: unknown): boolean =>
   (error as { statusCode?: number })?.statusCode === 404;
@@ -208,7 +212,11 @@ const createSwarmActions: CreateSwarmActions = ({
       } else {
         // First start of a service that was only written to the stack file
         await retried(`deploy ${id}`, () =>
-          stackDeploy(namespace, getRootPath({ filename }), STACK_ENV_FILE),
+          stackDeploy(
+            namespace,
+            getRootPath({ filename }),
+            stackEnvFile(getRootPath({ filename })),
+          ),
         );
       }
 

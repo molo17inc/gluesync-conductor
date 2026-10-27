@@ -167,3 +167,9 @@ Conductor runs as a stack service on a manager (`node.role == manager`), with
 `/var/run/docker.sock`, the kit directory bound as
 `/opt/gluesync-conductor/root-folder`, and `DKR_COMPOSE_FILE` set to the stack
 file's absolute path inside the container. One replica only.
+
+The `docker` CLI (for `docker stack deploy` and `docker service logs`) is run by
+absolute path, never looked up on `PATH`: `/usr/local/bin/docker`,
+`/usr/bin/docker` or `/bin/docker` on Linux, `C:\Windows\System32\docker.exe`
+(where the Windows image puts it) or `C:\Program Files\docker\docker.exe` on
+Windows. `DOCKER_CLI_PATH` overrides them.

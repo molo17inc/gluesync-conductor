@@ -5,13 +5,27 @@ import { afterEach, describe, it } from 'node:test';
 import loadWithStubs from '../../../testing/loadWithStubs';
 
 const originalOverride = process.env.DOCKER_CLI_PATH;
+const originalPlatform = process.platform;
+const originalSystemRoot = process.env.SystemRoot;
+const originalProgramFiles = process.env.ProgramFiles;
+
+const restore = (name: string, value: string | undefined): void => {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+};
+
+const runningOn = (platform: NodeJS.Platform): void => {
+  Object.defineProperty(process, 'platform', { value: platform });
+};
 
 afterEach(() => {
-  if (originalOverride === undefined) {
-    delete process.env.DOCKER_CLI_PATH;
-  } else {
-    process.env.DOCKER_CLI_PATH = originalOverride;
-  }
+  restore('DOCKER_CLI_PATH', originalOverride);
+  restore('SystemRoot', originalSystemRoot);
+  restore('ProgramFiles', originalProgramFiles);
+  runningOn(originalPlatform);
 });
 
 const load = (existing: ReadonlyArray<string>) =>
@@ -50,5 +64,49 @@ describe('resolveDockerCliPath', () => {
     delete process.env.DOCKER_CLI_PATH;
 
     assert.throws(() => load([])(), /docker CLI not found.*DOCKER_CLI_PATH/);
+  });
+
+  describe('on Windows', () => {
+    it('finds the CLI the Conductor image copies into System32', () => {
+      runningOn('win32');
+      delete process.env.DOCKER_CLI_PATH;
+      process.env.SystemRoot = 'C:\\Windows';
+
+      assert.equal(
+        load(['C:\\Windows\\System32\\docker.exe'])(),
+        'C:\\Windows\\System32\\docker.exe',
+      );
+    });
+
+    it('falls back to the static Docker Engine install in Program Files', () => {
+      runningOn('win32');
+      delete process.env.DOCKER_CLI_PATH;
+      process.env.ProgramFiles = 'C:\\Program Files';
+
+      assert.equal(
+        load(['C:\\Program Files\\docker\\docker.exe'])(),
+        'C:\\Program Files\\docker\\docker.exe',
+      );
+    });
+
+    it('does not look at the Linux locations', () => {
+      runningOn('win32');
+      delete process.env.DOCKER_CLI_PATH;
+
+      assert.throws(
+        () => load(['/usr/bin/docker'])(),
+        /docker CLI not found in .*System32.*docker\.exe/,
+      );
+    });
+
+    it('still prefers DOCKER_CLI_PATH', () => {
+      runningOn('win32');
+      process.env.DOCKER_CLI_PATH = 'D:\\tools\\docker.exe';
+
+      assert.equal(
+        load(['D:\\tools\\docker.exe', 'C:\\Windows\\System32\\docker.exe'])(),
+        'D:\\tools\\docker.exe',
+      );
+    });
   });
 });
