@@ -18,7 +18,15 @@ afterEach(() => {
   delete process.env.UPDATE_VERIFY_MAX_WAIT_SECONDS;
 });
 
-type State = Record<string, { image: string; version: number; up: boolean }>;
+type State = Record<
+  string,
+  {
+    image: string;
+    version: number;
+    up: boolean;
+    labels?: Record<string, string>;
+  }
+>;
 
 // A swarm that keeps what the API writes: an image update bumps the version and
 // the tasks of the new image run (unless `stuck` says they never come up).
@@ -34,7 +42,11 @@ const world = (
     pingDown: extra.pingDown,
     services: () =>
       Object.entries(state).map(([id, s]) =>
-        buildService(id, { image: s.image, version: s.version }),
+        buildService(id, {
+          image: s.image,
+          version: s.version,
+          labels: s.labels,
+        }),
       ),
     tasks: () =>
       Object.entries(state)
@@ -55,8 +67,9 @@ const world = (
         }
         await service.update(options);
         // eslint-disable-next-line no-underscore-dangle -- dockerode's body
-        const image = options._body.TaskTemplate.ContainerSpec.Image;
-        state[id] = { image, version: state[id].version + 1, up: true };
+        const { Labels: labels, TaskTemplate } = options._body;
+        const image = TaskTemplate.ContainerSpec.Image;
+        state[id] = { image, version: state[id].version + 1, up: true, labels };
       },
     };
   };
@@ -143,11 +156,17 @@ describe('rollbackServiceImages on Swarm', () => {
     });
     assert.deepEqual(
       calls.updates.map(u => u.id),
-      ['gs_a'],
-      'only the touched service is written',
+      ['gs_a', 'gs_a'],
+      'only the touched service is written: its image, then its own update settings',
     );
     assert.equal(state.a.image, 'a:1');
     assert.equal(state.a.up, true);
+    // No rollback settings or stash left behind for the next stack deploy
+    assert.equal('UpdateConfig' in calls.updates[1].body, false);
+    assert.equal(
+      'com.molo17.conductor.update-config' in (state.a.labels ?? {}),
+      false,
+    );
   });
 
   it('starts a service that is not running what the stack file says', async () => {
@@ -167,9 +186,13 @@ describe('rollbackServiceImages on Swarm', () => {
     assert.ok(outcomes.every(o => o.ok));
     assert.deepEqual(
       calls.updates.map(u => u.id),
-      ['gs_b'],
+      ['gs_b', 'gs_b'],
     );
     assert.equal(state.b.up, true);
+    assert.equal(
+      'com.molo17.conductor.update-config' in (state.b.labels ?? {}),
+      false,
+    );
   });
 
   it('names the services it could not restore when Docker never comes back', async () => {
