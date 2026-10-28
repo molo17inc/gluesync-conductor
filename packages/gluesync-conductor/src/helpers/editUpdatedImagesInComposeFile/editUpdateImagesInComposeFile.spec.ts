@@ -8,6 +8,7 @@ import { EditUpdateImagesInComposeFile } from './editUpdateImagesInComposeFile.m
 
 const load = () => {
   const written: unknown[] = [];
+  const cpuCalls: Array<readonly [string, boolean]> = [];
   const edit = loadWithStubs<{ default: EditUpdateImagesInComposeFile }>(
     path.resolve(__dirname, './editUpdateImagesInComposeFile'),
     {
@@ -19,10 +20,26 @@ const load = () => {
           written.push(json);
         },
       },
+      [path.resolve(
+        __dirname,
+        '../applyCpuCompatibilityToImage/applyCpuCompatibilityToImage',
+      )]: {
+        // Stands for "this host needs -debian and the image exists"
+        cpuCompatibleChronosUpdateImage: async (
+          image: string,
+          isWindows: boolean,
+        ) => {
+          cpuCalls.push([image, isWindows]);
+          return image.includes('gluesync-chronos') &&
+            !image.endsWith('-debian')
+            ? `${image}-debian`
+            : image;
+        },
+      },
     },
   ).default;
 
-  return { edit, written };
+  return { edit, written, cpuCalls };
 };
 
 const labels = ['com.molo17.conductor.type=module'];
@@ -59,6 +76,94 @@ describe('editUpdateImagesInComposeFile', () => {
     );
 
     assert.deepEqual(written, [{ services: { grafana } }]);
+  });
+
+  describe('CPU compatibility of Chronos', () => {
+    const versions = {
+      agentVersion: null,
+      modules: [{ id: 'gluesync-chronos', version: '0.3.2' }],
+    };
+
+    it('asks for the -debian variant of the new version', async () => {
+      const { edit, written, cpuCalls } = load();
+
+      await edit(
+        ['gluesync-chronos'],
+        {
+          services: {
+            'gluesync-chronos': {
+              image: 'molo17/gluesync-chronos:0.3.1',
+              labels,
+            },
+          },
+        },
+        versions,
+      );
+
+      assert.deepEqual(cpuCalls, [['molo17/gluesync-chronos:0.3.2', false]]);
+      assert.deepEqual(written, [
+        {
+          services: {
+            'gluesync-chronos': {
+              image: 'molo17/gluesync-chronos:0.3.2-debian',
+              labels,
+            },
+          },
+        },
+      ]);
+    });
+
+    it('keeps the suffix an image already has', async () => {
+      const { edit, written } = load();
+
+      await edit(
+        ['gluesync-chronos'],
+        {
+          services: {
+            'gluesync-chronos': {
+              image: 'molo17/gluesync-chronos:0.3.1-debian',
+              labels,
+            },
+          },
+        },
+        versions,
+      );
+
+      assert.deepEqual(written, [
+        {
+          services: {
+            'gluesync-chronos': {
+              image: 'molo17/gluesync-chronos:0.3.2-debian',
+              labels,
+            },
+          },
+        },
+      ]);
+    });
+
+    it('is not asked in swarm mode', async () => {
+      const { edit, written, cpuCalls } = load();
+
+      await edit(
+        ['gluesync-chronos'],
+        {
+          services: {
+            'gluesync-chronos': { image: 'molo17/gluesync-chronos:0.3.1' },
+          },
+        },
+        versions,
+        { swarm: true },
+      );
+
+      assert.deepEqual(cpuCalls, []);
+      assert.deepEqual(written, [
+        {
+          services: {
+            'gluesync-chronos': { image: 'molo17/gluesync-chronos:0.3.2' },
+          },
+        },
+      ]);
+    });
   });
 
   describe('in swarm mode, with no type label in the stack file', () => {
