@@ -70,6 +70,15 @@ export const getHttpsAgentFor = (url: string): HttpsProxyAgent | undefined =>
 export const getProxyInfo = (): RedactedProxy | undefined =>
   proxyUrl ? describeProxyUrl(proxyUrl) : undefined;
 
+const RETRIABLE_CLIENT_STATUSES: ReadonlyArray<number> = [408, 429];
+
+/** A 4xx other than a timeout or a throttle: retrying returns the same answer. */
+export const isDefinitiveAnswer = (status: number | undefined): boolean =>
+  status !== undefined &&
+  status >= 400 &&
+  status < 500 &&
+  !RETRIABLE_CLIENT_STATUSES.includes(status);
+
 const sleep = (ms: number): Promise<void> =>
   new Promise(resolve => {
     setTimeout(resolve, ms);
@@ -131,6 +140,18 @@ export const axiosWithRetry: AxiosWithRetry = async <T>(
           },
           '[axiosWithRetry] request failed',
         );
+
+        // The server answered: a 4xx is its verdict on this request, and
+        // asking again returns the same one (a 404 for an image it does not
+        // publish, a 403). Only a timeout (408) and a throttle (429) are
+        // worth another attempt, like a network error or a 5xx.
+        if (isDefinitiveAnswer(axiosError.response?.status)) {
+          logger.info(
+            { url, attempt, status: axiosError.response?.status },
+            '[axiosWithRetry] not retrying, the server answered',
+          );
+          throw axiosError;
+        }
 
         if (attempt > retries) {
           logger.error(

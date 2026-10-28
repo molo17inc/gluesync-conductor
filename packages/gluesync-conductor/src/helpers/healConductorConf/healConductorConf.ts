@@ -3,6 +3,7 @@ import { getLogger } from '../../utils/logger';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
 import fetchAgentInfo from '../agentInfo/agentInfo';
+import { isImageNotPublished } from '../agentInfo/agentInfo.errors';
 import parseImage from '../parseImage/parseImage';
 import getVersionByChannel from '../releaseChannel/getVersionByChannel';
 import buildEnvFileConf from '../buildEnvFileConf/buildEnvFileConf';
@@ -293,11 +294,20 @@ const healConductorConf = async (): Promise<boolean> => {
   } = parseImage(baseService.image);
 
   // ----- OPTIONAL RETAG -----
+  // An image the backoffice does not publish stays on `latest`: the rest of
+  // the healing still applies.
+  const publishedGa = async (): Promise<string | null> => {
+    try {
+      return getVersionByChannel(await fetchAgentInfo(shortImageName), 'ga');
+    } catch (error) {
+      if (isImageNotPublished(error)) {
+        return null;
+      }
+      throw error;
+    }
+  };
   const newTag: string | null =
-    currentTag === 'latest'
-      ? (getVersionByChannel(await fetchAgentInfo(shortImageName), 'ga') ??
-        null)
-      : null;
+    currentTag === 'latest' ? ((await publishedGa()) ?? null) : null;
 
   // ----- FINAL SERVICE -----
   const finalService: any = {

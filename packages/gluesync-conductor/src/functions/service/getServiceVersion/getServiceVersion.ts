@@ -5,6 +5,7 @@ import {
 import { castObject } from '../../../helpers/composeFile/extractKeyValue/extractKeyValue';
 import { readComposeFile } from '../../../helpers/composeFile/readComposeFile/readComposeFile';
 import fetchAgentInfo from '../../../helpers/agentInfo/agentInfo';
+import { isImageNotPublished } from '../../../helpers/agentInfo/agentInfo.errors';
 import parseImage from '../../../helpers/parseImage/parseImage';
 import { ReleaseChannelTypes } from '../../../models/conductor.model';
 import getVersionByChannel from '../../../helpers/releaseChannel/getVersionByChannel';
@@ -158,6 +159,38 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
     logger.info({ id, shortImageName }, 'fetching agent info');
 
+    const isThirdParty = serviceTypeOf(id, service) === 'third-party';
+
+    const imageNameToFetch =
+      isWindows && isThirdParty && windowsYear
+        ? `${shortImageName}-win-${windowsYear}`
+        : shortImageName;
+
+    // The service itself first: when the backoffice does not publish its
+    // image, that is the answer, and nothing else is asked about it (no
+    // sweep of the other services, no changelog).
+    const [currentVersion, serviceInfo] = await Promise.all([
+      getCurrentVersion(req.server.docker, composeJson, id, dockerReady),
+      fetchAgentInfo(imageNameToFetch).catch((error: unknown) => {
+        if (isImageNotPublished(error)) {
+          return error;
+        }
+        throw error;
+      }),
+    ]);
+
+    if (isImageNotPublished(serviceInfo)) {
+      logger.warn(
+        { id, image: serviceInfo.imageName },
+        '[get-service-version] not published by the backoffice',
+      );
+
+      return reply.code(404).send({
+        success: false,
+        error: `Service ${id}: ${serviceInfo.message}`,
+      });
+    }
+
     const mandatoryUpdateResult = await (async () => {
       if (id !== coreHubName) {
         return {
@@ -195,10 +228,17 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
             const update = await needsUpdate(svcId);
             return { id: svcId, needsUpdate: update };
           } catch (error) {
-            logger.warn(
-              { service: svcId, error },
-              '[get-service-version] needsUpdate failed',
-            );
+            if (isImageNotPublished(error)) {
+              logger.info(
+                { service: svcId, image: error.imageName },
+                '[get-service-version] not published by the backoffice, no update on offer',
+              );
+            } else {
+              logger.warn(
+                { service: svcId, error },
+                '[get-service-version] needsUpdate failed',
+              );
+            }
 
             return {
               id: svcId,
@@ -217,18 +257,6 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         servicesToUpdate,
       };
     })();
-
-    const isThirdParty = serviceTypeOf(id, service) === 'third-party';
-
-    const imageNameToFetch =
-      isWindows && isThirdParty && windowsYear
-        ? `${shortImageName}-win-${windowsYear}`
-        : shortImageName;
-
-    const [currentVersion, serviceInfo] = await Promise.all([
-      getCurrentVersion(req.server.docker, composeJson, id, dockerReady),
-      fetchAgentInfo(imageNameToFetch),
-    ]);
 
     const actualCurrentVersion =
       normalizeVersion(currentVersion) || normalizeVersion(fallbackVersion);
@@ -297,6 +325,11 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
     if (local) {
       return reply.code(local.statusCode).send(local.body);
+    }
+
+    // The backoffice's own answer for an image it does not publish.
+    if (isImageNotPublished(error)) {
+      return reply.code(404).send({ success: false, error: error.message });
     }
 
     // Failures reaching MOLO17's own services are diagnosed (who is at fault, what to do).

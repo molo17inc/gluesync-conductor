@@ -192,6 +192,50 @@ describe('axiosWithRetry requests', () => {
     );
   });
 
+  it('retries a 5xx, a timeout and a throttle', async () => {
+    const statuses = [503, 408, 429];
+    await Promise.all(
+      statuses.map(async status => {
+        const { call, requests } = load({}, async () => {
+          throw Object.assign(new Error('Request failed'), {
+            isAxiosError: true,
+            response: { status },
+          });
+        });
+        await assert.rejects(
+          call('https://hub.example/x', { retries: 1, backoffMs: 1 }),
+        );
+        assert.equal(requests.length, 2, `HTTP ${status}`);
+      }),
+    );
+  });
+
+  it('does not retry a 4xx: the server answered, asking again changes nothing', async () => {
+    const failure = Object.assign(new Error('Request failed'), {
+      isAxiosError: true,
+      response: { status: 404 },
+    });
+    const { call, logs, requests } = load({}, async () => {
+      throw failure;
+    });
+    await assert.rejects(
+      call('https://hub.example/x', { retries: 3, backoffMs: 1 }),
+      failure,
+    );
+    assert.equal(requests.length, 1);
+    assert.ok(
+      messages(logs, 'info').includes(
+        '[axiosWithRetry] not retrying, the server answered',
+      ),
+    );
+    assert.equal(
+      messages(logs, 'error').includes(
+        '[axiosWithRetry] giving up after max retries',
+      ),
+      false,
+    );
+  });
+
   it('rethrows an error that does not come from axios', async () => {
     const { call, logs } = load({}, async () => {
       throw new TypeError('bad config');

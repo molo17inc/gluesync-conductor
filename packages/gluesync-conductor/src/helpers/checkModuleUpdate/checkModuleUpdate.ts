@@ -1,4 +1,5 @@
 import fetchAgentInfo from '../agentInfo/agentInfo';
+import { isImageNotPublished } from '../agentInfo/agentInfo.errors';
 import parseImage from '../parseImage/parseImage';
 import getVersionByChannel from '../releaseChannel/getVersionByChannel';
 import getCurrentVersion from '../getCurrentVersion/getCurrentVersion';
@@ -66,7 +67,24 @@ const checkModuleUpdate: CheckModuleUpdate = async (
   const currentVersion =
     dashIndex !== -1 ? currentTag.slice(0, dashIndex) : currentTag;
 
-  const info = await fetchAgentInfo(shortImageName);
+  // An image the backoffice does not publish (a custom build) has no update
+  // on offer: that is its answer, the rest of the update goes on without it.
+  const info = await fetchAgentInfo(shortImageName).catch((error: unknown) => {
+    if (isImageNotPublished(error)) {
+      logger.warn(
+        { service: serviceName, image: shortImageName },
+        '[checkModuleUpdate] not published by the backoffice, no update on offer',
+      );
+
+      return null;
+    }
+
+    throw error;
+  });
+
+  if (info === null) {
+    return { needsUpdate: false, id: serviceName, availableVersion: null };
+  }
 
   const availableVersion = getVersionByChannel(info, releaseChannel);
 

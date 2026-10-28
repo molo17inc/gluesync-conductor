@@ -1,6 +1,8 @@
 // src/helpers/agentInfo/agentInfo.ts
+import axios from 'axios';
 import axiosWithRetry from '../../utils/axiosWithRetry';
 import { AgentInfoResponse } from './agentInfo.model';
+import { ImageNotPublishedError } from './agentInfo.errors';
 import { getLogger } from '../../utils/logger';
 
 const logger = getLogger();
@@ -35,6 +37,18 @@ const fetchAgentInfo = async (
 
     return data;
   } catch (error) {
+    // A 404 is the backoffice's answer, not a failure: the image is not one
+    // it publishes. Callers stop asking about it instead of treating it as an
+    // outage.
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      logger.warn(
+        { imageName },
+        '[fetchAgentInfo] the backoffice does not publish this image',
+      );
+
+      throw new ImageNotPublishedError(imageName);
+    }
+
     logger.error(
       { imageName, error },
       '[fetchAgentInfo] failed to fetch agent info',

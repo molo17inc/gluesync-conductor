@@ -14,6 +14,8 @@ import axios, {
 import type Docker from 'dockerode';
 import { parse } from 'yaml';
 
+import { isImageNotPublished } from '../../../helpers/agentInfo/agentInfo.errors';
+import fetchAgentInfo from '../../../helpers/agentInfo/agentInfo';
 import canUpdateContainers from '../../../helpers/canUpdateContainers/canUpdateContainers';
 import checkModuleUpdate from '../../../helpers/checkModuleUpdate/checkModuleUpdate';
 import getCurrentVersion from '../../../helpers/getCurrentVersion/getCurrentVersion';
@@ -112,7 +114,8 @@ const fakeBackoffice: AxiosAdapter = config => {
   const entry = catalog[VERSION_URL.exec(url)?.[1] ?? ''];
 
   if (entry === undefined) {
-    return reply(config, 404, { message: 'Not found' });
+    // What the real backoffice answers for an image it does not publish.
+    return reply(config, 404, { error: 'Agent not found' });
   }
 
   if (typeof entry === 'number') {
@@ -233,7 +236,37 @@ afterEach(async () => {
   await rm(projectDir, { recursive: true, force: true });
 });
 
+describe('fetchAgentInfo', () => {
+  it('turns a 404 into "not published" after a single request', async () => {
+    await assert.rejects(
+      fetchAgentInfo('core-hub-internal'),
+      (error: unknown) =>
+        isImageNotPublished(error) && error.imageName === 'core-hub-internal',
+    );
+    assert.deepEqual(asked(), ['core-hub-internal']);
+  });
+});
+
 describe('checkModuleUpdate', () => {
+  it('offers no update for an image the backoffice does not publish', async () => {
+    const info = await checkModuleUpdate(
+      dockerRunning({ [CONDUCTOR]: 'molo17/conductor-internal:3.1.0' }),
+      withServices({
+        [CONDUCTOR]: service('molo17/conductor-internal:3.1.0', 'module'),
+      }),
+      'ga',
+      CONDUCTOR,
+    );
+
+    assert.deepEqual(info, {
+      needsUpdate: false,
+      id: CONDUCTOR,
+      availableVersion: null,
+    });
+    // One request: a 404 is the answer, not something to retry.
+    assert.deepEqual(asked(), ['conductor-internal']);
+  });
+
   it('asks the backoffice by short image name and offers the GA version', async () => {
     const info = await checkModuleUpdate(
       dockerRunning({ [CONDUCTOR]: 'molo17/gluesync-conductor:3.1.0' }),
@@ -400,6 +433,47 @@ describe('canUpdateContainers', () => {
 
     assert.equal(result.success, false);
     assert.equal(result.message, 'Service gluesync-missing not found');
+  });
+
+  it('stops the update when Core Hub runs an image the backoffice does not publish', async () => {
+    const result = await canUpdateContainers(
+      [CORE_HUB, AGENT],
+      withServices({
+        [CORE_HUB]: service(
+          'molo17/gluesync-core-hub-internal:2.2.5.2.bdfda2213',
+          'core-hub',
+        ),
+      }),
+      'ga',
+    );
+
+    assert.equal(result.success, false);
+    assert.deepEqual(result.errors, [
+      'Could not get the latest version of gluesync-core-hub from the backoffice: Image "core-hub-internal" is not published by the MOLO17 update service',
+    ]);
+    assert.equal(
+      asked().filter(name => name === 'core-hub-internal').length,
+      1,
+    );
+  });
+
+  it('skips a module the backoffice does not publish and updates the rest', async () => {
+    const result = await canUpdateContainers(
+      [CORE_HUB, CHRONOS],
+      withServices({
+        [CHRONOS]: service('molo17/chronos-internal:0.2.4', 'module'),
+      }),
+      'ga',
+    );
+
+    assert.equal(result.success, true);
+    assert.deepEqual(result.data?.skipped, [
+      {
+        id: CHRONOS,
+        reason:
+          'Could not get the latest version of gluesync-chronos from the backoffice: Image "chronos-internal" is not published by the MOLO17 update service',
+      },
+    ]);
   });
 
   it('gives a module no version when its channel has none', async () => {
