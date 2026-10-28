@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { parse, stringify } from 'yaml';
+import { isMap } from 'yaml';
 
 import {
   LabelPrefix,
@@ -12,10 +12,11 @@ import { getDocker } from '../../utils/docker/getDocker';
 import { getLogger } from '../../utils/logger';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import safeWriteFile from '../file/safeWriteFile/safeWriteFile';
+import { parseYamlMapping, renderLikeSource } from './yamlLikeSource';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
-const ROOT_FOLDER_PATH = isWindows
+export const ROOT_FOLDER_PATH = isWindows
   ? String.raw`C:\opt\gluesync-conductor\root-folder`
   : '/opt/gluesync-conductor/root-folder';
 
@@ -29,11 +30,6 @@ const WEB_ENTRYPOINT = 'web';
 const WEBSECURE_ENTRYPOINT = 'websecure';
 
 const logger = getLogger();
-
-type TraefikStaticConf = Readonly<{
-  entryPoints?: Record<string, any>;
-  [key: string]: any;
-}>;
 
 export const findProxyServiceName = (
   composeJson: Partial<RawComposeFile>,
@@ -77,7 +73,7 @@ const hostSourceToRootFolderPath = (source: string): string =>
     ? join(ROOT_FOLDER_PATH, source.replace(/^\.[\\/]?/, ''))
     : source;
 
-const resolveTraefikConfPath = (
+export const resolveTraefikConfPath = (
   service: Readonly<RawComposeService> | undefined,
 ): string | null => {
   const volumes = Array.isArray(service?.volumes)
@@ -94,27 +90,6 @@ const resolveTraefikConfPath = (
 
   return candidates.find(existsSync) ?? null;
 };
-
-const withHttpsRedirect = (conf: TraefikStaticConf): TraefikStaticConf => ({
-  ...conf,
-  entryPoints: {
-    ...conf.entryPoints,
-    [WEB_ENTRYPOINT]: {
-      ...conf.entryPoints?.[WEB_ENTRYPOINT],
-      http: {
-        ...conf.entryPoints?.[WEB_ENTRYPOINT]?.http,
-        redirections: {
-          ...conf.entryPoints?.[WEB_ENTRYPOINT]?.http?.redirections,
-          entryPoint: {
-            to: WEBSECURE_ENTRYPOINT,
-            scheme: 'https',
-            permanent: true,
-          },
-        },
-      },
-    },
-  },
-});
 
 export const restartProxyContainer = async (
   serviceName: string,
@@ -174,38 +149,56 @@ const healTraefikConf = async (
       return null;
     }
 
-    const conf = parse(await readFile(confPath, 'utf8')) as
-      | TraefikStaticConf
-      | null
-      | undefined;
+    const text = await readFile(confPath, 'utf8');
+    const doc = parseYamlMapping(text);
 
-    if (!conf || typeof conf !== 'object') {
-      logger.warn(`[traefik-healer] ${confPath} is empty or invalid, skipping`);
+    if (typeof doc === 'string') {
+      logger.warn(`[traefik-healer] ${confPath} is ${doc}, skipping`);
       return null;
     }
 
-    if (!conf.entryPoints?.[WEB_ENTRYPOINT]) {
+    if (!isMap(doc.getIn(['entryPoints', WEB_ENTRYPOINT], true))) {
       logger.info('[traefik-healer] no web entrypoint, skipping');
       return null;
     }
 
-    if (!conf.entryPoints?.[WEBSECURE_ENTRYPOINT]) {
+    if (!isMap(doc.getIn(['entryPoints', WEBSECURE_ENTRYPOINT], true))) {
       logger.info('[traefik-healer] no websecure entrypoint, skipping');
       return null;
     }
 
-    const currentTarget =
-      conf.entryPoints[WEB_ENTRYPOINT]?.http?.redirections?.entryPoint?.to;
+    const currentTarget = doc.getIn(
+      [
+        'entryPoints',
+        WEB_ENTRYPOINT,
+        'http',
+        'redirections',
+        'entryPoint',
+        'to',
+      ],
+      false,
+    );
 
     if (currentTarget === WEBSECURE_ENTRYPOINT) {
       logger.info('[traefik-healer] nothing to heal');
       return null;
     }
 
-    await safeWriteFile(
-      confPath,
-      stringify(withHttpsRedirect(conf), { indent: 2 }),
+    // Only the redirect node is replaced: comments, ACME / certificate
+    // resolvers and every other setting of the customer stay as they are.
+    doc.setIn(
+      ['entryPoints', WEB_ENTRYPOINT, 'http', 'redirections', 'entryPoint'],
+      doc.createNode({
+        to: WEBSECURE_ENTRYPOINT,
+        scheme: 'https',
+        permanent: true,
+      }),
     );
+
+    // In place: the proxy mounts this file on its own, a new inode would not reach it
+    await safeWriteFile(confPath, renderLikeSource(doc, text), {
+      mode: 'in-place',
+    });
 
     logger.info(`[traefik-healer] http->https redirect written to ${confPath}`);
 
