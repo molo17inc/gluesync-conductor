@@ -32,6 +32,9 @@ SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
 # the runtime only runs `node index.js`, so they are only CVE surface.
 # Only the paths that exist are removed: `pwsh -Command` exits 1, with no message,
 # when its last command fails, even one silenced with -ErrorAction SilentlyContinue.
+# On Windows Server 2019 a recursive Remove-Item can fail with "The directory is not
+# empty" while the files it deleted are still going away, so it is tried again, and
+# a folder still there fails the build.
 # No double quotes in the RUN: Docker passes it on a Windows command line, which
 # strips them before PowerShell parses the script.
 RUN $dockerZip = 'https://download.docker.com/win/static/stable/x86_64/docker-29.9.2.zip'; `
@@ -47,12 +50,17 @@ RUN $dockerZip = 'https://download.docker.com/win/static/stable/x86_64/docker-29
   Get-ChildItem -Path $nodeDir -Filter ($name + '*') -File -ErrorAction SilentlyContinue | `
   Remove-Item -Force `
   }; `
-  @(($nodeDir + '\node_modules\npm'), `
+  $leftovers = @(($nodeDir + '\node_modules\npm'), `
   ($nodeDir + '\node_modules\corepack'), `
   ($env:LOCALAPPDATA + '\node\corepack'), `
-  'C:\Users\ContainerAdministrator\AppData\Local\node\corepack') | `
-  Where-Object { Test-Path $_ } | `
-  Remove-Item -Recurse -Force
+  'C:\Users\ContainerAdministrator\AppData\Local\node\corepack'); `
+  foreach ($dir in $leftovers) { `
+  for ($try = 0; (Test-Path $dir) -and ($try -lt 10); $try++) { `
+  Remove-Item -Path $dir -Recurse -Force -ErrorAction SilentlyContinue; `
+  Start-Sleep -Milliseconds 500 `
+  } `
+  }; `
+  $leftovers | Where-Object { Test-Path $_ } | ForEach-Object { throw ('Could not remove ' + $_) }
 
 # Environment variables (one per line)
 ENV NODE_ENV=production
