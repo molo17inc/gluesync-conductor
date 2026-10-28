@@ -332,6 +332,10 @@ export const settle = async (ctx, token, { timeoutMs = 180000, ignore = [] } = {
 
 // ---------------------------------------------------------------- log collection
 
+// A Docker restart keeps the id, so a follow is keyed by the start as well: the follow of the
+// previous start may not have closed yet when the container is running again.
+const followKey = c => `${c.id}@${c.startedAt}`;
+
 // Follows the docker logs of every incarnation of the watched services, so logs
 // survive the container being replaced by an update.
 export class LogCollector {
@@ -347,18 +351,25 @@ export class LogCollector {
 
   start() {
     const tick = async () => {
-      try {
-        const list = await containers();
-        list
-          .filter(c => this.services.includes(c.service) && c.state === 'running' && !this.followed.has(c.id))
-          .forEach(c => this.follow(c));
-      } catch {
-        /* daemon blip: try again next tick */
-      }
+      await this.sync();
       if (!this.stopped) this.timer = setTimeout(tick, 2000);
     };
-    // tick never rejects: it catches the daemon errors itself.
+    // tick never rejects: sync catches the daemon errors itself.
     void tick();
+  }
+
+  // Follows every running incarnation not followed yet. The timer does this every 2s; a caller
+  // that has just started a container which may be gone again within 2s (the conductor
+  // restarted right before a self-update replaces it) calls it at once, so its lines are not lost.
+  async sync() {
+    try {
+      const list = await containers();
+      list
+        .filter(c => this.services.includes(c.service) && c.state === 'running' && !this.followed.has(followKey(c)))
+        .forEach(c => this.follow(c));
+    } catch {
+      /* daemon blip: try again next tick */
+    }
   }
 
   follow(c) {
@@ -393,9 +404,9 @@ export class LogCollector {
     onData(child.stderr);
     child.on('close', () => {
       file.end();
-      this.followed.delete(c.id);
+      this.followed.delete(followKey(c));
     });
-    this.followed.set(c.id, child);
+    this.followed.set(followKey(c), child);
   }
 
   since(service, isoTs) {

@@ -160,6 +160,9 @@ const blankCompose = async (ctx, it) => {
     fs.truncateSync(file, 0);
     it.notes.push(`compose truncated to 0 bytes with the conductor ${c?.id} stopped at ${now()}`);
     if (c) await docker(['start', c.id]);
+    // The restore is logged by this start of the conductor, which the round-1 self-update
+    // replaces within a couple of seconds: follow its logs now rather than at the collector's next tick.
+    await ctx.collector.sync();
     await watchRestore(lastGood, blanked);
     blanked.byteEqual = !!lastGood && fs.readFileSync(file).equals(lastGood);
     if (blanked.restoredMs === null) {
