@@ -34,6 +34,9 @@ SHELL ["pwsh", "-NoProfile", "-Command", "$ErrorActionPreference = 'Stop';"]
 # when its last command fails, even one silenced with -ErrorAction SilentlyContinue.
 # No double quotes in the RUN: Docker passes it on a Windows command line, which
 # strips them before PowerShell parses the script.
+# The directories are removed with retries: on ltsc2019 (no POSIX delete) a deleted
+# file can still be pending when Remove-Item -Recurse removes its parent, which then
+# fails with "The directory is not empty"; a later attempt finds it empty.
 RUN $dockerZip = 'https://download.docker.com/win/static/stable/x86_64/docker-29.9.2.zip'; `
   $composeExe = 'https://github.com/docker/compose/releases/download/v5.6.1/docker-compose-windows-x86_64.exe'; `
   Invoke-WebRequest -Uri $dockerZip -OutFile C:/docker.zip; `
@@ -47,12 +50,19 @@ RUN $dockerZip = 'https://download.docker.com/win/static/stable/x86_64/docker-29
   Get-ChildItem -Path $nodeDir -Filter ($name + '*') -File -ErrorAction SilentlyContinue | `
   Remove-Item -Force `
   }; `
-  @(($nodeDir + '\node_modules\npm'), `
+  $leftovers = @(($nodeDir + '\node_modules\npm'), `
   ($nodeDir + '\node_modules\corepack'), `
   ($env:LOCALAPPDATA + '\node\corepack'), `
   'C:\Users\ContainerAdministrator\AppData\Local\node\corepack') | `
-  Where-Object { Test-Path $_ } | `
-  Remove-Item -Recurse -Force
+  Where-Object { Test-Path $_ }; `
+  foreach ($path in $leftovers) { `
+  foreach ($attempt in 1..10) { `
+  if (-not (Test-Path $path)) { break }; `
+  try { Remove-Item $path -Recurse -Force } catch { Start-Sleep -Seconds 1 } `
+  } `
+  }; `
+  $stuck = @($leftovers | Where-Object { Test-Path $_ }); `
+  if ($stuck.Count -gt 0) { throw ('could not remove ' + ($stuck -join ', ')) }
 
 # Environment variables (one per line)
 ENV NODE_ENV=production
