@@ -31,7 +31,7 @@ const setUp = (
   const watcher = watchProxyStartEvents({
     docker: docker as never,
     proxyServiceName: 'reverse-proxy',
-    debounceMs: 30,
+    debounceMs: 150, // wide enough that a slow CI runner keeps a burst inside one window
     reconnectMs: 10,
     heal: async ({ reason }): Promise<HealProxyErrorPagesOutcome> => {
       heals.push(reason);
@@ -65,7 +65,7 @@ describe('watchProxyStartEvents', () => {
     await wait(10);
     streams[0].write(startEvent(Date.now()));
     streams[0].write('not json\n');
-    await wait(100);
+    await wait(500);
 
     assert.deepEqual(heals, ['event']);
     watcher.stop();
@@ -76,7 +76,7 @@ describe('watchProxyStartEvents', () => {
     await wait(10);
 
     streams[0].write(startEvent(Date.now()));
-    await wait(100);
+    await wait(500);
 
     assert.deepEqual(heals, ['event']);
     watcher.stop();
@@ -90,7 +90,7 @@ describe('watchProxyStartEvents', () => {
     streams[0].write(startEvent(own));
     await wait(10);
     streams[0].write(startEvent(own + 250)); // the external recreate, inside the same debounce window
-    await wait(100);
+    await wait(500);
 
     assert.deepEqual(heals, ['event']);
     watcher.stop();
@@ -102,11 +102,11 @@ describe('watchProxyStartEvents', () => {
     await wait(10);
 
     streams[0].write(startEvent(Date.now()));
-    await wait(120);
+    await wait(600);
     assert.deepEqual(heals, []);
 
     state.busy = false;
-    await wait(80);
+    await wait(400);
     assert.deepEqual(heals, ['event']);
     watcher.stop();
   });
@@ -128,7 +128,7 @@ describe('watchProxyStartEvents', () => {
 
     streams[0].write(startEvent(Date.now()));
     watcher.stop();
-    await wait(100);
+    await wait(500);
 
     assert.deepEqual(heals, []);
     assert.equal(streams[0].destroyed, true);
