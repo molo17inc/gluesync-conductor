@@ -66,17 +66,16 @@ const load = (recorder: Recorder): Subject =>
         recorder.mode ? { mode: recorder.mode } : undefined,
     },
     [here('../../utils/docker/getDocker')]: { getDocker: () => ({}) },
-    [here('../composeFile/writeComposeFile/writeComposeFile')]: {
-      default: async (json: unknown) => {
-        if (recorder.failComposeWrite) {
-          throw new Error('disk said no');
+    // only the failure test replaces the compose write: the real one reads DKR_COMPOSE_FILE when it loads
+    ...(recorder.failComposeWrite
+      ? {
+          [here('../composeFile/writeComposeFile/writeComposeFile')]: {
+            default: async () => {
+              throw new Error('disk said no');
+            },
+          },
         }
-        // required here, not imported: it reads DKR_COMPOSE_FILE when it loads, after the sandbox exists
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const real = require(here('../composeFile/writeComposeFile/writeComposeFile')).default;
-        await real(json);
-      },
-    },
+      : {}),
     [here('../file/safeWriteFile/safeWriteFile')]: {
       default: async (file: string, content: string, options: object) => {
         recorder.writes.push(file);
@@ -375,6 +374,7 @@ describe('healProxyErrorPages', () => {
     setUp(CAPABLE);
     // a stubbed write failure: file modes do not stop root, which runs CI
     recorder.failComposeWrite = true;
+    subject = load(recorder);
 
     const outcome = await subject.default({ reason: 'startup' });
 
