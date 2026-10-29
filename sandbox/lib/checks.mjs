@@ -681,8 +681,9 @@ const missingLines = (original, now) => {
 // proxy-error-pages profile: see scenarios.mjs. A capable tag brings the wiring, the old tag takes it away,
 // and nothing but our own keys ever changes.
 const wiringAddedCheck = (p, added) => {
+  const notLogged = p.addedLogged ? '' : ', but the conductor never logged "add done"';
   const detail = added?.ok
-    ? `wiring added ${Math.round(added.ms / 1000)}s after the iteration's update step${p.addedLogged ? '' : ', but the conductor never logged "add done"'}`
+    ? `wiring added ${Math.round(added.ms / 1000)}s after the iteration's update step${notLogged}`
     : 'the wiring (middleware and plugin in traefik.yml, labels on reverse-proxy) did not appear within 3 minutes of the update to a capable tag';
   return result('proxy', 'proxy.wiring-added', !!added?.ok && !!p.addedLogged, detail);
 };
@@ -720,7 +721,8 @@ const certsUntouchedCheck = (base, added, removed) => {
 
 const wiringRemovedDetail = (p, removed, restored) => {
   if (restored) {
-    return `wiring removed ${Math.round(removed.ms / 1000)}s after the old tag was back; traefik.yml and the proxy block are as they were${p.removedLogged ? '' : ', but the conductor never logged "remove done"'}`;
+    const notLogged = p.removedLogged ? '' : ', but the conductor never logged "remove done"';
+    return `wiring removed ${Math.round(removed.ms / 1000)}s after the old tag was back; traefik.yml and the proxy block are as they were${notLogged}`;
   }
   if (removed?.ok) {
     return 'the wiring went but traefik.yml or the proxy block of the compose file is not what it was before';
