@@ -13,6 +13,16 @@ type ComposeJson = Partial<RawComposeFile>;
 type Services = NonNullable<ComposeJson['services']>;
 type Service = Services[string];
 
+type LabelContainer = ReadonlyArray<unknown> | Record<string, unknown>;
+
+// A label value of the map form: text, a number or a boolean; anything else is no value.
+const labelValue = (value: unknown): string =>
+  typeof value === 'string' ||
+  typeof value === 'number' ||
+  typeof value === 'boolean'
+    ? String(value)
+    : '';
+
 const isList = (labels: LabelsInput): labels is ReadonlyArray<unknown> =>
   Array.isArray(labels);
 
@@ -38,7 +48,7 @@ export const labelEntries = (
 
   return labels
     ? Object.entries(labels).map(
-        ([key, value]) => [key, String(value ?? '')] as const,
+        ([key, value]) => [key, labelValue(value)] as const,
       )
     : [];
 };
@@ -78,7 +88,7 @@ export const appendLabels = (
 export const filterLabels = (
   labels: LabelsInput,
   keep: (key: string, value: string) => boolean,
-): ReadonlyArray<unknown> | Record<string, unknown> | undefined => {
+): LabelContainer | undefined => {
   if (!labels) {
     return undefined;
   }
@@ -93,21 +103,19 @@ export const filterLabels = (
 
   return Object.fromEntries(
     Object.entries(labels).filter(([key, value]) =>
-      keep(key, String(value ?? '')),
+      keep(key, labelValue(value)),
     ),
   );
 };
 
-const isEmptyLabels = (
-  labels: ReadonlyArray<unknown> | Record<string, unknown> | undefined,
-): boolean =>
+const isEmptyLabels = (labels: LabelContainer | undefined): boolean =>
   labels === undefined ||
   (isList(labels) ? labels.length === 0 : Object.keys(labels).length === 0);
 
 const withServiceLabels = (
   composeJson: ComposeJson,
   name: string,
-  labels: ReadonlyArray<unknown> | Record<string, unknown> | undefined,
+  labels: LabelContainer | undefined,
 ): ComposeJson => {
   const service = (composeJson.services?.[name] ?? {}) as Record<
     string,
@@ -129,7 +137,7 @@ const withServiceLabels = (
 };
 
 const otherTraefikLabelRemains = (
-  labels: ReadonlyArray<unknown> | Record<string, unknown> | undefined,
+  labels: LabelContainer | undefined,
 ): boolean =>
   labelEntries(labels as LabelsInput).some(
     ([key]) => key.startsWith('traefik.') && key !== TRAEFIK_ENABLE,
@@ -142,7 +150,7 @@ const otherTraefikLabelRemains = (
 const dropProxyLabels = (
   labels: LabelsInput,
   drop: (key: string, value: string) => boolean,
-): ReadonlyArray<unknown> | Record<string, unknown> | undefined => {
+): LabelContainer | undefined => {
   const remaining = filterLabels(
     labels,
     (key, value) => key === TRAEFIK_ENABLE || !drop(key, value),
