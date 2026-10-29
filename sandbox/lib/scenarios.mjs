@@ -18,6 +18,8 @@
 //   minRounds     keep clicking (after a failed or stalled round) until at least this many rounds
 //   flapping      the profile toggles a fault while the bulk update runs (see beforeRound)
 //   blanked       the profile blanks the compose file before the update (see compose-blanked)
+//   downgraded    services the profile deliberately puts back on their old tag: ok-means-ok expects that tag for them
+//   expectedDrift [{ service, key }] compose fields the profile changes on purpose: compose.no-unrelated-changes ignores them
 //   proxyPages    the proxy-error-pages profile: evidence is recorded in it.proxyPages and checked (see checks.mjs)
 //   faultActive   (on the profile, not the plan) (ctx, it) => boolean | Promise<boolean>: true while the
 //                 profile's Docker fault is in effect. The driver waits for it to end before it judges
@@ -496,8 +498,15 @@ export const PROFILES = [
     description:
       'The update moves reverse-proxy to a molo17/traefik tag with the error pages wrapper (3.7.16.x): the conductor must add the wiring on its own (gluesync-pages middleware and plugin in proxy/traefik.yml, labels on the proxy service), back up both files first, recreate the proxy, never touch certs.yml and keep every line of the customer traefik.yml. Then the old tag is put back and the proxy recreated: the wiring must go again and traefik.yml and the proxy block of the compose file must be as they were.',
     versions: i => ({ 'reverse-proxy': `3.7.16.${100 + i}` }),
-    // The proxy ends the iteration on the tag it started with, which is the downgrade half.
-    plan: () => ({ expect: 'updated', lagging: ['reverse-proxy'], proxyPages: true }),
+    // The proxy ends the iteration on the tag it started with, which is the downgrade half: the generic checks must
+    // expect that tag for it, and the labels of its compose block (our wiring) may differ from before.
+    plan: () => ({
+      expect: 'updated',
+      lagging: ['reverse-proxy'],
+      proxyPages: true,
+      downgraded: ['reverse-proxy'],
+      expectedDrift: [{ service: 'reverse-proxy', key: 'labels' }],
+    }),
     before: proxyBaseline,
     after: proxyErrorPages,
   },

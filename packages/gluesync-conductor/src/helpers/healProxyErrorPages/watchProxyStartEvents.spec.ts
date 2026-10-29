@@ -37,7 +37,6 @@ const setUp = (
       heals.push(reason);
       return { action: 'none', reason: 'test' };
     },
-    ownRecreateEndedAt: () => 0,
     isHealing: () => false,
     ...extra,
   });
@@ -72,28 +71,25 @@ describe('watchProxyStartEvents', () => {
     watcher.stop();
   });
 
-  it('ignores the start of the container the heal itself recreated', async () => {
-    const at = Date.now();
-    const { watcher, streams, heals } = setUp({
-      ownRecreateEndedAt: () => at + 500,
-    });
+  it('still heals once after the debounce when the start event is the one of the heal own recreate', async () => {
+    const { watcher, streams, heals } = setUp();
     await wait(10);
 
-    streams[0].write(startEvent(at));
+    streams[0].write(startEvent(Date.now()));
     await wait(100);
 
-    assert.deepEqual(heals, []);
+    assert.deepEqual(heals, ['event']);
     watcher.stop();
   });
 
-  it('reacts to a start that comes after the heal own recreate', async () => {
-    const at = Date.now();
-    const { watcher, streams, heals } = setUp({
-      ownRecreateEndedAt: () => at - 60_000,
-    });
+  it('heals exactly once for a burst that mixes the own recreate start and an external start', async () => {
+    const { watcher, streams, heals } = setUp();
     await wait(10);
 
-    streams[0].write(startEvent(at));
+    const own = Date.now();
+    streams[0].write(startEvent(own));
+    await wait(10);
+    streams[0].write(startEvent(own + 250)); // the external recreate, inside the same debounce window
     await wait(100);
 
     assert.deepEqual(heals, ['event']);

@@ -197,14 +197,16 @@ const stackChecks = x => {
     ),
   );
 
-  const drift = composeDrift(pre, post, preServices, services);
+  // A profile may declare the fields it changes on purpose (plan.expectedDrift: [{ service, key }])
+  const expectedDrift = plan.expectedDrift || [];
+  const drift = composeDrift(pre, post, preServices, services).filter(d => !expectedDrift.some(e => e.service === d.service && e.key === d.key));
   const driftList = drift.map(d => `${d.service}.${d.key}`).join(', ');
   out.push(
     result(
       'compose',
       'compose.no-unrelated-changes',
       drift.length === 0,
-      drift.length ? `fields other than image changed: ${driftList}` : 'only image tags changed',
+      drift.length ? `fields other than image changed: ${driftList}` : 'only image tags changed (or fields the profile changes on purpose)',
       'warn',
       drift.length ? drift : undefined,
     ),
@@ -372,7 +374,7 @@ const composeSafetyChecks = x => {
 // ---------------------------------------------------------------- API error handling
 
 const apiChecks = x => {
-  const { it, post, target, plan } = x;
+  const { it, pre, post, target, plan } = x;
   const out = [];
 
   const badShape = it.api
@@ -401,7 +403,9 @@ const apiChecks = x => {
     .filter(c => c.status === 'OK' && SERVICES[c.id] && c.id !== 'gluesync-conductor')
     .filter(c => {
       const now = post.byService[c.id];
-      return now?.state !== 'running' || now.health === 'unhealthy' || now.tag !== target[c.id] || (plan.crashImages || []).includes(c.id);
+      // A service the profile deliberately puts back on its old tag (plan.downgraded) is expected on that tag at the end
+      const expectedTag = (plan.downgraded || []).includes(c.id) ? pre.byService[c.id]?.tag : target[c.id];
+      return now?.state !== 'running' || now.health === 'unhealthy' || now.tag !== expectedTag || (plan.crashImages || []).includes(c.id);
     })
     .map(c => {
       const now = post.byService[c.id];

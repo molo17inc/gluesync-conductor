@@ -30,16 +30,10 @@ const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const LOG = '[proxy-error-pages]';
 const BACKUP_SUBFOLDER = 'proxy-backup';
 
-// The end of the Conductor's own recreate of the reverse-proxy, so that the
-// `start` event of that very container is not taken for somebody else's
 const state = new Map<string, number | Promise<unknown>>([
-  ['ownRecreateEndedAt', 0],
   ['running', 0],
   ['queue', Promise.resolve()],
 ]);
-
-export const ownRecreateEndedAt = (): number =>
-  (state.get('ownRecreateEndedAt') as number | undefined) ?? 0;
 
 /** True while a run is waiting its turn or working. */
 export const isHealing = (): boolean =>
@@ -112,14 +106,7 @@ const writeBoth = async (
 };
 
 const recreateProxy = async (proxy: string): Promise<void> => {
-  try {
-    await runCmd(upAll, proxy, dkrComposeFile, [
-      '--no-deps',
-      '--force-recreate',
-    ]);
-  } finally {
-    state.set('ownRecreateEndedAt', Date.now());
-  }
+  await runCmd(upAll, proxy, dkrComposeFile, ['--no-deps', '--force-recreate']);
 };
 
 const run: HealProxyErrorPages = async ({ reason }) => {

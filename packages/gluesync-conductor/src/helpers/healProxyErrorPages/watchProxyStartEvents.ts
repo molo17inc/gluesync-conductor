@@ -3,16 +3,11 @@ import type { Readable } from 'node:stream';
 
 import { LabelPrefix } from '../../models/composeFile.model';
 import { getLogger } from '../../utils/logger';
-import healProxyErrorPages, {
-  isHealing,
-  ownRecreateEndedAt,
-} from './healProxyErrorPages';
+import healProxyErrorPages, { isHealing } from './healProxyErrorPages';
 import type { HealProxyErrorPages } from './healProxyErrorPages.model';
 
 const DEBOUNCE_MS = 10_000;
 const RECONNECT_MS = 5_000;
-// The Conductor's own recreate ends a moment after the container started
-const OWN_EVENT_SLACK_MS = 2_000;
 
 export type ProxyEventWatcher = Readonly<{ stop: () => void }>;
 
@@ -25,7 +20,6 @@ export type ProxyEventWatcherOptions = Readonly<{
   heal?: HealProxyErrorPages;
   debounceMs?: number;
   reconnectMs?: number;
-  ownRecreateEndedAt?: () => number;
   isHealing?: () => boolean;
 }>;
 
@@ -52,8 +46,10 @@ const parseEvents = (chunk: Buffer | string): ReadonlyArray<DockerEvent> =>
 /**
  * Runs the error pages heal after the reverse-proxy container starts (its
  * image can change under the Conductor: `docker compose up`, a manual pull,
- * the Control tool). Debounced; it waits while an update is running; and the
- * start of the container the heal itself recreated is not a reason to run.
+ * the Control tool). Debounced; it waits while an update is running. The start
+ * of the container the heal itself recreated is not told apart from any other:
+ * the heal is idempotent (it plans nothing then), and telling them apart lost
+ * an external start that the debounce had merged with the own one.
  */
 const watchProxyStartEvents = (
   options: ProxyEventWatcherOptions,
@@ -66,7 +62,6 @@ const watchProxyStartEvents = (
     debounceMs = DEBOUNCE_MS,
     reconnectMs = RECONNECT_MS,
   } = options;
-  const ownEnd = options.ownRecreateEndedAt ?? ownRecreateEndedAt;
   const healing = options.isHealing ?? isHealing;
   const logger = getLogger();
   const cell = new Map<string, unknown>([
@@ -111,14 +106,6 @@ const watchProxyStartEvents = (
     }
 
     cell.set('pending', 0);
-
-    if (startedAt <= ownEnd() + OWN_EVENT_SLACK_MS) {
-      logger.debug(
-        `[proxy-error-pages] ${proxyServiceName} started by the heal itself, ignored`,
-      );
-      return;
-    }
-
     await heal({ reason: 'event' });
   };
 

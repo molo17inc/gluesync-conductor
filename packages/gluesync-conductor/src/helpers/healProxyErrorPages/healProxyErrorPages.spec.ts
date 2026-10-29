@@ -32,7 +32,6 @@ const TYPE = 'com.molo17.conductor.type=third-party';
 
 type Subject = Readonly<{
   default: HealProxyErrorPages;
-  ownRecreateEndedAt: () => number;
 }>;
 
 type Recorder = {
@@ -229,7 +228,6 @@ describe('healProxyErrorPages', () => {
         '--force-recreate',
       ],
     ]);
-    assert.ok(subject.ownRecreateEndedAt() > 0);
   });
 
   it('does nothing the second time: no backup, no write, no recreate', async () => {
@@ -247,6 +245,25 @@ describe('healProxyErrorPages', () => {
     assert.equal(recorder.writes.length, 1);
     assert.equal(sandbox.read(sandbox.compose), compose);
     assert.equal(sandbox.read(traefik), conf);
+  });
+
+  it('cannot oscillate: after its own recreate (either direction) every further run plans none and recreates nothing', async () => {
+    setUp(CAPABLE);
+
+    assert.equal((await subject.default({ reason: 'startup' })).action, 'add');
+    // the start event of the proxy the heal just recreated comes back to the heal, again and again
+    assert.equal((await subject.default({ reason: 'event' })).action, 'none');
+    assert.equal((await subject.default({ reason: 'event' })).action, 'none');
+    assert.equal((await subject.default({ reason: 'update' })).action, 'none');
+    assert.equal(recorder.commands.length, 1);
+
+    // the downgrade half: the wiring goes, and the heal then leaves the old tag alone
+    sandbox.setCompose(sandbox.read(sandbox.compose).replace(CAPABLE, OLD));
+    assert.equal((await subject.default({ reason: 'event' })).action, 'remove');
+    assert.equal((await subject.default({ reason: 'event' })).action, 'none');
+    assert.equal((await subject.default({ reason: 'event' })).action, 'none');
+    assert.equal((await subject.default({ reason: 'update' })).action, 'none');
+    assert.equal(recorder.commands.length, 2);
   });
 
   it('removes it again when the image goes back to one that cannot serve it, restoring both files byte for byte', async () => {
