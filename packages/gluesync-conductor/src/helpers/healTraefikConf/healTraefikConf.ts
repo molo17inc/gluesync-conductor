@@ -12,7 +12,8 @@ import { getDocker } from '../../utils/docker/getDocker';
 import { getLogger } from '../../utils/logger';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import safeWriteFile from '../file/safeWriteFile/safeWriteFile';
-import { parseYamlMapping, renderLikeSource } from './yamlLikeSource';
+import spliceHttpsRedirect from './spliceHttpsRedirect';
+import { parseYamlMapping } from './yamlLikeSource';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
@@ -184,21 +185,19 @@ const healTraefikConf = async (
       return null;
     }
 
-    // Only the redirect node is replaced: comments, ACME / certificate
-    // resolvers and every other setting of the customer stay as they are.
-    doc.setIn(
-      ['entryPoints', WEB_ENTRYPOINT, 'http', 'redirections', 'entryPoint'],
-      doc.createNode({
-        to: WEBSECURE_ENTRYPOINT,
-        scheme: 'https',
-        permanent: true,
-      }),
-    );
+    // Only the bytes of the redirect change: comments, ACME / certificate
+    // resolvers, spacing and every other setting of the customer stay as they are.
+    const spliced = spliceHttpsRedirect(text);
+
+    if (!spliced.ok) {
+      logger.warn(
+        `[traefik-healer] ${confPath} left as it is: ${spliced.reason}`,
+      );
+      return null;
+    }
 
     // In place: the proxy mounts this file on its own, a new inode would not reach it
-    await safeWriteFile(confPath, renderLikeSource(doc, text), {
-      mode: 'in-place',
-    });
+    await safeWriteFile(confPath, spliced.text, { mode: 'in-place' });
 
     logger.info(`[traefik-healer] http->https redirect written to ${confPath}`);
 

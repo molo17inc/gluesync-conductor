@@ -300,7 +300,7 @@ describe('healProxyErrorPages', () => {
     assert.equal(sandbox.read(traefik), customer);
   });
 
-  it('converts a v0.0.286 kit: static, proxy labels and the labels of the other services', async () => {
+  it('keeps a v0.0.286 kit as it is on an image that serves it: nothing written, nothing recreated', async () => {
     setUp(CAPABLE, LEGACY_TRAEFIK, LEGACY_PROXY_LABELS);
     sandbox.setCompose(
       sandbox
@@ -310,23 +310,38 @@ describe('healProxyErrorPages', () => {
           '      - com.molo17.conductor.type=core-hub\n      - traefik.http.routers.corehub.priority=2\n      - traefik.http.routers.corehub-html.rule=(PathPrefix(`/`)) && HeaderRegexp(`Accept`, `text/html`)\n      - traefik.http.routers.corehub-html.priority=3\n      - traefik.http.routers.corehub-html.entrypoints=websecure\n      - traefik.http.routers.corehub-html.tls=true\n      - traefik.http.routers.corehub-html.service=corehub\n      - traefik.http.routers.corehub-html.middlewares=gluesync-errors@docker\n',
         ),
     );
+    const compose = sandbox.read(sandbox.compose);
 
     const outcome = await subject.default({ reason: 'update' });
+
+    assert.equal(outcome.action, 'none');
+    assert.equal(
+      outcome.reason,
+      'v0.0.286 wiring kept: the image still serves it',
+    );
+    assert.equal(sandbox.read(sandbox.compose), compose);
+    assert.equal(sandbox.read(traefik), LEGACY_TRAEFIK);
+    assert.deepEqual(recorder.commands, []);
+    assert.deepEqual(recorder.writes, []);
+    assert.deepEqual(backups(), []);
+  });
+
+  it('ignores the opt-out label on a v0.0.286 kit whose image serves it, and warns', async () => {
+    setUp(CAPABLE, LEGACY_TRAEFIK, [
+      ...LEGACY_PROXY_LABELS,
+      'com.molo17.conductor.error-pages=false',
+    ]);
     const compose = sandbox.read(sandbox.compose);
-    const conf = sandbox.read(traefik);
 
-    assert.equal(outcome.action, 'convert');
-    assert.doesNotMatch(compose, /error-pages\./);
-    assert.doesNotMatch(compose, /gluesync-errors/);
-    assert.doesNotMatch(compose, /corehub-html/);
-    assert.doesNotMatch(compose, /corehub\.priority/);
-    assert.match(compose, /gluesyncerrorpages\.mode=wrap/);
-    assert.match(compose, /# core hub router/);
-    assert.doesNotMatch(conf, /^ {2}errorpages:/m);
-    assert.match(conf, /- gluesync-pages@docker/);
-    assert.equal(recorder.commands.length, 1);
+    const outcome = await subject.default({ reason: 'startup' });
 
-    assert.equal((await subject.default({ reason: 'event' })).action, 'none');
+    assert.equal(outcome.action, 'skip');
+    assert.match(outcome.reason, /^opt-out ignored for v0\.0\.286 wiring/);
+    assert.ok(recorder.logs.some(l => l.startsWith('warn ')));
+    assert.equal(sandbox.read(sandbox.compose), compose);
+    assert.equal(sandbox.read(traefik), LEGACY_TRAEFIK);
+    assert.deepEqual(recorder.commands, []);
+    assert.deepEqual(recorder.writes, []);
   });
 
   it('leaves everything as it is when a label of ours was customised', async () => {

@@ -119,28 +119,43 @@ const wiringOf = (
 const present = (wiring: Wiring): boolean =>
   wiring.target || wiring.legacy || wiring.plugin;
 
+// v0.0.286 wiring is never touched on an image that can serve it: removing it
+// would take `gluesync-errors` away from the proxy while the running services
+// keep their `-html` routers that point at it, and recreating them would
+// restart Core Hub. 3.7.16.1+ has the plugin in the legacy mode it uses.
+const keepsLegacy = (image: string, wiring: Wiring): boolean =>
+  wiring.legacy && hasLegacyPlugin(image);
+
 const decideWithoutOptOut = (
   image: string,
   wiring: Wiring,
 ): ProxyErrorPagesPlan => {
-  if (isCapableImage(image)) {
-    if (wiring.legacy) {
-      return plan('convert', 'v0.0.286 wiring on an image with the wrapper');
-    }
+  if (keepsLegacy(image, wiring)) {
+    return plan('none', 'v0.0.286 wiring kept: the image still serves it');
+  }
 
+  if (isCapableImage(image)) {
     return wiring.targetComplete
       ? plan('none', 'wiring already in place')
       : plan('add', 'image has the wrapper and the wiring is missing');
   }
 
+  return present(wiring)
+    ? plan('remove', 'image has no wrapper, its wiring would not work')
+    : plan('none', 'image has no wrapper and there is no wiring');
+};
+
+const decideOptOut = (image: string, wiring: Wiring): ProxyErrorPagesPlan => {
   if (!present(wiring)) {
-    return plan('none', 'image has no wrapper and there is no wiring');
+    return plan('none', `${OPT_OUT_LABEL}=false`);
   }
 
-  // 3.7.16.1 and .2 have the plugin in its old mode, which is what v0.0.286 uses
-  return wiring.legacy && !wiring.target && hasLegacyPlugin(image)
-    ? plan('none', 'v0.0.286 wiring on an image that still serves it')
-    : plan('remove', 'image has no wrapper, its wiring would not work');
+  return keepsLegacy(image, wiring)
+    ? plan(
+        'skip',
+        'opt-out ignored for v0.0.286 wiring: removing it needs the services recreated',
+      )
+    : plan('remove', `${OPT_OUT_LABEL}=false`);
 };
 
 const customisedProblem = (
@@ -209,13 +224,9 @@ const planProxyErrorPages: PlanProxyErrorPages = input => {
 
   const wiring = wiringOf(labelFacts, facts, input);
 
-  if (isOptOut(labels)) {
-    return present(wiring)
-      ? plan('remove', `${OPT_OUT_LABEL}=false`)
-      : plan('none', `${OPT_OUT_LABEL}=false`);
-  }
-
-  return decideWithoutOptOut(image, wiring);
+  return isOptOut(labels)
+    ? decideOptOut(image, wiring)
+    : decideWithoutOptOut(image, wiring);
 };
 
 export default planProxyErrorPages;

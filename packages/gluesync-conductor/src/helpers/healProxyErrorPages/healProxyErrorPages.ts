@@ -189,7 +189,8 @@ const run: HealProxyErrorPages = async ({ reason }) => {
 /**
  * Brings the MOLO17 error pages wiring of the kit in line with the
  * reverse-proxy image: added when the image can serve it, removed when it
- * cannot (or the customer opted out), v0.0.286's converted. Compose mode only.
+ * cannot (or the customer opted out). v0.0.286 wiring stays while the image
+ * still serves it. Compose mode only.
  * Runs one at a time and never throws: a failure is logged and the caller goes on.
  */
 const healProxyErrorPages: HealProxyErrorPages = options => {

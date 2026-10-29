@@ -2,12 +2,7 @@ import type { RawComposeFile } from '../../models/composeFile.model';
 
 export type HealReason = 'startup' | 'update' | 'event';
 
-export type ProxyErrorPagesAction =
-  | 'add'
-  | 'remove'
-  | 'convert'
-  | 'none'
-  | 'skip';
+export type ProxyErrorPagesAction = 'add' | 'remove' | 'none' | 'skip';
 
 export type ProxyErrorPagesPlan = Readonly<{
   action: ProxyErrorPagesAction;

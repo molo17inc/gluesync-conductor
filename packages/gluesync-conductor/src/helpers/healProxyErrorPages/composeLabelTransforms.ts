@@ -244,31 +244,6 @@ export const removeLegacyServiceLabels = (
       composeJson,
     );
 
-/**
- * Convert: v0.0.286 labels out (on the reverse-proxy and on the other
- * services), target labels in. A label both wirings share stays where it is.
- */
-export const convertLabels = (
-  composeJson: ComposeJson,
-  proxy: string,
-  isWindows: boolean,
-): ComposeJson =>
-  addTargetLabels(
-    removeLegacyServiceLabels(
-      withServiceLabels(
-        composeJson,
-        proxy,
-        filterLabels(
-          labelsOf(composeJson.services?.[proxy]),
-          (key, value) => !isLegacyOnly(key, value, isWindows),
-        ),
-      ),
-      proxy,
-    ),
-    proxy,
-    isWindows,
-  );
-
 /** Everything removed: target and v0.0.286 labels, on every service. */
 export const removeAllLabels = (
   composeJson: ComposeJson,

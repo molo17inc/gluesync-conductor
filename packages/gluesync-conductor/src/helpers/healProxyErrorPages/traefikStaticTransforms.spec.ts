@@ -11,6 +11,8 @@ import {
   addStatic,
   inspectTraefikStatic,
   removeStatic,
+  tryAddStatic,
+  tryRemoveStatic,
 } from './traefikStaticTransforms';
 
 const NO_HTTP = `entryPoints:
@@ -155,32 +157,6 @@ experimental:
     assert.ok(addStatic(crlf).includes('gluesync-pages@docker\r\n'));
   });
 
-  it('converts: drops the entryPoints.errorpages of v0.0.286 and keeps the plugin', () => {
-    const out = addStatic(LEGACY_TRAEFIK, { dropLegacyEntry: true });
-    const conf = parse(out);
-
-    assert.equal(conf.entryPoints.errorpages, undefined);
-    assert.deepEqual(conf.entryPoints.websecure.http.middlewares, [
-      'gluesync-pages@docker',
-    ]);
-    assert.equal(
-      conf.experimental.localPlugins.gluesyncerrorpages.moduleName,
-      'github.com/molo17/gluesyncerrorpages',
-    );
-    assert.match(out, /# Error pages: Traefik local plugin/);
-    assert.doesNotMatch(out, /8099/);
-  });
-
-  it('keeps an errorpages entry point that is the customer own', () => {
-    const mine = LEGACY_TRAEFIK.replace(':8099', ':9000');
-
-    assert.equal(
-      parse(addStatic(mine, { dropLegacyEntry: true })).entryPoints.errorpages
-        .address,
-      ':9000',
-    );
-  });
-
   it('refuses a file that is not a YAML mapping', () => {
     assert.throws(() => addStatic('a: [1, 2\n'), /not valid YAML/);
     assert.throws(() => addStatic('- a\n- b\n'), /not a YAML mapping/);
@@ -203,9 +179,7 @@ describe('removeStatic', () => {
         '[a@file,b@file]',
       ),
     ].forEach(original => {
-      const back = removeStatic(addStatic(original));
-
-      assert.deepEqual(parse(back), parse(original));
+      assert.equal(removeStatic(addStatic(original)), original);
     });
   });
 
@@ -302,5 +276,273 @@ describe('inspectTraefikStatic', () => {
   it('reports a file it cannot use', () => {
     assert.equal(inspectTraefikStatic('a: [').ok, false);
     assert.equal(inspectTraefikStatic('').ok, false);
+  });
+});
+
+// ------------------------------------------------ every other byte stays
+
+const PAGES = 'gluesync-pages@docker';
+const PLUGIN_LINES = [
+  'experimental:',
+  '  localPlugins:',
+  '    gluesyncerrorpages:',
+  '      moduleName: github.com/molo17/gluesyncerrorpages',
+];
+
+const lines = (text: string): string[] => text.split(/(?<=\n)/);
+
+/** The lines `after` has on top of `before`; `before`'s lines must all be there, in order. */
+const addedLines = (before: string, after: string): string[] => {
+  const old = lines(before);
+  const kept = lines(after).reduce<{ at: number; added: string[] }>(
+    (acc, line) =>
+      line === old[acc.at]
+        ? { ...acc, at: acc.at + 1 }
+        : { ...acc, added: [...acc.added, line] },
+    { at: 0, added: [] },
+  );
+
+  assert.equal(kept.at, old.length, 'a line of the original changed or moved');
+
+  return kept.added;
+};
+
+// The customer's file of the e2e: double-space comments, blank lines
+const CUSTOMER = `entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+    http:
+      middlewares:
+        - user-headers@file   # customer middleware, must survive
+
+log:
+  level: DEBUG  # customer debug level
+accessLog: {}
+`;
+
+const eol = (text: string, to: string): string => text.replaceAll('\n', to);
+
+describe('addStatic / removeStatic splice the original text', () => {
+  it('adds only lines to the customer file and removes them again, byte for byte', () => {
+    const added = addStatic(CUSTOMER);
+
+    assert.deepEqual(addedLines(CUSTOMER, added), [
+      `        - ${PAGES}\n`,
+      ...PLUGIN_LINES.map(line => `${line}\n`),
+    ]);
+    assert.ok(added.includes('user-headers@file   # customer middleware'));
+    assert.ok(added.includes('level: DEBUG  # customer debug level'));
+    assert.equal(removeStatic(added), CUSTOMER);
+  });
+
+  it('keeps CRLF line ends: only CRLF lines are added', () => {
+    const crlf = eol(CUSTOMER, '\r\n');
+    const added = addStatic(crlf);
+
+    assert.deepEqual(addedLines(crlf, added), [
+      `        - ${PAGES}\r\n`,
+      ...PLUGIN_LINES.map(line => `${line}\r\n`),
+    ]);
+    assert.ok(!/[^\r]\n/.test(added));
+    assert.equal(removeStatic(added), crlf);
+  });
+
+  it('keeps a file without a final newline without one', () => {
+    const noFinal = CUSTOMER.trimEnd();
+    const added = addStatic(noFinal);
+
+    assert.ok(!added.endsWith('\n'));
+    assert.ok(
+      added.endsWith('      moduleName: github.com/molo17/gluesyncerrorpages'),
+    );
+    assert.deepEqual(parse(added).experimental.localPlugins, {
+      gluesyncerrorpages: {
+        moduleName: 'github.com/molo17/gluesyncerrorpages',
+      },
+    });
+    assert.equal(removeStatic(added), noFinal);
+
+    // the last line is the one we add to, with and without CRLF
+    const websecureLast = 'entryPoints:\n  websecure:\n    address: ":443"';
+    assert.equal(removeStatic(addStatic(websecureLast)), websecureLast);
+    assert.equal(
+      removeStatic(addStatic(eol(websecureLast, '\r\n'))),
+      eol(websecureLast, '\r\n'),
+    );
+  });
+
+  it('keeps a four-space indent and uses it for what it adds', () => {
+    const four = CUSTOMER.replaceAll('  ', '    ');
+    const added = addStatic(four);
+
+    assert.deepEqual(addedLines(four, added), [
+      `                - ${PAGES}\n`,
+      'experimental:\n',
+      '    localPlugins:\n',
+      '        gluesyncerrorpages:\n',
+      '            moduleName: github.com/molo17/gluesyncerrorpages\n',
+    ]);
+    assert.equal(removeStatic(added), four);
+  });
+  it('adds to a flow list inside the brackets and takes it out again', () => {
+    const cases: ReadonlyArray<[string, string]> = [
+      ['[a@file, b@file]', `[a@file, b@file, ${PAGES}]`],
+      ['[a@file,b@file]', `[a@file,b@file, ${PAGES}]`],
+      ['[ a@file, b@file ]', `[ a@file, b@file, ${PAGES} ]`],
+      ['[a@file]', `[a@file, ${PAGES}]`],
+      ['[]', `[${PAGES}]`],
+      ['[a@file, b@file]  # keep me', `[a@file, b@file, ${PAGES}]  # keep me`],
+    ];
+
+    cases.forEach(([list, expected]) => {
+      const original = `${NO_HTTP}    http:\n      middlewares: ${list}\n`;
+      const added = addStatic(original);
+
+      assert.equal(
+        added,
+        `${NO_HTTP}    http:\n      middlewares: ${expected}\n${PLUGIN_LINES.map(line => `${line}\n`).join('')}`,
+      );
+      assert.equal(removeStatic(added), original);
+    });
+  });
+  it('adds a whole http when websecure has none, and only that', () => {
+    const added = addStatic(NO_HTTP);
+
+    assert.deepEqual(addedLines(NO_HTTP, added), [
+      '    http:\n',
+      '      middlewares:\n',
+      `        - ${PAGES}\n`,
+      ...PLUGIN_LINES.map(line => `${line}\n`),
+    ]);
+    assert.equal(removeStatic(added), NO_HTTP);
+  });
+
+  it('fills a middlewares or http key that has no value', () => {
+    const cases: ReadonlyArray<[string, string]> = [
+      [`    http:\n      middlewares:\n`, `        - ${PAGES}\n`],
+      [`    http:\n`, `      middlewares:\n        - ${PAGES}\n`],
+      [`    http:   # later\n`, `      middlewares:\n        - ${PAGES}\n`],
+    ];
+
+    cases.forEach(([tail, inserted]) => {
+      const original = `${NO_HTTP}${tail}`;
+      const added = addStatic(original);
+
+      assert.deepEqual(
+        addedLines(original, added),
+        [
+          inserted
+            .split('\n')
+            .slice(0, -1)
+            .map(line => `${line}\n`),
+          PLUGIN_LINES.map(line => `${line}\n`),
+        ].flat(),
+      );
+      assert.deepEqual(parse(added).entryPoints.websecure.http.middlewares, [
+        PAGES,
+      ]);
+      // a bare key with nothing else on it goes with our entry; one with a comment stays
+      assert.equal(
+        removeStatic(added),
+        tail.includes('#') ? original : NO_HTTP,
+      );
+    });
+  });
+
+  it('adds next to the other plugins of an experimental section', () => {
+    const original = `${NO_HTTP}experimental:  # mine\n  plugins:\n    mine:\n      moduleName: example.com/mine\n      version: v1.0.0\n\nlog:\n  level: INFO\n`;
+    const added = addStatic(original);
+
+    assert.deepEqual(addedLines(original, added), [
+      '    http:\n',
+      '      middlewares:\n',
+      `        - ${PAGES}\n`,
+      '  localPlugins:\n',
+      '    gluesyncerrorpages:\n',
+      '      moduleName: github.com/molo17/gluesyncerrorpages\n',
+    ]);
+    assert.ok(added.includes('experimental:  # mine'));
+    assert.equal(removeStatic(added), original);
+
+    const withLocal = `${original.replace('\nlog:', '  localPlugins:\n    other:\n      moduleName: example.com/other\n\nlog:')}`;
+    const addedLocal = addStatic(withLocal);
+
+    assert.deepEqual(Object.keys(parse(addedLocal).experimental.localPlugins), [
+      'other',
+      'gluesyncerrorpages',
+    ]);
+    assert.equal(removeStatic(addedLocal), withLocal);
+  });
+
+  it('keeps a document marker, leading comments and an end marker', () => {
+    const original = `# Customer proxy\n# second line\n---\n${CUSTOMER}...\n`;
+    const added = addStatic(original);
+
+    assert.ok(added.startsWith('# Customer proxy\n# second line\n---\n'));
+    assert.ok(
+      added.endsWith('moduleName: github.com/molo17/gluesyncerrorpages\n...\n'),
+    );
+    assert.deepEqual(addedLines(original, added).length, 5);
+    assert.equal(removeStatic(added), original);
+  });
+
+  it('is idempotent in both directions', () => {
+    [
+      CUSTOMER,
+      eol(CUSTOMER, '\r\n'),
+      CUSTOMER.trimEnd(),
+      NO_HTTP,
+      KIT_TRAEFIK,
+    ].forEach(original => {
+      const added = addStatic(original);
+
+      assert.equal(addStatic(added), added);
+      assert.equal(removeStatic(original), original);
+      assert.equal(removeStatic(removeStatic(added)), original);
+    });
+  });
+
+  it('removes only our lines: the customer comments and middlewares around them stay', () => {
+    const original = `${NO_HTTP.replace('address: ":443"\n', 'address: ":443"\n')}    http:\n      middlewares:\n        - a@file  # first\n        - ${PAGES}   # ours\n        - b@file\n`;
+
+    assert.equal(
+      removeStatic(original),
+      original.replace(`        - ${PAGES}   # ours\n`, ''),
+    );
+  });
+
+  it('keeps a parent key that holds a comment of the customer', () => {
+    const original = `${NO_HTTP}    http:\n      middlewares:\n        # chain order matters\n        - ${PAGES}\n`;
+    const back = removeStatic(original);
+
+    assert.equal(
+      back,
+      `${NO_HTTP}    http:\n      middlewares:\n        # chain order matters\n`,
+    );
+    assert.deepEqual(parse(back).entryPoints.websecure.http, {
+      middlewares: null,
+    });
+  });
+
+  it('says why it leaves a layout alone instead of rewriting it', () => {
+    const flowWebsecure = 'entryPoints:\n  websecure: {address: ":443"}\n';
+    const mapMiddlewares = `${NO_HTTP}    http:\n      middlewares:\n        a: b\n`;
+    const commented = `${NO_HTTP}experimental:\n  localPlugins:\n    gluesyncerrorpages:\n      # ours\n      moduleName: github.com/molo17/gluesyncerrorpages\n`;
+
+    [flowWebsecure, mapMiddlewares].forEach(text => {
+      const result = tryAddStatic(text);
+
+      assert.equal(result.ok, false);
+      assert.throws(() => addStatic(text));
+    });
+    assert.equal(tryRemoveStatic(commented).ok, false);
+    assert.throws(() => removeStatic(commented), /comment of its own/);
+    assert.deepEqual(tryAddStatic(CUSTOMER), {
+      ok: true,
+      text: addStatic(CUSTOMER),
+    });
+    assert.equal(tryAddStatic('a: [1, 2\n').ok, false);
   });
 });

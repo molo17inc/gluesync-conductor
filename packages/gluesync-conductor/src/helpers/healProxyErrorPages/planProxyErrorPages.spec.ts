@@ -165,17 +165,22 @@ describe('planProxyErrorPages', () => {
     );
   });
 
-  it('converts the v0.0.286 wiring on a capable image', () => {
+  it('keeps the v0.0.286 wiring on a capable image: nothing to change', () => {
     const compose = kitCompose({
       image: CAPABLE,
       proxyLabels: LEGACY_PROXY_LABELS,
       legacyServiceLabels: true,
     });
+    const result = plan(compose, LEGACY_TRAEFIK);
 
-    assert.equal(plan(compose, LEGACY_TRAEFIK).action, 'convert');
+    assert.equal(result.action, 'none');
+    assert.equal(
+      result.reason,
+      'v0.0.286 wiring kept: the image still serves it',
+    );
   });
 
-  it('keeps v0.0.286 working on 3.7.16.1/.2, which serve it, and removes it below', () => {
+  it('keeps v0.0.286 working on 3.7.16.1/.2/.3, which serve it, and removes it below', () => {
     const legacy = (image: string) =>
       plan(
         kitCompose({
@@ -188,23 +193,41 @@ describe('planProxyErrorPages', () => {
 
     assert.equal(legacy('molo17/traefik:3.7.16.1'), 'none');
     assert.equal(legacy('molo17/traefik:3.7.16.2'), 'none');
+    assert.equal(legacy('molo17/traefik:3.7.16.3'), 'none');
+    assert.equal(legacy('molo17/traefik:3.8.0.1'), 'none');
     assert.equal(
       legacy('molo17/traefik:3.6.2-win-nanoserver-ltsc2022'),
       'remove',
     );
+    assert.equal(legacy(OLD), 'remove');
   });
 
-  it('removes v0.0.286 when the customer opts out', () => {
-    const compose = kitCompose({
-      image: CAPABLE,
-      proxyLabels: [
-        ...LEGACY_PROXY_LABELS,
-        'com.molo17.conductor.error-pages=false',
-      ],
-      legacyServiceLabels: true,
-    });
+  it('removes v0.0.286 on opt-out only below 3.7.16.1; above it skips', () => {
+    const optOut = (image: string) =>
+      plan(
+        kitCompose({
+          image,
+          proxyLabels: [
+            ...LEGACY_PROXY_LABELS,
+            'com.molo17.conductor.error-pages=false',
+          ],
+          legacyServiceLabels: true,
+        }),
+        LEGACY_TRAEFIK,
+      );
 
-    assert.equal(plan(compose, LEGACY_TRAEFIK).action, 'remove');
+    assert.equal(optOut(OLD).action, 'remove');
+    ['molo17/traefik:3.7.16.1', 'molo17/traefik:3.7.16.2', CAPABLE].forEach(
+      image => {
+        const result = optOut(image);
+
+        assert.equal(result.action, 'skip');
+        assert.equal(
+          result.reason,
+          'opt-out ignored for v0.0.286 wiring: removing it needs the services recreated',
+        );
+      },
+    );
   });
 
   it('skips a label of ours with a value the customer changed', () => {

@@ -186,6 +186,159 @@ log:
     assert.ok(!/[^\r]\n/.test(text));
   });
 
+  describe('changes only the bytes of the redirect', () => {
+    const REDIRECT_LINES = [
+      '    http:',
+      '      redirections:',
+      '        entryPoint:',
+      '          to: websecure',
+      '          scheme: https',
+      '          permanent: true',
+    ];
+    const CUSTOMER = `entryPoints:
+  web:
+    address: ":80"   # plain http
+  websecure:
+    address: ":443"
+    http:
+      middlewares:
+        - user-headers@file   # customer middleware, must survive
+
+log:
+  level: DEBUG  # customer debug level
+accessLog: {}
+`;
+
+    const lines = (text: string): string[] => text.split(/(?<=\n)/);
+
+    const addedLines = (before: string, after: string): string[] => {
+      const old = lines(before);
+      const kept = lines(after).reduce<{ at: number; added: string[] }>(
+        (acc, line) =>
+          line === old[acc.at]
+            ? { ...acc, at: acc.at + 1 }
+            : { ...acc, added: [...acc.added, line] },
+        { at: 0, added: [] },
+      );
+
+      assert.equal(kept.at, old.length, 'a line of the original changed');
+
+      return kept.added;
+    };
+
+    const healed = async (text: string): Promise<string> => {
+      await heal(text);
+
+      return readFileSync(file, 'utf8');
+    };
+
+    it('adds only the redirect lines to the customer file, double-space comments and blank lines intact', async () => {
+      const out = await healed(CUSTOMER);
+
+      assert.deepEqual(
+        addedLines(CUSTOMER, out),
+        REDIRECT_LINES.map(line => `${line}\n`),
+      );
+      assert.ok(out.includes('address: ":80"   # plain http'));
+      assert.ok(out.includes('- user-headers@file   # customer middleware'));
+      assert.ok(out.includes('level: DEBUG  # customer debug level'));
+    });
+
+    it('keeps CRLF and adds CRLF lines only', async () => {
+      const crlf = CUSTOMER.replaceAll('\n', '\r\n');
+      const out = await healed(crlf);
+
+      assert.deepEqual(
+        addedLines(crlf, out),
+        REDIRECT_LINES.map(line => `${line}\r\n`),
+      );
+    });
+
+    it('keeps a file without a final newline without one', async () => {
+      const noFinal =
+        'entryPoints:\n  websecure:\n    address: ":443"\n  web:\n    address: ":80"';
+      const out = await healed(noFinal);
+
+      assert.equal(out, `${noFinal}\n${REDIRECT_LINES.join('\n')}`);
+    });
+
+    it('uses the four-space indent of the file', async () => {
+      const four = CUSTOMER.replaceAll('  ', '    ');
+      const out = await healed(four);
+
+      assert.deepEqual(addedLines(four, out), [
+        '        http:\n',
+        '            redirections:\n',
+        '                entryPoint:\n',
+        '                    to: websecure\n',
+        '                    scheme: https\n',
+        '                    permanent: true\n',
+      ]);
+    });
+
+    it('keeps a document marker and leading comments', async () => {
+      const text = `# my proxy\n---\n${CUSTOMER}`;
+      const out = await healed(text);
+
+      assert.ok(out.startsWith('# my proxy\n---\nentryPoints:\n'));
+      assert.equal(addedLines(text, out).length, 6);
+    });
+
+    it('adds only what is missing to a redirect the customer started', async () => {
+      const text = `entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections: # mine
+        entryPoint:
+          priority: 5
+          to: "other"   # was other
+          scheme: 'http'
+          permanent: false
+  websecure:
+    address: ":443"
+`;
+      const out = await healed(text);
+
+      assert.equal(
+        out,
+        text
+          .replace('to: "other"', 'to: "websecure"')
+          .replace("scheme: 'http'", "scheme: 'https'")
+          .replace('permanent: false', 'permanent: true'),
+      );
+    });
+
+    it('adds a redirections key under an http the customer has', async () => {
+      const text = `entryPoints:
+  web:
+    address: ":80"
+    http:
+      middlewares:
+        - m@file
+  websecure:
+    address: ":443"
+`;
+      const out = await healed(text);
+
+      assert.deepEqual(addedLines(text, out), [
+        '      redirections:\n',
+        '        entryPoint:\n',
+        '          to: websecure\n',
+        '          scheme: https\n',
+        '          permanent: true\n',
+      ]);
+    });
+
+    it('leaves a layout it cannot splice alone and does not restart', async () => {
+      const flow = `entryPoints:\n  web: {address: ":80"}\n  websecure:\n    address: ":443"\n`;
+
+      assert.equal(await heal(flow), null);
+      assert.equal(readFileSync(file, 'utf8'), flow);
+      assert.deepEqual(restarted, []);
+    });
+  });
+
   it('finds the reverse-proxy by name or by its Traefik image', () => {
     assert.equal(
       subject.findProxyServiceName(composeFor(file)),

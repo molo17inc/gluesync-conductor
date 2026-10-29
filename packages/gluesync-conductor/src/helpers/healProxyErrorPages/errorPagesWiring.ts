@@ -13,6 +13,12 @@ export const PLUGIN_MODULE = 'github.com/molo17/gluesyncerrorpages';
 export const ERRORPAGES_ENTRYPOINT = 'errorpages';
 export const ERRORPAGES_ADDRESS = ':8099';
 
+/** The comment lines v0.0.286 wrote above its entries of traefik.yml. */
+export const ERRORPAGES_COMMENT =
+  '# Internal only (not published in compose): serves the MOLO17 error pages to the errors middleware.';
+export const PLUGIN_COMMENT =
+  '# Error pages: Traefik local plugin, baked into the molo17/traefik image (/plugins-local).';
+
 /** First molo17/traefik tag that has the wrapper mode (`mode: wrap`). */
 export const CAPABLE_FROM = [3, 7, 16, 3] as const;
 /** First tag that has the plugin at all (legacy mode, what v0.0.286 kits use). */

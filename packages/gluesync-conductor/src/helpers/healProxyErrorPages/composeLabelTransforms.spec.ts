@@ -8,7 +8,6 @@ import {
 } from '../../testing/proxyErrorPagesFixtures';
 import {
   addTargetLabels,
-  convertLabels,
   removeAllLabels,
   removeProxyLabels,
 } from './composeLabelTransforms';
@@ -160,96 +159,6 @@ describe('removeProxyLabels', () => {
     );
 
     assert.equal('labels' in (out.services?.[PROXY] ?? {}), false);
-  });
-});
-
-describe('convertLabels', () => {
-  const legacy = kitCompose({
-    image: 'molo17/traefik:3.7.16.3',
-    proxyLabels: ['my.label=1', ...LEGACY_PROXY_LABELS, TYPE],
-    legacyServiceLabels: true,
-  });
-
-  it('swaps the v0.0.286 labels of the proxy for the target ones, in place', () => {
-    const out = convertLabels(legacy, PROXY, false);
-    const list = labelsOf(out) as string[];
-
-    assert.deepEqual(
-      list.filter(l => !TARGET_PROXY_LABELS.includes(l)),
-      ['my.label=1', TYPE],
-    );
-    assert.ok(TARGET_PROXY_LABELS.every(l => list.includes(l)));
-    // shared labels keep their place: traefik.enable stays right after my.label
-    assert.equal(list[1], 'traefik.enable=true');
-    assert.ok(
-      list.every(
-        l => !l.includes('error-pages.') && !l.includes('gluesync-errors'),
-      ),
-    );
-    assert.equal(
-      list.filter(l => l.includes('gluesync-pages@docker')).length,
-      0,
-    );
-  });
-
-  it('removes the exact v0.0.286 labels of the other services and nothing else', () => {
-    const out = convertLabels(legacy, PROXY, false);
-
-    assert.deepEqual(labelsOf(out, 'gluesync-core-hub'), [
-      'traefik.enable=true',
-      'traefik.http.routers.corehub.entrypoints=websecure',
-      'traefik.http.routers.corehub.rule=PathPrefix(`/`)',
-      'traefik.http.routers.corehub.tls=true',
-      'com.molo17.conductor.type=core-hub',
-    ]);
-    assert.deepEqual(labelsOf(out, 'gluesync-chronos'), [
-      'traefik.enable=true',
-      'traefik.http.routers.chronos.rule=PathPrefix(`/chronos/`)',
-      'traefik.http.routers.chronos.middlewares=chronos@docker',
-      'com.molo17.conductor.type=module',
-    ]);
-  });
-
-  it('keeps a customer label next to the v0.0.286 ones, even on an -html router', () => {
-    const base = legacy.services?.['gluesync-core-hub'];
-    const out = convertLabels(
-      {
-        ...legacy,
-        services: {
-          ...legacy.services,
-          'gluesync-core-hub': {
-            ...base,
-            image: base?.image ?? '',
-            labels: [
-              ...(base?.labels as string[]),
-              'traefik.http.routers.corehub-html.entrypoints=websecure,web',
-              'my.service.label=keep',
-            ],
-          },
-        },
-      },
-      PROXY,
-      false,
-    );
-
-    const left = labelsOf(out, 'gluesync-core-hub') as string[];
-    assert.ok(left.includes('my.service.label=keep'));
-    assert.ok(
-      left.includes(
-        'traefik.http.routers.corehub-html.entrypoints=websecure,web',
-      ),
-    );
-    assert.ok(!left.includes('traefik.http.routers.corehub.priority=2'));
-  });
-
-  it('is a no-op for the service labels of a kit without v0.0.286 wiring', () => {
-    const plain = kitCompose({ proxyLabels: [TYPE] });
-    const out = convertLabels(plain, PROXY, false);
-
-    assert.deepEqual(
-      out.services?.['gluesync-core-hub'],
-      plain.services?.['gluesync-core-hub'],
-    );
   });
 });
 

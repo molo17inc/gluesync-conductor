@@ -1,9 +1,5 @@
 import type { RawComposeFile } from '../../models/composeFile.model';
-import {
-  addTargetLabels,
-  convertLabels,
-  removeAllLabels,
-} from './composeLabelTransforms';
+import { addTargetLabels, removeAllLabels } from './composeLabelTransforms';
 import type { ProxyErrorPagesPlan } from './healProxyErrorPages.model';
 import { addStatic, removeStatic } from './traefikStaticTransforms';
 
@@ -32,17 +28,6 @@ const applyProxyErrorPagesPlan = (
           isWindows,
         ),
         traefikYamlText: addStatic(files.traefikYamlText),
-      };
-    case 'convert':
-      return {
-        composeJson: convertLabels(
-          files.composeJson,
-          proxyServiceName,
-          isWindows,
-        ),
-        traefikYamlText: addStatic(files.traefikYamlText, {
-          dropLegacyEntry: true,
-        }),
       };
     case 'remove':
       return {
