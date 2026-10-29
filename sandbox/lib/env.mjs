@@ -7,6 +7,46 @@ const runDir = path.join(sandboxDir, 'run');
 
 let caCache = null;
 
+// Every host-visible name and port can be overridden, so several sandboxes (a developer's own,
+// CI shards on a shared daemon) can coexist. Defaults are what a developer's Mac gets.
+//   SANDBOX_NAME            prefix of the DinD container and its volume (default conductor-sandbox)
+//   SANDBOX_PORT_OFFSET     added to every default port below
+//   SANDBOX_DOCKER_PORT, SANDBOX_CONDUCTOR_PORT, SANDBOX_COREHUB_PORT, SANDBOX_PROXY_PORT,
+//   SANDBOX_BACKOFFICE_ADMIN_PORT, SANDBOX_DOCKER_PROXY_ADMIN_PORT   one port each, winning over the offset
+const portOffset = Number(process.env.SANDBOX_PORT_OFFSET || 0);
+const port = (name, fallback) => Number(process.env[`SANDBOX_${name}_PORT`] || fallback + portOffset);
+const sandboxName = process.env.SANDBOX_NAME || 'conductor-sandbox';
+
+// Every image the sandbox pulls, by the daemon that needs it. By default they come from Docker Hub,
+// on first use. With SANDBOX_IMAGE_MIRROR=<registry>/<repo> (CI: nexus.hq.molo17.com/molo17-local)
+// each one is pulled from `<mirror>/<name:tag>` and tagged with its canonical name before anything
+// uses it (see seedImages in setup.mjs), so Docker Hub is never contacted. The mirror must hold
+// every name below, with the same tag. Keep this list complete: it is what the CI job needs offline.
+const DIND_IMAGE = 'docker:28.3.3-dind';
+// Also the image the real-kernel ENOSPC test runs in, and the base of the fakes and the conductor.
+const NODE_IMAGE = 'node:24.22.1-alpine';
+export const requiredImages = {
+  // The host's daemon: the sandbox's own Docker-in-Docker, and the certificate step (it has openssl).
+  outer: [DIND_IMAGE],
+  // The sandbox daemon: the registry, the FROM of sandbox/fakes/Dockerfile and of
+  // packages/gluesync-conductor/Dockerfile, the ENOSPC test, the nsenter fallback in diskFault, and
+  // the helper images the conductor itself runs (`docker run --rm docker:cli|docker:28 ...`, see
+  // autoReboot / restartAllServices: they pull what is not local, from Docker Hub). The conductor's
+  // image prune removes whatever is unused, so up() keeps all of these with keep-* containers.
+  inner: ['registry:2.8.3', NODE_IMAGE, 'alpine:3.20', 'docker:28', 'docker:cli'],
+};
+
+// SANDBOX_DIND_ADD_HOSTS="host:ip,host:ip": --add-host entries for the sandbox DinD container, so a
+// test can prove the nested daemon reaches nothing but the mirror (CI never sets it).
+const dindAddHosts = (process.env.SANDBOX_DIND_ADD_HOSTS || '').split(',').map(h => h.trim()).filter(Boolean);
+
+// Trailing slashes off, without a regex: `/\/+$/` backtracks quadratically on a long run of them.
+const withoutTrailingSlashes = text => {
+  let end = text.length;
+  while (end > 0 && text[end - 1] === '/') end -= 1;
+  return text.slice(0, end);
+};
+
 export const env = {
   sandboxDir,
   repoDir: path.resolve(sandboxDir, '..'),
@@ -14,12 +54,18 @@ export const env = {
   runDir,
   kitDir: path.join(runDir, 'kit'),
   stateDir: path.join(runDir, 'state'),
+  // The conductor keeps its last valid compose file in <root-folder>/.conductor, and the
+  // kit mounts the kit directory as the root folder.
+  lastGoodFile: path.join(runDir, 'kit', '.conductor', 'docker-compose.last-good.yml'),
   reportsDir: path.join(sandboxDir, 'reports'),
 
-  dindName: 'conductor-sandbox-dind',
-  dindVolume: 'conductor-sandbox-dind',
-  dindImage: 'docker:28.3.3-dind',
-  dockerPort: 23750,
+  dindName: `${sandboxName}-dind`,
+  dindVolume: `${sandboxName}-dind`,
+  dindImage: DIND_IMAGE,
+  enospcImage: NODE_IMAGE,
+  imageMirror: withoutTrailingSlashes(process.env.SANDBOX_IMAGE_MIRROR || ''),
+  dindAddHosts,
+  dockerPort: port('DOCKER', 23750),
   get dockerHost() {
     return `tcp://127.0.0.1:${this.dockerPort}`;
   },
@@ -27,7 +73,19 @@ export const env = {
   registry: 'localhost:5000',
   project: 'gluesync',
   // proxy: the fake reverse-proxy, which forwards /conductor/api/ to the conductor as the UI's requests travel.
-  ports: { conductor: 5317, corehub: 5318, proxy: 5319, backofficeAdmin: 8088, dockerProxyAdmin: 8089 },
+  ports: {
+    conductor: port('CONDUCTOR', 5317),
+    corehub: port('COREHUB', 5318),
+    proxy: port('PROXY', 5319),
+    backofficeAdmin: port('BACKOFFICE_ADMIN', 8088),
+    dockerProxyAdmin: port('DOCKER_PROXY_ADMIN', 8089),
+  },
+  // Ports the infra containers listen on inside the sandbox daemon (the infra compose file's own);
+  // the DinD container publishes them to ports.backofficeAdmin / ports.dockerProxyAdmin on the host.
+  infraPorts: { backofficeAdmin: 8088, dockerProxyAdmin: 8089 },
+  // Helper containers that stop the conductor's image prune from deleting the bases. They live in
+  // the sandbox daemon, so they cannot clash with anything on the host and need no per-sandbox name.
+  keepPrefix: 'keep-',
 
   // Sandbox-only values, not real credentials. The proxy password and license
   // text are canaries: the logging check fails if they show up in conductor logs.
@@ -36,6 +94,7 @@ export const env = {
   proxyPass: 'SbProxyP4ss-leakcheck',
   licenseText: 'SANDBOX-LICENSE-LEAKCHECK-91e2',
 
+  // Image names inside the sandbox daemon (no host-side clash possible).
   fakeBase: 'conductor-sandbox/fake-base:dev',
   conductorBase: 'conductor-sandbox/conductor-base:dev',
 
@@ -44,6 +103,10 @@ export const env = {
     return caCache;
   },
 };
+
+// Phrases the conductor contract fixes (see the disk-full and compose-blanked profiles).
+export const DISK_FULL_TEXT = 'not enough free disk space';
+export const RESTORED_LOG = 'restored docker-compose.yml from last-good backup';
 
 // The services the default kit ships, keyed by compose service name.
 // `short` is what the conductor asks the backoffice for (image name minus "gluesync-").

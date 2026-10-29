@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import path from 'node:path';
 import https from 'node:https';
 import http from 'node:http';
 import { env } from './env.mjs';
@@ -37,6 +38,7 @@ export const run = (cmd, args, opts = {}) =>
     });
     let out = '';
     let err = '';
+    let timedOut = false;
     child.stdout.on('data', d => {
       out += d;
       if (opts.stream) process.stdout.write(d);
@@ -51,6 +53,7 @@ export const run = (cmd, args, opts = {}) =>
     }
     const timer = opts.timeoutMs
       ? setTimeout(() => {
+          timedOut = true;
           child.kill('SIGKILL');
           err += `\n[timeout after ${opts.timeoutMs}ms]`;
         }, opts.timeoutMs)
@@ -60,14 +63,18 @@ export const run = (cmd, args, opts = {}) =>
     });
     child.on('close', code => {
       if (timer) clearTimeout(timer);
-      resolve({ code, out: out.trim(), err: err.trim(), ms: Date.now() - started });
+      resolve({ code, out: out.trim(), err: err.trim(), ms: Date.now() - started, timedOut });
     });
   });
 
 export const mustRun = async (cmd, args, opts = {}) => {
   const r = await run(cmd, args, opts);
+  const what = `${path.basename(cmd)} ${args.slice(0, 6).join(' ')}`;
+  // A hung command (a push that never returns, a daemon that stopped answering) is a failure with
+  // its own message, not something to wait out until the job's own timeout.
+  if (r.timedOut) throw new Error(`${what} hung: killed after ${Math.round(opts.timeoutMs / 1000)}s. Last output: ${(r.err || r.out).slice(-1500)}`);
   if (r.code !== 0) {
-    throw new Error(`${cmd} ${args.slice(0, 6).join(' ')} failed (${r.code}): ${(r.err || r.out).slice(-2000)}`);
+    throw new Error(`${what} failed (${r.code}): ${(r.err || r.out).slice(-2000)}`);
   }
   return r;
 };

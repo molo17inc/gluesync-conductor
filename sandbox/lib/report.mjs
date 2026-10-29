@@ -3,6 +3,7 @@ import path from 'node:path';
 import { writeJson } from './util.mjs';
 
 const AREAS = ['stack', 'compose', 'errors', 'resilience', 'session', 'logging'];
+const AREA_TITLES = { compose: 'compose (docker-compose.yml rewrites, never-blank, last-good backup, disk faults)' };
 const SEVERITY_ORDER = { fail: 0, warn: 1, info: 2 };
 
 const pct = (arr, p) => {
@@ -48,6 +49,8 @@ export const writeReport = (dir, run) => {
     memMiB: metric('memMiB'),
     fds: metric('fds'),
     logErrors: metric('logErrors'),
+    composeSamples: its.reduce((n, it) => n + (it.sampler?.samples || 0), 0),
+    composeBadSamples: its.reduce((n, it) => n + (it.sampler?.badCount || 0), 0),
   };
   writeJson(path.join(dir, 'report.json'), { ...run, summary, findings: all });
 
@@ -63,6 +66,7 @@ export const writeReport = (dir, run) => {
     '',
     `Conductor memory per iteration (MiB): ${summary.memMiB.map(v => v ?? '—').join(', ')}`,
     `Conductor open file descriptors: ${summary.fds.map(v => v ?? '—').join(', ')}`,
+    `docker-compose.yml sampled ${summary.composeSamples} times (every ~25ms while an iteration runs): ${summary.composeBadSamples} blank or invalid.`,
     '',
   ];
 
@@ -90,7 +94,7 @@ export const writeReport = (dir, run) => {
   AREAS.forEach(area => {
     const inArea = all.filter(f => f.area === area);
     if (!inArea.length) return;
-    lines.push(`### ${area}`, '');
+    lines.push(`### ${AREA_TITLES[area] || area}`, '');
     inArea.forEach(f => {
       lines.push(`- **${f.severity.toUpperCase()} \`${f.id}\`**: ${f.occurrences}/${its.length} iterations (profiles: ${f.profiles.join(', ')})`);
       f.samples.forEach(s => lines.push(`  - it ${s.iteration} (${s.profile}): ${s.detail}`));

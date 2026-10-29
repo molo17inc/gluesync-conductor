@@ -40,7 +40,11 @@
         "UNEXPECTED_RESPONSE_FROM_INTERMEDIARY",
         "OTA_SERVICE_DOWN",
         "BACKOFFICE_REQUEST_REJECTED",
-        "UNKNOWN"
+        "UNKNOWN",
+        "DISK_FULL",
+        "COMPOSE_FILE_CORRUPT",
+        "SWARM_NOT_MANAGER",
+        "SWARM_UNSUPPORTED"
       ]
     },
     "owner": {
@@ -100,7 +104,9 @@
           "CHECK_PROXY_CREDENTIALS",
           "TRUST_CORPORATE_CA",
           "CHECK_DOCKER_HUB_ACCESS",
-          "CONTACT_SUPPORT_WITH_DETAILS"
+          "CONTACT_SUPPORT_WITH_DETAILS",
+          "FREE_DISK_SPACE",
+          "RUN_CONDUCTOR_ON_SWARM_MANAGER"
         ]
       }
     },
@@ -332,6 +338,42 @@
         "CONTACT_SUPPORT_WITH_DETAILS"
       ],
       "params": []
+    },
+    "DISK_FULL": {
+      "owner": "customer",
+      "resolutionCodes": [
+        "FREE_DISK_SPACE",
+        "CONTACT_SUPPORT_WITH_DETAILS"
+      ],
+      "params": [
+        "path",
+        "neededBytes",
+        "availableBytes"
+      ]
+    },
+    "COMPOSE_FILE_CORRUPT": {
+      "owner": "local",
+      "resolutionCodes": [
+        "CONTACT_SUPPORT_WITH_DETAILS"
+      ],
+      "params": [
+        "path",
+        "problem"
+      ]
+    },
+    "SWARM_NOT_MANAGER": {
+      "owner": "local",
+      "resolutionCodes": [
+        "RUN_CONDUCTOR_ON_SWARM_MANAGER"
+      ],
+      "params": []
+    },
+    "SWARM_UNSUPPORTED": {
+      "owner": "local",
+      "resolutionCodes": [],
+      "params": [
+        "feature"
+      ]
     }
   }
 }

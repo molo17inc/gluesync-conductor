@@ -4,7 +4,8 @@
  *  - Windows named pipe not ready
  *  - macOS/Linux unix socket not ready
  *  - Connection refused
- *  - Connection reset / EOF
+ *  - Connection reset / EOF / broken pipe
+ *  - docker / docker-compose CLI messages for an unreachable daemon
  *  - Timeouts
  */
 const isTransientDockerConnError = (error: unknown): boolean => {
@@ -42,6 +43,10 @@ const isTransientDockerConnError = (error: unknown): boolean => {
     message.includes('docker.sock') ||
     message.includes('connection refused') ||
     message.includes('connection reset') ||
+    message.includes('broken pipe') ||
+    message.includes('error during connect') ||
+    message.includes('cannot connect to the docker daemon') ||
+    message.includes('failed to connect to the docker api') ||
     message.includes('eof') ||
     message.includes('the pipe has been ended') ||
     message.includes('//./pipe/docker_engine') ||

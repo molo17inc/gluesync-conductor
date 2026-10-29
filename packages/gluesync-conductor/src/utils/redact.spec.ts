@@ -25,6 +25,44 @@ describe('redactSecrets', () => {
     );
   });
 
+  it('masks credentials behind a scheme that starts with non-letters', () => {
+    assert.equal(
+      redactSecrets('1http://alice:S3CR3T@proxy'),
+      '1http://***:***@proxy',
+    );
+    assert.equal(
+      redactSecrets('x-9.y+z://alice@proxy and ftp://bob:pw@h'),
+      'x-9.y+z://***:***@proxy and ftp://***:***@h',
+    );
+  });
+
+  it('masks several URLs and passwords containing colons', () => {
+    assert.equal(
+      redactSecrets('a http://u:p:w@h1 b https://v:q@h2/x'),
+      'a http://***:***@h1 b https://***:***@h2/x',
+    );
+  });
+
+  it('does not mask an @ that is not in the authority', () => {
+    const text = 'see http://host/path@x and mail me@host';
+    assert.equal(redactSecrets(text), text);
+  });
+
+  it('stays linear on long adversarial input', () => {
+    const inputs = [
+      'a'.repeat(200_000),
+      '1a'.repeat(100_000),
+      `http://${'x'.repeat(200_000)}`,
+      'a://'.repeat(50_000),
+      `${'a:'.repeat(100_000)}@`,
+    ];
+    const startedAt = Date.now();
+
+    inputs.forEach(redactSecrets);
+
+    assert.ok(Date.now() - startedAt < 2000);
+  });
+
   it('leaves text without credentials untouched', () => {
     const text =
       'timeout of 5000ms exceeded for https://api.backoffice.molo17.com/x';

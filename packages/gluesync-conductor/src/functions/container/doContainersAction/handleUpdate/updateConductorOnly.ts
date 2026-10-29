@@ -8,6 +8,7 @@ const updateConductorOnly: UpdateConductorOnly = async (
   action,
   conductorInfo,
   composeJson,
+  { swarm = false } = {},
 ) => {
   const { id, availableVersion } = conductorInfo;
 
@@ -27,21 +28,30 @@ const updateConductorOnly: UpdateConductorOnly = async (
   const allFulfilled = results.every(r => r.status === 'fulfilled');
 
   if (allFulfilled) {
-    enableUpdateMode();
+    // Swarm replaces the task and rolls it back by itself: nothing to block
+    // requests for nor to watch
+    if (!swarm) {
+      enableUpdateMode();
+    }
     return { id, results };
   }
 
   // The pull failed: the conductor still runs its old image, so only the
   // compose file goes back (recreating would restart this very process).
   const previousImage = composeJson.services?.[id]?.image;
-  if (previousImage) {
-    await rollbackServiceImages([{ id, image: previousImage }], {
-      recreate: false,
-    });
-  }
-  const restoredNote = previousImage
-    ? ` Compose file restored to ${previousImage}.`
-    : '';
+  const [outcome] = previousImage
+    ? await rollbackServiceImages([{ id, image: previousImage }], {
+        recreate: false,
+      })
+    : [];
+  const restoredNote = (() => {
+    if (!previousImage) {
+      return '';
+    }
+    return outcome?.ok === false
+      ? ` Compose file could not be put back on ${previousImage}: ${outcome.error}`
+      : ` Compose file restored to ${previousImage}.`;
+  })();
   return {
     id,
     results: results.map(r =>

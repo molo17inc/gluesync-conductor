@@ -2,6 +2,7 @@ import { readComposeFile } from '../helpers/composeFile/readComposeFile/readComp
 import parseImage from '../helpers/parseImage/parseImage';
 import { getProxyInfo } from '../utils/axiosWithRetry';
 import { getLogger } from '../utils/logger';
+import stripTrailingSlashes from '../utils/stripTrailingSlashes';
 import { Diagnosis } from './diagnosis.model';
 import diagnose from './diagnose';
 import {
@@ -66,8 +67,13 @@ const resolveRegistryHosts = async (
 };
 
 // An entry is a bare host (probed over HTTPS) or a full base URL.
-const registryProbeUrl = (entry: string): string =>
-  `${entry.includes('://') ? entry.replace(/\/+$/, '') : `https://${entry}`}/v2/`;
+const registryProbeUrl = (entry: string): string => {
+  const base = entry.includes('://')
+    ? stripTrailingSlashes(entry)
+    : `https://${entry}`;
+
+  return `${base}/v2/`;
+};
 
 const buildProbeSpecs = (
   config: DiagnosisConfig,

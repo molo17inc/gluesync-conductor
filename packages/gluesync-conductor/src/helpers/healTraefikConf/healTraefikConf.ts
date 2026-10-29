@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse, stringify } from 'yaml';
 
@@ -11,6 +11,7 @@ import {
 import { getDocker } from '../../utils/docker/getDocker';
 import { getLogger } from '../../utils/logger';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
+import safeWriteFile from '../file/safeWriteFile/safeWriteFile';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
@@ -201,10 +202,9 @@ const healTraefikConf = async (
       return null;
     }
 
-    await writeFile(
+    await safeWriteFile(
       confPath,
       stringify(withHttpsRedirect(conf), { indent: 2 }),
-      'utf8',
     );
 
     logger.info(`[traefik-healer] http->https redirect written to ${confPath}`);

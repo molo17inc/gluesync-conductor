@@ -3,6 +3,7 @@ import path from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 
 import type { RawComposeFile } from '../../models/composeFile.model';
+import { labStackWithoutTypes } from '../../testing/labStack';
 import loadWithStubs from '../../testing/loadWithStubs';
 import type { AgentInfoResponse } from '../agentInfo/agentInfo.model';
 import type { CanUpdateContainers } from './canUpdateContainers.model';
@@ -331,5 +332,75 @@ describe('canUpdateContainers', () => {
       'ga',
     );
     assert.deepEqual(fetched.sort(), ['core-hub', 'mssql']);
+  });
+
+  describe('in swarm mode, on a stack file with no type label', () => {
+    const backoffice = {
+      'core-hub': info('2.3.1'),
+      chronos: info('0.2.5'),
+      prometheus: info('v2.54.1'),
+      mysql: info('2.3.1'),
+    };
+    const ids = ['gluesync-core-hub', 'gluesync-chronos', 'prometheus'];
+
+    it('types the services from their id and image', async () => {
+      const { canUpdate } = load(backoffice);
+
+      const result = await canUpdate(ids, labStackWithoutTypes, 'ga', {
+        swarm: true,
+      });
+
+      assert.equal(result.success, true);
+      assert.equal(result.data?.agentVersion, '2.3.1');
+      assert.deepEqual(result.data?.modules, [
+        { id: 'gluesync-chronos', version: '0.2.5' },
+        { id: 'prometheus', version: 'v2.54.1' },
+      ]);
+    });
+
+    it('lets an agent and Core Hub mismatch stop the update, as it does with labels', async () => {
+      const { canUpdate } = load({ ...backoffice, mysql: info('2.3.0') });
+
+      const result = await canUpdate(
+        ['gluesync-core-hub', 'my-agent'],
+        {
+          services: {
+            ...labStackWithoutTypes.services,
+            'my-agent': { image: 'molo17/gluesync-mysql:2.3.0' },
+          },
+        } as RawComposeFile,
+        'ga',
+        { swarm: true },
+      );
+
+      assert.equal(result.success, false);
+      assert.match(result.message, /Agent versions mismatch/);
+    });
+
+    it('reads deploy.labels too', async () => {
+      const { canUpdate } = load({ ...backoffice, unknown: info('1.0.0') });
+
+      const result = await canUpdate(
+        ['x'],
+        compose({
+          x: {
+            image: 'acme/unknown:1',
+            deploy: { labels: types('module') },
+          } as never,
+        }),
+        'ga',
+        { swarm: true },
+      );
+
+      assert.equal(result.data?.modules.length, 1);
+    });
+
+    it('leaves compose alone: no label, no type', async () => {
+      const { canUpdate } = load(backoffice);
+
+      const result = await canUpdate(ids, labStackWithoutTypes, 'ga');
+
+      assert.deepEqual(result.data?.modules, []);
+    });
   });
 });

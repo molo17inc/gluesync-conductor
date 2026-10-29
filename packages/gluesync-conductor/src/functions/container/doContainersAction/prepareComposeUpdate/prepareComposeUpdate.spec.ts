@@ -20,13 +20,20 @@ type CanUpdate = Readonly<{
 
 const load = (canUpdateResult: CanUpdate, allIds: readonly string[] = []) => {
   const checked: Array<readonly string[]> = [];
+  const options: unknown[] = [];
   const edited: Array<{ ids: readonly string[]; data: unknown }> = [];
   const prepare = loadWithStubs<{ default: PrepareComposeUpdate }>(
     here('./prepareComposeUpdate'),
     {
       [here('../../../../helpers/canUpdateContainers/canUpdateContainers')]: {
-        default: async (ids: readonly string[]) => {
+        default: async (
+          ids: readonly string[],
+          _compose: unknown,
+          _channel: unknown,
+          canUpdateOptions: unknown,
+        ) => {
           checked.push(ids);
+          options.push(canUpdateOptions);
           return canUpdateResult;
         },
       },
@@ -40,13 +47,15 @@ const load = (canUpdateResult: CanUpdate, allIds: readonly string[] = []) => {
           ids: readonly string[],
           _compose: unknown,
           data: unknown,
+          editOptions: unknown,
         ) => {
           edited.push({ ids, data });
+          options.push(editOptions);
         },
       },
     },
   ).default;
-  return { prepare, checked, edited };
+  return { prepare, checked, edited, options };
 };
 
 const compose = {
@@ -121,5 +130,53 @@ describe('prepareComposeUpdate', () => {
   it('throws when the check succeeded without data', async () => {
     const { prepare } = load({ success: true, message: 'no data' });
     await assert.rejects(prepare(compose, ['grafana'], 'ga'), /no data/);
+  });
+
+  describe('in swarm mode', () => {
+    const stack = {
+      services: {
+        'gluesync-conductor': { image: 'molo17/gluesync-conductor:0.14.0' },
+        'gluesync-core-hub': { image: 'molo17/gluesync-core-hub:2.3.0' },
+        // Not one label in the stack file: the names and images say what they are
+        'gluesync-chronos': { image: 'molo17/gluesync-chronos:0.2.4' },
+        grafana: { image: 'molo17/grafana:13.0.1' },
+        'mssql-agent': { image: 'molo17/gluesync-mssql-cdc:2.3.0' },
+        mine: { image: 'acme/mine:1' },
+      },
+    } as unknown as RawComposeFile;
+    const data = { agentVersion: '2.3.1', modules: [], skipped: [] };
+
+    it('updates every service it can type, except the conductor, when none is requested', async () => {
+      const { prepare, checked } = load(
+        ok(data),
+        Object.keys(stack.services ?? {}),
+      );
+
+      const result = await prepare(stack, [], 'ga', { swarm: true });
+
+      assert.deepEqual(checked, [
+        ['gluesync-core-hub', 'gluesync-chronos', 'grafana', 'mssql-agent'],
+      ]);
+      assert.deepEqual(result.effectiveIds, checked[0]);
+    });
+
+    it('tells the helpers it is swarm, so they type the same way', async () => {
+      const { prepare, options } = load(ok(data));
+
+      await prepare(stack, ['mssql-agent'], 'ga', { swarm: true });
+
+      assert.deepEqual(options, [{ swarm: true }, { swarm: true }]);
+    });
+
+    it('keeps the labels as the only source on compose', async () => {
+      const { prepare, checked } = load(
+        ok(data),
+        Object.keys(stack.services ?? {}),
+      );
+
+      await prepare(stack, [], 'ga');
+
+      assert.deepEqual(checked, [[]]);
+    });
   });
 });

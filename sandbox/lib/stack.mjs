@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import YAML from 'yaml';
-import { env } from './env.mjs';
-import { describeState, docker, dockerBin, now, request, sleep, waitFor } from './util.mjs';
+import { SERVICES, env } from './env.mjs';
+import { describeState, docker, dockerBin, inSequence, now, request, say, sleep, waitFor } from './util.mjs';
 
 // ---------------------------------------------------------------- HTTP clients
 
@@ -66,6 +66,45 @@ export const dockerProxy = body =>
 
 export const health = () => request(conductorUrl('/health'), { timeoutMs: 5000 });
 
+// `docker compose up -d` returns when the containers are started, not when their servers listen:
+// the published port accepts the connection and the fake behind it is not there yet ("socket
+// disconnected before secure TLS connection was established"). A slower host (a CI runner) hits
+// that window every time, so nothing may talk to a fake before it has answered a real request.
+// Each probe is retried for up to `timeoutMs`; the first one that never succeeds throws with what
+// it saw last.
+export const waitStackReady = async ({ timeoutMs = 120000 } = {}) => {
+  const probes = [
+    ['fake corehub (TLS login)', async () => ({ ok: !!(await corehub.login('admin', 60)) })],
+    ['fake backoffice (admin API)', async () => ({ ok: (await backofficeState()).status === 200, why: 'no 200' })],
+    ['docker socket proxy (admin API)', async () => ({ ok: (await dockerProxy()).status === 200, why: 'no 200' })],
+    ['conductor /health', async () => ({ ok: (await health()).status === 200, why: 'no 200' })],
+  ];
+  const started = Date.now();
+  await inSequence(probes, async ([label, fn]) => {
+    let last = 'never answered';
+    const left = Math.max(5000, timeoutMs - (Date.now() - started));
+    const r = await waitFor(
+      label,
+      async () => {
+        try {
+          const res = await fn();
+          if (!res.ok) last = res.why || 'not ready';
+          return res.ok;
+        } catch (e) {
+          last = e.message;
+          return false;
+        }
+      },
+      { timeoutMs: left, intervalMs: 2000 },
+    );
+    if (!r.ok) throw new Error(`${label} not ready after ${Math.round(r.ms / 1000)}s: ${last}`);
+  });
+  say(`stack ready after ${Math.round((Date.now() - started) / 1000)}s: fake corehub, backoffice, docker proxy and conductor answer`);
+};
+
+const backofficeState = () =>
+  request(`http://127.0.0.1:${env.ports.backofficeAdmin}/__sandbox/state`, { headers: { 'x-sandbox-admin': env.adminToken }, timeoutMs: 5000 });
+
 // ---------------------------------------------------------------- docker state
 
 const parseTag = image => {
@@ -105,7 +144,7 @@ export const strayContainers = async () => {
     .split('\n')
     .map(l => JSON.parse(l))
     .filter(c => !/com\.docker\.compose\.project=(gluesync|conductor-sandbox-infra)/.test(c.Labels || ''))
-    .filter(c => !c.Names.startsWith('keep-'))
+    .filter(c => !c.Names.startsWith(env.keepPrefix))
     .map(c => ({ id: c.ID, name: c.Names, image: c.Image, state: c.State, status: c.Status }));
 };
 
@@ -144,6 +183,65 @@ export const snapshot = async () => {
 
 export const conductorContainer = async () => (await containers()).find(c => c.service === 'gluesync-conductor' && c.state === 'running');
 
+const kitFingerprint = (list, strict) =>
+  list
+    .filter(c => SERVICES[c.service])
+    .map(c => [c.service, c.id, c.image, ...(strict ? [String(c.state === 'running')] : [])].join(' '))
+    .sort((a, b) => a.localeCompare(b));
+
+const describeKitChange = (before, after) => {
+  const gone = before.filter(e => !after.includes(e)).map(e => `-${e}`);
+  const added = after.filter(e => !before.includes(e)).map(e => `+${e}`);
+  return [...gone, ...added].join(', ') || 'none';
+};
+
+// Why the kit is not worth looking at yet (empty when it is): a kit service without exactly one
+// container, or with one that is not running. Only asked for when `strict`.
+const kitProblems = (list, strict) =>
+  Object.keys(SERVICES).flatMap(service => {
+    if (!strict) return [];
+    const mine = list.filter(c => c.service === service);
+    const names = mine.map(c => `${c.name}:${c.state}`).join(', ');
+    if (mine.length !== 1) return [`${service}: ${mine.length} containers (${names || 'none'})`];
+    return mine[0].state !== 'running' ? [`${service}: ${mine[0].state}`] : [];
+  });
+
+// Waits until the kit is SETTLED, so a snapshot taken afterwards is the kit as it stays: every kit
+// service has exactly one running container (`strict`, the default; without it a service a profile
+// left down on purpose is accepted) and the containers' ids and image refs are the same on
+// `stablePolls` consecutive polls `intervalMs` apart. The conductor recreates containers right
+// after it starts (it labels the services it adopts and starts them again), and a snapshot taken
+// in the middle reads "<tag> (neither old nor target)" for every service that was caught. Throws,
+// naming what kept changing, when `timeoutMs` passes. The conductor's own startup is waited for
+// separately (`waitConductorStartup`).
+export const waitKitSettled = async ({ timeoutMs = 120000, intervalMs = 2000, stablePolls = 3, strict = true } = {}) => {
+  const started = Date.now();
+  const poll = async (prev, stable, lastChange, lastChangeAt) => {
+    const elapsed = Date.now() - started;
+    const list = await containers();
+    const problems = kitProblems(list, strict);
+    const fingerprint = kitFingerprint(list, strict);
+    const same = !!prev && fingerprint.join('\n') === prev.join('\n');
+    const change = prev && !same ? describeKitChange(prev, fingerprint) : lastChange;
+    const changeAt = prev && !same ? elapsed : lastChangeAt;
+    const stableNow = !problems.length && same ? stable + 1 : 0;
+    if (stableNow >= stablePolls - 1) {
+      say(`kit settled after ${Math.round(elapsed / 1000)}s: ${fingerprint.length} containers unchanged for ${stablePolls} polls`);
+      return;
+    }
+    if (elapsed >= timeoutMs) {
+      const why = [
+        ...problems,
+        ...(change ? [`containers kept changing, last at +${Math.round(changeAt / 1000)}s: ${change}`] : []),
+      ];
+      throw new Error(`kit did not settle within ${Math.round(timeoutMs / 1000)}s (${stablePolls} identical polls ${intervalMs}ms apart needed): ${why.join('; ') || 'no stable run of polls'}`);
+    }
+    await sleep(intervalMs);
+    return poll(fingerprint, stableNow, change, changeAt);
+  };
+  return poll(null, 0, null, 0);
+};
+
 // Waits until a conductor container (optionally a new one, optionally on a given tag)
 // is running and answering /health.
 export const waitConductor = async ({ notId, tag, timeoutMs = 240000 } = {}) =>
@@ -159,6 +257,39 @@ export const waitConductor = async ({ notId, tag, timeoutMs = 240000 } = {}) =>
     },
     { timeoutMs, intervalMs: 2000 },
   );
+
+// After it listens, the Conductor runs its startup steps (healers, auto-adoption that recreates the
+// adopted services, log-collection sync) and the last one logs the conductor-healer verdict, after
+// the adoption's recreates. A snapshot taken before that line races those recreates (a container
+// removed between `ps` and `inspect`). If the verdict is a reboot, the Conductor replaces itself and
+// the new container is waited for the same way.
+const healerVerdict = /\[conductor-healer\] (nothing to heal|reboot needed to heal)/;
+
+const conductorLogs = async id => {
+  const r = await docker(['logs', id], { timeoutMs: 15000 });
+  return `${r.out}\n${r.err}`;
+};
+
+const waitHealerVerdict = async (id, deadline) => {
+  const r = await waitFor(
+    'conductor startup',
+    async () => healerVerdict.exec(await conductorLogs(id))?.[1] || false,
+    { timeoutMs: Math.max(1000, deadline - Date.now()), intervalMs: 1000 },
+  );
+  if (!r.ok) throw new Error(`conductor ${id} did not log the conductor-healer verdict after ${Math.round(r.ms / 1000)}s: startup (adoption) not finished`);
+  if (r.value !== 'reboot needed to heal') return;
+  const next = await waitConductor({ notId: id, timeoutMs: Math.max(1000, deadline - Date.now()) });
+  if (!next.ok) throw new Error(`conductor did not come back after the reboot to heal, ${Math.round(next.ms / 1000)}s`);
+  await waitHealerVerdict(next.value.id, deadline);
+};
+
+export const waitConductorStartup = async ({ timeoutMs = 180000 } = {}) => {
+  const started = Date.now();
+  const c = await conductorContainer();
+  if (!c) throw new Error('conductor startup: no running conductor container');
+  await waitHealerVerdict(c.id, started + timeoutMs);
+  say(`conductor startup done after ${Math.round((Date.now() - started) / 1000)}s (adoption finished)`);
+};
 
 // Waits until nothing in the kit is starting/restarting and the conductor answers
 // authenticated reads (no update-mode 503). Returns what was still unsettled.
@@ -201,6 +332,10 @@ export const settle = async (ctx, token, { timeoutMs = 180000, ignore = [] } = {
 
 // ---------------------------------------------------------------- log collection
 
+// A Docker restart keeps the id, so a follow is keyed by the start as well: the follow of the
+// previous start may not have closed yet when the container is running again.
+const followKey = c => `${c.id}@${c.startedAt}`;
+
 // Follows the docker logs of every incarnation of the watched services, so logs
 // survive the container being replaced by an update.
 export class LogCollector {
@@ -216,18 +351,25 @@ export class LogCollector {
 
   start() {
     const tick = async () => {
-      try {
-        const list = await containers();
-        list
-          .filter(c => this.services.includes(c.service) && c.state === 'running' && !this.followed.has(c.id))
-          .forEach(c => this.follow(c));
-      } catch {
-        /* daemon blip: try again next tick */
-      }
+      await this.sync();
       if (!this.stopped) this.timer = setTimeout(tick, 2000);
     };
-    // tick never rejects: it catches the daemon errors itself.
+    // tick never rejects: sync catches the daemon errors itself.
     void tick();
+  }
+
+  // Follows every running incarnation not followed yet. The timer does this every 2s; a caller
+  // that has just started a container which may be gone again within 2s (the conductor
+  // restarted right before a self-update replaces it) calls it at once, so its lines are not lost.
+  async sync() {
+    try {
+      const list = await containers();
+      list
+        .filter(c => this.services.includes(c.service) && c.state === 'running' && !this.followed.has(followKey(c)))
+        .forEach(c => this.follow(c));
+    } catch {
+      /* daemon blip: try again next tick */
+    }
   }
 
   follow(c) {
@@ -262,9 +404,9 @@ export class LogCollector {
     onData(child.stderr);
     child.on('close', () => {
       file.end();
-      this.followed.delete(c.id);
+      this.followed.delete(followKey(c));
     });
-    this.followed.set(c.id, child);
+    this.followed.set(followKey(c), child);
   }
 
   since(service, isoTs) {

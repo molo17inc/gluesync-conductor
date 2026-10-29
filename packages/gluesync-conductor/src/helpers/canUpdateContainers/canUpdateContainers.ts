@@ -2,6 +2,7 @@ import { LabelPrefix } from '../../models/composeFile.model';
 import { ConductorServiceTypes } from '../../models/conductor.model';
 import fetchAgentInfo from '../agentInfo/agentInfo';
 import { AgentInfoResponse } from '../agentInfo/agentInfo.model';
+import stackServiceType from '../swarm/stackServiceType/stackServiceType';
 import parseImage from '../parseImage/parseImage';
 import getVersionByChannel from '../releaseChannel/getVersionByChannel';
 import { CanUpdateContainers } from './canUpdateContainers.model';
@@ -24,11 +25,16 @@ const canUpdateContainers: CanUpdateContainers = async (
   containerIds,
   composeJson,
   releaseChannel,
+  { swarm = false } = {},
 ) => {
   const isWindows = (process.env.IS_WINDOWS || '').toLowerCase() === 'true';
 
   // Labels can be a list ("k=v") or a map; both are normalised to "k=v".
   const serviceTypeOf = (id: string): ConductorServiceTypes | undefined => {
+    if (swarm) {
+      return stackServiceType(id, composeJson.services?.[id]);
+    }
+
     const labels = composeJson.services?.[id]?.labels;
     const labelStrings: ReadonlyArray<string> = Array.isArray(labels)
       ? labels

@@ -1,6 +1,7 @@
 import {
   composeServiceFieldConfig,
   LabelPrefix,
+  RawComposeFile,
   RawComposeService,
 } from '../../models/composeFile.model';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
@@ -8,7 +9,7 @@ import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
 import fetchAllServicesInCompose from '../fetchAllServicesInCompose/fetchAllServicesInCompose';
 import { THIRD_PARTY_SERVICES } from '../fetchAllServicesInCompose/fetchAllServicesInCompose.model';
 import parseImage from '../parseImage/parseImage';
-import agentsJson from '../../../agents.json';
+import { inferTypeFromAgentsJson } from '../inferServiceType/inferServiceType';
 import extractKeyValue from '../composeFile/extractKeyValue/extractKeyValue';
 import removeDependsOnFromServices from '../removeDependsOnFromServices/removeDependsOnFromServices';
 import addGluesyncHostToAgents from '../addGluesyncHostToAgents/addGluesyncHostToAgents';
@@ -135,6 +136,325 @@ const buildFinalLabels = (
   ];
 };
 
+export const hasConductorTypeLabel = (
+  service:
+    | Readonly<{ labels?: NonNullable<Parameters<typeof toLabelStrings>[0]> }>
+    | undefined,
+): boolean => {
+  if (!service) {
+    return false;
+  }
+
+  return toLabelStrings(service.labels).some(label =>
+    label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`),
+  );
+};
+type ComposeJson = Partial<RawComposeFile>;
+type ServiceMap = Record<string, RawComposeService>;
+
+type AdoptResult = Readonly<{
+  id: string;
+  service: RawComposeService;
+  updated: boolean;
+  unmatched: boolean;
+}>;
+
+type AdoptContext = Readonly<{
+  baseServices: ServiceMap;
+  cleanedComposeJson: ComposeJson;
+  conductorServiceName: string;
+  gluesyncHostDefault: string;
+  isWindows: boolean;
+  networkName: string;
+}>;
+
+/**
+ * Heal the Chronos router labels and return the compose to continue with.
+ * The healed services are only used when something was actually rewritten.
+ */
+const healChronosRouters = (
+  readComposeJson: ComposeJson,
+): { composeJson: ComposeJson; chronosUpdatedIds: ReadonlyArray<string> } => {
+  const chronosRuleHeal = rewriteChronosRouterLabels(readComposeJson.services);
+  const composeJson =
+    chronosRuleHeal.updatedIds.length > 0 && readComposeJson.services
+      ? {
+          ...readComposeJson,
+          services: chronosRuleHeal.services,
+        }
+      : readComposeJson;
+
+  return { composeJson, chronosUpdatedIds: chronosRuleHeal.updatedIds };
+};
+
+/** True when every given list of ids is empty (nothing changed). */
+const allEmpty = (lists: ReadonlyArray<ReadonlyArray<string>>): boolean =>
+  lists.every(list => list.length === 0);
+
+/**
+ * Write the compose file and, when Chronos routers were healed, recreate the
+ * Chronos containers so the new rules take effect.
+ */
+const writeAndRecreateChronos = async (
+  updatedComposeFile: ReturnType<typeof ensureNetworkDefinition>,
+  chronosUpdatedIds: ReadonlyArray<string>,
+  composeJson: ComposeJson,
+): Promise<void> => {
+  await writeComposeFile(updatedComposeFile);
+
+  if (chronosUpdatedIds.length > 0) {
+    await recreateChronosContainers(
+      chronosUpdatedIds,
+      findProxyServiceName(composeJson),
+    );
+  }
+};
+
+/**
+ * Third-party services are adopted by id; the only change allowed is the
+ * Molo17 retag of the image (labels are added alongside it).
+ */
+const adoptThirdPartyService = async (
+  id: string,
+  service: RawComposeService,
+  initialLabels: ReadonlyArray<string>,
+  isWindows: boolean,
+): Promise<AdoptResult> => {
+  const { fullName } = parseImage(service.image);
+
+  // already retagged image
+  if (fullName?.startsWith('molo17')) {
+    return {
+      id,
+      updated: true,
+      unmatched: false,
+      service: {
+        ...service,
+        labels: buildFinalLabels(initialLabels, 'third-party', id),
+      },
+    };
+  }
+
+  // if here the third-party image needs a retag
+  const retaggedImage = await retagThirdPartyImageToMolo17GA(
+    service.image,
+    isWindows,
+    process.env.WINDOWS_YEAR,
+  );
+
+  return {
+    id,
+    updated: true,
+    unmatched: false,
+    service: {
+      ...service,
+      ...(retaggedImage && {
+        image: retaggedImage,
+        labels: buildFinalLabels(initialLabels, 'third-party', id),
+      }),
+    },
+  };
+};
+
+/**
+ * Agents: full adjustments. Modules/Core-hub: network only (but network is
+ * Windows-only in the helpers below).
+ */
+const adjustServiceMap = (
+  singleServiceMap: Record<string, RawComposeService>,
+  id: string,
+  conductorType: ConductorServiceTypes,
+  ctx: AdoptContext,
+): Record<string, RawComposeService> => {
+  if (conductorType === 'agent') {
+    return applyPlatformAdjustments(
+      singleServiceMap,
+      [id],
+      ctx.isWindows,
+      ctx.gluesyncHostDefault,
+      ctx.networkName,
+    ).services;
+  }
+
+  // Network only on Windows
+  if (ctx.isWindows) {
+    return addNetworkToServices(singleServiceMap, [id], ctx.networkName)
+      .services;
+  }
+
+  return singleServiceMap;
+};
+
+const adjustManagedService = (
+  id: string,
+  cleanedServiceBase: RawComposeService,
+  conductorType: ConductorServiceTypes,
+  ctx: AdoptContext,
+): RawComposeService => {
+  // Skip conductor service itself
+  if (id === ctx.conductorServiceName) {
+    return cleanedServiceBase;
+  }
+
+  const adjustedMap = adjustServiceMap(
+    { [id]: cleanedServiceBase },
+    id,
+    conductorType,
+    ctx,
+  );
+
+  return adjustedMap[id] ?? cleanedServiceBase;
+};
+
+/**
+ * Remove depends_on + container_name for a single (non-third-party) service.
+ */
+const cleanSingleService = (
+  id: string,
+  service: RawComposeService,
+  ctx: AdoptContext,
+): RawComposeService => {
+  const composeForSingle = {
+    ...ctx.cleanedComposeJson,
+    services: ctx.baseServices,
+  };
+
+  const { cleanedServices: cleanedDependsSingle } = removeDependsOnFromServices(
+    composeForSingle,
+    [id],
+  );
+
+  const { cleanedServices: cleanedContainerSingle } =
+    removeContainerNameFromServices(
+      { ...ctx.cleanedComposeJson, services: cleanedDependsSingle },
+      [id],
+    );
+
+  return cleanedContainerSingle[id] ?? service;
+};
+
+/**
+ * Adopt a non-third-party service: infer its type, clean + adjust it and label it.
+ * Services whose image is unknown are reported as unmatched.
+ */
+const adoptManagedService = (
+  id: string,
+  service: RawComposeService,
+  initialLabels: ReadonlyArray<string>,
+  ctx: AdoptContext,
+): AdoptResult => {
+  const { imageName } = parseImage(service.image);
+
+  // Same decision swarm mode makes on read (inferServiceType)
+  const conductorType = inferTypeFromAgentsJson(imageName);
+
+  if (!conductorType) {
+    return {
+      id,
+      updated: false,
+      unmatched: true,
+      service: { ...service, labels: initialLabels },
+    };
+  }
+
+  const platformAdjustedService = adjustManagedService(
+    id,
+    cleanSingleService(id, service, ctx),
+    conductorType,
+    ctx,
+  );
+
+  // Normalize environment
+  const normalizedEnv = extractKeyValue(
+    composeServiceFieldConfig.environment.separator,
+    platformAdjustedService.environment,
+  );
+
+  const envArray = Object.entries(normalizedEnv).map(
+    ([key, value]) => `${key}=${value}`,
+  );
+
+  return {
+    id,
+    updated: true,
+    unmatched: false,
+    service: {
+      ...platformAdjustedService,
+      // Preserve env_file if present (added by addEnvFileToServices or originally set)
+      env_file: platformAdjustedService.env_file ?? service.env_file,
+      labels: buildFinalLabels(initialLabels, conductorType, id),
+      environment: envArray,
+    },
+  };
+};
+
+const adoptService = async (
+  id: string,
+  ctx: AdoptContext,
+): Promise<AdoptResult> => {
+  const service = ctx.baseServices?.[id];
+  if (!service) {
+    throw new Error(`Service ${id} not found`);
+  }
+
+  // Normalize labels into string array for manipulation.
+  const initialLabels = toLabelStrings(service.labels);
+
+  if (THIRD_PARTY_SERVICES.has(id)) {
+    return adoptThirdPartyService(id, service, initialLabels, ctx.isWindows);
+  }
+
+  return adoptManagedService(id, service, initialLabels, ctx);
+};
+
+/** Split the per-service results into the services map and the id lists. */
+const summarizeAdoption = (
+  adoptionResults: ReadonlyArray<AdoptResult>,
+): {
+  updatedServices: ServiceMap;
+  updatedIds: ReadonlyArray<string>;
+  unmatchedIds: ReadonlyArray<string>;
+} => ({
+  updatedServices: Object.fromEntries(
+    adoptionResults.map(r => [r.id, r.service]),
+  ) as ServiceMap,
+  updatedIds: adoptionResults.filter(r => r.updated).map(r => r.id),
+  unmatchedIds: adoptionResults.filter(r => r.unmatched).map(r => r.id),
+});
+
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+/** Environment-driven settings of the adoption run. */
+const readEnvConfig = (): {
+  gluesyncHostDefault: string;
+  conductorServiceName: string;
+  isWindows: boolean;
+  networkName: string;
+} => {
+  const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
+
+  return {
+    gluesyncHostDefault: process.env.GLUESYNC_HOST ?? 'gluesync-core-hub',
+    conductorServiceName: process.env.CONDUCTOR_NAME || 'gluesync-conductor',
+    isWindows,
+    // Network name is still computed, but applied only on Windows.
+    networkName: isWindows ? 'gluesync-windows-net' : 'gluesync-net',
+  };
+};
+
+const emptyResult = (
+  unmatchedIds: readonly string[] = [],
+): {
+  success: boolean;
+  updatedIds: readonly string[];
+  unmatchedIds: readonly string[];
+} => ({
+  success: true,
+  updatedIds: [],
+  unmatchedIds,
+});
+
 /**
  * Function to apply Conductor labels to services in docker-compose.yml.
  * Services with type labels will be handled by Conductor.
@@ -148,38 +468,24 @@ const autoAdoptServices = async (): Promise<{
   unmatchedIds: readonly string[];
 }> => {
   try {
-    const readComposeJson = await readComposeFile({ raw: true });
-    const chronosRuleHeal = rewriteChronosRouterLabels(
-      readComposeJson.services,
+    const { composeJson, chronosUpdatedIds } = healChronosRouters(
+      await readComposeFile({ raw: true }),
     );
-    const composeJson =
-      chronosRuleHeal.updatedIds.length > 0 && readComposeJson.services
-        ? {
-            ...readComposeJson,
-            services: chronosRuleHeal.services,
-          }
-        : readComposeJson;
 
     if (!composeJson.services) {
-      return {
-        success: true,
-        updatedIds: [],
-        unmatchedIds: [],
-      };
+      return emptyResult();
     }
 
     const healedProxyId = await healTraefikConf(composeJson);
 
     const traefikUpdatedIds = healedProxyId ? [healedProxyId] : [];
 
-    const gluesyncHostDefault =
-      process.env.GLUESYNC_HOST ?? 'gluesync-core-hub';
-    const conductorServiceName =
-      process.env.CONDUCTOR_NAME || 'gluesync-conductor';
-    const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
-
-    // Network name is still computed, but applied only on Windows.
-    const networkName = isWindows ? 'gluesync-windows-net' : 'gluesync-net';
+    const {
+      gluesyncHostDefault,
+      conductorServiceName,
+      isWindows,
+      networkName,
+    } = readEnvConfig();
 
     // Always include third-party in the scan.
     const allServiceIds: readonly string[] = fetchAllServicesInCompose(
@@ -232,18 +538,9 @@ const autoAdoptServices = async (): Promise<{
       addEnvFileToServices(servicesWithChronosHost, allServiceIds);
 
     // Services that ALREADY have a conductor type label
-    const alreadyLabeledIds = allServiceIds.filter(id => {
-      const service = servicesWithChronosHost?.[id];
-      if (!service) {
-        return false;
-      }
-
-      const labelStrings = toLabelStrings(service.labels);
-
-      return labelStrings.some(label =>
-        label.startsWith(`${LabelPrefix.CONDUCTOR}.type=`),
-      );
-    });
+    const alreadyLabeledIds = allServiceIds.filter(id =>
+      hasConductorTypeLabel(servicesWithChronosHost?.[id]),
+    );
 
     // Exclude conductor + third-party from platform adjustments.
     const adjustedIds = alreadyLabeledIds.filter(
@@ -302,51 +599,44 @@ const autoAdoptServices = async (): Promise<{
       } = addPortToCoreHub(cpuCompatibleLabeledServices, adjustedIds);
 
       if (
-        removedDependsOnIds.length === 0 &&
-        removedContainerNameIds.length === 0 &&
-        platformAdjustedIds.length === 0 &&
-        envFileUpdatedIds.length === 0 &&
-        networkAllUpdatedIds.length === 0 &&
-        stepChronos.updatedIds.length === 0 &&
-        stepGrafana.updatedIds.length === 0 &&
-        coreHubTweakedIds.length === 0 &&
-        cpuCompatibilityLabeledIds.length === 0 &&
-        portAddedLabeledIds.length === 0 &&
-        chronosRuleHeal.updatedIds.length === 0 &&
-        traefikUpdatedIds.length === 0
+        allEmpty([
+          removedDependsOnIds,
+          removedContainerNameIds,
+          platformAdjustedIds,
+          envFileUpdatedIds,
+          networkAllUpdatedIds,
+          stepChronos.updatedIds,
+          stepGrafana.updatedIds,
+          coreHubTweakedIds,
+          cpuCompatibilityLabeledIds,
+          portAddedLabeledIds,
+          chronosUpdatedIds,
+          traefikUpdatedIds,
+        ])
       ) {
-        return {
-          success: true,
-          updatedIds: [],
-          unmatchedIds: [],
-        };
+        return emptyResult();
       }
 
-      const updatedComposeFile = ensureNetworkDefinition(
-        {
-          ...composeJson,
-          services: mergeServices([
-            servicesWithChronosHost,
-            platformAdjustedLabeledServices,
-            envFileServices,
-            networkAllServices,
-            coreHubTweakedServices,
-            cpuCompatibleLabeledServices,
-            portAddedLabeledServices,
-          ]),
-        },
-        networkName,
-        isWindows,
+      await writeAndRecreateChronos(
+        ensureNetworkDefinition(
+          {
+            ...composeJson,
+            services: mergeServices([
+              servicesWithChronosHost,
+              platformAdjustedLabeledServices,
+              envFileServices,
+              networkAllServices,
+              coreHubTweakedServices,
+              cpuCompatibleLabeledServices,
+              portAddedLabeledServices,
+            ]),
+          },
+          networkName,
+          isWindows,
+        ),
+        chronosUpdatedIds,
+        composeJson,
       );
-
-      await writeComposeFile(updatedComposeFile);
-
-      if (chronosRuleHeal.updatedIds.length > 0) {
-        await recreateChronosContainers(
-          chronosRuleHeal.updatedIds,
-          findProxyServiceName(composeJson),
-        );
-      }
 
       return {
         success: true,
@@ -361,7 +651,7 @@ const autoAdoptServices = async (): Promise<{
           ...coreHubTweakedIds,
           ...cpuCompatibilityLabeledIds,
           ...portAddedLabeledIds,
-          ...chronosRuleHeal.updatedIds,
+          ...chronosUpdatedIds,
           ...traefikUpdatedIds,
         ],
         unmatchedIds: [],
@@ -370,237 +660,48 @@ const autoAdoptServices = async (): Promise<{
 
     // Base services: already-labeled services are cleaned + platform-adjusted (except third-party) + env_file
     // IMPORTANT: include networkAllServices here too, otherwise the network changes are dropped on write.
-    const baseServicesPreTweaks: Record<string, RawComposeService> =
-      mergeServices([
-        servicesWithChronosHost,
-        platformAdjustedLabeledServices,
-        envFileServices,
-        networkAllServices,
-      ]);
+    const baseServicesPreTweaks: ServiceMap = mergeServices([
+      servicesWithChronosHost,
+      platformAdjustedLabeledServices,
+      envFileServices,
+      networkAllServices,
+    ]);
 
-    const { services: baseServicesTweaked } = applyCoreHubProductionTweaks(
+    const { services: baseServices } = applyCoreHubProductionTweaks(
       baseServicesPreTweaks,
       allServiceIds,
       isWindows,
     );
 
-    const baseServices: Record<string, RawComposeService> = baseServicesTweaked;
+    const ctx: AdoptContext = {
+      baseServices,
+      cleanedComposeJson,
+      conductorServiceName,
+      gluesyncHostDefault,
+      isWindows,
+      networkName,
+    };
 
-    type AdoptResult = Readonly<{
-      id: string;
-      service: RawComposeService;
-      updated: boolean;
-      unmatched: boolean;
-    }>;
-
-    const adoptionResults: ReadonlyArray<AdoptResult> = await Promise.all(
-      unlabeledIds.map(async (id): Promise<AdoptResult> => {
-        const service = baseServices?.[id];
-        if (!service) {
-          throw new Error(`Service ${id} not found`);
-        }
-
-        const isThirdParty = THIRD_PARTY_SERVICES.has(id);
-
-        // Normalize labels into string array for manipulation.
-        const initialLabels = toLabelStrings(service.labels);
-
-        if (isThirdParty) {
-          const { fullName } = parseImage(service.image);
-
-          const isMolo17Image = fullName?.startsWith('molo17');
-
-          // already retagged image
-          if (isMolo17Image) {
-            const finalLabels = buildFinalLabels(
-              initialLabels,
-              'third-party',
-              id,
-            );
-
-            return {
-              id,
-              updated: true,
-              unmatched: false,
-              service: {
-                ...service,
-                labels: finalLabels,
-              },
-            };
-          }
-
-          // if here the third-party image needs a retag
-          const retaggedImage = await retagThirdPartyImageToMolo17GA(
-            service.image,
-            isWindows,
-            process.env.WINDOWS_YEAR,
-          );
-
-          return {
-            id,
-            updated: true,
-            unmatched: false,
-            service: {
-              ...service,
-              ...(retaggedImage && {
-                image: retaggedImage,
-                labels: buildFinalLabels(initialLabels, 'third-party', id),
-              }),
-            },
-          };
-        }
-
-        const { imageName } = parseImage(service.image);
-
-        const agentEntry = (agentsJson.data || []).find(
-          (agent: any) => agent.dockerHubRepoName === imageName,
-        );
-
-        if (!agentEntry) {
-          return {
-            id,
-            updated: false,
-            unmatched: true,
-            service: { ...service, labels: initialLabels },
-          };
-        }
-
-        // Decide conductor type
-        const conductorType: ConductorServiceTypes | null = (() => {
-          if (agentEntry.dockerHubRepoName === 'gluesync-core-hub') {
-            return 'core-hub';
-          }
-
-          const isTargetValid = typeof agentEntry.isTarget === 'boolean';
-          const isSourceValid = typeof agentEntry.isSource === 'boolean';
-
-          if (isTargetValid && isSourceValid) {
-            if (agentEntry.isTarget || agentEntry.isSource) {
-              return 'agent';
-            }
-            return 'module';
-          }
-
-          // If neither property is a boolean, we consider it unmatched
-          return null;
-        })();
-
-        if (!conductorType) {
-          return {
-            id,
-            updated: false,
-            unmatched: true,
-            service: { ...service, labels: initialLabels },
-          };
-        }
-
-        // Remove depends_on + container_name for this service (non-third-party only).
-        const composeForSingle = {
-          ...cleanedComposeJson,
-          services: baseServices,
-        };
-
-        const { cleanedServices: cleanedDependsSingle } =
-          removeDependsOnFromServices(composeForSingle, [id]);
-
-        const { cleanedServices: cleanedContainerSingle } =
-          removeContainerNameFromServices(
-            { ...cleanedComposeJson, services: cleanedDependsSingle },
-            [id],
-          );
-
-        const cleanedServiceBase = cleanedContainerSingle[id] ?? service;
-
-        const platformAdjustedService: RawComposeService = (() => {
-          // Skip conductor service itself
-          if (id === conductorServiceName) {
-            return cleanedServiceBase;
-          }
-
-          const singleServiceMap: Record<string, RawComposeService> = {
-            [id]: cleanedServiceBase,
-          };
-
-          // Agents: full adjustments. Modules/Core-hub: network only (but network is Windows-only in helpers below).
-          const adjustedMap: Record<string, RawComposeService> = (() => {
-            if (conductorType === 'agent') {
-              return applyPlatformAdjustments(
-                singleServiceMap,
-                [id],
-                isWindows,
-                gluesyncHostDefault,
-                networkName,
-              ).services;
-            }
-
-            // Network only on Windows
-            if (isWindows) {
-              return addNetworkToServices(singleServiceMap, [id], networkName)
-                .services;
-            }
-
-            return singleServiceMap;
-          })();
-
-          return adjustedMap[id] ?? cleanedServiceBase;
-        })();
-
-        const finalLabels = buildFinalLabels(initialLabels, conductorType, id);
-
-        // Normalize environment
-        const normalizedEnv = extractKeyValue(
-          composeServiceFieldConfig.environment.separator,
-          platformAdjustedService.environment,
-        );
-
-        const envArray = Object.entries(normalizedEnv).map(
-          ([key, value]) => `${key}=${value}`,
-        );
-
-        return {
-          id,
-          updated: true,
-          unmatched: false,
-          service: {
-            ...platformAdjustedService,
-            // Preserve env_file if present (added by addEnvFileToServices or originally set)
-            env_file: platformAdjustedService.env_file ?? service.env_file,
-            labels: finalLabels,
-            environment: envArray,
-          },
-        };
-      }),
+    const adoptionResults = await Promise.all(
+      unlabeledIds.map(id => adoptService(id, ctx)),
     );
 
-    const updatedServices: Record<string, RawComposeService> =
-      Object.fromEntries(adoptionResults.map(r => [r.id, r.service])) as Record<
-        string,
-        RawComposeService
-      >;
-
-    const updatedIds: ReadonlyArray<string> = adoptionResults
-      .filter(r => r.updated)
-      .map(r => r.id);
-
-    const unmatchedIds: ReadonlyArray<string> = adoptionResults
-      .filter(r => r.unmatched)
-      .map(r => r.id);
+    const { updatedServices, updatedIds, unmatchedIds } =
+      summarizeAdoption(adoptionResults);
 
     // If no newly adopted services and no depends_on was removed and no env_file changes and no network changes, bail out
     if (
-      updatedIds.length === 0 &&
-      removedDependsOnIds.length === 0 &&
-      envFileUpdatedIds.length === 0 &&
-      networkAllUpdatedIds.length === 0 &&
-      removedContainerNameIds.length === 0 &&
-      chronosRuleHeal.updatedIds.length === 0 &&
-      traefikUpdatedIds.length === 0
+      allEmpty([
+        updatedIds,
+        removedDependsOnIds,
+        envFileUpdatedIds,
+        networkAllUpdatedIds,
+        removedContainerNameIds,
+        chronosUpdatedIds,
+        traefikUpdatedIds,
+      ])
     ) {
-      return {
-        success: true,
-        updatedIds: [],
-        unmatchedIds,
-      };
+      return emptyResult(unmatchedIds);
     }
 
     // Deduplicate and filter out already-labeled services
@@ -625,23 +726,18 @@ const autoAdoptServices = async (): Promise<{
     const { services: portAddedServices, updatedIds: portAddedIds } =
       addPortToCoreHub(cpuCompatibleServices, allServiceIds);
 
-    const updatedComposeFile = ensureNetworkDefinition(
-      {
-        ...composeJson,
-        services: portAddedServices,
-      },
-      networkName,
-      isWindows,
+    await writeAndRecreateChronos(
+      ensureNetworkDefinition(
+        {
+          ...composeJson,
+          services: portAddedServices,
+        },
+        networkName,
+        isWindows,
+      ),
+      chronosUpdatedIds,
+      composeJson,
     );
-
-    await writeComposeFile(updatedComposeFile);
-
-    if (chronosRuleHeal.updatedIds.length > 0) {
-      await recreateChronosContainers(
-        chronosRuleHeal.updatedIds,
-        findProxyServiceName(composeJson),
-      );
-    }
 
     return {
       success: true,
@@ -653,17 +749,13 @@ const autoAdoptServices = async (): Promise<{
         ...networkAllUpdatedIds,
         ...cpuCompatibilityUpdatedIds,
         ...portAddedIds,
-        ...chronosRuleHeal.updatedIds,
+        ...chronosUpdatedIds,
         ...traefikUpdatedIds,
       ],
       unmatchedIds,
     };
   } catch (error) {
-    console.error(
-      `Failed to apply Conductor labels: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+    console.error(`Failed to apply Conductor labels: ${errorMessage(error)}`);
     return {
       success: false,
       updatedIds: [],

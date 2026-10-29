@@ -5,6 +5,7 @@ export type PrepareComposeUpdate = (
   composeJson: RawComposeFile,
   requestIds: readonly string[],
   releaseChannel: ReleaseChannelTypes,
+  options?: Readonly<{ swarm?: boolean }>,
 ) => Promise<
   Readonly<{
     effectiveIds: readonly string[];

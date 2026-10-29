@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { join } from 'path';
+import { join } from 'node:path';
 
 import { spawnAsync } from './autoReboot';
 import { getLogger } from '../../utils/logger';

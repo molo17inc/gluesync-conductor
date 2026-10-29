@@ -2,12 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { env, SERVICES, versionsFor } from './env.mjs';
 import { backofficeAdmin, catalogFor, dindRunning, ensureImages, kitCompose } from './setup.mjs';
-import { LogCollector, callConductor, conductorContainer, containers, corehub, health, settle, snapshot, waitConductor } from './stack.mjs';
+import { LogCollector, callConductor, conductorContainer, containers, corehub, health, settle, snapshot, waitConductor, waitConductorStartup, waitKitSettled, waitStackReady } from './stack.mjs';
 import { PROFILES, resetChaos } from './scenarios.mjs';
+import { ComposeSampler } from './composeSampler.mjs';
+import { readLiveCompose, releaseDiskFault } from './diskFault.mjs';
 import { driveLikeUi, uiChecks } from './uiDriver.mjs';
 import { sessionSuite } from './sessions.mjs';
 import { runChecks } from './checks.mjs';
 import { writeReport } from './report.mjs';
+import { iterationCases, writeJunit } from './junit.mjs';
 import { describeState, docker, inSequence, now, rng, say, setLogFile, shuffle, sleep, waitFor, writeJson } from './util.mjs';
 
 const stateFile = () => path.join(env.stateDir, 'iterations.json');
@@ -102,9 +105,20 @@ const followSelfUpdate = async (it, entry, target, plan, oldId) => {
   return true;
 };
 
+// While a profile's Docker fault is in effect a round that fails is not "no progress": the driver
+// waits for the fault to end (profile.faultActive) before it judges the round.
+const waitFaultEnd = async (ctx, it) => {
+  const active = ctx.profile?.faultActive;
+  if (!active) return;
+  const ended = await waitFor('docker fault to end', async () => !(await active(ctx, it)), { timeoutMs: 60000, intervalMs: 500 });
+  if (!ended.ok) it.notes.push('docker fault still active 60s after the round ended');
+};
+
 // One "update all" click (sent `plan.concurrent` times in parallel). Returns whether
 // the user clicks again. `state` carries the retry and no-progress counters across rounds.
 const driveRound = async (ctx, it, target, plan, state, round) => {
+  state.retryable = false;
+  state.waited = false;
   const ready = await waitConductor({ timeoutMs: 240000 });
   if (!ready.ok) {
     it.rounds.push({ round, error: 'conductor not reachable', waitedMs: ready.ms });
@@ -112,6 +126,11 @@ const driveRound = async (ctx, it, target, plan, state, round) => {
   }
   const before = tags(await containers());
   const phase = phaseFor(before, target, state.lagging);
+  try {
+    await ctx.profile?.beforeRound?.(ctx, it, { round, phase });
+  } catch (e) {
+    it.notes.push(`round ${round} hook failed: ${e.message}`);
+  }
   ctx.inflight = { round, phase, conductorId: ready.value.id, startedAt: Date.now() };
   const send = () =>
     callConductor(it, `update round ${round}`, 'POST', '/containers', {
@@ -131,15 +150,30 @@ const driveRound = async (ctx, it, target, plan, state, round) => {
   };
   it.rounds.push(entry);
   say(`  round ${round} (${phase}) -> ${entry.statuses.join(',')} in ${Math.round(entry.ms / 1000)}s ${entry.items.join(' ')}`);
+  await waitFaultEnd(ctx, it);
+
+  // A profile that expects the first round to be refused: it is not an outage to wait out;
+  // `drive` looks at what the refusal left behind, lifts the fault and goes on.
+  if (plan.refusal && !state.released) {
+    const text = responses.map(r => JSON.stringify(r.json ?? r.text ?? r.error ?? '')).join(' ');
+    entry.refused = text.includes(plan.refusal.phrase);
+    entry.refusalText = text.slice(0, 400);
+    entry.refusalDiagnoses = responses.map(r => r.json?.diagnosis?.code);
+    if (entry.refused) return false;
+  }
 
   // CoreHub or the conductor briefly unavailable: a user waits and clicks
   // again. These retries do not count as update rounds (up to 12 of them).
   if (responses.every(r => r.status === 503 || r.status === 0) && state.retries < 12) {
     state.retries += 1;
+    state.waited = true;
     await sleep(10000);
     return true;
   }
-  if (!responses.some(r => r.status === 200)) return false;
+  if (!responses.some(r => r.status === 200)) {
+    state.retryable = true;
+    return false;
+  }
   if (items.some(c => c.id === 'gluesync-conductor')) {
     return followSelfUpdate(it, entry, target, plan, ready.value.id);
   }
@@ -148,7 +182,40 @@ const driveRound = async (ctx, it, target, plan, state, round) => {
   const after = tags(await containers());
   if (Object.keys(SERVICES).every(s => after[s] === target[s])) return false;
   state.noProgress = JSON.stringify(after) === JSON.stringify(before) ? state.noProgress + 1 : 0;
+  state.retryable = state.noProgress >= 2;
   return state.noProgress < 2;
+};
+
+// What a refused update must leave alone: the compose bytes the conductor sees and the containers.
+const untouched = async () => {
+  const live = await readLiveCompose();
+  const list = await containers();
+  return { compose: live, containers: list.map(c => `${c.service}:${c.id}:${c.image}`).sort() };
+};
+
+// After the round that was expected to be refused: records what it left behind, then lifts the
+// fault (always, so a conductor that did not refuse cannot keep a full disk for the whole
+// iteration). Returns whether the round was refused, i.e. whether the user clicks again.
+const endRefusal = async (ctx, it, plan, state, round, kept) => {
+  const entry = it.rounds.find(r => r.round === round);
+  const after = await untouched();
+  const services = await callConductor(it, 'refusal: services', 'GET', '/services', { token: state.token, timeoutMs: 15000 });
+  it.refusal = {
+    round,
+    refused: !!entry?.refused,
+    statuses: entry?.statuses,
+    text: entry?.refusalText,
+    diagnoses: entry?.refusalDiagnoses,
+    composeUnchanged: !!kept.compose && !!after.compose && kept.compose.equals(after.compose),
+    composeBytes: after.compose?.length ?? null,
+    containersUnchanged: JSON.stringify(kept.containers) === JSON.stringify(after.containers),
+    changedContainers: after.containers.filter(c => !kept.containers.includes(c)),
+    servicesStatus: services.status,
+  };
+  await releaseDiskFault(it);
+  state.released = true;
+  state.noProgress = 0;
+  return it.refusal.refused;
 };
 
 // Drives the update the way a persistent user does in the UI: "update all", wait,
@@ -160,8 +227,18 @@ const drive = async (ctx, it, target, plan) => {
     noProgress: 0,
     retries: 0,
   };
-  for (let round = 1; round <= 6 + state.retries; round += 1) {
-    if (!(await driveRound(ctx, it, target, plan, state, round))) break;
+  const kept = plan.refusal ? await untouched() : null;
+  const maxRounds = Math.max(6, plan.minRounds || 0);
+  for (let round = 1; round <= maxRounds + state.retries; round += 1) {
+    const more = await driveRound(ctx, it, target, plan, state, round);
+    const refused = plan.refusal && !state.released && !state.waited ? await endRefusal(ctx, it, plan, state, round, kept) : false;
+    if (more || refused) continue;
+    // A profile that wants the user to keep clicking: a failed or stalled round is retried.
+    if (state.retryable && round < (plan.minRounds || 0)) {
+      await sleep(2000);
+      continue;
+    }
+    break;
   }
   ctx.inflight = null;
 };
@@ -200,12 +277,22 @@ const runIteration = async (ctx, i, profile, k) => {
   fs.mkdirSync(iterDir, { recursive: true });
   say(`iteration ${k + 1}/${ctx.total} [${profile.name}] -> versions .${100 + i}: ${profile.description}`);
 
+  ctx.profile = profile;
+  ctx.sampler = new ComposeSampler();
   try {
+    // Mounts or filler files a failed earlier iteration (or runner) left in the conductor.
+    await releaseDiskFault(it);
+    // The conductor may have restarted (and adopted the kit again) since the last iteration: the
+    // `pre` snapshot below must not catch containers in the middle of that. A service left down on
+    // purpose by the previous profile is that profile's business, so only stability is required (`strict: false`).
+    await waitKitSettled({ strict: false });
     await ensureImages(target, { skip: plan.skipImages || [], crash: plan.crashImages || [] });
     const catalogVersions = { ...target, ...plan.catalog };
     await backofficeAdmin('/__sandbox/catalog', catalogFor(catalogVersions));
 
     const corehubBefore = (await corehub.admin('/__sandbox/state')).json;
+    // From here to the end of the iteration the compose file is sampled every ~25ms.
+    ctx.sampler.start();
     await profile.before?.(ctx, it);
     const pre = await snapshot();
     fs.writeFileSync(path.join(iterDir, 'compose-before.yml'), pre.compose.text);
@@ -228,6 +315,7 @@ const runIteration = async (ctx, i, profile, k) => {
     }
 
     const settled = await settle(ctx, ctx.adminToken, { ignore: plan.crashImages || [] });
+    it.sampler = ctx.sampler.finish();
     const sessions = await sessionSuite(it, { deep: k === 0 || (k + 1) % 5 === 0 });
     const post = await snapshot();
     fs.writeFileSync(path.join(iterDir, 'compose-after.yml'), post.compose.text);
@@ -269,6 +357,9 @@ const runIteration = async (ctx, i, profile, k) => {
     say(`  iteration error: ${e.message}`);
     await resetChaos().catch(() => {});
   }
+  it.sampler ||= ctx.sampler.finish();
+  ctx.sampler = null;
+  ctx.profile = null;
   it.finishedAt = now();
   it.durationMs = Date.parse(it.finishedAt) - Date.parse(it.startedAt);
   const failed = it.checks.filter(c => c.severity === 'fail');
@@ -281,18 +372,38 @@ const runIteration = async (ctx, i, profile, k) => {
   return it;
 };
 
-export const iterate = async ({ iterations, seed, profiles, destructive }) => {
-  if (!(await dindRunning()) || (await health()).status !== 200) {
-    throw new Error('sandbox is not up or the conductor is unhealthy: run `node sandbox/run.mjs up` first');
-  }
-  const stamp = new Date().toISOString().replaceAll(/[-:]/g, '').replace('T', '-').slice(0, 15);
-  const dir = path.join(env.reportsDir, `${stamp}-seed${seed}`);
-  fs.mkdirSync(dir, { recursive: true });
-  setLogFile(path.join(dir, 'runner.log'));
+// "2/4" -> { index: 2, total: 4 }
+export const parseShard = spec => {
+  const m = /^(\d+)\/(\d+)$/.exec(spec || '');
+  const shard = m && { index: Number(m[1]), total: Number(m[2]) };
+  if (!shard || shard.index < 1 || shard.index > shard.total) throw new Error(`--shard must be i/n with 1 <= i <= n (got "${spec}")`);
+  return shard;
+};
 
-  const available = PROFILES.filter(p => destructive || !p.destructive).filter(p => !profiles.length || profiles.includes(p.name));
-  if (!available.length) throw new Error(`no profiles match ${profiles.join(',')}`);
-  const rand = rng(seed);
+// Which profiles run, in PROFILES order.
+//   --profiles a,b   exactly those
+//   --profiles all   every non-destructive profile except the excluded ones (also the default with --shard)
+//   --shard i/n      the profiles at positions k of that list with k % n == i-1
+export const selectProfiles = ({ profiles, destructive, shard, exclude }) => {
+  const known = PROFILES.map(p => p.name);
+  const unknown = [...profiles.filter(n => n !== 'all'), ...exclude].filter(n => !known.includes(n));
+  if (unknown.length) throw new Error(`unknown profile(s) ${unknown.join(',')}; known: ${known.join(', ')}`);
+  const all = profiles.includes('all') || (!profiles.length && !!shard);
+  const eligible = PROFILES.filter(p => destructive || !p.destructive);
+  const selected = all
+    ? eligible.filter(p => !exclude.includes(p.name))
+    : eligible.filter(p => !profiles.length || profiles.includes(p.name));
+  return {
+    all,
+    available: shard ? selected.filter((_, k) => k % shard.total === shard.index - 1) : selected,
+  };
+};
+
+// The iterations to run, in order. `all` and a shard run each selected profile once and ignore
+// --iterations; --iterations sizes the other schedules (a repeated explicit list, or the default
+// random one).
+const buildSchedule = ({ all, shard, profiles, available, iterations, rand }) => {
+  if (all || shard) return [...available];
   const schedule = [];
   if (profiles.length) {
     while (schedule.length < iterations) schedule.push(...available);
@@ -303,24 +414,76 @@ export const iterate = async ({ iterations, seed, profiles, destructive }) => {
     while (schedule.length < iterations) schedule.push(...shuffle(others, rand));
   }
   schedule.length = iterations;
+  return schedule;
+};
 
+// How a sharded run names itself: in the report directory, in the log line and in the junit suite.
+const shardNames = shard => {
+  if (!shard) return { dirSuffix: '', logNote: '', suite: 'conductor-sandbox iterate' };
+  const text = `shard ${shard.index}/${shard.total}`;
+  return { dirSuffix: `-shard${shard.index}of${shard.total}`, logNote: `, ${text}`, suite: `conductor-sandbox iterate ${text}` };
+};
+
+// Runs the iterations, writes the report (and junit.xml) and resolves to the run: the caller
+// turns `run.iterations[].outcome === 'fail'` into the exit code.
+export const iterate = async ({ iterations, seed, profiles, destructive, shard: shardSpec, exclude = [] }) => {
+  const shard = shardSpec ? parseShard(shardSpec) : null;
+  // Fail on a typo before anything starts.
+  const { all, available } = selectProfiles({ profiles, destructive, shard, exclude });
+  if (!available.length && !shard) throw new Error(`no profiles match ${profiles.join(',')}`);
+  if (!(await dindRunning()) || (await health()).status !== 200) {
+    throw new Error('sandbox is not up or the conductor is unhealthy: run `node sandbox/run.mjs up` first');
+  }
+  const stamp = new Date().toISOString().replaceAll(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  const names = shardNames(shard);
+  const dir = path.join(env.reportsDir, `${stamp}-seed${seed}${names.dirSuffix}`);
+  fs.mkdirSync(dir, { recursive: true });
+  setLogFile(path.join(dir, 'runner.log'));
+  const startedAt = now();
+  if (!available.length) {
+    say(`shard ${shard.index}/${shard.total} has no profiles: nothing to run`);
+    return { seed, startedAt, iterations: [] };
+  }
+
+  const rand = rng(seed);
+  const schedule = buildSchedule({ all, shard, profiles, available, iterations, rand });
+  const total = schedule.length;
+
+  // Same wait as the end of `up`: a runner that reaches this line right after `up` must not meet a
+  // fake that is still starting.
+  await waitStackReady();
+  // Iteration 1's snapshot must not race the Conductor's startup recreates (auto-adoption).
+  await waitConductorStartup();
+  // ...and every kit service has one running container whose id and image stay the same.
+  await waitKitSettled();
   const collector = new LogCollector(path.join(dir, 'logs'));
   collector.start();
-  const ctx = { dir, collector, total: iterations, adminToken: await corehub.login('admin', 86400), inflight: null };
-  const state = loadState();
-  const run = { seed, startedAt: now(), schedule: schedule.map(p => p.name), iterations: [], baseline: baseline() };
-  say(`run ${path.basename(dir)}: ${iterations} iterations, seed ${seed}`);
-  say(`schedule: ${run.schedule.join(', ')}`);
+  // The collector's timer and its `docker logs -f` children keep the process alive: whatever
+  // happens below, they are stopped before iterate returns or throws (a throw here once left the
+  // CI job `running` for the rest of its timeout).
+  try {
+    const ctx = { dir, collector, total, adminToken: await corehub.login('admin', 86400), inflight: null };
+    const state = loadState();
+    const run = { seed, startedAt, ...(shard ? { shard } : {}), schedule: schedule.map(p => p.name), iterations: [], baseline: baseline() };
+    say(`run ${path.basename(dir)}: ${total} iterations, seed ${seed}${names.logNote}`);
+    say(`schedule: ${run.schedule.join(', ')}`);
 
-  await inSequence(schedule, async (profile, k) => {
-    const i = state.last + 1;
-    run.iterations.push(await runIteration(ctx, i, profile, k));
-    state.last = i;
-    writeJson(stateFile(), state);
-    writeReport(dir, run);
-  });
-  run.finishedAt = now();
-  collector.stop();
-  const { md } = writeReport(dir, run);
-  say(`report: ${md}`);
+    const writeJunitFile = () => writeJunit(dir, { suite: names.suite, classname: 'sandbox.iterate', startedAt, cases: iterationCases(run) });
+    await inSequence(schedule, async (profile, k) => {
+      const i = state.last + 1;
+      run.iterations.push(await runIteration(ctx, i, profile, k));
+      state.last = i;
+      writeJson(stateFile(), state);
+      writeReport(dir, run);
+      // After every iteration, so a job that is killed half way still leaves a test report.
+      writeJunitFile();
+    });
+    run.finishedAt = now();
+    const { md } = writeReport(dir, run);
+    writeJunitFile();
+    say(`report: ${md}`);
+    return run;
+  } finally {
+    collector.stop();
+  }
 };

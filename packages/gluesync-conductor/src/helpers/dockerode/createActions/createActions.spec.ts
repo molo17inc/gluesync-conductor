@@ -20,17 +20,25 @@ type Result = { out: string; err: string; exitCode: number | null };
 
 type Setup = Readonly<{
   failing?: ReadonlySet<string>;
+  dockerDown?: Error;
   stableError?: Error;
   rebootError?: Error;
+  // Compose unless told otherwise; `null` is "Docker not answering"
+  orchestrator?: unknown;
 }>;
 
 const load = ({
   failing = new Set(),
+  dockerDown,
   stableError,
   rebootError,
+  orchestrator = { mode: 'compose' },
 }: Setup = {}) => {
   const calls: string[] = [];
+  const swarmCalls: Array<{ options: unknown; action: string; id: string }> =
+    [];
   const stable: string[] = [];
+  const dockerWaits: number[] = [];
   const reboots: unknown[] = [];
   const logs: Array<{ level: string; args: unknown[] }> = [];
   const windowsRestarts: unknown[][] = [];
@@ -99,6 +107,33 @@ const load = ({
           return 'windows restarted';
         },
       },
+      [here('../../orchestrator/getOrchestrator/getOrchestrator')]: {
+        getDecidedOrchestrator: async () => orchestrator ?? undefined,
+      },
+      [here('../../swarm/createSwarmActions/createSwarmActions')]: {
+        default: (options: unknown) =>
+          new Proxy(
+            {},
+            {
+              get: (_target, action: string) => async (id: string) => {
+                swarmCalls.push({ options, action, id });
+                return `swarm ${action} ${id}`;
+              },
+            },
+          ),
+      },
+      [here('../waitForDockerOutage/waitForDockerOutage')]: {
+        default: async (_docker: unknown, budgetMs: number) => {
+          dockerWaits.push(budgetMs);
+          if (dockerDown) {
+            throw dockerDown;
+          }
+        },
+        dockerWaitMs: () => 60000,
+      },
+      [here('../../../utils/docker/getDocker')]: {
+        getDocker: () => ({}),
+      },
       [here('../retryHelper/retryHelper')]: {
         retryCmd: (
           _attempt: number,
@@ -121,7 +156,9 @@ const load = ({
   return {
     createActions,
     calls,
+    swarmCalls,
     stable,
+    dockerWaits,
     reboots,
     logs,
     windowsRestarts,
@@ -179,6 +216,29 @@ describe('createActions', () => {
     ]);
     assert.deepEqual(stable, ['grafana']);
     assert.equal(reboots.length, 0);
+  });
+
+  it('checks the Docker API answers before it touches anything on update', async () => {
+    const { createActions, calls, dockerWaits } = load();
+    await createActions({ docker }).update('grafana');
+    // A short wait, not the full outage budget.
+    assert.deepEqual(dockerWaits, [15000]);
+    assert.equal(calls[0], 'pullAll --include-deps grafana');
+  });
+
+  it('does not pull or recreate while Docker is down', async () => {
+    const down = Object.assign(
+      new Error('Docker daemon not ready within 15000ms'),
+      {
+        code: 'ETIMEDOUT',
+      },
+    );
+    const { createActions, calls } = load({ dockerDown: down });
+    await assert.rejects(
+      createActions({ docker }).update('grafana'),
+      /Docker daemon not ready/,
+    );
+    assert.deepEqual(calls, []);
   });
 
   it('fails the update when the new container does not stay up', async () => {
@@ -288,5 +348,69 @@ describe('createActions', () => {
     const { createActions, calls } = load();
     assert.equal(await createActions({ docker }).start('svc'), 'upAll ok');
     assert.deepEqual(calls, ['upAll --no-deps svc']);
+  });
+
+  describe('on Docker Swarm', () => {
+    const orchestrator = {
+      mode: 'swarm',
+      namespace: 'gs',
+      selfService: 'gluesync-conductor',
+      isManager: true,
+    };
+
+    it('runs the swarm implementation of every action but removeNetwork', async () => {
+      const { createActions, calls, swarmCalls } = load({ orchestrator });
+      const actions = createActions({ docker, filename: 'stack.yml' });
+
+      assert.equal(await actions.kill('svc'), 'swarm kill svc');
+      assert.equal(await actions.pull('svc'), 'swarm pull svc');
+      assert.equal(await actions.remove('svc'), 'swarm remove svc');
+      assert.equal(await actions.restart('svc'), 'swarm restart svc');
+      assert.equal(await actions.start('svc'), 'swarm start svc');
+      assert.equal(await actions.stop('svc'), 'swarm stop svc');
+      assert.equal(await actions.undeploy('svc'), 'swarm undeploy svc');
+      assert.equal(await actions.update('svc'), 'swarm update svc');
+      assert.equal(await actions.removeNetwork('svc'), 'net');
+      assert.deepEqual(calls, [], 'no docker compose command runs');
+      assert.equal(swarmCalls.length, 8);
+      assert.deepEqual(swarmCalls[0].options, {
+        docker,
+        orchestrator,
+        filename: 'stack.yml',
+      });
+    });
+
+    it('never enables update mode nor starts the helper container', async () => {
+      const { createActions, reboots, updateModes, stable } = load({
+        orchestrator,
+      });
+
+      await createActions({ docker }).update('gluesync-conductor');
+      await flush();
+
+      assert.equal(updateModes(), 0);
+      assert.equal(reboots.length, 0);
+      assert.equal(stable.length, 0);
+    });
+  });
+
+  describe('when the mode is not known', () => {
+    it('refuses to act instead of assuming compose', async () => {
+      const { createActions, calls, swarmCalls } = load({
+        orchestrator: null,
+      });
+      const actions = createActions({ docker });
+
+      await assert.rejects(
+        actions.start('svc'),
+        /Docker daemon is not answering/,
+      );
+      await assert.rejects(
+        actions.update('svc'),
+        /Docker daemon is not answering/,
+      );
+      assert.deepEqual(calls, []);
+      assert.deepEqual(swarmCalls, []);
+    });
   });
 });

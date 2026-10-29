@@ -1,11 +1,16 @@
 import { LabelPrefix } from '../../models/composeFile.model';
 import { getLogger } from '../../utils/logger';
+import isTransientDockerConnError from '../dockerode/isTransientDockerConnError/isTransientDockerConnError';
+import waitForDockerOutage from '../dockerode/waitForDockerOutage/waitForDockerOutage';
 import { VerifyServiceStable } from './verifyServiceStable.model';
 
 const sleep = (ms: number): Promise<void> =>
   new Promise(resolve => {
     setTimeout(resolve, ms);
   });
+
+// A dropped Docker API is waited out this many times before the error stands.
+const DOCKER_OUTAGES_TOLERATED = 3;
 
 const envMs = (name: string, fallbackSeconds: number): number => {
   const raw = Number(process.env[name]);
@@ -27,6 +32,8 @@ type Observation = Readonly<{
  *
  * UPDATE_VERIFY_SECONDS (default 20, 0 disables) sets the window and
  * UPDATE_VERIFY_MAX_WAIT_SECONDS (default 180) bounds the wait for "healthy".
+ * A Docker API that drops meanwhile is not the service's fault: the check
+ * waits for Docker (CONDUCTOR_DOCKER_WAIT_MS) and goes on observing.
  */
 const verifyServiceStable: VerifyServiceStable = async (
   docker,
@@ -61,6 +68,26 @@ const verifyServiceStable: VerifyServiceStable = async (
     };
   };
 
+  // Docker dropping while the service is watched says nothing about the
+  // service: wait for the API, then look again.
+  const observeThroughOutage = async (
+    outagesLeft: number = DOCKER_OUTAGES_TOLERATED,
+  ): Promise<Observation | null> => {
+    try {
+      return await observe();
+    } catch (error) {
+      if (!isTransientDockerConnError(error) || outagesLeft <= 1) {
+        throw error;
+      }
+      logger.warn(
+        { service: serviceId, error },
+        '[update-verify] Docker did not answer, waiting for it',
+      );
+      await waitForDockerOutage(docker);
+      return observeThroughOutage(outagesLeft - 1);
+    }
+  };
+
   const describe = (o: Observation): string => {
     const health = o.health ? `/${o.health}` : '';
     return `${o.state}${health}, exit code ${o.exitCode}, restarts ${o.restartCount}`;
@@ -71,7 +98,7 @@ const verifyServiceStable: VerifyServiceStable = async (
     stableSince: number | null,
   ): Promise<void> => {
     const elapsed = Date.now() - started;
-    const o = await observe();
+    const o = await observeThroughOutage();
 
     if (!o) {
       throw new Error(`no container found for ${serviceId} after the update`);

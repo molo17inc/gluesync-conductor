@@ -8,7 +8,10 @@ import fetchAgentInfo from '../../../helpers/agentInfo/agentInfo';
 import parseImage from '../../../helpers/parseImage/parseImage';
 import { ReleaseChannelTypes } from '../../../models/conductor.model';
 import getVersionByChannel from '../../../helpers/releaseChannel/getVersionByChannel';
-import { LabelPrefix } from '../../../models/composeFile.model';
+import { ComposeService, LabelPrefix } from '../../../models/composeFile.model';
+import getOrchestrator from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator';
+import conductorUpdateRefusal from '../../../helpers/swarm/conductorUpdateRefusal/conductorUpdateRefusal';
+import stackServiceType from '../../../helpers/swarm/stackServiceType/stackServiceType';
 import { THIRD_PARTY_SERVICES } from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose.model';
 import { getLogger } from '../../../utils/logger';
 import waitForDockerDaemon from '../../../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
@@ -17,6 +20,7 @@ import fetchChangelogInfo from '../../../helpers/fetchChangelogInfo/fetchChangel
 import getCurrentVersion from '../../../helpers/getCurrentVersion/getCurrentVersion';
 import buildOutboundErrorReply from '../../../diagnosis/buildOutboundErrorReply';
 import normalizeUpstreamErrorBody from '../../../helpers/normalizeUpstreamErrorBody/normalizeUpstreamErrorBody';
+import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
 
 const logger = getLogger();
 
@@ -66,23 +70,51 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       }
     })();
 
+    const swarm = (await getOrchestrator(req.server.docker)).mode === 'swarm';
+
+    // Compose reads the label the Conductor wrote at startup. Swarm never
+    // writes it, so a stack service without one is typed from its image.
+    const serviceTypeOf = (
+      serviceId: string,
+      svc: Readonly<ComposeService> | undefined,
+    ): string | number | boolean | null | undefined => {
+      if (swarm) {
+        return stackServiceType(serviceId, svc);
+      }
+
+      const labels = svc?.labels;
+
+      return Array.isArray(labels)
+        ? labels
+            .find(l => l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
+            ?.split('=')[1]
+        : labels?.[`${LabelPrefix.CONDUCTOR}.type`];
+    };
+
+    // A swarm Conductor is never offered a version that is not newer than
+    // itself (the catalog's GA has no Swarm support)
+    const isConductorDowngrade = (
+      image: string | undefined,
+      running: string | null | undefined,
+      target: string | null | undefined,
+    ): boolean =>
+      swarm &&
+      parseImage(image).shortImageName === 'conductor' &&
+      conductorUpdateRefusal(running, target) !== null;
+
     const needsUpdate = async (serviceId: string): Promise<boolean> => {
       const svc = composeJson.services?.[serviceId];
       if (!svc) {
         return false;
       }
 
-      const { shortImageName, tag: composeTag } = parseImage(svc.image);
+      const {
+        shortImageName,
+        tag: composeTag,
+        interpolatedTag,
+      } = parseImage(svc.image);
 
-      const { labels } = svc;
-
-      const serviceType = Array.isArray(labels)
-        ? labels
-            .find(l => l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
-            ?.split('=')[1]
-        : labels?.[`${LabelPrefix.CONDUCTOR}.type`];
-
-      const isThirdParty = serviceType === 'third-party';
+      const isThirdParty = serviceTypeOf(serviceId, svc) === 'third-party';
 
       const imageNameToFetch =
         isWindows && isThirdParty && windowsYear
@@ -107,7 +139,15 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       const versionToCheck =
         normalizeVersion(currentVersion) || normalizeVersion(composeTag);
 
-      return expectedVersion !== versionToCheck;
+      // `image:${TAG}` has no version to compare while nothing runs
+      if (interpolatedTag && !versionToCheck) {
+        return false;
+      }
+
+      return (
+        expectedVersion !== versionToCheck &&
+        !isConductorDowngrade(svc.image, versionToCheck, expectedVersion)
+      );
     };
 
     const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
@@ -129,15 +169,8 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       const discoveredModules = Object.keys(composeJson.services || {}).filter(
         svcId => {
           const svc = composeJson.services?.[svcId];
-          const labels = svc?.labels;
 
-          const serviceType = Array.isArray(labels)
-            ? labels
-                .find(l => l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
-                ?.split('=')[1]
-            : labels?.[`${LabelPrefix.CONDUCTOR}.type`];
-
-          return serviceType === 'module';
+          return serviceTypeOf(svcId, svc) === 'module';
         },
       );
 
@@ -185,15 +218,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       };
     })();
 
-    const { labels } = service;
-
-    const serviceType = Array.isArray(labels)
-      ? labels
-          .find(l => l.startsWith(`${LabelPrefix.CONDUCTOR}.type=`))
-          ?.split('=')[1]
-      : labels?.[`${LabelPrefix.CONDUCTOR}.type`];
-
-    const isThirdParty = serviceType === 'third-party';
+    const isThirdParty = serviceTypeOf(id, service) === 'third-party';
 
     const imageNameToFetch =
       isWindows && isThirdParty && windowsYear
@@ -208,7 +233,16 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     const actualCurrentVersion =
       normalizeVersion(currentVersion) || normalizeVersion(fallbackVersion);
 
-    const expectedVersion = getVersionByChannel(serviceInfo, channel);
+    // Offered versions that would be a downgrade are left out, so no client
+    // derives an update (or a changelog) from them
+    const offered = (version: string | undefined): string | undefined =>
+      isConductorDowngrade(service.image, actualCurrentVersion, version)
+        ? undefined
+        : version;
+
+    const expectedVersion = offered(
+      getVersionByChannel(serviceInfo, channel) ?? undefined,
+    );
 
     const changelogData = await (async () => {
       if (!expectedVersion) {
@@ -244,9 +278,9 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       success: true,
       data: {
         currentVersion: actualCurrentVersion || fallbackVersion,
-        latestVersionAlpha: serviceInfo?.latestVersionAlpha,
-        latestVersionBeta: serviceInfo?.latestVersionBeta,
-        latestVersionGA: serviceInfo?.latestVersionGA,
+        latestVersionAlpha: offered(serviceInfo?.latestVersionAlpha),
+        latestVersionBeta: offered(serviceInfo?.latestVersionBeta),
+        latestVersionGA: offered(serviceInfo?.latestVersionGA),
         mandatoryUpdate: mandatoryUpdateResult.mandatoryUpdate,
         servicesToUpdate: mandatoryUpdateResult.servicesToUpdate,
         changelogData,
@@ -254,6 +288,16 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     });
   } catch (error: any) {
     logger.error({ error }, '[get-service-version] unexpected error');
+
+    // A compose file that is empty or corrupt is this install's own problem.
+    const local = buildLocalErrorReply(
+      error,
+      'Unable to retrieve service version',
+    );
+
+    if (local) {
+      return reply.code(local.statusCode).send(local.body);
+    }
 
     // Failures reaching MOLO17's own services are diagnosed (who is at fault, what to do).
     // A 404 is the backoffice's answer for an image it does not publish (a custom

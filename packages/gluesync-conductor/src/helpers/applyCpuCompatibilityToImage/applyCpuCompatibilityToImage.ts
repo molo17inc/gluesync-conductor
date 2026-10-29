@@ -58,12 +58,11 @@ const chronosImage = async (
   cpuSupportsV3: boolean,
   imageExists: ImageExists,
 ): Promise<string> => {
-  // parseImage on this line knows neither digests nor `${...}` tags
-  if (image.includes('@') || image.includes('${')) {
+  const { fullName, tag, digest, interpolatedTag } = parseImage(image);
+
+  if (digest || interpolatedTag) {
     return image;
   }
-
-  const { fullName, tag } = parseImage(image);
 
   const hasDebianSuffix = tag.endsWith(DEBIAN_SUFFIX);
 

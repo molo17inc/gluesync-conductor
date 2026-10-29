@@ -1,10 +1,11 @@
 import axios, { type AxiosInstance, AxiosError } from 'axios';
-import * as https from 'https';
+import * as https from 'node:https';
 
 import { type CurrentUser } from './types';
 import { UserRole, parseRole } from './userRole';
 import { getGluesyncSdkClient } from '../gluesyncSdkClient';
 import { getLogger } from '../utils/logger';
+import stripTrailingSlashes from '../utils/stripTrailingSlashes';
 
 interface IntrospectOptions {
   readonly cookieHeader: string | undefined;
@@ -33,7 +34,7 @@ const envInt = (name: string, defaultValue: number): number => {
   if (!raw) {
     return defaultValue;
   }
-  const parsed = parseInt(raw, 10);
+  const parsed = Number.parseInt(raw, 10);
   return Number.isNaN(parsed) ? defaultValue : parsed;
 };
 
@@ -154,7 +155,7 @@ export const createIntrospector = (config: Readonly<IntrospectorConfig>) => {
       );
     }
 
-    const url = base.replace(/\/+$/, '') + AUTH_ME_PATH;
+    const url = stripTrailingSlashes(base) + AUTH_ME_PATH;
     const headers: Readonly<Record<string, string>> = {
       ...(opts.authorizationHeader
         ? { Authorization: opts.authorizationHeader }

@@ -3,6 +3,8 @@ import path from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import { AxiosError } from 'axios';
 
+import { ComposeFileCorruptError } from '../../../helpers/composeFile/ensureValidCompose/composeFile.errors';
+import { DiskFullError } from '../../../helpers/file/safeWriteFile/safeWriteFile.errors';
 import loadWithStubs from '../../../testing/loadWithStubs';
 import type { DoContainersActionHandler } from './doContainersAction.model';
 
@@ -10,7 +12,12 @@ const root = path.resolve(__dirname, '../../..');
 const helper = (p: string): string => path.join(root, 'helpers', p);
 const here = (p: string): string => path.resolve(__dirname, p);
 
-type Info = { needsUpdate: boolean; id: string; availableVersion: string };
+type Info = {
+  needsUpdate: boolean;
+  id: string;
+  availableVersion: string;
+  refusal?: string;
+};
 type Call = readonly unknown[];
 
 type Options = {
@@ -27,6 +34,9 @@ type Options = {
   bulk?: { orderedIds: string[]; results: PromiseSettledResult<unknown>[] };
   rebootError?: unknown;
   restartError?: unknown;
+  availableBytes?: number;
+  // Compose unless told otherwise; `null` is "Docker not answering"
+  orchestrator?: unknown;
 };
 
 const ENV_KEYS = ['IS_WINDOWS', 'HELPER_IMAGE_BASE', 'CORE_HUB_NAME'];
@@ -68,7 +78,11 @@ const load = (options: Options = {}) => {
     restartLinux: [] as Call[],
     restartWindows: [] as Call[],
     updateMode: 0,
+    freeSpace: [] as Call[],
     logs: [] as string[],
+    grafana: [] as Call[],
+    swarmForceUpdates: [] as string[],
+    swarmStackRestarts: [] as Call[],
   };
   const log =
     (level: string) =>
@@ -169,6 +183,19 @@ const load = (options: Options = {}) => {
         },
       },
       [helper('getRootPath/getRootPath')]: { default: () => '/host/project' },
+      [helper('composeFile/composeBackup/composeBackup')]: {
+        composeFilePath: () => '/host/project/docker-compose.yml',
+      },
+      [helper('file/ensureFreeSpace/ensureFreeSpace')]: {
+        getUpdateMinFreeBytes: () => 1000,
+        default: async (paths: readonly string[], needed: number) => {
+          calls.freeSpace.push([paths, needed]);
+          const available = options.availableBytes ?? 1e12;
+          if (available < needed) {
+            throw new DiskFullError(paths[0], needed, available);
+          }
+        },
+      },
       [helper('restartAllServices/windowsRestart')]: {
         default: async (...args: unknown[]) => {
           calls.restartWindows.push(args);
@@ -190,8 +217,28 @@ const load = (options: Options = {}) => {
       },
       [helper('handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard')]:
         {
-          default: async () => options.grafana ?? { applied: false },
+          default: async (...args: unknown[]) => {
+            calls.grafana.push(args);
+            return options.grafana ?? { applied: false };
+          },
         },
+      [helper('orchestrator/getOrchestrator/getOrchestrator')]: {
+        getDecidedOrchestrator: async () =>
+          'orchestrator' in options
+            ? (options.orchestrator ?? undefined)
+            : { mode: 'compose' },
+      },
+      [helper('swarm/forceUpdateService/forceUpdateService')]: {
+        default: async (_docker: unknown, name: string) => {
+          calls.swarmForceUpdates.push(name);
+        },
+      },
+      [helper('swarm/restartSwarmStack/restartSwarmStack')]: {
+        default: async (...args: unknown[]) => {
+          calls.swarmStackRestarts.push(args);
+          return [];
+        },
+      },
       [path.join(root, 'utils/logger')]: { getLogger: () => logger },
     },
   ).default;
@@ -968,5 +1015,382 @@ describe('doContainersAction migration', () => {
     });
     const reply = await run(loaded, { action: 'update', ids: ['a'] });
     assert.equal(reply.statusCode, 200);
+  });
+});
+
+describe('doContainersAction update disk pre-flight', () => {
+  const full = () =>
+    load({
+      availableBytes: 10,
+      modules: {
+        'gluesync-conductor': {
+          needsUpdate: true,
+          id: 'gluesync-conductor',
+          availableVersion: '3.0.0',
+        },
+      },
+    });
+
+  it('checks the compose file system before reading anything', async () => {
+    const loaded = load();
+    const reply = await run(loaded, { action: 'update', ids: ['a'] });
+    assert.equal(reply.statusCode, 200);
+    assert.deepEqual(loaded.calls.freeSpace, [
+      [['/host/project/docker-compose.yml'], 1000],
+    ]);
+  });
+
+  it('refuses the update when the disk is too full, touching nothing', async () => {
+    const loaded = full();
+    const reply = await run(loaded, { action: 'update', ids: [] });
+    assert.equal(reply.statusCode, 507);
+    assert.equal(body(reply).success, false);
+    assert.equal(body(reply).error, 'Failed to do containers action');
+    assert.match(body(reply).details, /not enough free disk space/);
+    assert.match(body(reply).details, /docker-compose\.yml/);
+    assert.equal(body(reply).diagnosis.code, 'DISK_FULL');
+    assert.deepEqual(body(reply).diagnosis.params, {
+      path: '/host/project/docker-compose.yml',
+      neededBytes: 1000,
+      availableBytes: 10,
+    });
+    assert.equal(loaded.calls.createActions.length, 1); // the generic action lookup only
+    assert.deepEqual(loaded.calls.checked, []);
+    assert.equal(loaded.calls.bulk.length, 0);
+    assert.equal(loaded.calls.conductorOnly.length, 0);
+    assert.equal(loaded.calls.migration.length, 0);
+    assert.equal(loaded.calls.updateMode, 0);
+  });
+
+  it('does not pre-flight other actions', async () => {
+    const loaded = load({
+      availableBytes: 10,
+      actions: { stop: async () => 'stopped' },
+    });
+    const reply = await run(loaded, { action: 'stop', ids: ['a'] });
+    assert.equal(reply.statusCode, 200);
+    assert.equal(loaded.calls.freeSpace.length, 0);
+  });
+});
+
+describe('doContainersAction failures on this install', () => {
+  it('answers a kernel EDQUOT with the disk-full diagnosis', async () => {
+    const quota = Object.assign(new Error('write EDQUOT'), {
+      code: 'EDQUOT',
+    });
+    const reply = await run(load({ composeError: quota }), {
+      action: 'update',
+      ids: [],
+    });
+
+    assert.equal(reply.statusCode, 507);
+    assert.equal(body(reply).diagnosis.code, 'DISK_FULL');
+    assert.match(body(reply).details, /not enough free disk space/);
+  });
+
+  it('answers a corrupt compose file with its diagnosis', async () => {
+    const reply = await run(
+      load({
+        composeError: new ComposeFileCorruptError(
+          '/host/project/docker-compose.yml',
+          'the file is empty',
+        ),
+      }),
+      { action: 'update', ids: [] },
+    );
+
+    assert.equal(reply.statusCode, 500);
+    assert.equal(body(reply).error, 'Failed to do containers action');
+    assert.equal(body(reply).diagnosis.code, 'COMPOSE_FILE_CORRUPT');
+    assert.deepEqual(body(reply).diagnosis.params, {
+      path: '/host/project/docker-compose.yml',
+      problem: 'the file is empty',
+    });
+  });
+
+  it('keeps the disk-full diagnosis when the migration runs out of space', async () => {
+    const reply = await run(
+      load({
+        needsMigration: true,
+        migrationError: new DiskFullError('/host/project/.env', 4096, 0),
+      }),
+      { action: 'update', ids: [] },
+    );
+
+    assert.equal(reply.statusCode, 507);
+    assert.equal(body(reply).error, 'Migration failed');
+    assert.equal(body(reply).diagnosis.code, 'DISK_FULL');
+  });
+});
+
+describe('doContainersAction on Docker Swarm', () => {
+  const orchestrator = {
+    mode: 'swarm',
+    namespace: 'gs',
+    selfService: 'gluesync-conductor',
+    isManager: true,
+  };
+  const swarm = (options: Options = {}) => load({ orchestrator, ...options });
+
+  it('answers 503 DOCKER_NOT_READY while the mode is not known', async () => {
+    const loaded = load({
+      orchestrator: null,
+      actions: { stop: async () => 'x' },
+    });
+    const reply = await run(loaded, { action: 'stop', ids: ['a'] });
+
+    assert.equal(reply.statusCode, 503);
+    assert.equal(body(reply).success, false);
+    assert.equal(body(reply).diagnosis.code, 'DOCKER_NOT_READY');
+    assert.equal(loaded.calls.createActions.length, 0);
+  });
+
+  describe('restart', () => {
+    it('restarts the whole stack after the reply, with no helper container', async () => {
+      const loaded = swarm();
+      const reply = await run(loaded, { action: 'restart', ids: [] });
+
+      assert.equal(reply.statusCode, 200);
+      assert.deepEqual(body(reply).data.containers, [
+        { id: 'ALL', status: 'OK', message: 'Full stack restart initiated.' },
+      ]);
+      assert.equal(loaded.calls.swarmStackRestarts.length, 0);
+
+      await pending();
+
+      assert.equal(loaded.calls.swarmStackRestarts.length, 1);
+      assert.deepEqual(loaded.calls.swarmStackRestarts[0][1], orchestrator);
+      assert.equal(loaded.calls.restartLinux.length, 0);
+      assert.equal(loaded.calls.restartWindows.length, 0);
+      assert.equal(loaded.calls.reboot.length, 0);
+      assert.equal(loaded.calls.updateMode, 0);
+    });
+
+    it('restarts the conductor service itself after the reply, with no autoReboot', async () => {
+      const loaded = swarm();
+      const reply = await run(loaded, {
+        action: 'restart',
+        ids: ['gluesync-conductor'],
+      });
+
+      assert.deepEqual(body(reply).data.containers, [
+        {
+          id: 'gluesync-conductor',
+          status: 'OK',
+          message: 'Conductor gluesync-conductor restart initiated.',
+        },
+      ]);
+      assert.deepEqual(loaded.calls.swarmForceUpdates, []);
+
+      await pending();
+
+      assert.deepEqual(loaded.calls.swarmForceUpdates, [
+        'gs_gluesync-conductor',
+      ]);
+      assert.equal(loaded.calls.reboot.length, 0);
+      assert.equal(loaded.calls.updateMode, 0);
+    });
+
+    it('restarts the listed services now and the conductor after the reply', async () => {
+      const restarted: string[] = [];
+      const loaded = swarm({
+        actions: {
+          restart: async (id: string) => {
+            restarted.push(id);
+            return `${id} restarted`;
+          },
+        },
+      });
+      const reply = await run(loaded, {
+        action: 'restart',
+        ids: ['grafana', 'gluesync-conductor'],
+      });
+
+      assert.deepEqual(restarted, ['grafana']);
+      assert.equal(body(reply).data.containers.length, 2);
+      assert.deepEqual(loaded.calls.swarmForceUpdates, []);
+
+      await pending();
+
+      assert.deepEqual(loaded.calls.swarmForceUpdates, [
+        'gs_gluesync-conductor',
+      ]);
+      assert.equal(loaded.calls.reboot.length, 0);
+    });
+  });
+
+  describe('update', () => {
+    const conductorOut = {
+      'gluesync-conductor': {
+        needsUpdate: true,
+        id: 'gluesync-conductor',
+        availableVersion: '2.4.0',
+      },
+    };
+
+    it('tells the helpers it is Swarm, never enables update mode, skips the prune', async () => {
+      const loaded = swarm();
+      let pruned = 0;
+      const reply = await run(
+        loaded,
+        { action: 'update', ids: ['grafana'] },
+        {
+          pruneImages: async () => {
+            pruned += 1;
+            return { ImagesDeleted: [{}], SpaceReclaimed: 1 };
+          },
+        },
+      );
+
+      assert.equal(reply.statusCode, 200);
+      assert.equal(pruned, 0);
+      assert.equal(body(reply).data.pruneResult, undefined);
+      assert.equal((loaded.calls.bulk[0][4] as { swarm: boolean }).swarm, true);
+      assert.equal(loaded.calls.updateMode, 0);
+      assert.ok(
+        loaded.calls.logs.some(l => /swarm mode: not pruning images/.test(l)),
+      );
+    });
+
+    it('updates the conductor alone through the Swarm flag', async () => {
+      const loaded = swarm({ modules: conductorOut });
+      await run(loaded, { action: 'update', ids: [] });
+
+      assert.deepEqual(loaded.calls.conductorOnly[0][3], { swarm: true });
+      assert.equal(loaded.calls.bulk.length, 0);
+    });
+
+    describe('a Conductor older than the one running', () => {
+      const REASON = 'Conductor not updated: 0.13.2 is not newer than 0.14.0';
+      const refused = {
+        'gluesync-conductor': {
+          needsUpdate: false,
+          id: 'gluesync-conductor',
+          availableVersion: '0.13.2',
+          refusal: REASON,
+        },
+      };
+      const refusedItem = {
+        id: 'gluesync-conductor',
+        status: 'ERROR',
+        message: REASON,
+      };
+
+      it('answers ERROR for the conductor alone and updates nothing', async () => {
+        const loaded = swarm({ modules: refused });
+        const reply = await run(loaded, {
+          action: 'update',
+          ids: ['gluesync-conductor'],
+        });
+
+        assert.equal(reply.statusCode, 200);
+        assert.deepEqual(body(reply).data.containers, [refusedItem]);
+        // An empty list would mean "update all"
+        assert.equal(loaded.calls.bulk.length, 0);
+        assert.equal(loaded.calls.conductorOnly.length, 0);
+      });
+
+      it('updates the other services of the request all the same', async () => {
+        const loaded = swarm({
+          modules: refused,
+          bulk: {
+            orderedIds: ['grafana'],
+            results: [{ status: 'fulfilled', value: 'grafana updated' }],
+          },
+        });
+        const reply = await run(loaded, {
+          action: 'update',
+          ids: ['gluesync-conductor', 'grafana'],
+        });
+
+        assert.deepEqual(loaded.calls.bulk[0][2], ['grafana']);
+        assert.deepEqual(body(reply).data.containers, [
+          { id: 'grafana', status: 'OK', message: 'grafana updated' },
+          refusedItem,
+        ]);
+      });
+
+      it('reports it for "update all" too, which carries on with the rest', async () => {
+        const loaded = swarm({ modules: refused });
+        const reply = await run(loaded, { action: 'update', ids: [] });
+
+        assert.deepEqual(loaded.calls.bulk[0][2], []);
+        assert.equal(loaded.calls.conductorOnly.length, 0);
+        assert.deepEqual(body(reply).data.containers.at(-1), refusedItem);
+      });
+
+      it('says nothing about the conductor when only others are asked for', async () => {
+        const loaded = swarm({ modules: refused });
+        const reply = await run(loaded, { action: 'update', ids: ['grafana'] });
+
+        assert.deepEqual(loaded.calls.bulk[0][2], ['grafana']);
+        assert.ok(
+          body(reply).data.containers.every(
+            ({ id }: { id: string }) => id !== 'gluesync-conductor',
+          ),
+        );
+      });
+
+      it('is never applied on compose', async () => {
+        const loaded = load({ modules: refused });
+        const reply = await run(loaded, {
+          action: 'update',
+          ids: ['gluesync-conductor', 'grafana'],
+        });
+
+        assert.deepEqual(loaded.calls.bulk[0][2], [
+          'gluesync-conductor',
+          'grafana',
+        ]);
+        assert.ok(
+          body(reply).data.containers.every(
+            ({ status }: { status: string }) => status === 'OK',
+          ),
+        );
+      });
+    });
+
+    it('keeps the compose helpers on compose', async () => {
+      const loaded = load({ modules: conductorOut });
+      await run(loaded, { action: 'update', ids: [] });
+
+      assert.deepEqual(loaded.calls.conductorOnly[0][3], { swarm: false });
+    });
+
+    it('recreates grafana through the Swarm API', async () => {
+      const loaded = swarm({
+        grafana: { applied: true, serviceId: 'grafana' },
+      });
+      await run(loaded, { action: 'update', ids: ['grafana'] });
+
+      const [options] = loaded.calls.grafana[0] as [
+        { swarm: { namespace: string } },
+      ];
+      assert.equal(options.swarm.namespace, 'gs');
+    });
+
+    it('does not ask the compose grafana helper for swarm options on compose', async () => {
+      const loaded = load();
+      await run(loaded, { action: 'update', ids: ['grafana'] });
+
+      assert.deepEqual(loaded.calls.grafana[0], [undefined]);
+    });
+
+    it('refuses the migration to 2.x with SWARM_UNSUPPORTED', async () => {
+      const loaded = swarm({
+        modules: { 'gluesync-core-hub': ok('gluesync-core-hub') },
+        needsMigration: true,
+      });
+      const reply = await run(loaded, { action: 'update', ids: [] });
+
+      assert.equal(reply.statusCode, 501);
+      assert.equal(body(reply).success, false);
+      assert.equal(body(reply).diagnosis.code, 'SWARM_UNSUPPORTED');
+      assert.deepEqual(body(reply).diagnosis.params, {
+        feature: 'migration-to-v2',
+      });
+      assert.equal(loaded.calls.migration.length, 0);
+      assert.equal(loaded.calls.bulk.length, 0);
+    });
   });
 });

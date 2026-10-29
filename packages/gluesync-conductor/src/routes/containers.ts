@@ -9,6 +9,10 @@ import {
 } from '../models/conductor.model';
 import normalizeReleaseChannel from '../helpers/normalizeReleaseChannel/normalizeReleaseChannerl';
 import { requireContainerAction } from '../security';
+import {
+  DIAGNOSIS_REPLY_PROPERTY,
+  DISK_FULL_REPLY_SCHEMA,
+} from '../diagnosis/diagnosisReplySchema';
 
 const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
   // Register ComposeFile schema
@@ -107,6 +111,9 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                           restart: { type: 'string' },
                           deploy: {
                             type: 'object',
+                            // Swarm stack files carry replicas, placement,
+                            // labels, update_config...
+                            additionalProperties: true,
                             properties: {
                               resources: {
                                 type: 'object',
@@ -252,6 +259,22 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                               },
                             },
                           },
+                          swarm: {
+                            type: 'object',
+                            description:
+                              'Swarm mode only: the service behind this container',
+                            additionalProperties: true,
+                            properties: {
+                              serviceId: { type: 'string' },
+                              node: { type: 'string' },
+                              replicas: {
+                                type: 'number',
+                                description: 'Tasks running now',
+                              },
+                              desiredReplicas: { type: 'number' },
+                              updateState: { type: 'string' },
+                            },
+                          },
                         },
                         additionalProperties: true,
                       },
@@ -268,6 +291,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
               success: { type: 'boolean' },
               error: { type: 'string' },
               details: { type: 'string' },
+              diagnosis: DIAGNOSIS_REPLY_PROPERTY,
             },
           },
         },
@@ -372,6 +396,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
           },
           additionalProperties: true,
         },
+        507: DISK_FULL_REPLY_SCHEMA,
         500: {
           type: 'object',
           properties: {
@@ -387,13 +412,14 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
               type: 'string',
               description: 'Additional error details',
             },
+            diagnosis: DIAGNOSIS_REPLY_PROPERTY,
           },
           additionalProperties: false,
         },
       },
     },
     preHandler: [requireContainerAction()],
-    preValidation: async (request, reply) => {
+    preValidation: (request, reply, done) => {
       const body = request.body as {
         action: ContainerActions;
         ids: ReadonlyArray<string>;
@@ -411,6 +437,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
           details: `Allowed values: ${releaseChannelTypes.join(', ')}`,
         });
 
+        // Answering from the hook ends the request: no done
         return;
       }
 
@@ -419,6 +446,8 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
         ...body,
         releaseChannel: normalizedReleaseChannel,
       };
+
+      done();
     },
     handler: doContainersAction,
   });

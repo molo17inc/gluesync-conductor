@@ -1,3 +1,5 @@
+import { randomInt } from 'node:crypto';
+
 import axios, { AxiosRequestConfig } from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { getLogger } from './logger';
@@ -138,7 +140,7 @@ export const axiosWithRetry: AxiosWithRetry = async <T>(
           throw axiosError;
         }
 
-        const jitter = Math.floor(Math.random() * 100);
+        const jitter = randomInt(100);
         const delay = Math.min(15_000, backoffMs * 2 ** (attempt - 1) + jitter);
 
         logger.info(

@@ -7,4 +7,5 @@ export type RetryCmd = (
   fn: () => Promise<unknown>,
   logger: Readonly<Logger>,
   id?: string,
+  beforeRetry?: () => Promise<void>,
 ) => Promise<IDockerComposeResult>;

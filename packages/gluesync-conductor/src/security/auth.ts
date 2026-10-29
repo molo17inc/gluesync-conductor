@@ -1,4 +1,8 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type {
+  FastifyPluginCallback,
+  FastifyReply,
+  FastifyRequest,
+} from 'fastify';
 import fp from 'fastify-plugin';
 
 import { type CurrentUser } from './types';
@@ -39,9 +43,7 @@ export interface AuthenticatedRequest extends FastifyRequest {
   currentUser?: CurrentUser;
 }
 
-const authPlugin = async (
-  fastify: Readonly<FastifyInstance>,
-): Promise<void> => {
+const authPlugin: FastifyPluginCallback = (fastify, _opts, done) => {
   fastify.addHook(
     'onRequest',
     async (
@@ -111,6 +113,8 @@ const authPlugin = async (
       return undefined;
     },
   );
+
+  done();
 };
 
 export default fp(authPlugin, {
@@ -120,68 +124,71 @@ export default fp(authPlugin, {
 
 export const requireManage =
   () =>
-  async (
-    req: Readonly<AuthenticatedRequest>,
-    reply: Readonly<FastifyReply>,
-  ) => {
+  (req: Readonly<AuthenticatedRequest>, reply: Readonly<FastifyReply>) => {
     const user = req.currentUser;
     if (!user) {
-      return reply.code(401).send({
-        success: false,
-        error: 'Not authenticated',
-      });
+      return Promise.resolve(
+        reply.code(401).send({
+          success: false,
+          error: 'Not authenticated',
+        }),
+      );
     }
     if (!canManage(user.role)) {
-      return reply.code(403).send({
-        success: false,
-        error: `Role ${user.role} cannot manage`,
-      });
+      return Promise.resolve(
+        reply.code(403).send({
+          success: false,
+          error: `Role ${user.role} cannot manage`,
+        }),
+      );
     }
-    return undefined;
+    return Promise.resolve(undefined);
   };
 
 export const requireControl =
   () =>
-  async (
-    req: Readonly<AuthenticatedRequest>,
-    reply: Readonly<FastifyReply>,
-  ) => {
+  (req: Readonly<AuthenticatedRequest>, reply: Readonly<FastifyReply>) => {
     const user = req.currentUser;
     if (!user) {
-      return reply.code(401).send({
-        success: false,
-        error: 'Not authenticated',
-      });
+      return Promise.resolve(
+        reply.code(401).send({
+          success: false,
+          error: 'Not authenticated',
+        }),
+      );
     }
     if (!canControl(user.role)) {
-      return reply.code(403).send({
-        success: false,
-        error: `Role ${user.role} cannot control`,
-      });
+      return Promise.resolve(
+        reply.code(403).send({
+          success: false,
+          error: `Role ${user.role} cannot control`,
+        }),
+      );
     }
-    return undefined;
+    return Promise.resolve(undefined);
   };
 
 export const requireConfig =
   () =>
-  async (
-    req: Readonly<AuthenticatedRequest>,
-    reply: Readonly<FastifyReply>,
-  ) => {
+  (req: Readonly<AuthenticatedRequest>, reply: Readonly<FastifyReply>) => {
     const user = req.currentUser;
     if (!user) {
-      return reply.code(401).send({
-        success: false,
-        error: 'Not authenticated',
-      });
+      return Promise.resolve(
+        reply.code(401).send({
+          success: false,
+          error: 'Not authenticated',
+        }),
+      );
     }
     if (!canModifyConfiguration(user.role)) {
-      return reply.code(403).send({
-        success: false,
-        error: `Role ${user.role} cannot modify configuration`,
-      });
+      return Promise.resolve(
+        reply.code(403).send({
+          success: false,
+          error: `Role ${user.role} cannot modify configuration`,
+        }),
+      );
     }
-    return undefined;
+    return Promise.resolve(undefined);
   };
 
 // Day-to-day operations a MONITOR may run, like starting and stopping

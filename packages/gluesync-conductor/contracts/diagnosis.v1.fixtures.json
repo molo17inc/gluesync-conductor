@@ -641,5 +641,152 @@
       "service": "gluesync-conductor"
     },
     "at": "2026-01-01T00:00:00.000Z"
+  },
+  "DISK_FULL": {
+    "schemaVersion": 1,
+    "code": "DISK_FULL",
+    "owner": "customer",
+    "confidence": "high",
+    "params": {
+      "path": "/opt/gluesync/docker-compose.yml",
+      "neededBytes": 52428800,
+      "availableBytes": 1048576
+    },
+    "resolutionCodes": [
+      "FREE_DISK_SPACE",
+      "CONTACT_SUPPORT_WITH_DETAILS"
+    ],
+    "fallback": {
+      "title": "Not enough free disk space",
+      "summary": "There is not enough free disk space to write /opt/gluesync/docker-compose.yml (50.0 MiB needed, 1.0 MiB available). Nothing was changed.",
+      "steps": [
+        "Free up disk space on the volume that holds the Gluesync folder (docker-compose.yml), then try again.",
+        "Contact MOLO17 support and attach the technical details."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "COMPOSE_FILE_CORRUPT": {
+    "schemaVersion": 1,
+    "code": "COMPOSE_FILE_CORRUPT",
+    "owner": "local",
+    "confidence": "high",
+    "params": {
+      "path": "/opt/gluesync/docker-compose.yml",
+      "problem": "the file is empty"
+    },
+    "resolutionCodes": [
+      "CONTACT_SUPPORT_WITH_DETAILS"
+    ],
+    "fallback": {
+      "title": "docker-compose.yml is empty or corrupt",
+      "summary": "/opt/gluesync/docker-compose.yml is unusable (the file is empty) and no last-good backup could restore it. Conductor refused to write over it.",
+      "steps": [
+        "Contact MOLO17 support and attach the technical details."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "SWARM_NOT_MANAGER": {
+    "schemaVersion": 1,
+    "code": "SWARM_NOT_MANAGER",
+    "owner": "local",
+    "confidence": "high",
+    "params": {},
+    "resolutionCodes": [
+      "RUN_CONDUCTOR_ON_SWARM_MANAGER"
+    ],
+    "fallback": {
+      "title": "Conductor is not running on a swarm manager",
+      "summary": "Docker Swarm services can only be managed from a manager node, and this Conductor runs on a worker.",
+      "steps": [
+        "Deploy the Conductor service with the placement constraint node.role == manager."
+      ]
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
+  },
+  "SWARM_UNSUPPORTED": {
+    "schemaVersion": 1,
+    "code": "SWARM_UNSUPPORTED",
+    "owner": "local",
+    "confidence": "high",
+    "params": {
+      "feature": "migration to 2.x"
+    },
+    "resolutionCodes": [],
+    "fallback": {
+      "title": "Not available on Docker Swarm",
+      "summary": "migration to 2.x is not supported when Gluesync runs as a Docker Swarm stack.",
+      "steps": []
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
   }
 }
