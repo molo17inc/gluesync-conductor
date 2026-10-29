@@ -2,7 +2,13 @@ import type { RawComposeFile } from '../../models/composeFile.model';
 
 export type HealReason = 'startup' | 'update' | 'event';
 
-export type ProxyErrorPagesAction = 'add' | 'remove' | 'none' | 'skip';
+export type ProxyErrorPagesAction =
+  | 'add'
+  | 'remove'
+  | 'none'
+  | 'skip'
+  /** Files are right, the running proxy is not: recreated, nothing written. */
+  | 'recreate';
 
 export type ProxyErrorPagesPlan = Readonly<{
   action: ProxyErrorPagesAction;

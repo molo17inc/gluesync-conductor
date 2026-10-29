@@ -3,6 +3,8 @@ import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 
+import { LabelPrefix } from '../../models/composeFile.model';
+import { getDocker } from '../../utils/docker/getDocker';
 import { getLogger } from '../../utils/logger';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
 import writeComposeFile from '../composeFile/writeComposeFile/writeComposeFile';
@@ -17,7 +19,8 @@ import type {
   HealProxyErrorPages,
   HealProxyErrorPagesOutcome,
 } from './healProxyErrorPages.model';
-import planProxyErrorPages from './planProxyErrorPages';
+import { targetLabels } from './errorPagesWiring';
+import planProxyErrorPages, { WIRING_IN_PLACE } from './planProxyErrorPages';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 
@@ -27,9 +30,14 @@ const BACKUP_SUBFOLDER = 'proxy-backup';
 
 const composeFilePath = (): string => getRootPath({ filename: dkrComposeFile });
 
+// A recreate for drift is tried once in a while, never in a loop: if the
+// running proxy still lacks the labels after one, the cause is not a stale container.
+const DRIFT_COOLDOWN_MS = 5 * 60_000;
+
 const state = new Map<string, number | Promise<unknown>>([
   ['running', 0],
   ['queue', Promise.resolve()],
+  ['lastDriftRecreate', 0],
 ]);
 
 /** True while a run is waiting its turn or working. */
@@ -116,6 +124,132 @@ const recreateProxy = async (proxy: string): Promise<void> => {
   await runCmd(upAll, proxy, dkrComposeFile, ['--no-deps', '--force-recreate']);
 };
 
+// Writes the files back as they were before the heal: traefik.yml in place,
+// the compose file byte for byte from the backup (writeComposeFile would
+// re-serialise it and lose comments and format). Same inode for both.
+const restoreFiles = async (
+  traefikPath: string,
+  before: Readonly<{
+    traefikYamlText: string;
+    composeJson: Record<string, any>;
+  }>,
+  after: Readonly<{
+    traefikYamlText: string;
+    composeJson: Record<string, any>;
+  }>,
+  backupDir: string,
+): Promise<void> => {
+  if (after.traefikYamlText !== before.traefikYamlText) {
+    await writeTraefik(traefikPath, before.traefikYamlText);
+  }
+
+  if (!isDeepStrictEqual(after.composeJson, before.composeJson)) {
+    await writeFile(
+      composeFilePath(),
+      await readFile(join(backupDir, 'docker-compose.yml')),
+    );
+  }
+};
+
+// The files are put back, then the proxy is recreated once more so the running
+// container matches them: left with the new traefik.yml and an old container, a
+// plain restart would load a middleware that no container defines (404 on every route).
+const rollBack = async (
+  proxy: string,
+  traefikPath: string,
+  before: Readonly<{
+    traefikYamlText: string;
+    composeJson: Record<string, any>;
+  }>,
+  after: Readonly<{
+    traefikYamlText: string;
+    composeJson: Record<string, any>;
+  }>,
+  backupDir: string,
+  error: unknown,
+): Promise<void> => {
+  const logger = getLogger();
+
+  logger.error({ error }, `${LOG} recreating ${proxy} failed`);
+  await restoreFiles(traefikPath, before, after, backupDir);
+  logger.error(
+    { backupDir, proxy },
+    `${LOG} recreate failed, files restored from ${backupDir}`,
+  );
+
+  try {
+    await recreateProxy(proxy);
+  } catch (second) {
+    logger.error(
+      { error: second },
+      `${LOG} recreating ${proxy} with the restored files failed too; the files are as before the heal, a plain restart is safe`,
+    );
+  }
+};
+
+/** Labels of the running reverse-proxy container; undefined when it cannot be read. */
+const runningLabels = async (
+  proxy: string,
+): Promise<Readonly<Record<string, string>> | undefined> => {
+  try {
+    const [container] = await getDocker().listContainers({
+      filters: {
+        label: [`${LabelPrefix.COMPOSE}.service=${proxy}`],
+        status: ['running'],
+      },
+    });
+
+    return container?.Labels;
+  } catch {
+    return undefined;
+  }
+};
+
+const lacksTargetLabels = (
+  labels: Readonly<Record<string, string>>,
+  isWindows: boolean,
+): boolean =>
+  Object.entries(targetLabels(isWindows)).some(
+    ([key, value]) => labels[key] !== value,
+  );
+
+// The files carry the whole wiring; the container, created before them, may not.
+const healDrift = async (
+  proxy: string,
+  isWindows: boolean,
+  trigger: string,
+): Promise<HealProxyErrorPagesOutcome> => {
+  const logger = getLogger();
+  const labels = await runningLabels(proxy);
+  const lastAt = (state.get('lastDriftRecreate') as number) ?? 0;
+
+  if (!labels || !lacksTargetLabels(labels, isWindows)) {
+    return { action: 'none', reason: WIRING_IN_PLACE };
+  }
+
+  if (Date.now() - lastAt < DRIFT_COOLDOWN_MS) {
+    logger.warn(
+      { trigger },
+      `${LOG} running ${proxy} still lacks the wiring after a recreate, not trying again yet`,
+    );
+    return { action: 'none', reason: WIRING_IN_PLACE };
+  }
+
+  state.set('lastDriftRecreate', Date.now());
+  logger.info(
+    { trigger, proxy },
+    `${LOG} recreate: running ${proxy} does not have the wiring of the compose file`,
+  );
+  await recreateProxy(proxy);
+  logger.info({ proxy }, `${LOG} recreate done, ${proxy} recreated`);
+
+  return {
+    action: 'recreate',
+    reason: 'running proxy does not have the wiring of the compose file',
+    recreated: proxy,
+  };
+};
+
 const run: HealProxyErrorPages = async ({ reason }) => {
   const logger = getLogger();
   const compose = await readComposeFile({ raw: true });
@@ -155,6 +289,19 @@ const run: HealProxyErrorPages = async ({ reason }) => {
     isWindows,
   );
 
+  if (plan.action === 'none' && plan.reason === WIRING_IN_PLACE) {
+    const drift = await healDrift(proxy, isWindows, reason);
+
+    if (drift.action === 'none') {
+      logger[reason === 'event' ? 'debug' : 'info'](
+        { reason: plan.reason, trigger: reason },
+        `${LOG} nothing to change: ${plan.reason}`,
+      );
+    }
+
+    return drift;
+  }
+
   if (
     plan.action === 'none' ||
     (next.traefikYamlText === traefikYamlText &&
@@ -174,8 +321,16 @@ const run: HealProxyErrorPages = async ({ reason }) => {
     `${LOG} ${plan.action}: ${plan.reason}; backup in ${backupDir}`,
   );
 
-  await writeBoth(traefikPath, { traefikYamlText, composeJson: compose }, next);
-  await recreateProxy(proxy);
+  const before = { traefikYamlText, composeJson: compose };
+
+  await writeBoth(traefikPath, before, next);
+
+  try {
+    await recreateProxy(proxy);
+  } catch (error) {
+    await rollBack(proxy, traefikPath, before, next, backupDir, error);
+    return skipped('recreate failed, files restored');
+  }
 
   logger.info(
     { action: plan.action, proxy },
