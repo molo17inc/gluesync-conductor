@@ -48,10 +48,19 @@ const utcStamp = (now: Readonly<Date>): string =>
     .replaceAll(/[-:]/g, '')
     .replace(/\.\d+Z$/, 'Z');
 
+// Inside the container the compose file is a single-file bind mount, so its
+// folder is the Conductor's own and a backup there is lost when Conductor is
+// recreated. The kit root (the folder holding proxy/) is the mounted root
+// folder, which is on the host: derived from the resolved traefik.yml path.
+const backupRoot = (traefikPath: string): string => {
+  const override = process.env.CONDUCTOR_COMPOSE_BACKUP_DIR?.trim();
+
+  return override || join(dirname(dirname(traefikPath)), BACKUP_FOLDER);
+};
+
 const backupFiles = async (traefikPath: string): Promise<string> => {
   const dir = join(
-    dirname(composeFilePath()),
-    BACKUP_FOLDER,
+    backupRoot(traefikPath),
     BACKUP_SUBFOLDER,
     utcStamp(new Date()),
   );

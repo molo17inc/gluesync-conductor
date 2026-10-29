@@ -65,13 +65,21 @@ const host: string = process.env.HOST || '0.0.0.0';
 const watchdogCell = new Map<string, boolean>([['value', false]]);
 
 // After the adoption: this step reads and writes the compose file afterwards.
-// A failure here is logged and startup goes on.
+// A failure here is logged and startup goes on; a failed heal still leaves the
+// start-event trigger running.
 const healProxyErrorPagesAtStartup = async (
   docker: Readonly<Docker>,
 ): Promise<void> => {
   try {
     await healProxyErrorPages({ reason: 'startup' });
+  } catch (error) {
+    getLogger().error(
+      { error },
+      '[proxy-error-pages] startup heal failed, going on',
+    );
+  }
 
+  try {
     const proxyServiceName = findProxyServiceName(
       await readComposeFile({ raw: true }),
     );
@@ -86,7 +94,7 @@ const healProxyErrorPagesAtStartup = async (
   } catch (error) {
     getLogger().error(
       { error },
-      '[proxy-error-pages] startup step failed, going on',
+      '[proxy-error-pages] could not start the proxy event watcher, going on',
     );
   }
 };

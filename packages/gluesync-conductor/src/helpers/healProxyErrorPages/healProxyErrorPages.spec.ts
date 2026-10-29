@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import * as realFsPromises from 'node:fs/promises';
 import { after, afterEach, beforeEach, describe, it } from 'node:test';
@@ -141,12 +143,14 @@ describe('healProxyErrorPages', () => {
       failComposeWrite: false,
     };
     delete process.env.IS_WINDOWS;
+    delete process.env.CONDUCTOR_COMPOSE_BACKUP_DIR;
     subject = load(recorder);
   });
 
   after(() => sandbox.restore());
 
   afterEach(() => {
+    delete process.env.CONDUCTOR_COMPOSE_BACKUP_DIR;
     if (saved === undefined) {
       delete process.env.IS_WINDOWS;
     } else {
@@ -228,6 +232,50 @@ describe('healProxyErrorPages', () => {
         '--force-recreate',
       ],
     ]);
+  });
+
+  it('backs up in the kit root (the folder holding proxy/), not next to the compose file', async () => {
+    // in the container the compose file is a single-file mount elsewhere
+    const kitRoot = mkdtempSync(path.join(tmpdir(), 'kit-root-'));
+    mkdirSync(path.join(kitRoot, 'proxy'));
+    traefik = path.join(kitRoot, 'proxy', 'traefik.yml');
+    writeFileSync(path.join(kitRoot, 'proxy', 'certs.yml'), CERTS_YML);
+    setUp(CAPABLE);
+
+    const outcome = await subject.default({ reason: 'startup' });
+
+    assert.equal(outcome.action, 'add');
+    const base = path.join(kitRoot, '.conductor', 'proxy-backup');
+    const [stamp] = readdirSync(base);
+    assert.match(stamp, /^\d{8}T\d{6}Z$/);
+    assert.deepEqual(readdirSync(path.join(base, stamp)).sort(), [
+      'docker-compose.yml',
+      'traefik.yml',
+    ]);
+    assert.equal(
+      readFileSync(path.join(base, stamp, 'traefik.yml'), 'utf8'),
+      KIT_TRAEFIK,
+    );
+    assert.deepEqual(backups(), []);
+    rmSync(kitRoot, { recursive: true, force: true });
+  });
+
+  it('backs up under CONDUCTOR_COMPOSE_BACKUP_DIR when it is set', async () => {
+    const override = mkdtempSync(path.join(tmpdir(), 'backup-dir-'));
+    process.env.CONDUCTOR_COMPOSE_BACKUP_DIR = override;
+    setUp(CAPABLE);
+
+    const outcome = await subject.default({ reason: 'startup' });
+
+    assert.equal(outcome.action, 'add');
+    const [stamp] = readdirSync(path.join(override, 'proxy-backup'));
+    assert.match(stamp, /^\d{8}T\d{6}Z$/);
+    assert.deepEqual(
+      readdirSync(path.join(override, 'proxy-backup', stamp)).sort(),
+      ['docker-compose.yml', 'traefik.yml'],
+    );
+    assert.deepEqual(backups(), []);
+    rmSync(override, { recursive: true, force: true });
   });
 
   it('does nothing the second time: no backup, no write, no recreate', async () => {
