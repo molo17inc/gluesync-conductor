@@ -27,6 +27,7 @@ import updateNormalBulk from './handleUpdate/updateNormalBulk';
 import { migrationNeeded } from '../../../helpers/migrationNeeded/migrationNeeded';
 import handleGrafanaEmbeddedDashboard from '../../../helpers/handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard';
 import { HandleGrafanaEmbeddedDashboardResult } from '../../../helpers/handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard.model';
+import healProxyErrorPages from '../../../helpers/healProxyErrorPages/healProxyErrorPages';
 import { getLogger } from '../../../utils/logger';
 import describeFailure from '../../../helpers/describeFailure/describeFailure';
 import buildDiagnosis from '../../../diagnosis/buildDiagnosis';
@@ -92,6 +93,10 @@ const gate = createActionGate<DoContainersActionResponse>({
     buildLocalErrorReply(error, ACTION_FAILED) ??
     failed(500, ACTION_FAILED, errorMessage(error)),
 });
+
+/** True while an update, restart or other container action is running. */
+export const isContainerActionRunning = (): boolean =>
+  gate.current() !== undefined;
 
 // One reply item per settled action, in the order the ids were given.
 const toItems = (
@@ -269,6 +274,44 @@ const recreateGrafanaIfEmbedded = async (
   ];
 };
 
+const WIRING_VERB: Readonly<Record<string, string>> = {
+  add: 'added',
+  remove: 'removed',
+  convert: 'converted',
+  recreate: 'recreated',
+};
+
+// The MOLO17 error pages wiring follows the reverse-proxy image the update
+// just left in the compose file (see healProxyErrorPages). Compose only; it
+// never fails the update.
+const healProxyErrorPagesAfterUpdate = async (
+  req: Readonly<Request>,
+  orchestrator: Readonly<Orchestrator>,
+): Promise<ReadonlyArray<DoContainersActionItem>> => {
+  if (orchestrator.mode !== 'compose') {
+    return [];
+  }
+
+  const outcome = await healProxyErrorPages({ reason: 'update' });
+
+  if (!outcome.recreated) {
+    return [];
+  }
+
+  req.log.info(
+    { service: outcome.recreated, action: outcome.action },
+    '[update-handler] error pages wiring changed, reverse-proxy recreated',
+  );
+
+  return [
+    {
+      id: outcome.recreated,
+      status: 'OK',
+      message: `MOLO17 error pages wiring ${WIRING_VERB[outcome.action] ?? 'changed'} (${outcome.reason}); reverse-proxy recreated.`,
+    },
+  ];
+};
+
 const migrationRefusedOnSwarm = (): Outcome => ({
   statusCode: 501,
   body: buildMigrationRefusedOnSwarmReply(),
@@ -441,6 +484,7 @@ const performUpdate = async (
   req.log.debug(`Container action update: ${JSON.stringify(results)}`);
 
   const grafanaItems = await recreateGrafanaIfEmbedded(req, orchestrator);
+  const proxyItems = await healProxyErrorPagesAfterUpdate(req, orchestrator);
   const pruneOutcome = swarm
     ? skipPruneOnSwarm()
     : await pruneImages(req.server.docker);
@@ -449,7 +493,12 @@ const performUpdate = async (
     success: true,
     data: {
       ...pruneOutcome,
-      containers: [...toItems(ids, results), ...refusedItems, ...grafanaItems],
+      containers: [
+        ...toItems(ids, results),
+        ...refusedItems,
+        ...grafanaItems,
+        ...proxyItems,
+      ],
     },
   });
 };

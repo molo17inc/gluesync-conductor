@@ -39,6 +39,11 @@ import {
 import healConductorConf from './helpers/healConductorConf/healConductorConf';
 import syncCollectLogsScripts from './helpers/syncCollectLogsScripts/syncCollectLogsScripts';
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
+import healProxyErrorPages from './helpers/healProxyErrorPages/healProxyErrorPages';
+import watchProxyStartEvents from './helpers/healProxyErrorPages/watchProxyStartEvents';
+import { findProxyServiceName } from './helpers/healTraefikConf/healTraefikConf';
+import { readComposeFile } from './helpers/composeFile/readComposeFile/readComposeFile';
+import { isContainerActionRunning } from './functions/container/doContainersAction/doContainersAction';
 import awaitDecidedOrchestrator from './helpers/orchestrator/awaitDecidedOrchestrator/awaitDecidedOrchestrator';
 import reconcileSelfImage from './helpers/swarm/reconcileSelfImage/reconcileSelfImage';
 import { restoreSelfUpdateConfig } from './helpers/swarm/restoreUpdateConfig/restoreUpdateConfig';
@@ -117,6 +122,32 @@ const adoptServicesAtStartup = async (
   }
 };
 
+// Compose only. After the adoption above, which rewrites the compose file
+// from what it read at its start: this step reads and writes it afterwards.
+const healProxyErrorPagesAtStartup = async (
+  docker: Readonly<Docker>,
+): Promise<void> => {
+  await runStartupStep(
+    'proxy error pages',
+    () => healProxyErrorPages({ reason: 'startup' }),
+    undefined,
+  );
+
+  const proxyServiceName = await runStartupStep(
+    'proxy error pages events',
+    async () => findProxyServiceName(await readComposeFile({ raw: true })),
+    null,
+  );
+
+  if (proxyServiceName) {
+    watchProxyStartEvents({
+      docker,
+      proxyServiceName,
+      isBusy: isContainerActionRunning,
+    });
+  }
+};
+
 type DecidedOrchestrator = Awaited<ReturnType<typeof awaitDecidedOrchestrator>>;
 
 const prepareForOrchestrator = async (
@@ -146,6 +177,7 @@ const prepareForOrchestrator = async (
     );
   } else {
     await adoptServicesAtStartup(docker, logger);
+    await healProxyErrorPagesAtStartup(docker);
   }
 };
 

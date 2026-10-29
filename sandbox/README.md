@@ -38,6 +38,8 @@ Reports are written to `sandbox/reports/<timestamp>-seed<N>/`:
 | Docker Hub | Local registry `localhost:5000` inside the sandbox daemon; one image per service per version |
 | Docker API | The conductor's `DOCKER_HOST` points at a pass-through socket proxy that can delay or refuse connections |
 
+The kit's `proxy/` folder comes from `kit/proxy/` (a customer's `traefik.yml` with a `websecure` entry point, their own middleware, ACME resolver, log level and comments, plus the shipped `certs.yml`), not from `debug-container`: the conductor edits `traefik.yml` for the error pages wiring and must never lose any of it.
+
 The kit (`kit/docker-compose.template.yml`) mirrors `debug-container/linux/docker-compose.yml`. It keeps the labels, the `$$` escapes, `sysctls`, `env_file` and the comment header, so that compose rewrite bugs show up.
 
 ## An iteration
@@ -73,6 +75,7 @@ The kit (`kit/docker-compose.template.yml`) mirrors `debug-container/linux/docke
 | compose-blanked | the compose file is truncated to 0 bytes and the conductor restarted; within 60s it must restore it byte for byte from `.conductor/docker-compose.last-good.yml`, log `restored docker-compose.yml from last-good backup`, and never write a stub compose |
 | full-restart | "restart all" (helper container: pull, down, up) |
 | compose-customization | customer env var, `$$` label and comment added before the update |
+| proxy-error-pages | the update moves `reverse-proxy` to a capable `molo17/traefik` tag (`3.7.16.<n>`, the profile's `versions(i)`); the conductor must add the MOLO17 error pages wiring by itself (`gluesync-pages@docker` and the `gluesyncerrorpages` plugin in `proxy/traefik.yml`, the labels on the `reverse-proxy` service), back up `docker-compose.yml` and `traefik.yml` to `.conductor/proxy-backup/<stamp>/`, recreate the proxy, keep every line of the customer's `traefik.yml` and never change `certs.yml`. Then the compose file goes back to the old tag and the proxy is recreated (a Docker start event): the wiring must go again, `traefik.yml` and the proxy's compose block as they were. Checks `proxy.*` (`lib/checks.mjs`) |
 | ui-sequence | no fault; drives the update like the Core Hub UI's modal instead of "update all": one request per service in the UI's order, through the reverse proxy, with the UI's auto-retries (3, after 2s/4s/8s), then a manual Retry if it halted (`lib/uiDriver.mjs`) |
 | conductor-bad-release | *(only with `--destructive`)* the new conductor image crashes on start |
 
