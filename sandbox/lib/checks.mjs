@@ -680,69 +680,70 @@ const missingLines = (original, now) => {
 
 // proxy-error-pages profile: see scenarios.mjs. A capable tag brings the wiring, the old tag takes it away,
 // and nothing but our own keys ever changes.
+const wiringAddedCheck = (p, added) => {
+  const detail = added?.ok
+    ? `wiring added ${Math.round(added.ms / 1000)}s after the iteration's update step${p.addedLogged ? '' : ', but the conductor never logged "add done"'}`
+    : 'the wiring (middleware and plugin in traefik.yml, labels on reverse-proxy) did not appear within 3 minutes of the update to a capable tag';
+  return result('proxy', 'proxy.wiring-added', !!added?.ok && !!p.addedLogged, detail);
+};
+
+// What the update to a capable tag must have kept and left behind: the customer's own lines and the backup.
+const addedFilesChecks = (base, added) => {
+  const lost = missingLines(base.conf, added.conf);
+  const backup = (added.backups || []).find(b => b.files.includes('docker-compose.yml') && b.files.includes('traefik.yml'));
+  const certsBackedUp = (added.backups || []).some(b => b.files.includes('certs.yml'));
+  return [
+    result(
+      'proxy',
+      'proxy.customer-settings-kept',
+      lost.length === 0 && added.conf.includes('- customer-headers@file') && added.conf.includes('certResolver: sandbox-resolver'),
+      lost.length ? `lines of the customer traefik.yml lost: ${lost.join(' | ')}` : 'every line of the customer traefik.yml (middleware, ACME resolver, log level, comments) is still there',
+    ),
+    result(
+      'proxy',
+      'proxy.backup-made',
+      !!backup && !certsBackedUp,
+      backup ? `backup ${backup.stamp} holds ${backup.files.join(', ')}` : 'no <kit>/.conductor/proxy-backup/<stamp>/ with docker-compose.yml and traefik.yml',
+    ),
+  ];
+};
+
+const certsUntouchedCheck = (base, added, removed) => {
+  const same = base.certsSha === added?.certsSha && base.certsSha === removed?.certsSha;
+  return result(
+    'proxy',
+    'proxy.certs-untouched',
+    same,
+    same ? 'proxy/certs.yml has the same bytes before, with the wiring and after it was removed' : 'proxy/certs.yml changed',
+  );
+};
+
+const wiringRemovedDetail = (p, removed, restored) => {
+  if (restored) {
+    return `wiring removed ${Math.round(removed.ms / 1000)}s after the old tag was back; traefik.yml and the proxy block are as they were${p.removedLogged ? '' : ', but the conductor never logged "remove done"'}`;
+  }
+  if (removed?.ok) {
+    return 'the wiring went but traefik.yml or the proxy block of the compose file is not what it was before';
+  }
+  return 'the wiring was still there 2 minutes after reverse-proxy went back to a tag that cannot serve it';
+};
+
+const wiringRemovedCheck = (p, base, removed) => {
+  const restored = !!removed?.ok && removed.conf === base.conf && removed.block.replace(/image: \S+/, '') === base.block.replace(/image: \S+/, '');
+  return result('proxy', 'proxy.wiring-removed', restored && !!p.removedLogged, wiringRemovedDetail(p, removed, restored));
+};
+
 const proxyPagesChecks = it => {
   const p = it.proxyPages;
   if (!p) return [result('proxy', 'proxy.evidence', false, 'the profile recorded nothing about the proxy files')];
-  const base = p.baseline;
-  const added = p.added;
-  const removed = p.removed;
-  const out = [];
+  const { baseline: base, added, removed } = p;
 
-  out.push(
-    result(
-      'proxy',
-      'proxy.wiring-added',
-      !!added?.ok && !!p.addedLogged,
-      added?.ok
-        ? `wiring added ${Math.round(added.ms / 1000)}s after the iteration's update step${p.addedLogged ? '' : ', but the conductor never logged "add done"'}`
-        : 'the wiring (middleware and plugin in traefik.yml, labels on reverse-proxy) did not appear within 3 minutes of the update to a capable tag',
-    ),
-  );
-
-  if (added?.ok) {
-    const lost = missingLines(base.conf, added.conf);
-    out.push(
-      result(
-        'proxy',
-        'proxy.customer-settings-kept',
-        lost.length === 0 && added.conf.includes('- customer-headers@file') && added.conf.includes('certResolver: sandbox-resolver'),
-        lost.length ? `lines of the customer traefik.yml lost: ${lost.join(' | ')}` : 'every line of the customer traefik.yml (middleware, ACME resolver, log level, comments) is still there',
-      ),
-    );
-    const backup = (added.backups || []).find(b => b.files.includes('docker-compose.yml') && b.files.includes('traefik.yml'));
-    out.push(
-      result(
-        'proxy',
-        'proxy.backup-made',
-        !!backup && !(added.backups || []).some(b => b.files.includes('certs.yml')),
-        backup ? `backup ${backup.stamp} holds ${backup.files.join(', ')}` : 'no <kit>/.conductor/proxy-backup/<stamp>/ with docker-compose.yml and traefik.yml',
-      ),
-    );
-  }
-
-  out.push(
-    result(
-      'proxy',
-      'proxy.certs-untouched',
-      base.certsSha === added?.certsSha && base.certsSha === removed?.certsSha,
-      base.certsSha === added?.certsSha && base.certsSha === removed?.certsSha ? 'proxy/certs.yml has the same bytes before, with the wiring and after it was removed' : 'proxy/certs.yml changed',
-    ),
-  );
-
-  const restored = !!removed?.ok && removed.conf === base.conf && removed.block.replace(/image: \S+/, '') === base.block.replace(/image: \S+/, '');
-  out.push(
-    result(
-      'proxy',
-      'proxy.wiring-removed',
-      restored && !!p.removedLogged,
-      restored
-        ? `wiring removed ${Math.round(removed.ms / 1000)}s after the old tag was back; traefik.yml and the proxy block are as they were${p.removedLogged ? '' : ', but the conductor never logged "remove done"'}`
-        : removed?.ok
-          ? 'the wiring went but traefik.yml or the proxy block of the compose file is not what it was before'
-          : 'the wiring was still there 2 minutes after reverse-proxy went back to a tag that cannot serve it',
-    ),
-  );
-  return out;
+  return [
+    wiringAddedCheck(p, added),
+    ...(added?.ok ? addedFilesChecks(base, added) : []),
+    certsUntouchedCheck(base, added, removed),
+    wiringRemovedCheck(p, base, removed),
+  ];
 };
 
 export const runChecks = x => [...stackChecks(x), ...composeSafetyChecks(x), ...apiChecks(x), ...resilienceChecks(x), ...loggingChecks(x), ...(x.plan.proxyPages ? proxyPagesChecks(x.it) : [])];

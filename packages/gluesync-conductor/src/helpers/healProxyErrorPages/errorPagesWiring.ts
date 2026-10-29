@@ -116,7 +116,7 @@ const matches = (
 export type LegacyServiceLabel = Readonly<{ legacy: boolean; exact: boolean }>;
 
 const HTML_KEY = new RegExp(
-  `^traefik\\.http\\.routers\\.(${LEGACY_HTML_ROUTERS.join('|')})-html\\.([a-z]+)$`,
+  String.raw`^traefik\.http\.routers\.(${LEGACY_HTML_ROUTERS.join('|')})-html\.([a-z]+)$`,
 );
 
 export const classifyLegacyServiceLabel = (

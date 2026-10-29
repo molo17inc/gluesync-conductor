@@ -422,7 +422,7 @@ export const widenOverComment = (
 ): Readonly<{ start: number; end: number }> => {
   const above = lineBefore(text, start);
 
-  if (!above || above.text.trim() !== comment) {
+  if (above?.text.trim() !== comment) {
     return { start, end };
   }
 
@@ -525,7 +525,10 @@ export const applyVerified = (
     );
   }
 
-  const settle = (value: unknown): unknown => prune.reduce(dropIfEmpty, value);
+  const settle = (value: unknown): unknown =>
+    // not tacit on purpose: reduce would also pass the index and the array to dropIfEmpty
+    // eslint-disable-next-line functional/prefer-tacit
+    prune.reduce((acc, path) => dropIfEmpty(acc, path), value);
 
   if (!isDeepStrictEqual(settle(after.toJS()), settle(expect(before.toJS())))) {
     throw unsafeLayout('the edit would not give the intended settings');

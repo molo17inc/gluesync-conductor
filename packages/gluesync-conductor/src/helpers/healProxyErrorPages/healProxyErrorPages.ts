@@ -24,6 +24,7 @@ import applyProxyErrorPagesPlan from './applyProxyErrorPagesPlan';
 import type {
   HealProxyErrorPages,
   HealProxyErrorPagesOutcome,
+  ProxyErrorPagesPlan,
 } from './healProxyErrorPages.model';
 import { targetLabels } from './errorPagesWiring';
 import planProxyErrorPages, { WIRING_IN_PLACE } from './planProxyErrorPages';
@@ -173,9 +174,9 @@ const rollBack = async (
 
   try {
     await recreateProxy(proxy);
-  } catch (second) {
+  } catch (error_) {
     logger.error(
-      { error: second },
+      { error: error_ },
       `${LOG} recreating ${proxy} with the restored files failed too; the files are as before the heal, a plain restart is safe`,
     );
   }
@@ -244,6 +245,60 @@ const healDrift = async (
   };
 };
 
+type Files = Readonly<{
+  traefikYamlText: string;
+  composeJson: Record<string, any>;
+}>;
+
+const logNothingToChange = (trigger: string, reason: string): void => {
+  getLogger()[trigger === 'event' ? 'debug' : 'info'](
+    { reason, trigger },
+    `${LOG} nothing to change: ${reason}`,
+  );
+};
+
+// Backs up, writes both files and recreates the proxy; a failed recreate puts
+// the files back (see rollBack).
+const applyAndRecreate = async ({
+  plan,
+  proxy,
+  traefikPath,
+  trigger,
+  before,
+  next,
+}: Readonly<{
+  plan: ProxyErrorPagesPlan;
+  proxy: string;
+  traefikPath: string;
+  trigger: string;
+  before: Files;
+  next: Files;
+}>): Promise<HealProxyErrorPagesOutcome> => {
+  const logger = getLogger();
+  const backupDir = await backupFiles(traefikPath);
+
+  logger.info(
+    { action: plan.action, reason: plan.reason, trigger, backupDir },
+    `${LOG} ${plan.action}: ${plan.reason}; backup in ${backupDir}`,
+  );
+
+  await writeBoth(traefikPath, before, next);
+
+  try {
+    await recreateProxy(proxy);
+  } catch (error) {
+    await rollBack(proxy, traefikPath, before, next, backupDir, error);
+    return skipped('recreate failed, files restored');
+  }
+
+  logger.info(
+    { action: plan.action, proxy },
+    `${LOG} ${plan.action} done, ${proxy} recreated`,
+  );
+
+  return { ...plan, recreated: proxy, backupDir };
+};
+
 const run: HealProxyErrorPages = async ({ reason }) => {
   const logger = getLogger();
   const orchestrator = await getDecidedOrchestrator(getDocker());
@@ -295,10 +350,7 @@ const run: HealProxyErrorPages = async ({ reason }) => {
     const drift = await healDrift(proxy, isWindows, reason);
 
     if (drift.action === 'none') {
-      logger[reason === 'event' ? 'debug' : 'info'](
-        { reason: plan.reason, trigger: reason },
-        `${LOG} nothing to change: ${plan.reason}`,
-      );
+      logNothingToChange(reason, plan.reason);
     }
 
     return drift;
@@ -309,37 +361,18 @@ const run: HealProxyErrorPages = async ({ reason }) => {
     (next.traefikYamlText === traefikYamlText &&
       isDeepStrictEqual(next.composeJson, compose))
   ) {
-    logger[reason === 'event' ? 'debug' : 'info'](
-      { reason: plan.reason, trigger: reason },
-      `${LOG} nothing to change: ${plan.reason}`,
-    );
+    logNothingToChange(reason, plan.reason);
     return { action: 'none', reason: plan.reason };
   }
 
-  const backupDir = await backupFiles(traefikPath);
-
-  logger.info(
-    { action: plan.action, reason: plan.reason, trigger: reason, backupDir },
-    `${LOG} ${plan.action}: ${plan.reason}; backup in ${backupDir}`,
-  );
-
-  const before = { traefikYamlText, composeJson: compose };
-
-  await writeBoth(traefikPath, before, next);
-
-  try {
-    await recreateProxy(proxy);
-  } catch (error) {
-    await rollBack(proxy, traefikPath, before, next, backupDir, error);
-    return skipped('recreate failed, files restored');
-  }
-
-  logger.info(
-    { action: plan.action, proxy },
-    `${LOG} ${plan.action} done, ${proxy} recreated`,
-  );
-
-  return { ...plan, recreated: proxy, backupDir };
+  return applyAndRecreate({
+    plan,
+    proxy,
+    traefikPath,
+    trigger: reason,
+    before: { traefikYamlText, composeJson: compose },
+    next,
+  });
 };
 
 /**
