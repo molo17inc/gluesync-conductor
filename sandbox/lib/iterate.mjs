@@ -182,7 +182,8 @@ const outcomeOf = (it, failed, warned) => {
 };
 
 const runIteration = async (ctx, i, profile, k) => {
-  const target = versionsFor(i);
+  // A profile may pick other versions for some services (see proxy-error-pages)
+  const target = { ...versionsFor(i), ...profile.versions?.(i) };
   const plan = { lagging: [], ...profile.plan(target, i) };
   const it = {
     index: i,

@@ -2,9 +2,11 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { isDeepStrictEqual } from 'node:util';
 import {
   Document,
+  YAMLSeq,
   isMap,
   isNode,
   isScalar,
+  isSeq,
   parseDocument,
   stringify,
 } from 'yaml';
@@ -15,6 +17,54 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
 const keyOf = (key: unknown): unknown => (isScalar(key) ? key.value : key);
+
+const isPrimitive = (value: unknown): boolean =>
+  value === null || ['string', 'number', 'boolean'].includes(typeof value);
+
+// Indexes of `have` that `want` keeps, in order (greedy): what is left of
+// `want` after them is new.
+const keptIndexes = (
+  have: ReadonlyArray<unknown>,
+  want: ReadonlyArray<unknown>,
+): ReadonlyArray<number> =>
+  want.reduce<
+    Readonly<{ at: number; done: boolean; kept: ReadonlyArray<number> }>
+  >(
+    (acc, item) => {
+      const found = acc.done ? -1 : have.indexOf(item, acc.at);
+      return found < 0
+        ? { ...acc, done: true }
+        : { at: found + 1, done: false, kept: [...acc.kept, found] };
+    },
+    { at: 0, done: false, kept: [] },
+  ).kept;
+
+// A list of plain values that lost some entries and/or gained some at the end
+// (a label list getting labels, or losing them): the entries that stay are not
+// touched, so their comments and quoting stay too. Returns whether it applied.
+const editScalarList = (
+  doc: Readonly<Document>,
+  current: Readonly<YAMLSeq>,
+  value: ReadonlyArray<unknown>,
+): boolean => {
+  const have = current.items.map(item => (isScalar(item) ? item.value : item));
+  const plain = current.items.every(isScalar) && value.every(isPrimitive);
+
+  if (!plain) {
+    return false;
+  }
+
+  const kept = keptIndexes(have, value);
+
+  have
+    .map((_, index) => index)
+    .filter(index => !kept.includes(index))
+    .reverse()
+    .forEach(index => current.delete(index));
+  value.slice(kept.length).forEach(item => current.add(doc.createNode(item)));
+
+  return true;
+};
 
 // Applies `value` at `path`, leaving every node whose content is unchanged as
 // it was, so its comments, anchors and formatting survive.
@@ -34,6 +84,14 @@ const syncNode = (
     Object.entries(value)
       .filter(([, child]) => child !== undefined)
       .forEach(([key, child]) => syncNode(doc, [...path, key], child));
+    return;
+  }
+
+  if (
+    isSeq(current) &&
+    Array.isArray(value) &&
+    editScalarList(doc, current, value)
+  ) {
     return;
   }
 

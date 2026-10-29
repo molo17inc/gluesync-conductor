@@ -1,0 +1,43 @@
+# Sandbox proxy: a customer's own static configuration. The conductor adds and removes the
+# MOLO17 error pages wiring in here and must never lose anything else (the proxy-error-pages
+# profile checks that every line below is still there while the wiring is in place).
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: sandbox-resolver # customer certificate resolver, keep
+      middlewares:
+        - customer-headers@file # customer middleware, keep
+
+certificatesResolvers:
+  sandbox-resolver:
+    acme:
+      email: ops@example.com
+      storage: /etc/traefik/acme.json
+      httpChallenge:
+        entryPoint: web
+
+log:
+  level: DEBUG # customer log level, keep
+
+providers:
+  docker:
+    exposedByDefault: false
+    endpoint: "unix:///var/run/docker.sock"
+  file:
+    filename: "/etc/traefik/certs.yml"
+    watch: true
+serversTransport:
+  insecureSkipVerify: true
+# api:
+#   dashboard: true
+#   insecure: true

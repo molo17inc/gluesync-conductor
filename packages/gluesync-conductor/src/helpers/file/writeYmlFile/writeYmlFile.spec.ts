@@ -101,4 +101,74 @@ describe('writeYmlFile', () => {
       services: { a: { image: 'x:1' } },
     });
   });
+
+  describe('lists of plain values that gain or lose entries', () => {
+    const WITH_LABELS = `services:
+  proxy:
+    image: molo17/traefik:3.7.16.3
+    labels:
+      # the proxy is third-party
+      - a=1 # first
+      - "b=two words"
+      - c=3
+  other:
+    image: x
+`;
+
+    const withLabels = (labels: string[]) => {
+      const parsed = parse(WITH_LABELS);
+      return {
+        ...parsed,
+        services: {
+          ...parsed.services,
+          proxy: { ...parsed.services.proxy, labels },
+        },
+      };
+    };
+
+    it('appends new entries and leaves the ones that stay (comments, quoting) as they are', async () => {
+      const file = fileWith(WITH_LABELS);
+
+      await writeYmlFile(
+        withLabels(['a=1', 'b=two words', 'c=3', 'd=4', 'e=5']),
+        file,
+      );
+
+      assert.equal(
+        readFileSync(file, 'utf8'),
+        WITH_LABELS.replace(
+          '      - c=3\n',
+          '      - c=3\n      - d=4\n      - e=5\n',
+        ),
+      );
+    });
+
+    it('removes entries and gives back the original text when they are appended again', async () => {
+      const file = fileWith(WITH_LABELS);
+      await writeYmlFile(
+        withLabels(['a=1', 'b=two words', 'c=3', 'd=4']),
+        file,
+      );
+
+      await writeYmlFile(withLabels(['a=1', 'b=two words', 'c=3']), file);
+
+      assert.equal(readFileSync(file, 'utf8'), WITH_LABELS);
+
+      await writeYmlFile(withLabels(['a=1', 'c=3']), file);
+
+      assert.equal(
+        readFileSync(file, 'utf8'),
+        WITH_LABELS.replace('      - "b=two words"\n', ''),
+      );
+    });
+
+    it('writes what was asked when entries change in the middle', async () => {
+      const file = fileWith(WITH_LABELS);
+      const json = withLabels(['a=1', 'B=two', 'c=3', 'd=4']);
+
+      await writeYmlFile(json, file);
+
+      assert.deepEqual(parse(readFileSync(file, 'utf8')), json);
+    });
+  });
 });

@@ -10,10 +10,16 @@
 //   freshToken    drive the update with a token the conductor has not cached
 //   concurrent    send each update request N times in parallel
 //   expectConductorRestarts   Docker restarts of the conductor the profile causes on purpose
+//   downgraded    services the profile deliberately puts back on their old tag: ok-means-ok expects that tag for them
+//   expectedDrift [{ service, key }] compose fields the profile changes on purpose: compose.no-unrelated-changes ignores them
+//   proxyPages    the proxy-error-pages profile: evidence is recorded in it.proxyPages and checked (see checks.mjs)
+//
+// A profile may also set versions(i) -> { service: version }: tags used instead of versionsFor(i) for those services.
 //
 // before/during/after get (ctx, it). `during` runs alongside the update driver and
 // can watch ctx.inflight to strike while an update request is in progress.
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { env, SERVICES, versionsFor } from './env.mjs';
@@ -32,6 +38,83 @@ const bulkInFlight = (ctx, timeoutMs = 300000) =>
   });
 
 const containerOf = async service => (await containers()).find(c => c.service === service && c.state === 'running');
+
+// ---------------------------------------------------------------- proxy-error-pages
+
+// The kit's proxy folder is sandbox/kit/proxy: a customer's traefik.yml (their own middleware, ACME
+// resolver, log level, comments) and the kit's certs.yml, which nothing may ever change.
+const proxyFile = name => path.join(env.kitDir, 'proxy', name);
+const sha256 = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const PROXY_SERVICE_BLOCK = /\n {2}reverse-proxy:\n(?:(?: {4}.*)?\n)*/;
+const composeFile = () => path.join(env.kitDir, 'docker-compose.yml');
+const proxyBlock = () => PROXY_SERVICE_BLOCK.exec(fs.readFileSync(composeFile(), 'utf8'))?.[0] ?? '';
+const proxyTag = () => /molo17\/traefik:(\S+)/.exec(proxyBlock())?.[1];
+const wiringIn = () => {
+  const conf = fs.readFileSync(proxyFile('traefik.yml'), 'utf8');
+  return {
+    static: conf.includes('- gluesync-pages@docker') && conf.includes('gluesyncerrorpages:'),
+    labels: proxyBlock().includes('gluesyncerrorpages.mode=wrap'),
+  };
+};
+const wired = () => {
+  const w = wiringIn();
+  return w.static && w.labels;
+};
+const unwired = () => {
+  const w = wiringIn();
+  return !w.static && !w.labels;
+};
+
+const proxyBackups = () => {
+  const dir = path.join(env.kitDir, '.conductor', 'proxy-backup');
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).map(stamp => ({ stamp, files: fs.readdirSync(path.join(dir, stamp)).sort() }));
+};
+
+const conductorLogged = async (ctx, it, pattern) => {
+  return ctx.collector.since('gluesync-conductor', it.startedAt).some(l => pattern.test(l.line));
+};
+
+// What the proxy folder and the proxy's compose block look like right now.
+const proxyState = () => ({
+  conf: fs.readFileSync(proxyFile('traefik.yml'), 'utf8'),
+  certsSha: sha256(proxyFile('certs.yml')),
+  block: proxyBlock(),
+  tag: proxyTag(),
+});
+
+const proxyBaseline = async (ctx, it) => {
+  it.proxyPages = { baseline: proxyState(), originalTag: proxyTag() };
+};
+
+// The profile's two halves: the update moves reverse-proxy to a tag that can serve the pages, and the wiring must
+// appear on its own; then the compose file goes back to the old tag (what a downgrade does) and the proxy is
+// recreated, which the conductor sees as a Docker start event, and the wiring must go again, leaving the
+// customer's files as they were.
+const proxyErrorPages = async (ctx, it) => {
+  const pages = it.proxyPages;
+  const added = await waitFor('error pages wiring added', async () => wired(), { timeoutMs: 180000, intervalMs: 2000 });
+  pages.added = { ok: added.ok, ms: added.ms };
+  // The conductor writes both files, then recreates the proxy: wait until it says so before going on.
+  pages.addedLogged = (
+    await waitFor('add logged', () => conductorLogged(ctx, it, /\[proxy-error-pages\] (add|convert) done/), { timeoutMs: 120000, intervalMs: 2000 })
+  ).ok;
+  Object.assign(pages.added, proxyState(), { backups: proxyBackups() });
+
+  const file = composeFile();
+  const original = pages.originalTag;
+  if (!original) {
+    it.notes.push('could not read the proxy tag the iteration started with');
+    return;
+  }
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/(molo17\/traefik:)\S+/, (_, head) => `${head}${original}`));
+  const up = await kitCompose(['up', '-d', 'reverse-proxy'], { timeoutMs: 120000 });
+  it.notes.push(`proxy put back on ${original} and recreated (up exit ${up.code}); the conductor must notice the start event`);
+  const removed = await waitFor('error pages wiring removed', async () => unwired(), { timeoutMs: 120000, intervalMs: 2000 });
+  pages.removed = { ok: removed.ok, ms: removed.ms };
+  pages.removedLogged = (await waitFor('remove logged', () => conductorLogged(ctx, it, /\[proxy-error-pages\] remove done/), { timeoutMs: 60000, intervalMs: 2000 })).ok;
+  Object.assign(pages.removed, proxyState());
+};
 
 export const PROFILES = [
   {
@@ -200,6 +283,23 @@ export const PROFILES = [
       const r = await kitCompose(['up', '-d', 'grafana']);
       it.notes.push(`customised grafana in compose (up exit ${r.code})`);
     },
+  },
+  {
+    name: 'proxy-error-pages',
+    description:
+      'The update moves reverse-proxy to a molo17/traefik tag with the error pages wrapper (3.7.16.x): the conductor must add the wiring on its own (gluesync-pages middleware and plugin in proxy/traefik.yml, labels on the proxy service), back up both files first, recreate the proxy, never touch certs.yml and keep every line of the customer traefik.yml. Then the old tag is put back and the proxy recreated: the wiring must go again and traefik.yml and the proxy block of the compose file must be as they were.',
+    versions: i => ({ 'reverse-proxy': `3.7.16.${100 + i}` }),
+    // The proxy ends the iteration on the tag it started with, which is the downgrade half: the generic checks must
+    // expect that tag for it, and the labels of its compose block (our wiring) may differ from before.
+    plan: () => ({
+      expect: 'updated',
+      lagging: ['reverse-proxy'],
+      proxyPages: true,
+      downgraded: ['reverse-proxy'],
+      expectedDrift: [{ service: 'reverse-proxy', key: 'labels' }],
+    }),
+    before: proxyBaseline,
+    after: proxyErrorPages,
   },
   {
     name: 'ui-sequence',

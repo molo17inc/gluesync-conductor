@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { writeJson } from './util.mjs';
 
-const AREAS = ['stack', 'compose', 'errors', 'resilience', 'session', 'logging'];
+const AREAS = ['stack', 'compose', 'proxy', 'errors', 'resilience', 'session', 'logging'];
+const AREA_TITLES = {
+  proxy: 'proxy (MOLO17 error pages wiring in proxy/traefik.yml and the reverse-proxy labels, certs.yml untouched)',
+};
 const SEVERITY_ORDER = { fail: 0, warn: 1, info: 2 };
 
 const pct = (arr, p) => {
@@ -90,7 +93,7 @@ export const writeReport = (dir, run) => {
   AREAS.forEach(area => {
     const inArea = all.filter(f => f.area === area);
     if (!inArea.length) return;
-    lines.push(`### ${area}`, '');
+    lines.push(`### ${AREA_TITLES[area] || area}`, '');
     inArea.forEach(f => {
       lines.push(`- **${f.severity.toUpperCase()} \`${f.id}\`**: ${f.occurrences}/${its.length} iterations (profiles: ${f.profiles.join(', ')})`);
       f.samples.forEach(s => lines.push(`  - it ${s.iteration} (${s.profile}): ${s.detail}`));

@@ -33,6 +33,11 @@ import getRootPath from './helpers/getRootPath/getRootPath';
 import healConductorConf from './helpers/healConductorConf/healConductorConf';
 import syncCollectLogsScripts from './helpers/syncCollectLogsScripts/syncCollectLogsScripts';
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
+import healProxyErrorPages from './helpers/healProxyErrorPages/healProxyErrorPages';
+import watchProxyStartEvents from './helpers/healProxyErrorPages/watchProxyStartEvents';
+import { findProxyServiceName } from './helpers/healTraefikConf/healTraefikConf';
+import { readComposeFile } from './helpers/composeFile/readComposeFile/readComposeFile';
+import { isContainerActionRunning } from './functions/container/doContainersAction/doContainersAction';
 import migrateRoutes from './routes/migrate';
 import envRoutes from './routes/env';
 import updateModeEmitter from './plugins/updateModeEmitter';
@@ -58,6 +63,33 @@ const host: string = process.env.HOST || '0.0.0.0';
   We use a Map to hold the watchdog-running boolean.
 */
 const watchdogCell = new Map<string, boolean>([['value', false]]);
+
+// After the adoption: this step reads and writes the compose file afterwards.
+// A failure here is logged and startup goes on.
+const healProxyErrorPagesAtStartup = async (
+  docker: Readonly<Docker>,
+): Promise<void> => {
+  try {
+    await healProxyErrorPages({ reason: 'startup' });
+
+    const proxyServiceName = findProxyServiceName(
+      await readComposeFile({ raw: true }),
+    );
+
+    if (proxyServiceName) {
+      watchProxyStartEvents({
+        docker,
+        proxyServiceName,
+        isBusy: isContainerActionRunning,
+      });
+    }
+  } catch (error) {
+    getLogger().error(
+      { error },
+      '[proxy-error-pages] startup step failed, going on',
+    );
+  }
+};
 
 const startServer = async (): Promise<void> => {
   const serverOptions = createFastifyHttpsOptions();
@@ -239,6 +271,8 @@ const startServer = async (): Promise<void> => {
   } else {
     logger.error('Failed to apply Conductor labels at startup');
   }
+
+  await healProxyErrorPagesAtStartup(server.docker);
 
   const syncResult = await syncCollectLogsScripts();
 
