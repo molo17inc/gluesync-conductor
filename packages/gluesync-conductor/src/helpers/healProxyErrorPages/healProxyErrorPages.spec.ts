@@ -1,7 +1,6 @@
 /* eslint-disable functional/immutable-data, functional/no-let -- temp files and a recorder for the test */
 import assert from 'node:assert/strict';
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -42,6 +41,7 @@ type Recorder = {
   logs: string[];
   mode: 'compose' | 'swarm' | undefined;
   failRecreate: boolean;
+  failComposeWrite: boolean;
 };
 
 const load = (recorder: Recorder): Subject =>
@@ -66,6 +66,17 @@ const load = (recorder: Recorder): Subject =>
         recorder.mode ? { mode: recorder.mode } : undefined,
     },
     [here('../../utils/docker/getDocker')]: { getDocker: () => ({}) },
+    [here('../composeFile/writeComposeFile/writeComposeFile')]: {
+      default: async (json: unknown) => {
+        if (recorder.failComposeWrite) {
+          throw new Error('disk said no');
+        }
+        // required here, not imported: it reads DKR_COMPOSE_FILE when it loads, after the sandbox exists
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const real = require(here('../composeFile/writeComposeFile/writeComposeFile')).default;
+        await real(json);
+      },
+    },
     [here('../file/safeWriteFile/safeWriteFile')]: {
       default: async (file: string, content: string, options: object) => {
         recorder.writes.push(file);
@@ -129,6 +140,7 @@ describe('healProxyErrorPages', () => {
       logs: [],
       mode: 'compose',
       failRecreate: false,
+      failComposeWrite: false,
     };
     delete process.env.IS_WINDOWS;
     subject = load(recorder);
@@ -361,20 +373,14 @@ describe('healProxyErrorPages', () => {
 
   it('puts the traefik.yml back when the compose file cannot be written', async () => {
     setUp(CAPABLE);
-    // a compose file that is read-only on disk makes the write fail
-    chmodSync(sandbox.compose, 0o444);
-    chmodSync(sandbox.dir, 0o555);
+    // a stubbed write failure: file modes do not stop root, which runs CI
+    recorder.failComposeWrite = true;
 
-    try {
-      const outcome = await subject.default({ reason: 'startup' });
+    const outcome = await subject.default({ reason: 'startup' });
 
-      assert.equal(outcome.action, 'skip');
-      assert.equal(sandbox.read(traefik), KIT_TRAEFIK);
-      assert.deepEqual(recorder.commands, []);
-    } finally {
-      chmodSync(sandbox.dir, 0o755);
-      chmodSync(sandbox.compose, 0o644);
-    }
+    assert.equal(outcome.action, 'skip');
+    assert.equal(sandbox.read(traefik), KIT_TRAEFIK);
+    assert.deepEqual(recorder.commands, []);
   });
 
   it('runs one at a time: two triggers at once recreate the proxy once', async () => {
