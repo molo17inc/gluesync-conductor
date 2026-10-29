@@ -20,6 +20,9 @@ import {
   inspectTraefikStatic,
 } from './traefikStaticTransforms';
 
+/** Reason of the `none` plan that says the files carry the whole target wiring. */
+export const WIRING_IN_PLACE = 'wiring already in place';
+
 const plan = (
   action: ProxyErrorPagesPlan['action'],
   reason: string,
@@ -136,7 +139,7 @@ const decideWithoutOptOut = (
 
   if (isCapableImage(image)) {
     return wiring.targetComplete
-      ? plan('none', 'wiring already in place')
+      ? plan('none', WIRING_IN_PLACE)
       : plan('add', 'image has the wrapper and the wiring is missing');
   }
 

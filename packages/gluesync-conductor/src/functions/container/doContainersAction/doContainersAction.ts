@@ -278,6 +278,7 @@ const WIRING_VERB: Readonly<Record<string, string>> = {
   add: 'added',
   remove: 'removed',
   convert: 'converted',
+  recreate: 'recreated',
 };
 
 // The MOLO17 error pages wiring follows the reverse-proxy image the update

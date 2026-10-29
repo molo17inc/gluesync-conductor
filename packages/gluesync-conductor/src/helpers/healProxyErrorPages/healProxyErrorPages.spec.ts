@@ -1,4 +1,4 @@
-/* eslint-disable functional/immutable-data, functional/no-let -- temp files and a recorder for the test */
+/* eslint-disable functional/immutable-data, functional/no-let, no-param-reassign -- temp files and a recorder for the test */
 import assert from 'node:assert/strict';
 import {
   existsSync,
@@ -22,6 +22,7 @@ import {
   kitComposeText,
 } from '../../testing/proxyErrorPagesFixtures';
 import realSafeWriteFile from '../file/safeWriteFile/safeWriteFile';
+import { targetLabels } from './errorPagesWiring';
 import type { HealProxyErrorPages } from './healProxyErrorPages.model';
 
 const here = (p: string): string => path.resolve(__dirname, p);
@@ -40,7 +41,12 @@ type Recorder = {
   logs: string[];
   mode: 'compose' | 'swarm' | undefined;
   failRecreate: boolean;
+  /** Only the first recreate fails (the one after the writes). */
+  failFirstRecreate: boolean;
   failComposeWrite: boolean;
+  /** Running reverse-proxy containers Docker lists: none, or one with these labels; 'error' makes the call throw. */
+  container: Record<string, string> | 'error' | undefined;
+  recreateAttempts: number;
 };
 
 const load = (recorder: Recorder): Subject =>
@@ -53,7 +59,11 @@ const load = (recorder: Recorder): Subject =>
         file: string,
         extra: ReadonlyArray<string>,
       ) => {
-        if (recorder.failRecreate) {
+        recorder.recreateAttempts += 1;
+        if (
+          recorder.failRecreate ||
+          (recorder.failFirstRecreate && recorder.recreateAttempts === 1)
+        ) {
           throw new Error('compose exploded');
         }
         recorder.commands.push([command, id, file, ...extra]);
@@ -64,7 +74,16 @@ const load = (recorder: Recorder): Subject =>
       getDecidedOrchestrator: async () =>
         recorder.mode ? { mode: recorder.mode } : undefined,
     },
-    [here('../../utils/docker/getDocker')]: { getDocker: () => ({}) },
+    [here('../../utils/docker/getDocker')]: {
+      getDocker: () => ({
+        listContainers: async () => {
+          if (recorder.container === 'error') {
+            throw new Error('docker is gone');
+          }
+          return recorder.container ? [{ Labels: recorder.container }] : [];
+        },
+      }),
+    },
     // only the failure test replaces the compose write: the real one reads DKR_COMPOSE_FILE when it loads
     ...(recorder.failComposeWrite
       ? {
@@ -76,7 +95,11 @@ const load = (recorder: Recorder): Subject =>
         }
       : {}),
     [here('../file/safeWriteFile/safeWriteFile')]: {
-      default: async (file: string, content: string, options: object) => {
+      default: async (
+        file: string,
+        content: string | Buffer,
+        options: object,
+      ) => {
         recorder.writes.push(file);
         await realSafeWriteFile(file, content, options);
       },
@@ -138,7 +161,10 @@ describe('healProxyErrorPages', () => {
       logs: [],
       mode: 'compose',
       failRecreate: false,
+      failFirstRecreate: false,
       failComposeWrite: false,
+      container: undefined,
+      recreateAttempts: 0,
     };
     delete process.env.IS_WINDOWS;
     subject = load(recorder);
@@ -392,14 +418,122 @@ describe('healProxyErrorPages', () => {
     assert.deepEqual(recorder.commands, []);
   });
 
-  it('never throws: a failed recreate is logged and the files stay as they were written', async () => {
+  it('never throws: a failed recreate puts both files back byte for byte and recreates once more', async () => {
     setUp(CAPABLE);
+    const composeBefore = readFileSync(sandbox.compose);
+    const inode = statSync(traefik).ino;
+    recorder.failFirstRecreate = true;
+
+    const outcome = await subject.default({ reason: 'startup' });
+
+    assert.equal(outcome.action, 'skip');
+    assert.equal(readFileSync(traefik, 'utf8'), KIT_TRAEFIK);
+    assert.ok(readFileSync(sandbox.compose).equals(composeBefore));
+    assert.equal(statSync(traefik).ino, inode);
+    // the first (failed) attempt after the writes, then one against the restored files
+    assert.equal(recorder.recreateAttempts, 2);
+    assert.equal(recorder.commands.length, 1);
+    assert.ok(recorder.logs.some(l => l.startsWith('error')));
+    const [stamp] = backups();
+    assert.ok(
+      recorder.logs.some(l =>
+        l.endsWith(
+          `[proxy-error-pages] recreate failed, files restored from ${path.join(sandbox.dir, '.conductor', 'proxy-backup', stamp)}`,
+        ),
+      ),
+    );
+  });
+
+  it('never throws when the second recreate fails too: the files are back as before the heal', async () => {
+    setUp(CAPABLE);
+    const composeBefore = readFileSync(sandbox.compose);
     recorder.failRecreate = true;
 
     const outcome = await subject.default({ reason: 'startup' });
 
     assert.equal(outcome.action, 'skip');
+    assert.equal(recorder.recreateAttempts, 2);
+    assert.equal(readFileSync(traefik, 'utf8'), KIT_TRAEFIK);
+    assert.ok(readFileSync(sandbox.compose).equals(composeBefore));
     assert.ok(recorder.logs.some(l => l.startsWith('error')));
+  });
+
+  describe('running proxy against the compose file', () => {
+    const settle = async (): Promise<void> => {
+      setUp(CAPABLE);
+      await subject.default({ reason: 'startup' });
+      recorder.commands.length = 0;
+      recorder.writes.length = 0;
+    };
+
+    it('recreates the proxy, writing nothing, when the files have the wiring and the running container does not', async () => {
+      await settle();
+      const compose = sandbox.read(sandbox.compose);
+      const conf = sandbox.read(traefik);
+      const stamps = backups().length;
+      recorder.container = { 'traefik.enable': 'true' };
+
+      const outcome = await subject.default({ reason: 'event' });
+
+      assert.equal(outcome.action, 'recreate');
+      assert.equal(outcome.recreated, 'reverse-proxy');
+      assert.equal(recorder.commands.length, 1);
+      assert.deepEqual(recorder.writes, []);
+      assert.equal(backups().length, stamps);
+      assert.equal(sandbox.read(sandbox.compose), compose);
+      assert.equal(sandbox.read(traefik), conf);
+      assert.ok(
+        recorder.logs.some(l =>
+          l.endsWith(
+            '[proxy-error-pages] recreate: running reverse-proxy does not have the wiring of the compose file',
+          ),
+        ),
+      );
+    });
+
+    it('does nothing when the running container has every label of the wiring', async () => {
+      await settle();
+      recorder.container = { ...targetLabels(false), 'other.label': 'x' };
+
+      const outcome = await subject.default({ reason: 'event' });
+
+      assert.equal(outcome.action, 'none');
+      assert.deepEqual(recorder.commands, []);
+    });
+
+    it('does not recreate in a loop when the container still lacks the labels afterwards', async () => {
+      await settle();
+      recorder.container = {};
+
+      assert.equal(
+        (await subject.default({ reason: 'event' })).action,
+        'recreate',
+      );
+      assert.equal((await subject.default({ reason: 'event' })).action, 'none');
+      assert.equal(recorder.commands.length, 1);
+    });
+
+    it('does not recreate when the container cannot be inspected', async () => {
+      await settle();
+
+      recorder.container = 'error';
+      assert.equal((await subject.default({ reason: 'event' })).action, 'none');
+
+      recorder.container = undefined; // not found, not running
+      assert.equal((await subject.default({ reason: 'event' })).action, 'none');
+      assert.deepEqual(recorder.commands, []);
+    });
+
+    it('leaves a container that carries our labels alone when the files have no wiring', async () => {
+      setUp(OLD);
+      recorder.container = targetLabels(false);
+
+      const outcome = await subject.default({ reason: 'event' });
+
+      assert.equal(outcome.action, 'none');
+      assert.deepEqual(recorder.commands, []);
+      assert.deepEqual(recorder.writes, []);
+    });
   });
 
   it('puts the traefik.yml back when the compose file cannot be written', async () => {
