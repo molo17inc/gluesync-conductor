@@ -364,6 +364,14 @@ For detailed integration flows and code examples showing how to use the Gluesync
 - Best practices for API integration
 - Complete integration examples with error handling
 
+## Container engines
+
+Docker is the default engine. Podman (rootful and rootless, Linux) is supported
+through its Docker-compatible socket: see [Conductor on Podman](./packages/gluesync-conductor/docs/podman.md)
+for the socket matrix, the kit `.env` keys, SELinux options and what is not
+supported (Swarm). Docker Swarm stacks are described in
+[Conductor on Docker Swarm](./packages/gluesync-conductor/docs/swarm-mode.md).
+
 ## Development
 
 ```bash
