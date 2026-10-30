@@ -225,6 +225,158 @@ describe('gluesync plugin', () => {
     assert.equal(state.initializeCalls, 2);
   });
 
+  describe('CoreHub that is slow to answer at startup', () => {
+    // initialize() whose outcome the test decides: it can stay pending for
+    // longer than Fastify's plugin timeout (UDP discovery does)
+    const deferred = () => {
+      const control: { ok: () => void; fail: () => void } = {
+        ok: () => undefined,
+        fail: () => undefined,
+      };
+      const promise = new Promise<boolean>((resolve, reject) => {
+        control.ok = () => resolve(true);
+        control.fail = () => reject(new Error('discovery gave up'));
+      });
+      return { promise, control };
+    };
+
+    it('registers within the startup wait when initialize() never resolves', async () => {
+      mock.timers.enable({ apis: ['setTimeout'] });
+      const { app, subject, state, messages } = load({
+        initialize: [new Promise<boolean>(() => {})], // never settles
+      });
+      const registered = app.register(fp(subject.default)).ready();
+      await flush();
+      assert.equal(state.initializeCalls, 1);
+      mock.timers.tick(4999);
+      await flush();
+      assert.ok(!messages().some(m => /not connected after/.test(m)));
+      mock.timers.tick(1);
+      await registered;
+      assert.ok(messages().some(m => /not connected after 5000 ms/.test(m)));
+      assert.ok(
+        !messages().includes('Gluesync SDK client initialized successfully'),
+      );
+
+      // The attempt is still in flight: no second one is started behind it.
+      mock.timers.tick(120000);
+      await flush();
+      assert.equal(state.initializeCalls, 1);
+      await app.close();
+    });
+
+    it('connects once when initialize() resolves after the plugin timeout', async () => {
+      mock.timers.enable({ apis: ['setTimeout'] });
+      const late = deferred();
+      const { app, subject, state, warns, messages } = load({
+        initialize: [late.promise],
+      });
+      const registered = app.register(fp(subject.default)).ready();
+      await flush();
+      mock.timers.tick(5000);
+      await registered;
+
+      mock.timers.tick(10000);
+      late.control.ok();
+      await flush();
+      assert.equal(
+        messages().filter(
+          m => m === 'Gluesync SDK client initialized successfully',
+        ).length,
+        1,
+      );
+      assert.ok(messages().includes('CoreHub URL: https://hub:1717'));
+      assert.equal(warns.length, 0);
+
+      mock.timers.tick(120000);
+      await flush();
+      assert.equal(state.initializeCalls, 1);
+      await app.close();
+    });
+
+    it('keeps retrying in the background when initialize() rejects after the startup wait', async () => {
+      mock.timers.enable({ apis: ['setTimeout'] });
+      const late = deferred();
+      const { app, subject, state, warns, messages } = load({
+        initialize: [late.promise, true],
+      });
+      const registered = app.register(fp(subject.default)).ready();
+      await flush();
+      mock.timers.tick(5000);
+      await registered;
+
+      late.control.fail();
+      await flush();
+      assert.equal(warns.length, 1);
+      assert.match(warns[0].msg, /CoreHub not reachable at startup/);
+      assert.equal(warns[0].data.error.message, 'discovery gave up');
+
+      mock.timers.tick(1000);
+      await flush();
+      assert.equal(state.initializeCalls, 2);
+      assert.ok(
+        messages().includes(
+          'Connected to CoreHub after 1 background attempt(s)',
+        ),
+      );
+      await app.close();
+    });
+
+    it('does not wait for the full startup wait when initialize() rejects at once', async () => {
+      mock.timers.enable({ apis: ['setTimeout'] });
+      const { app, subject, state, warns } = load({ initialize: [false] });
+      // No tick: registration must not depend on the startup wait timer.
+      await app.register(fp(subject.default)).ready();
+      assert.equal(state.initializeCalls, 1);
+      assert.equal(warns.length, 1);
+      await app.close();
+    });
+
+    it('does not retry or log anything when closed while the startup attempt is in flight', async () => {
+      mock.timers.enable({ apis: ['setTimeout'] });
+      const late = deferred();
+      const { app, subject, state, warns, messages } = load({
+        initialize: [late.promise, true],
+      });
+      const registered = app.register(fp(subject.default)).ready();
+      await flush();
+      mock.timers.tick(5000);
+      await registered;
+      await app.close();
+
+      late.control.fail();
+      await flush();
+      mock.timers.tick(120000);
+      await flush();
+      assert.equal(state.initializeCalls, 1);
+      assert.equal(warns.length, 0);
+      assert.ok(
+        !messages().includes('Gluesync SDK client initialized successfully'),
+      );
+    });
+
+    it('does not start a background retry while the startup attempt is still running', async () => {
+      mock.timers.enable({ apis: ['setTimeout'] });
+      const late = deferred();
+      const { app, subject, state } = load({
+        initialize: [late.promise, true],
+      });
+      const registered = app.register(fp(subject.default)).ready();
+      await flush();
+      mock.timers.tick(5000);
+      await registered;
+      mock.timers.tick(60000);
+      await flush();
+      assert.equal(state.initializeCalls, 1);
+      late.control.ok();
+      await flush();
+      mock.timers.tick(60000);
+      await flush();
+      assert.equal(state.initializeCalls, 1);
+      await app.close();
+    });
+  });
+
   it('still closes when the SDK client fails to shut down', async () => {
     const { app, subject, state, lines } = load({
       initialize: [true],
