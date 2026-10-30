@@ -174,4 +174,20 @@ describe('getCurrentVersion in compose mode', () => {
       },
     ]);
   });
+
+  it('reads the tag of an image Podman reports fully qualified', async () => {
+    const docker = {
+      listContainers: async () => [{ Id: 'c1', State: 'running' }],
+      getContainer: () => ({
+        inspect: async () => ({
+          Config: { Image: 'docker.io/molo17/grafana:13.0.2' },
+        }),
+      }),
+    } as unknown as Docker;
+
+    assert.equal(
+      await getCurrentVersion(docker, COMPOSE_JSON, 'grafana', true),
+      '13.0.2',
+    );
+  });
 });

@@ -3,10 +3,13 @@ import os from 'node:os';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import type Docker from 'dockerode';
 
+import { resetContainerEngineCache } from '../../containerRuntime/containerEngine';
 import getOrchestrator, {
   getDecidedOrchestrator,
   isSwarm,
+  isSwarmRefusedOnPodman,
   resetOrchestratorCache,
+  swarmUnsupportedOnPodmanError,
 } from './getOrchestrator';
 
 const ENV_KEYS = [
@@ -22,6 +25,7 @@ beforeEach(() => {
     delete process.env[key];
   });
   resetOrchestratorCache();
+  resetContainerEngineCache();
 });
 
 afterEach(() => {
@@ -45,6 +49,8 @@ type Setup = Readonly<{
   inspectError?: unknown;
   controlAvailable?: boolean;
   infoError?: Error;
+  // The engine is Podman (no Swarm)
+  podman?: boolean;
 }>;
 
 const fakeDocker = ({
@@ -52,6 +58,7 @@ const fakeDocker = ({
   inspectError,
   controlAvailable = true,
   infoError,
+  podman = false,
 }: Setup = {}) => {
   const inspected: string[] = [];
   const counts = { info: 0 };
@@ -72,6 +79,9 @@ const fakeDocker = ({
       }
       return { Swarm: { ControlAvailable: controlAvailable } };
     },
+    version: async () => ({
+      Components: [{ Name: podman ? 'Podman Engine' : 'Engine' }],
+    }),
   } as unknown as Docker;
 
   return { docker, inspected, counts };
@@ -312,5 +322,52 @@ describe('getDecidedOrchestrator', () => {
     });
 
     assert.deepEqual(await getDecidedOrchestrator(docker), { mode: 'compose' });
+  });
+});
+
+describe('swarm on Podman', () => {
+  it('is refused: Podman has no Swarm, a forced swarm mode fails clearly', async () => {
+    process.env.CONDUCTOR_ORCHESTRATOR = 'swarm';
+    process.env.SWARM_STACK_NAMESPACE = 'gs';
+    const { docker, counts } = fakeDocker({ podman: true });
+
+    assert.equal(await isSwarmRefusedOnPodman(docker), true);
+    assert.equal(await getDecidedOrchestrator(docker), undefined);
+    assert.equal(counts.info, 1, 'only the engine detection asked /info');
+  });
+
+  it('answers compose for a reader that must not fail, and is not an isSwarm', async () => {
+    process.env.CONDUCTOR_ORCHESTRATOR = 'swarm';
+    process.env.SWARM_STACK_NAMESPACE = 'gs';
+    const { docker } = fakeDocker({ podman: true });
+
+    assert.deepEqual(await getOrchestrator(docker), { mode: 'compose' });
+    assert.equal(await isSwarm(docker), false);
+  });
+
+  it('is not refused on Docker', async () => {
+    process.env.CONDUCTOR_ORCHESTRATOR = 'swarm';
+    process.env.SWARM_STACK_NAMESPACE = 'gs';
+    const { docker } = fakeDocker();
+
+    assert.equal(await isSwarmRefusedOnPodman(docker), false);
+    assert.equal((await getDecidedOrchestrator(docker))?.mode, 'swarm');
+  });
+
+  it('is not asked about unless swarm was asked for', async () => {
+    const { docker } = fakeDocker({ podman: true });
+
+    assert.equal(await isSwarmRefusedOnPodman(docker), false);
+    assert.deepEqual(await getOrchestrator(docker), { mode: 'compose' });
+
+    process.env.CONDUCTOR_ORCHESTRATOR = 'compose';
+    assert.equal(await isSwarmRefusedOnPodman(docker), false);
+  });
+
+  it('names the problem in its error', async () => {
+    const error = swarmUnsupportedOnPodmanError() as Error & { code: string };
+
+    assert.equal(error.code, 'SWARM_UNSUPPORTED_ON_PODMAN');
+    assert.match(error.message, /not supported on Podman/);
   });
 });

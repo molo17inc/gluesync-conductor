@@ -6,6 +6,7 @@ import { ContainerInfoMapper } from './containerInfoMapper.model';
 
 import getCustomLabels from '../../composeFile/getCustomLabels/getCustomLabels';
 import parseImage from '../../parseImage/parseImage';
+import { canonicalImageName } from '../../containerRuntime/canonicalImage';
 
 const containerInfoMapper: ContainerInfoMapper = container => {
   if (!container) {
@@ -15,12 +16,12 @@ const containerInfoMapper: ContainerInfoMapper = container => {
   const {
     Id: id,
     Names: names,
-    Image: image,
+    Image: engineImage,
     ImageID: imageID,
     Command: command,
     Created: created,
     Ports: ports,
-    Labels: labels,
+    Labels: engineLabels,
     State: state,
     Status: status,
     HostConfig: hostConfig,
@@ -28,12 +29,16 @@ const containerInfoMapper: ContainerInfoMapper = container => {
     Mounts: mounts,
   } = container;
 
+  const labels = engineLabels ?? {};
   const { service_id: uniqueId, type } = getCustomLabels(labels);
+  // Podman reports docker.io/molo17/x:1 for molo17/x:1: the registry of a plain
+  // molo17 image is none, as the compose file has it
+  const image = canonicalImageName(engineImage ?? '');
   const parsedImage = parseImage(image);
 
   return {
     id,
-    name: names.length > 0 ? names[0].replace(/^\//, '') : '',
+    name: names && names.length > 0 ? names[0].replace(/^\//, '') : '',
     image,
     imageID,
     command,
@@ -57,10 +62,11 @@ const containerInfoMapper: ContainerInfoMapper = container => {
       : 'unknown',
     status,
     hostConfig: {
-      networkMode: hostConfig.NetworkMode,
+      // Podman's container list has no HostConfig NetworkMode
+      networkMode: hostConfig?.NetworkMode ?? undefined,
     },
     networkSettings: {
-      networks: Object.entries(networkSettings.Networks).reduce(
+      networks: Object.entries(networkSettings?.Networks ?? {}).reduce(
         (acc, [key, value]) => ({
           ...acc,
           [key]: {

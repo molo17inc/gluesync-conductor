@@ -14,6 +14,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import loadWithStubs from '../../testing/loadWithStubs';
+import { resetHostSocketPathCache } from '../containerRuntime/hostSocketPath';
 
 const here = (p: string): string => path.resolve(__dirname, p);
 
@@ -26,7 +27,11 @@ type Options = Readonly<{
 
 type Compose = { services?: Record<string, { image?: string }> };
 
-const load = (compose: Compose | Error) => {
+type Mount = Readonly<{ Destination: string; Source: string }>;
+
+// `mounts` are the bind mounts this (fake) Conductor container has
+const load = (compose: Compose | Error, mounts: ReadonlyArray<Mount> = []) => {
+  resetHostSocketPathCache();
   const spawned: Array<{ cmd: string; args: ReadonlyArray<string> }> = [];
   const logged: unknown[][] = [];
   const reads: unknown[] = [];
@@ -51,6 +56,11 @@ const load = (compose: Compose | Error) => {
     [here('../../utils/logger')]: {
       getLogger: () => ({
         info: (...args: unknown[]) => logged.push(args),
+      }),
+    },
+    [here('../../utils/docker/getDocker')]: {
+      getDocker: () => ({
+        getContainer: () => ({ inspect: async () => ({ Mounts: mounts }) }),
       }),
     },
   }).default;
@@ -89,9 +99,11 @@ describe('autoRebootLinux', () => {
     assert.equal(spawned.length, 1);
     const { cmd, args } = spawned[0];
     assert.equal(cmd, 'docker');
-    assert.deepEqual(args.slice(0, 7), [
+    assert.deepEqual(args.slice(0, 9), [
       'run',
       '--rm',
+      '--security-opt',
+      'label=disable',
       '-v',
       '/var/run/docker.sock:/var/run/docker.sock',
       '-v',
@@ -103,11 +115,41 @@ describe('autoRebootLinux', () => {
       NEW_IMAGE: '',
       ROLLBACK_IMAGE: '',
     });
-    assert.deepEqual(args.slice(-4, -2), ['docker:28', 'sh']);
+    assert.deepEqual(args.slice(-4, -2), ['docker.io/library/docker:28', 'sh']);
     assert.match(
       args[args.length - 1],
       /docker compose up -d --force-recreate/,
     );
+  });
+
+  it('mounts the host path of the socket this container runs on (Podman)', async () => {
+    const podman = load(compose, [
+      { Destination: '/srv/gs', Source: '/srv/gs' },
+      {
+        Destination: '/var/run/docker.sock',
+        Source: '/run/user/1000/podman/podman.sock',
+      },
+    ]);
+    await podman.autoRebootLinux({ hostProjectDir: '/srv/gs' });
+    const { args } = podman.spawned[0];
+
+    // the target inside the helper stays where docker looks for it
+    assert.equal(
+      args[args.indexOf('-v') + 1],
+      '/run/user/1000/podman/podman.sock:/var/run/docker.sock',
+    );
+    // the kit .env has no GS_CONTAINER_SOCKET in a unit test run: the helper is told
+    assert.equal(
+      envOf(args).GS_CONTAINER_SOCKET,
+      '/run/user/1000/podman/podman.sock',
+    );
+  });
+
+  it('does not tell the helper a socket on Docker', async () => {
+    const { autoRebootLinux, spawned } = load(compose);
+    await autoRebootLinux({ hostProjectDir: '/srv/gs' });
+
+    assert.equal('GS_CONTAINER_SOCKET' in envOf(spawned[0].args), false);
   });
 
   it('passes the new and the previous image when a rollback is possible', async () => {

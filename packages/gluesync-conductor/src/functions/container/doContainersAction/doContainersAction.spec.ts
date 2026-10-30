@@ -526,7 +526,12 @@ describe('doContainersAction restart', () => {
 
     await pending();
     assert.deepEqual(loaded.calls.restartLinux, [
-      [{ hostProjectDir: '/host/project', helperImage: 'docker:28' }],
+      [
+        {
+          hostProjectDir: '/host/project',
+          helperImage: 'docker.io/library/docker:28',
+        },
+      ],
     ]);
     assert.equal(loaded.calls.restartWindows.length, 0);
   });
@@ -578,7 +583,7 @@ describe('doContainersAction restart', () => {
     const [params] = loaded.calls.reboot[0] as [Record<string, unknown>];
     assert.equal(params.hostProjectDir, '/host/project');
     assert.equal(params.serviceName, 'gluesync-conductor');
-    assert.equal(params.helperImage, 'docker:cli');
+    assert.equal(params.helperImage, 'docker.io/library/docker:cli');
     (params.log as (m: string) => void)('rebooting');
     assert.ok(loaded.calls.logs.includes('info: 2'));
   });

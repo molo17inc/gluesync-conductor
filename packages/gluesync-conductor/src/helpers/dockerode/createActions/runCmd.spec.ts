@@ -10,8 +10,13 @@ const here = (p: string): string => path.resolve(__dirname, p);
 
 type Subject = { runCmd: RunCmd; toComposeError: (f: unknown) => Error };
 
+type ComposeEnv = Readonly<{
+  envFile?: string;
+  childEnv?: NodeJS.ProcessEnv;
+}>;
+
 // The real retry helper runs; only compose, Docker and the logger are replaced.
-const load = () => {
+const load = ({ envFile, childEnv }: ComposeEnv = {}) => {
   const dockerWaits: number[] = [];
   const subject = loadWithStubs<Subject>(here('./createActions'), {
     'docker-compose': {},
@@ -48,6 +53,10 @@ const load = () => {
       dockerWaitMs: () => 60000,
     },
     [here('../../../utils/docker/getDocker')]: { getDocker: () => ({}) },
+    [here('../../containerRuntime/composeEnv')]: {
+      composeEnvFileOptions: () => (envFile ? ['--env-file', envFile] : []),
+      composeChildEnv: async () => childEnv,
+    },
   });
   return { ...subject, dockerWaits };
 };
@@ -131,6 +140,56 @@ describe('runCmd', () => {
       exitCode: 2,
     });
     await assert.rejects(runCmd(cmd, 'grafana', 'c.yml'), /boom/);
+  });
+});
+
+describe('runCmd compose interpolation', () => {
+  const optionsSeen = async (compose: ComposeEnv) => {
+    const { runCmd } = load(compose);
+    const seen: Array<Record<string, unknown>> = [];
+    const cmd: RunCmdFn = async options => {
+      seen.push(options as Record<string, unknown>);
+      return { out: 'ok', err: '', exitCode: 0 };
+    };
+    await runCmd(cmd, 'gluesync-conductor', 'c.yml', ['--no-deps']);
+    return seen[0];
+  };
+
+  it('gives compose the kit .env by path, after the host project directory', async () => {
+    const options = await optionsSeen({
+      envFile: '/opt/gluesync-conductor/root-folder/.env',
+    });
+
+    assert.deepEqual(options.composeOptions, [
+      '--project-directory',
+      '/srv/gs',
+      '--env-file',
+      '/opt/gluesync-conductor/root-folder/.env',
+    ]);
+  });
+
+  it('adds the socket this Conductor runs on to the compose environment', async () => {
+    const env = {
+      PATH: '/bin',
+      GS_CONTAINER_SOCKET: '/run/podman/podman.sock',
+    };
+    const options = await optionsSeen({ childEnv: env });
+
+    assert.deepEqual(options.env, env);
+  });
+
+  it('changes nothing for a Docker kit without a .env', async () => {
+    const options = await optionsSeen({});
+
+    assert.deepEqual(options.composeOptions, [
+      '--project-directory',
+      '/srv/gs',
+    ]);
+    assert.equal('env' in options, false);
+    assert.deepEqual(options.commandOptions, [
+      '--no-deps',
+      'gluesync-conductor',
+    ]);
   });
 });
 

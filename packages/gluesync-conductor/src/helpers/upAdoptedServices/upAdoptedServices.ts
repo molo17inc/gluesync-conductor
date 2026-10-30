@@ -9,7 +9,6 @@ const upAdoptedServices: StartUpdatedServicesArgs = async (
 ) => {
   const logger = getLogger();
   const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
-  const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
   if (updatedIds.length === 0) {
     logger.info('No updated services to start');
@@ -29,12 +28,8 @@ const upAdoptedServices: StartUpdatedServicesArgs = async (
   // Run all starts in parallel, but skip conductor cause it's delica and handled by autoHeal
   const promises = updatedIds
     .filter(id => id !== conductorServiceName)
-    .map(id => {
-      const ensureVolumesPromise = isWindows
-        ? ensureVolumeDirs(id)
-        : Promise.resolve();
-
-      return ensureVolumesPromise
+    .map(id =>
+      ensureVolumeDirs(id)
         .then(() => {
           logger.info(`Starting adopted service: ${id}`);
           return actions.start(id);
@@ -47,8 +42,8 @@ const upAdoptedServices: StartUpdatedServicesArgs = async (
             { error, service: id },
             'Failed to start adopted service',
           );
-        });
-    });
+        }),
+    );
 
   await Promise.all(promises);
 };

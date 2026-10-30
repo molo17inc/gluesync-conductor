@@ -1,5 +1,12 @@
 import { getLogger } from '../../utils/logger';
 import { spawnAsync } from '../autoReboot/autoReboot';
+import { getDocker } from '../../utils/docker/getDocker';
+import { helperSocketEnvArgs } from '../containerRuntime/composeEnv';
+import { HELPER_IMAGE_28 } from '../containerRuntime/helperImages';
+import {
+  ENGINE_SOCKET_IN_CONTAINER,
+  resolveHostSocketPath,
+} from '../containerRuntime/hostSocketPath';
 
 type RestartLinux = (
   options: Readonly<{
@@ -19,7 +26,7 @@ type RestartLinux = (
  */
 const restartLinux: RestartLinux = async ({
   hostProjectDir,
-  helperImage = 'docker:28',
+  helperImage = HELPER_IMAGE_28,
 }) => {
   if (!hostProjectDir) {
     throw new Error('hostProjectDir is required');
@@ -56,15 +63,22 @@ const restartLinux: RestartLinux = async ({
     `${composeCmd} up -d`,
   ].join(' && ');
 
+  // The `-v` source is resolved by the HOST engine (see autorebootLinux)
+  const docker = getDocker();
+  const hostSocket = await resolveHostSocketPath(docker);
+
   const args: ReadonlyArray<string> = [
     'run',
     '--rm',
+    '--security-opt',
+    'label=disable',
     '-v',
-    '/var/run/docker.sock:/var/run/docker.sock',
+    `${hostSocket}:${ENGINE_SOCKET_IN_CONTAINER}`,
     '-v',
     `${hostProjectDir}:${hostProjectDir}`,
     '-w',
     hostProjectDir,
+    ...(await helperSocketEnvArgs(docker)),
     helperImage,
     'sh',
     '-c',

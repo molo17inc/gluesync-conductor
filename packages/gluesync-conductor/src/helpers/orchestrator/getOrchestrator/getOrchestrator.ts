@@ -2,6 +2,7 @@ import os from 'node:os';
 import type Docker from 'dockerode';
 
 import { getLogger } from '../../../utils/logger';
+import { getContainerEngine } from '../../containerRuntime/containerEngine';
 import {
   GetDecidedOrchestrator,
   GetOrchestrator,
@@ -22,6 +23,28 @@ export const resetOrchestratorCache = (): void => {
 };
 
 type SelfLabels = Readonly<Record<string, string>>;
+
+export const SWARM_UNSUPPORTED_ON_PODMAN = 'SWARM_UNSUPPORTED_ON_PODMAN';
+
+export const swarmUnsupportedOnPodmanError = (): Error =>
+  Object.assign(
+    new Error(
+      'CONDUCTOR_ORCHESTRATOR=swarm is not supported on Podman: Podman has no Swarm mode. Run the kit with Compose (CONDUCTOR_ORCHESTRATOR=compose or unset)',
+    ),
+    { code: SWARM_UNSUPPORTED_ON_PODMAN },
+  );
+
+const isSwarmForced = (): boolean =>
+  process.env.CONDUCTOR_ORCHESTRATOR?.trim().toLowerCase() === 'swarm';
+
+/**
+ * Swarm was asked for (CONDUCTOR_ORCHESTRATOR=swarm) on an engine that has no
+ * Swarm: Podman. Answers false when the engine cannot be asked.
+ */
+export const isSwarmRefusedOnPodman = async (
+  docker: Readonly<Docker>,
+): Promise<boolean> =>
+  isSwarmForced() && (await getContainerEngine(docker))?.engine === 'podman';
 
 const isNotFound = (error: unknown): boolean =>
   (error as { statusCode?: number })?.statusCode === 404;
@@ -75,6 +98,10 @@ const detect = async (docker: Readonly<Docker>): Promise<Orchestrator> => {
 
   if (forced === 'compose') {
     return COMPOSE;
+  }
+
+  if (forced === 'swarm' && (await isSwarmRefusedOnPodman(docker))) {
+    throw swarmUnsupportedOnPodmanError();
   }
 
   const labels = await inspectSelfLabels(docker);

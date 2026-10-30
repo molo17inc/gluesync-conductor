@@ -80,8 +80,79 @@ describe('createComposeService', () => {
         ),
       );
       assert.ok(
-        service.volumes?.includes('./logs/gs-agent-1:/opt/gluesync/logs'),
+        service.volumes?.includes('./logs/gs-agent-1:/opt/gluesync/logs:z'),
       );
+      assert.ok(
+        service.volumes?.includes('./data/gs-agent-1:/opt/gluesync/data:z'),
+      );
+    });
+
+    it('does not put the SELinux flag on the Windows agent mounts', () => {
+      process.env.IS_WINDOWS = 'true';
+      const { volumes } = createComposeService('agent', base);
+
+      assert.equal(
+        volumes?.some(volume => String(volume).endsWith(':z')),
+        false,
+      );
+    });
+
+    it('does not put the SELinux flag on the agent mounts of a swarm stack', () => {
+      delete process.env.IS_WINDOWS;
+      const { volumes } = createComposeService('agent', { ...base, swarm: {} });
+
+      assert.ok(volumes?.includes('./logs/gs-agent-1:/opt/gluesync/logs'));
+    });
+
+    it('does not label the mounts of a service that is not an agent', () => {
+      delete process.env.IS_WINDOWS;
+      const { volumes } = createComposeService('module', base);
+
+      assert.equal(
+        volumes?.some(volume => String(volume).includes('/logs')),
+        false,
+      );
+    });
+  });
+
+  describe('volume options', () => {
+    const volumesOf = (
+      volumes: Parameters<typeof createComposeService>[1]['volumes'],
+    ) => {
+      delete process.env.IS_WINDOWS;
+      return createComposeService('agent', { ...base, volumes }).volumes;
+    };
+
+    it('keeps the SELinux flags z and Z', () => {
+      const volumes = volumesOf(['./a:/a:z', './b:/b:Z']);
+
+      assert.ok(volumes?.includes('./a:/a:z'));
+      assert.ok(volumes?.includes('./b:/b:Z'));
+    });
+
+    it('keeps the access mode next to the flag, access first', () => {
+      const volumes = volumesOf(['./a:/a:ro,z', './b:/b:Z,rw', './c:/c:rw']);
+
+      assert.ok(volumes?.includes('./a:/a:ro,z'));
+      assert.ok(volumes?.includes('./b:/b:rw,Z'));
+      assert.ok(volumes?.includes('./c:/c:rw'));
+    });
+
+    it('keeps the flags of the object form', () => {
+      const volumes = volumesOf([
+        { host: './a', container: '/a', mode: 'ro,z' },
+        { host: './b', container: '/b', mode: 'z' },
+      ]);
+
+      assert.ok(volumes?.includes('./a:/a:ro,z'));
+      assert.ok(volumes?.includes('./b:/b:z'));
+    });
+
+    it('still drops any other option', () => {
+      const volumes = volumesOf(['./a:/a:cached', './b:/b:ro,nocopy']);
+
+      assert.ok(volumes?.includes('./a:/a'));
+      assert.ok(volumes?.includes('./b:/b:ro'));
     });
   });
 

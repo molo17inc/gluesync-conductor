@@ -788,5 +788,36 @@
       "service": "gluesync-conductor"
     },
     "at": "2026-01-01T00:00:00.000Z"
+  },
+  "SWARM_UNSUPPORTED_ON_PODMAN": {
+    "schemaVersion": 1,
+    "code": "SWARM_UNSUPPORTED_ON_PODMAN",
+    "owner": "local",
+    "confidence": "high",
+    "params": {},
+    "resolutionCodes": [],
+    "fallback": {
+      "title": "Docker Swarm is not available on Podman",
+      "summary": "CONDUCTOR_ORCHESTRATOR is set to swarm, but this engine is Podman, which has no Swarm mode. Run Gluesync with Compose instead.",
+      "steps": []
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
   }
 }

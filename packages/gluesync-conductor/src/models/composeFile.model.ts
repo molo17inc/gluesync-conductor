@@ -149,7 +149,8 @@ export type ComposeVolume = Readonly<{
   type?: string;
   host: string;
   container: string;
-  mode?: 'rw' | 'ro';
+  // `ro`, `rw`, and the SELinux relabel flags `z` / `Z` (`ro,z`)
+  mode?: string;
 }>;
 
 export type ComposePort = Readonly<{

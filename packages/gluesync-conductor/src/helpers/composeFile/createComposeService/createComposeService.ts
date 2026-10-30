@@ -44,6 +44,21 @@ const mapPorts = (ports: ReadonlyArray<string> | ReadonlyArray<ComposePort>) =>
     return acc;
   }, []);
 
+// The bind options a volume keeps: the access mode (`ro`, `rw`) and the SELinux
+// relabel flag (`z` shared, `Z` private), in that order, comma separated
+// (`ro,z`). Podman on SELinux hosts cannot read a bind without the flag. Any
+// other option is dropped.
+const normalizeVolumeMode = (mode: unknown): string | undefined => {
+  const tokens = String(mode ?? '')
+    .split(',')
+    .map(token => token.trim());
+  const access = tokens.find(token => token === 'ro' || token === 'rw');
+  const relabel = tokens.find(token => token === 'z' || token === 'Z');
+  const kept = [access, relabel].flatMap(token => (token ? [token] : []));
+
+  return kept.length > 0 ? kept.join(',') : undefined;
+};
+
 const mapVolumes = (
   volumes: ReadonlyArray<string> | ReadonlyArray<ComposeVolume>,
 ) =>
@@ -60,15 +75,12 @@ const mapVolumes = (
 
       const hostT = host.trim();
       const containerT = container.trim();
-      const modeT = mode?.trim();
 
       if (!hostT || !containerT) {
         return acc;
       }
 
-      // Normalize mode to only 'rw' or 'ro' if present; ignore others
-      const normalizedMode =
-        modeT === 'rw' || modeT === 'ro' ? modeT : undefined;
+      const normalizedMode = normalizeVolumeMode(mode);
 
       return [
         ...acc,
@@ -80,14 +92,12 @@ const mapVolumes = (
     if (typeof vol === 'object' && vol !== null) {
       const hostT = String(vol.host ?? '').trim();
       const containerT = String(vol.container ?? '').trim();
-      const modeT = vol.mode?.toString().trim();
 
       if (!hostT || !containerT) {
         return acc;
       }
 
-      const normalizedMode =
-        modeT === 'rw' || modeT === 'ro' ? modeT : undefined;
+      const normalizedMode = normalizeVolumeMode(vol.mode);
 
       return [
         ...acc,
@@ -128,6 +138,7 @@ const buildDefaultVolumes = (
   serviceId: string,
   isWindows: boolean,
   { sharedPath, dataPath, logsPath }: PlatformPaths,
+  selinuxLabel: string,
 ): ReadonlyArray<string> => {
   const configDir = stripTrailingSlashes(
     process.env.GLUESYNC_CONFIG_DIR || '.',
@@ -139,7 +150,10 @@ const buildDefaultVolumes = (
 
   const agentVolumes =
     serviceType === 'agent'
-      ? [`./logs/${serviceId}:${logsPath}`, `./data/${serviceId}:${dataPath}`]
+      ? [
+          `./logs/${serviceId}:${logsPath}${selinuxLabel}`,
+          `./data/${serviceId}:${dataPath}${selinuxLabel}`,
+        ]
       : [];
 
   return mountLegacyFileConfig
@@ -250,6 +264,9 @@ const createComposeService: CreateComposeService = (
     serviceId,
     isWindows,
     paths,
+    // The agent folders are private to the container: relabel them (SELinux
+    // hosts, Podman). Windows has no such option, Swarm does not take it.
+    isWindows || swarm ? '' : ':z',
   );
 
   return {

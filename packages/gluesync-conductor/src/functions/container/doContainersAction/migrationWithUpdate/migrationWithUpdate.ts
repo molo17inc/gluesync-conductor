@@ -9,6 +9,7 @@ import prepareComposeUpdate from '../prepareComposeUpdate/prepareComposeUpdate';
 import { LabelPrefix } from '../../../../models/composeFile.model';
 import { markMigrationCompleted } from '../../../../helpers/migrationNeeded/migrationNeeded';
 import createActions from '../../../../helpers/dockerode/createActions/createActions';
+import { HELPER_IMAGE_28 } from '../../../../helpers/containerRuntime/helperImages';
 
 const migrationWithUpdate: MigrationWithUpdate = async (
   requestIds,
@@ -82,7 +83,7 @@ const migrationWithUpdate: MigrationWithUpdate = async (
 
     restartFn({
       hostProjectDir,
-      helperImage: isWindows ? helperImageWindows : 'docker:28',
+      helperImage: isWindows ? helperImageWindows : HELPER_IMAGE_28,
     }).catch(error => {
       logger.error({ error }, '[migration] restart failed');
     });

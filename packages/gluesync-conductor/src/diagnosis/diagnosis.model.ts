@@ -32,6 +32,7 @@ export const DIAGNOSIS_CODES = [
   'COMPOSE_FILE_CORRUPT',
   'SWARM_NOT_MANAGER',
   'SWARM_UNSUPPORTED',
+  'SWARM_UNSUPPORTED_ON_PODMAN',
 ] as const;
 
 export type DiagnosisCode = (typeof DIAGNOSIS_CODES)[number];

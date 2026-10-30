@@ -4,6 +4,53 @@ import fs from 'fs';
 import { getLogger } from '../logger';
 
 /**
+ * Options for a `CONTAINER_HOST` (the variable Podman's own tools read):
+ * `unix:///run/podman/podman.sock`, `tcp://host:port`, or a bare socket path.
+ * Undefined for what dockerode cannot talk to (`ssh://`).
+ */
+export const dockerOptionsFromContainerHost = (
+  containerHost: string,
+): Docker.DockerOptions | undefined => {
+  const value = containerHost.trim();
+
+  if (value.startsWith('/')) {
+    return { socketPath: value };
+  }
+
+  if (value.startsWith('unix://')) {
+    return { socketPath: value.slice('unix://'.length) };
+  }
+
+  const match = /^(tcp|http|https):\/\/([^/:]+)(?::(\d+))?/.exec(value);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const [, scheme, host, port] = match;
+  const protocol = scheme === 'https' ? 'https' : 'http';
+  const defaultPort = protocol === 'https' ? 2376 : 2375;
+
+  return {
+    host,
+    port: port ? Number.parseInt(port, 10) : defaultPort,
+    protocol,
+  };
+};
+
+/**
+ * Where an engine socket can be on a Linux host: Docker's, Podman's rootful
+ * one, and Podman's rootless one under the user's runtime directory.
+ */
+export const linuxSocketCandidates = (
+  env: Readonly<NodeJS.ProcessEnv>,
+): ReadonlyArray<string> => [
+  '/var/run/docker.sock',
+  '/run/podman/podman.sock',
+  ...(env.XDG_RUNTIME_DIR ? [`${env.XDG_RUNTIME_DIR}/podman/podman.sock`] : []),
+];
+
+/**
  * Factory that creates a fresh Docker client
  * Fully cross‑platform: Windows, macOS, Linux
  */
@@ -16,6 +63,20 @@ const createDocker = (): Docker => {
       `Using Docker host from environment: ${process.env.DOCKER_HOST}`,
     );
     return new Docker();
+  }
+
+  // 1b. CONTAINER_HOST override (Podman)
+  if (process.env.CONTAINER_HOST) {
+    const options = dockerOptionsFromContainerHost(process.env.CONTAINER_HOST);
+
+    if (options) {
+      logger.info('Using container engine host from CONTAINER_HOST');
+      return new Docker(options);
+    }
+
+    logger.warn(
+      'CONTAINER_HOST is not a unix:// or tcp:// address: ignoring it',
+    );
   }
 
   // 2. Windows named pipe
@@ -46,10 +107,13 @@ const createDocker = (): Docker => {
     return new Docker();
   }
 
-  // 4. Linux default
-  const linuxSocket = '/var/run/docker.sock';
-  if (fs.existsSync(linuxSocket)) {
-    logger.info(`Using default Docker socket path: ${linuxSocket}`);
+  // 4. Linux: Docker's socket (always the one inside a container), else
+  // Podman's, rootful then rootless
+  const linuxSocket = linuxSocketCandidates(process.env).find(path =>
+    fs.existsSync(path),
+  );
+  if (linuxSocket) {
+    logger.info(`Using container engine socket at: ${linuxSocket}`);
     return new Docker({ socketPath: linuxSocket });
   }
 

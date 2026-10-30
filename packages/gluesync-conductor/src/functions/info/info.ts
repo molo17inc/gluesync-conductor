@@ -1,11 +1,17 @@
 import { RouteHandlerMethod } from 'fastify';
+import { getContainerEngine } from '../../helpers/containerRuntime/containerEngine';
 
 const handler: RouteHandlerMethod = async (req, reply) => {
   try {
     const info = await req.server.docker.info();
+    // Additive: which engine this is (Docker or Podman) and whether it is rootless
+    const containerEngine = await getContainerEngine(req.server.docker);
 
     reply.code(200);
-    reply.send({ success: true, data: info });
+    reply.send({
+      success: true,
+      data: containerEngine ? { ...info, containerEngine } : info,
+    });
   } catch (error) {
     // A Docker daemon that is restarting or overloaded is not a reason to kill
     // the conductor (and any update it is running): answer 503 and stay up.
