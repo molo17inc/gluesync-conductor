@@ -48,10 +48,8 @@ const mapPorts = (ports: ReadonlyArray<string> | ReadonlyArray<ComposePort>) =>
 // relabel flag (`z` shared, `Z` private), in that order, comma separated
 // (`ro,z`). Podman on SELinux hosts cannot read a bind without the flag. Any
 // other option is dropped.
-const normalizeVolumeMode = (mode: unknown): string | undefined => {
-  const tokens = String(mode ?? '')
-    .split(',')
-    .map(token => token.trim());
+const normalizeVolumeMode = (mode: string | undefined): string | undefined => {
+  const tokens = (mode ?? '').split(',').map(token => token.trim());
   const access = tokens.find(token => token === 'ro' || token === 'rw');
   const relabel = tokens.find(token => token === 'z' || token === 'Z');
   const kept = [access, relabel].flatMap(token => (token ? [token] : []));

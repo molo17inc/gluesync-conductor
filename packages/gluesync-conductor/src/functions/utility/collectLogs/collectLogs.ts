@@ -117,7 +117,13 @@ const engineLabel = (engine?: ContainerEngine): string =>
 
 const describeEngine = (engine?: ContainerEngine): string =>
   engine
-    ? `${engineLabel(engine)}${engine.version ? ` ${engine.version}` : ''}${engine.rootless ? ' (rootless)' : ''}`
+    ? [
+        engineLabel(engine),
+        engine.version,
+        engine.rootless ? '(rootless)' : undefined,
+      ]
+        .filter(Boolean)
+        .join(' ')
     : 'unknown';
 
 type DockerPsContainer = Readonly<Record<string, string>>;
