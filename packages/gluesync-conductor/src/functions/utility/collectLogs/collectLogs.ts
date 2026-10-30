@@ -26,7 +26,17 @@ import {
 import { AxiosError } from 'axios';
 import type Docker from 'dockerode';
 import { text } from 'node:stream/consumers';
-import { CollectLogsHandler } from './collectLogs.model';
+import { CollectLogsHandler, UploadedVia } from './collectLogs.model';
+import {
+  contentTypeForArchive,
+  createSupportPortalClient,
+  createSupportPortalError,
+  isSupportPortalError,
+  PortalCheck,
+  SupportPortalClient,
+  SupportPortalError,
+} from './supportPortalUpload';
+import { normalizeTicketKey, normalizeVoucher } from './supportVoucher';
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 import axiosWithRetry from '../../../utils/axiosWithRetry';
 import collectLogsByScript from '../../../helpers/collectLogsByScript/collectLogsByScript';
@@ -58,6 +68,10 @@ type CommandResult = Readonly<{
 type CollectLogsResult = Readonly<{
   output: string;
   archivePath?: string;
+  uploadedVia?: UploadedVia;
+  ticketKey?: string;
+  size?: number;
+  verified?: boolean;
 }>;
 
 // Set in swarm mode: the logs come from the services of the stack
@@ -75,11 +89,15 @@ const swarmLogsSourceOf = (
     : undefined;
 
 type CollectLogsOptions = Readonly<{
+  /** A normalized support voucher: the archive goes to the support portal, never to WebDAV or FTP. */
+  voucher?: string;
   ticketId?: string;
   email?: string;
   localOnly: boolean;
   logger?: Logger;
   swarm?: SwarmLogsSource;
+  /** Talks to the support portal; defaults to the one the environment names. */
+  portal?: SupportPortalClient;
 }>;
 
 type CollectLogsError = Error &
@@ -1804,6 +1822,8 @@ type CollectLogsContext = Readonly<{
   email: string;
   isWindows: boolean;
   localOnly: boolean;
+  // With a voucher there is no legacy script to fall back to
+  viaPortal?: boolean;
   logger?: Logger;
 }>;
 
@@ -1814,7 +1834,7 @@ const createArchiveWithFallback = async (
   allFilesToArchive: ReadonlyArray<string>,
   context: CollectLogsContext,
 ): Promise<ArchiveCreationResult> => {
-  const { ticket, email, isWindows, localOnly, logger } = context;
+  const { ticket, email, isWindows, localOnly, viaPortal, logger } = context;
 
   try {
     const archivePath = await createArchive(
@@ -1831,7 +1851,7 @@ const createArchiveWithFallback = async (
       'Internal archive creation failed, falling back to legacy script',
     );
 
-    if (localOnly) {
+    if (localOnly || viaPortal) {
       throw error;
     }
 
@@ -1922,11 +1942,18 @@ const uploadWithFallback = async (
 const validateCollectLogsInput = async (
   options: CollectLogsOptions,
   isWindows: boolean,
-): Promise<void> => {
-  const { ticketId, email, localOnly, logger } = options;
+): Promise<PortalCheck | undefined> => {
+  const { ticketId, email, voucher, localOnly, logger } = options;
 
   if (localOnly) {
-    return;
+    return undefined;
+  }
+
+  if (voucher) {
+    // The portal vouches for the voucher before anything is collected: this
+    // replaces the WebDAV pre-check, behind a proxy too.
+    const portal = options.portal ?? createSupportPortalClient({ logger });
+    return portal.check(voucher);
   }
 
   if (!ticketId || !email) {
@@ -1938,12 +1965,91 @@ const validateCollectLogsInput = async (
   if (!process.env.PROXY_HTTPS && !process.env.PROXY_HTTP) {
     await validateCredentialConnectivity(ticketId, email, isWindows, logger);
   }
+
+  return undefined;
+};
+
+const MIB = 1024 * 1024;
+
+const formatSize = (bytes: number): string => {
+  if (bytes >= 1024 * MIB) {
+    return `${(bytes / (1024 * MIB)).toFixed(1)} GB`;
+  }
+  if (bytes >= MIB) {
+    return `${(bytes / MIB).toFixed(1)} MB`;
+  }
+  return bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`;
+};
+
+// The portal refused or lost the upload: the archive is still on disk, so say where
+const keepArchiveNote = (
+  error: Readonly<SupportPortalError>,
+  archivePath: string,
+): SupportPortalError =>
+  createSupportPortalError(error.message, {
+    code: error.code,
+    httpStatus: error.httpStatus,
+    maxBytes: error.maxBytes,
+    details: `The archive was kept at ${archivePath}.`,
+    cause: error,
+  });
+
+type PortalUploadOutcome = Readonly<{
+  lines: ReadonlyArray<string>;
+  ticketKey: string;
+  size: number;
+  verified: boolean;
+  archivePath?: string;
+}>;
+
+// Voucher path: portal only, and the archive is deleted only once the portal
+// holds every byte of it.
+const uploadToPortal = async (
+  archivePath: string,
+  voucher: string,
+  portalCheck: PortalCheck | undefined,
+  portal: SupportPortalClient,
+): Promise<PortalUploadOutcome> => {
+  const result = await portal
+    .upload(
+      voucher,
+      archivePath,
+      contentTypeForArchive(archivePath),
+      portalCheck,
+    )
+    .catch((error: unknown) => {
+      throw isSupportPortalError(error)
+        ? keepArchiveNote(error, archivePath)
+        : error;
+    });
+
+  if (!result.verified) {
+    return {
+      ...result,
+      archivePath,
+      lines: [
+        `Archive uploaded to the support portal (ticket ${result.ticketKey}, ${formatSize(result.size)}), but its size could not be verified.`,
+        `Local archive kept at: ${archivePath}`,
+      ],
+    };
+  }
+
+  await rm(archivePath, { force: true });
+
+  return {
+    ...result,
+    lines: [
+      `Archive uploaded to the support portal (ticket ${result.ticketKey}, ${formatSize(result.size)}, verified).`,
+      'Local archive removed after successful upload.',
+    ],
+  };
 };
 
 const collectLogsInternally = async (
   options: CollectLogsOptions,
 ): Promise<CollectLogsResult> => {
-  const { ticketId, email, localOnly, logger, swarm } = options;
+  const { ticketId, email, voucher, localOnly, logger, swarm } = options;
+  const viaPortal = Boolean(voucher) && !localOnly;
   const ticket = ticketId ?? '';
   const emailAddr = email ?? '';
   const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true';
@@ -1954,7 +2060,7 @@ const collectLogsInternally = async (
   const dockerSinceHours = parseDockerLogSinceHours(logLookbackDays);
   const dockerTailLines = parseDockerTailLines();
 
-  await validateCollectLogsInput(options, isWindows);
+  const portalCheck = await validateCollectLogsInput(options, isWindows);
 
   const searchDir = await resolveSearchDir(isWindows);
 
@@ -2121,6 +2227,7 @@ const collectLogsInternally = async (
       email: emailAddr,
       isWindows,
       localOnly,
+      viaPortal,
       logger,
     };
 
@@ -2140,6 +2247,12 @@ const collectLogsInternally = async (
 
     // Ensure archivePath exists before proceeding to upload if not do legacy
     if (!archivePath) {
+      if (viaPortal) {
+        throw createCollectLogsError(
+          'Archive creation did not produce an archive path.',
+        );
+      }
+
       // Try legacy collector if internal archive didn't produce a path
       const legacyResult = await collectLogsByScript({
         ticketId: ticket,
@@ -2188,6 +2301,30 @@ const collectLogsInternally = async (
       };
     }
 
+    if (viaPortal && voucher) {
+      const uploaded = await uploadToPortal(
+        archivePath,
+        voucher,
+        portalCheck,
+        options.portal ?? createSupportPortalClient({ logger }),
+      );
+
+      return {
+        output: formatOutput(
+          [
+            `Support voucher accepted (ticket ${portalCheck?.ticketKey ?? uploaded.ticketKey}).`,
+            ...collectionSummaryLines,
+            ...uploaded.lines,
+          ].join('\n'),
+        ),
+        uploadedVia: 'portal',
+        ticketKey: uploaded.ticketKey,
+        size: uploaded.size,
+        verified: uploaded.verified,
+        ...(uploaded.archivePath ? { archivePath: uploaded.archivePath } : {}),
+      };
+    }
+
     const uploadResult = await uploadWithFallback(archivePath, collectContext);
 
     if (uploadResult.legacyFallback) {
@@ -2206,6 +2343,7 @@ const collectLogsInternally = async (
           'Local archive removed after successful upload.',
         ].join('\n'),
       ),
+      uploadedVia: uploadResult.uploadedVia,
     };
   } finally {
     // cleanup (still uses await inside finally)
@@ -2214,44 +2352,96 @@ const collectLogsInternally = async (
   }
 };
 
-const validateCollectLogsRequest = (
+type CollectLogsBodyFields = Readonly<{
+  voucher?: string;
+  ticketId?: string;
+  email?: string;
+  localOnly?: boolean;
+}>;
+
+type RequestFailure = Readonly<{
+  failed: true;
+  error: string;
+  code?: 'validation' | 'voucher_format';
+}>;
+
+type ResolvedRequest = Readonly<{
+  failed?: false;
+  voucher?: string;
+  ticketId?: string;
+  email?: string;
+}>;
+
+// What the request asks for, or why it cannot be served. The voucher is
+// normalized here (a bad shape is refused without any call to the portal) and
+// the legacy ticket key is read as the portal reads it.
+const resolveCollectLogsRequest = (
+  body: CollectLogsBodyFields,
   localOnly: boolean,
-  ticketId: string | undefined,
-  email: string | undefined,
-): string | undefined => {
+): RequestFailure | ResolvedRequest => {
+  const { voucher, ticketId, email } = body;
+
   if (localOnly) {
-    return undefined;
+    return {};
+  }
+
+  if (voucher?.trim()) {
+    if (ticketId || email) {
+      return {
+        failed: true,
+        code: 'validation',
+        error:
+          'voucher cannot be combined with ticketId or email: send the voucher alone, or the ticket number and e-mail.',
+      };
+    }
+
+    const normalized = normalizeVoucher(voucher);
+
+    return normalized
+      ? { voucher: normalized }
+      : {
+          failed: true,
+          code: 'voucher_format',
+          error: 'The voucher is not valid: it looks like GSV-XXXX-XXXX-XXXX.',
+        };
   }
 
   if (!ticketId || !email) {
-    return 'ticketId and email are required unless localOnly is true';
+    return {
+      failed: true,
+      error: 'ticketId and email are required unless localOnly is true',
+    };
   }
 
-  return /^[^@\s]+@[^@\s]+$/.test(email) ? undefined : 'invalid email format';
+  if (!/^[^@\s]+@[^@\s]+$/.test(email)) {
+    return { failed: true, error: 'invalid email format' };
+  }
+
+  return { ticketId: normalizeTicketKey(ticketId) ?? ticketId, email };
 };
 
 const handler: CollectLogsHandler = async (req, reply) => {
-  const {
-    ticketId,
-    email,
-    localOnly = false,
-  } = req.body as Readonly<{
-    ticketId?: string;
-    email?: string;
-    localOnly?: boolean;
-  }>;
+  const body = req.body as CollectLogsBodyFields;
+  const { localOnly = false } = body;
 
-  const requestError = validateCollectLogsRequest(localOnly, ticketId, email);
+  const resolved = resolveCollectLogsRequest(body, localOnly);
 
-  if (requestError) {
-    return reply.code(400).send({ success: false, error: requestError });
+  if (resolved.failed) {
+    return reply.code(400).send({
+      success: false,
+      error: resolved.error,
+      ...(resolved.code ? { code: resolved.code } : {}),
+    });
   }
+
+  const { voucher, ticketId, email } = resolved;
 
   try {
     req.log.info(
       {
-        ticketId: ticketId ? 'provided' : 'missing',
-        email: email ? 'provided' : 'missing',
+        voucher: body.voucher?.trim() ? 'provided' : 'missing',
+        ticketId: body.ticketId ? 'provided' : 'missing',
+        email: body.email ? 'provided' : 'missing',
         localOnly,
         collectLogsFromFiles:
           process.env.COLLECT_LOGS_FROM_FILES?.toLowerCase() !== 'false',
@@ -2265,6 +2455,7 @@ const handler: CollectLogsHandler = async (req, reply) => {
     const orchestrator = await getOrchestrator(req.server.docker);
 
     const result = await collectLogsInternally({
+      voucher,
       ticketId,
       email,
       localOnly,
@@ -2276,9 +2467,23 @@ const handler: CollectLogsHandler = async (req, reply) => {
       success: true,
       output: result.output,
       ...(result.archivePath ? { archivePath: result.archivePath } : {}),
+      ...(result.uploadedVia ? { uploadedVia: result.uploadedVia } : {}),
+      ...(result.ticketKey ? { ticketKey: result.ticketKey } : {}),
+      ...(result.size === undefined ? {} : { size: result.size }),
+      ...(result.verified === undefined ? {} : { verified: result.verified }),
     });
   } catch (error) {
     req.log.error({ error }, 'failed to collect logs internally');
+
+    if (isSupportPortalError(error)) {
+      return reply.code(error.httpStatus).send({
+        success: false,
+        error: error.message,
+        ...(error.details ? { details: error.details } : {}),
+        ...(error.code ? { code: error.code } : {}),
+        ...(error.maxBytes === undefined ? {} : { maxBytes: error.maxBytes }),
+      });
+    }
 
     const local = buildLocalErrorReply(error, 'internal server error');
 
@@ -2315,6 +2520,8 @@ export const collectLogsInternals = {
   uploadWithFallback,
   validateCollectLogsInput,
   collectLogsInternally,
+  resolveCollectLogsRequest,
+  formatSize,
 };
 
 export default handler;

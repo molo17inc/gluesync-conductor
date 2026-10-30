@@ -16,6 +16,10 @@ import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
 import loadWithStubs from '../../../testing/loadWithStubs';
+import {
+  FakeSupportPortal,
+  startFakeSupportPortal,
+} from '../../../testing/fakeSupportPortal';
 
 type Reply = Readonly<{
   code?: number;
@@ -40,6 +44,7 @@ type Doubles = {
   axiosCalls: AxiosCall[];
   legacy: () => Promise<LegacyResult>;
   legacyCalls: number;
+  legacyArgs: Array<Readonly<{ ticketId?: string; email?: string }>>;
 };
 
 const doubles: Doubles = {
@@ -49,6 +54,7 @@ const doubles: Doubles = {
   axiosCalls: [],
   legacy: async () => ({ success: true, output: 'legacy ok' }),
   legacyCalls: 0,
+  legacyArgs: [],
 };
 
 const fakeSpawn = (command: string, args: ReadonlyArray<string>) => {
@@ -84,27 +90,36 @@ const fakeSpawn = (command: string, args: ReadonlyArray<string>) => {
 
 const subject = path.resolve(__dirname, './collectLogs');
 
-const { collectLogsInternals: internals } = loadWithStubs<{
-  collectLogsInternals: typeof import('./collectLogs').collectLogsInternals;
-}>(subject, {
-  'node:child_process': { spawn: fakeSpawn },
-  [path.resolve(__dirname, '../../../utils/axiosWithRetry')]: {
-    default: async (url: string, opts: Readonly<{ method?: string }>) => {
-      const call = { url, method: opts.method };
-      doubles.axiosCalls.push(call);
-      return doubles.axios(call);
+const { collectLogsInternals: internals, default: collectLogsHandler } =
+  loadWithStubs<{
+    collectLogsInternals: typeof import('./collectLogs').collectLogsInternals;
+    default: typeof import('./collectLogs').default;
+  }>(subject, {
+    [path.resolve(
+      __dirname,
+      '../../../helpers/orchestrator/getOrchestrator/getOrchestrator',
+    )]: { default: async () => ({ mode: 'compose' }) },
+    'node:child_process': { spawn: fakeSpawn },
+    [path.resolve(__dirname, '../../../utils/axiosWithRetry')]: {
+      default: async (url: string, opts: Readonly<{ method?: string }>) => {
+        const call = { url, method: opts.method };
+        doubles.axiosCalls.push(call);
+        return doubles.axios(call);
+      },
     },
-  },
-  [path.resolve(
-    __dirname,
-    '../../../helpers/collectLogsByScript/collectLogsByScript',
-  )]: {
-    default: async () => {
-      doubles.legacyCalls += 1;
-      return doubles.legacy();
+    [path.resolve(
+      __dirname,
+      '../../../helpers/collectLogsByScript/collectLogsByScript',
+    )]: {
+      default: async (
+        args: Readonly<{ ticketId?: string; email?: string }>,
+      ) => {
+        doubles.legacyCalls += 1;
+        doubles.legacyArgs.push(args);
+        return doubles.legacy();
+      },
     },
-  },
-});
+  });
 
 const noop = (): void => undefined;
 
@@ -188,6 +203,7 @@ const ENV_KEYS = [
   'PROXY_HTTPS',
   'PROXY_HTTP',
   'FTP_UPLOAD_DISABLE_EPSV',
+  'GLUESYNC_SUPPORT_API_URL',
 ];
 const savedEnv = new Map<string, string | undefined>();
 const originalCwd = process.cwd();
@@ -203,6 +219,7 @@ beforeEach(() => {
   doubles.axiosCalls.length = 0;
   doubles.legacy = async () => ({ success: true, output: 'legacy ok' });
   doubles.legacyCalls = 0;
+  doubles.legacyArgs.length = 0;
 });
 
 afterEach(() => {
@@ -1164,5 +1181,444 @@ describe('collectLogsInternally', () => {
       internals.collectLogsInternally({ localOnly: false }),
       /ticketId and email are required/,
     );
+  });
+});
+
+describe('resolveCollectLogsRequest', () => {
+  const resolve = internals.resolveCollectLogsRequest;
+  const VOUCHER = 'GSV-ABCD-EFGH-JKMN';
+
+  it('ignores every credential in local-only mode', () => {
+    assert.deepEqual(resolve({ voucher: 'nonsense', ticketId: '1' }, true), {});
+    assert.deepEqual(resolve({}, true), {});
+  });
+
+  it('normalizes the voucher', () => {
+    assert.deepEqual(resolve({ voucher: ` gsv abcd efgh jkmn ` }, false), {
+      voucher: VOUCHER,
+    });
+  });
+
+  it('refuses a voucher together with ticketId or email, naming the voucher', () => {
+    [
+      { ticketId: 'GSSD-1' },
+      { email: 'a@b.c' },
+      { ticketId: '1', email: 'a@b.c' },
+    ]
+      .map(extra => resolve({ voucher: VOUCHER, ...extra }, false))
+      .forEach(result => {
+        assert.equal(result.failed, true);
+        assert.equal((result as { code?: string }).code, 'validation');
+        assert.match((result as { error: string }).error, /voucher/);
+      });
+  });
+
+  it('refuses a voucher of the wrong shape', () => {
+    const result = resolve({ voucher: 'GSV-1234' }, false);
+
+    assert.equal(result.failed, true);
+    assert.equal((result as { code?: string }).code, 'voucher_format');
+  });
+
+  it('treats a blank voucher as none', () => {
+    assert.deepEqual(
+      resolve({ voucher: '  ', ticketId: 'GSSD-5', email: 'a@b.c' }, false),
+      { ticketId: 'GSSD-5', email: 'a@b.c' },
+    );
+    assert.equal(resolve({ voucher: '' }, false).failed, true);
+  });
+
+  it('asks for the credentials of the legacy path', () => {
+    const missing = resolve({ ticketId: 'GSSD-5' }, false);
+    assert.equal(missing.failed, true);
+    assert.match(
+      (missing as { error: string }).error,
+      /ticketId and email are required unless localOnly is true/,
+    );
+    assert.equal((missing as { code?: string }).code, undefined);
+
+    const badMail = resolve({ ticketId: 'GSSD-5', email: 'nope' }, false);
+    assert.equal((badMail as { error: string }).error, 'invalid email format');
+  });
+
+  it('normalizes the ticket key of the legacy path', () => {
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      ['GSSD-1234', 'GSSD-1234'],
+      ['#1234', 'GSSD-1234'],
+      ['1234', 'GSSD-1234'],
+      ['gssd-1234', 'GSSD-1234'],
+      ['not a key!', 'not a key!'],
+    ];
+    cases.forEach(([given, expected]) => {
+      assert.deepEqual(resolve({ ticketId: given, email: 'a@b.c' }, false), {
+        ticketId: expected,
+        email: 'a@b.c',
+      });
+    });
+  });
+});
+
+describe('formatSize', () => {
+  it('writes sizes the way people read them', () => {
+    assert.equal(internals.formatSize(12), '12 B');
+    assert.equal(internals.formatSize(2048), '2.0 KB');
+    assert.equal(internals.formatSize(12.3 * 1024 * 1024), '12.3 MB');
+    assert.equal(internals.formatSize(3 * 1024 ** 3), '3.0 GB');
+  });
+});
+
+describe('uploads with a voucher', () => {
+  const VOUCHER = 'GSV-ABCD-EFGH-JKMN';
+  let portal: FakeSupportPortal;
+  let archives: string[];
+  let order: string[];
+
+  type Answer = { code: number; payload: any };
+
+  const call = async (body: Record<string, unknown>): Promise<Answer> => {
+    const answer: Answer = { code: 0, payload: undefined };
+    const reply = {
+      code: (status: number) => {
+        answer.code = status;
+        return reply;
+      },
+      send: (payload: unknown) => {
+        answer.payload = payload;
+        return reply;
+      },
+    };
+    const quiet = { info: noop, warn: noop, error: noop, debug: noop };
+
+    await (collectLogsHandler as any)(
+      { body, log: quiet, server: { docker: {} } },
+      reply,
+    );
+    return answer;
+  };
+
+  beforeEach(async () => {
+    portal = await startFakeSupportPortal();
+    process.env.GLUESYNC_SUPPORT_API_URL = `${portal.url}/`;
+    // Nothing reaches the portal through a proxy in these specs
+    delete process.env.PROXY_HTTPS;
+    delete process.env.PROXY_HTTP;
+    archives = [];
+    order = [];
+
+    const root = makeTmp();
+    const searchDir = path.join(root, 'root-folder');
+    mkdirSync(path.join(searchDir, 'logs'), { recursive: true });
+    writeFileSync(path.join(searchDir, 'logs', 'app.log'), 'app');
+    process.env.PROJECT_CWD = root;
+    process.chdir(root);
+
+    portal.intercept(request => {
+      order.push(`${request.method} ${request.path}`);
+      return undefined;
+    });
+    doubles.script = (command, args) => {
+      if (command === 'cp') {
+        copyFileSync(args[1], args[2]);
+        return { code: 0 };
+      }
+      if (command === 'tar') {
+        order.push('tar');
+        archives.push(args[1]);
+        writeFileSync(args[1], gzipLike());
+        return { code: 0 };
+      }
+      return { code: 1 };
+    };
+  });
+
+  afterEach(async () => {
+    await portal.close();
+  });
+
+  it('checks the voucher before collecting, then uploads to the portal only', async () => {
+    const answer = await call({ voucher: ` ${VOUCHER.toLowerCase()} ` });
+
+    assert.equal(answer.code, 200);
+    assert.equal(answer.payload.success, true);
+    assert.equal(answer.payload.uploadedVia, 'portal');
+    assert.equal(answer.payload.ticketKey, 'GSSD-1234');
+    assert.equal(answer.payload.size, 202);
+    assert.equal(answer.payload.verified, true);
+    assert.equal(answer.payload.archivePath, undefined);
+    assert.match(
+      answer.payload.output,
+      /Archive uploaded to the support portal \(ticket GSSD-1234, 202 B, verified\)\./,
+    );
+    assert.match(answer.payload.output, /Local archive removed/);
+    assert.equal(archives.length, 1);
+    assert.equal(existsSync(archives[0]), false);
+
+    assert.equal(order[0], 'POST /support/log-uploads/check');
+    assert.ok(order.indexOf('tar') > 0, 'the check comes before the archive');
+    assert.equal(
+      portal.calls('/support/log-uploads')[0].json.contentType,
+      'application/gzip',
+    );
+    portal.requests.forEach(request => {
+      assert.equal(request.headers['x-gluesync-voucher'] ?? VOUCHER, VOUCHER);
+      assert.equal(request.headers.authorization, undefined);
+    });
+    assert.equal(doubles.axiosCalls.length, 0, 'no WebDAV on this path');
+    assert.equal(
+      doubles.calls.filter(c => c.command === 'curl').length,
+      0,
+      'no FTP on this path',
+    );
+    assert.equal(doubles.legacyCalls, 0);
+  });
+
+  it('keeps the archive and returns its path when the size is not verified', async () => {
+    portal.intercept(request =>
+      request.path.endsWith('/complete')
+        ? {
+            status: 200,
+            body: {
+              id: 'up-1',
+              ticketKey: 'GSSD-1234',
+              size: 100,
+              verified: false,
+            },
+          }
+        : undefined,
+    );
+
+    const answer = await call({ voucher: VOUCHER });
+
+    assert.equal(answer.code, 200);
+    assert.equal(answer.payload.verified, false);
+    assert.equal(answer.payload.size, 100);
+    assert.equal(answer.payload.archivePath, archives[0]);
+    assert.equal(existsSync(archives[0]), true);
+    assert.match(answer.payload.output, /size could not be verified/);
+    assert.match(answer.payload.output, /Local archive kept at/);
+    assert.doesNotMatch(answer.payload.output, /Local archive removed/);
+  });
+
+  it('rejects a voucher of the wrong shape without calling the portal', async () => {
+    const answer = await call({ voucher: 'GSV-NOPE' });
+
+    assert.equal(answer.code, 400);
+    assert.equal(answer.payload.success, false);
+    assert.equal(answer.payload.code, 'voucher_format');
+    assert.equal(portal.requests.length, 0);
+  });
+
+  it('rejects a voucher sent with ticketId or email', async () => {
+    const answer = await call({ voucher: VOUCHER, ticketId: 'GSSD-1' });
+
+    assert.equal(answer.code, 400);
+    assert.equal(answer.payload.code, 'validation');
+    assert.match(answer.payload.error, /voucher/);
+    assert.equal(portal.requests.length, 0);
+  });
+
+  it('ignores the voucher in local-only mode', async () => {
+    const answer = await call({ voucher: 'nonsense', localOnly: true });
+
+    assert.equal(answer.code, 200);
+    assert.equal(answer.payload.archivePath, archives[0]);
+    assert.equal(answer.payload.uploadedVia, undefined);
+    assert.equal(portal.requests.length, 0);
+    assert.equal(existsSync(archives[0]), true);
+  });
+
+  const refusals: ReadonlyArray<
+    readonly [string, number, unknown, number, string, number | undefined]
+  > = [
+    [
+      'an unknown voucher',
+      401,
+      { error: { code: 'voucher_invalid' } },
+      400,
+      'voucher_invalid',
+      undefined,
+    ],
+    [
+      'an expired voucher',
+      410,
+      { error: { code: 'voucher_expired' } },
+      400,
+      'voucher_expired',
+      undefined,
+    ],
+    [
+      'a file too large',
+      413,
+      { error: { code: 'file_too_large', maxBytes: 1234 } },
+      400,
+      'file_too_large',
+      1234,
+    ],
+    [
+      'rate limiting',
+      429,
+      { error: { code: 'rate_limited' } },
+      429,
+      'rate_limited',
+      undefined,
+    ],
+  ];
+
+  refusals.forEach(([name, status, body, httpStatus, code, maxBytes]) => {
+    it(`answers ${httpStatus} ${code} for ${name} at the check, before collecting anything`, async () => {
+      portal.intercept(request =>
+        request.path.endsWith('/check') ? { status, body } : undefined,
+      );
+
+      const answer = await call({ voucher: VOUCHER });
+
+      assert.equal(answer.code, httpStatus);
+      assert.equal(answer.payload.success, false);
+      assert.equal(answer.payload.code, code);
+      assert.equal(answer.payload.maxBytes, maxBytes);
+      assert.equal(answer.payload.error.includes(VOUCHER), false);
+      assert.equal(archives.length, 0, 'nothing was collected');
+      assert.equal(portal.requests.length, 1);
+    });
+  });
+
+  it('answers 502 portal_unreachable when the portal cannot be reached', async () => {
+    const { url } = portal;
+    await portal.close();
+    process.env.GLUESYNC_SUPPORT_API_URL = url;
+
+    const answer = await call({ voucher: VOUCHER });
+
+    assert.equal(answer.code, 502);
+    assert.equal(answer.payload.code, 'portal_unreachable');
+    assert.equal(archives.length, 0);
+    // afterEach closes the portal again
+    portal = await startFakeSupportPortal();
+  });
+
+  it('keeps the archive when the portal refuses it as too large', async () => {
+    portal.intercept(request =>
+      request.path.endsWith('/check')
+        ? {
+            status: 200,
+            body: { ticketKey: 'GSSD-1234', maxBytes: 100, partBytes: 4096 },
+          }
+        : undefined,
+    );
+
+    const answer = await call({ voucher: VOUCHER });
+
+    assert.equal(answer.code, 400);
+    assert.equal(answer.payload.code, 'file_too_large');
+    assert.equal(answer.payload.maxBytes, 100);
+    assert.equal(
+      answer.payload.details,
+      `The archive was kept at ${archives[0]}.`,
+    );
+    assert.equal(existsSync(archives[0]), true);
+    assert.equal(portal.calls('/support/log-uploads').length, 0);
+  });
+
+  it('keeps the archive and reports a plain failure when the storage refuses it', async () => {
+    portal.intercept(request =>
+      request.method === 'PUT' ? { status: 400, body: 'bad' } : undefined,
+    );
+
+    const answer = await call({ voucher: VOUCHER });
+
+    assert.equal(answer.code, 500);
+    assert.equal(answer.payload.success, false);
+    assert.equal(answer.payload.code, undefined);
+    assert.match(answer.payload.error, /storage refused/);
+    assert.match(answer.payload.details, /kept at/);
+    assert.equal(existsSync(archives[0]), true);
+    assert.equal(portal.calls(/\/abort$/).length, 1);
+    assert.equal(doubles.legacyCalls, 0);
+    assert.equal(doubles.axiosCalls.length, 0);
+  });
+
+  it('never falls back to the legacy script when the archive cannot be created', async () => {
+    const base = doubles.script;
+    doubles.script = (command, args) =>
+      command === 'tar' ? { code: 1 } : base(command, args);
+
+    const answer = await call({ voucher: VOUCHER });
+
+    assert.equal(answer.code, 500);
+    assert.equal(answer.payload.success, false);
+    assert.equal(answer.payload.code, undefined);
+    assert.match(answer.payload.error, /Archive creation failed/);
+    assert.equal(doubles.legacyCalls, 0);
+    assert.equal(portal.calls('/support/log-uploads').length, 0);
+  });
+
+  it('fails when an archive path is missing on the voucher path', async () => {
+    const result = internals.createArchiveWithFallback(
+      '/nowhere',
+      '/nowhere',
+      [],
+      {
+        ticket: '',
+        email: '',
+        isWindows: false,
+        localOnly: false,
+        viaPortal: true,
+      },
+    );
+
+    await assert.rejects(result);
+    assert.equal(doubles.legacyCalls, 0);
+  });
+
+  it('validates a voucher with the portal, behind a proxy too', async () => {
+    process.env.PROXY_HTTPS = 'http://proxy.local:3128';
+
+    const check = await internals.validateCollectLogsInput(
+      { localOnly: false, voucher: VOUCHER },
+      false,
+    );
+
+    assert.equal(check?.ticketKey, 'GSSD-1234');
+    assert.equal(doubles.axiosCalls.length, 0);
+  });
+
+  it('serves the legacy path unchanged when there is no voucher', async () => {
+    process.env.PROXY_HTTPS = 'http://proxy.local:3128';
+
+    const answer = await call({ ticketId: '#1234', email: 'a@b.c' });
+
+    assert.equal(answer.code, 200);
+    assert.equal(answer.payload.uploadedVia, 'webdav');
+    assert.equal(answer.payload.ticketKey, undefined);
+    assert.match(
+      answer.payload.output,
+      /Archive uploaded successfully via WebDAV/,
+    );
+    assert.equal(portal.requests.length, 0);
+    assert.equal(doubles.axiosCalls.length, 1);
+  });
+
+  it('hands the legacy script the normalized ticket key', async () => {
+    process.env.PROXY_HTTPS = 'http://proxy.local:3128';
+    const base = doubles.script;
+    doubles.script = (command, args) =>
+      command === 'tar' ? { code: 1 } : base(command, args);
+
+    const answer = await call({ ticketId: '1234', email: 'a@b.c' });
+
+    assert.equal(answer.code, 200);
+    assert.deepEqual(doubles.legacyArgs, [
+      { ticketId: 'GSSD-1234', email: 'a@b.c' },
+    ]);
+  });
+
+  it('keeps the legacy errors as they were', async () => {
+    const answer = await call({ ticketId: 'GSSD-1' });
+
+    assert.equal(answer.code, 400);
+    assert.deepEqual(answer.payload, {
+      success: false,
+      error: 'ticketId and email are required unless localOnly is true',
+    });
   });
 });

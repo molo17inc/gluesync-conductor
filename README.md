@@ -254,6 +254,64 @@ Gracefully restarts a container with a 10-second timeout.
 }
 ```
 
+### Collect Logs
+
+**POST /collect-logs**
+
+Collects the logs of every container and the diagnostics of the environment
+into an archive and sends it to MOLO17 support.
+
+**Request body** (all fields optional):
+
+| Field | Meaning |
+|-------|---------|
+| `voucher` | Support voucher of the ticket (`GSV-XXXX-XXXX-XXXX`, case and separators do not matter). The archive goes straight into that ticket through the support portal |
+| `ticketId` | Legacy upload: ticket key (`GSSD-1234`, `1234` or `#1234`) |
+| `email` | Legacy upload: e-mail of the person sending the logs |
+| `localOnly` | `true` keeps the archive on the host and ignores every credential |
+
+`voucher` cannot be combined with `ticketId` or `email` (`400`, `code: "validation"`).
+
+With a voucher the portal checks it **before** anything is collected, the archive
+is streamed to the portal in parts (never held in memory), and nothing falls back
+to WebDAV, FTP or the legacy script. The archive is deleted only when the portal
+confirms it holds every byte (`verified: true`); otherwise it stays and
+`archivePath` says where. Without a voucher the legacy path runs unchanged:
+WebDAV, then FTP, then the legacy script.
+
+The portal address defaults to production and can be overridden with
+`GLUESYNC_SUPPORT_API_URL`. Requests (the API and the storage uploads) go through
+`PROXY_HTTPS` / `PROXY_HTTP` when they are set. The `User-Agent` carries
+`CONDUCTOR_VERSION` when it is set.
+
+**Response Format:**
+```json
+{
+  "success": true,
+  "output": "...",
+  "uploadedVia": "portal",
+  "ticketKey": "GSSD-1234",
+  "size": 12894208,
+  "verified": true
+}
+```
+
+`uploadedVia` is `portal`, `webdav` or `ftp`. `archivePath` is present when the
+archive was kept (local-only mode, or an upload the portal could not verify).
+
+**Errors** are `{ "success": false, "error": "...", "details"?, "code"?, "maxBytes"? }`:
+
+| Status | `code` | Meaning |
+|--------|--------|---------|
+| 400 | `validation` | `voucher` sent together with `ticketId` or `email` |
+| 400 | `voucher_format` | The voucher is not `GSV-XXXX-XXXX-XXXX`; the portal was not called |
+| 400 | `voucher_invalid` | Unknown or revoked voucher |
+| 400 | `voucher_expired` | The ticket was closed more than 30 days ago |
+| 400 | `file_too_large` | The archive exceeds what the portal takes (`maxBytes`, at most 5 GiB); the archive is kept |
+| 429 | `rate_limited` | The portal is limiting requests from this host |
+| 502 | `portal_unreachable` | The portal or its storage could not be reached; check the proxy and the firewall (the portal API and `*.s3.eu-central-1.amazonaws.com`) |
+| 500 | none | Collection or archive failure |
+
 ## Docker Labels
 
 Gluesync Conductor uses Docker labels to identify and track containers. The following labels are used:
