@@ -26,7 +26,11 @@ import {
 import { AxiosError } from 'axios';
 import type Docker from 'dockerode';
 import { text } from 'node:stream/consumers';
-import { CollectLogsHandler, UploadedVia } from './collectLogs.model';
+import {
+  CollectLogsErrorResponse,
+  CollectLogsHandler,
+  UploadedVia,
+} from './collectLogs.model';
 import {
   contentTypeForArchive,
   createSupportPortalClient,
@@ -2045,6 +2049,71 @@ const uploadToPortal = async (
   };
 };
 
+// Voucher path of a collection: upload to the portal, and say what happened
+const portalUploadResult = async (
+  archivePath: string,
+  voucher: string,
+  portalCheck: PortalCheck | undefined,
+  portal: SupportPortalClient,
+  collectionSummaryLines: ReadonlyArray<string>,
+): Promise<CollectLogsResult> => {
+  const uploaded = await uploadToPortal(
+    archivePath,
+    voucher,
+    portalCheck,
+    portal,
+  );
+
+  return {
+    output: formatOutput(
+      [
+        `Support voucher accepted (ticket ${portalCheck?.ticketKey ?? uploaded.ticketKey}).`,
+        ...collectionSummaryLines,
+        ...uploaded.lines,
+      ].join('\n'),
+    ),
+    uploadedVia: 'portal',
+    ticketKey: uploaded.ticketKey,
+    size: uploaded.size,
+    verified: uploaded.verified,
+    ...(uploaded.archivePath ? { archivePath: uploaded.archivePath } : {}),
+  };
+};
+
+// Internal archive creation produced no path: the legacy collector takes over,
+// except with a voucher, where there is no legacy path.
+const legacyWithoutArchivePath = async (
+  ticket: string,
+  email: string,
+  viaPortal: boolean,
+): Promise<CollectLogsResult> => {
+  if (viaPortal) {
+    throw createCollectLogsError(
+      'Archive creation did not produce an archive path.',
+    );
+  }
+
+  // Try legacy collector if internal archive didn't produce a path
+  const legacyResult = await collectLogsByScript({ ticketId: ticket, email });
+
+  if (legacyResult.success) {
+    return {
+      output: formatOutput(
+        [
+          'Internal archive creation did not produce an archive path.',
+          'Legacy collect logs script completed successfully.',
+          legacyResult.output,
+        ].join('\n'),
+      ),
+    };
+  }
+
+  throw createCollectLogsError(
+    'Archive creation did not produce an archive path and legacy fallback failed.',
+    legacyResult.output,
+  );
+};
+
 const collectLogsInternally = async (
   options: CollectLogsOptions,
 ): Promise<CollectLogsResult> => {
@@ -2247,34 +2316,7 @@ const collectLogsInternally = async (
 
     // Ensure archivePath exists before proceeding to upload if not do legacy
     if (!archivePath) {
-      if (viaPortal) {
-        throw createCollectLogsError(
-          'Archive creation did not produce an archive path.',
-        );
-      }
-
-      // Try legacy collector if internal archive didn't produce a path
-      const legacyResult = await collectLogsByScript({
-        ticketId: ticket,
-        email: emailAddr,
-      });
-
-      if (legacyResult.success) {
-        return {
-          output: formatOutput(
-            [
-              'Internal archive creation did not produce an archive path.',
-              'Legacy collect logs script completed successfully.',
-              legacyResult.output,
-            ].join('\n'),
-          ),
-        };
-      }
-
-      throw createCollectLogsError(
-        'Archive creation did not produce an archive path and legacy fallback failed.',
-        legacyResult.output,
-      );
+      return await legacyWithoutArchivePath(ticket, emailAddr, viaPortal);
     }
 
     const collectionSummaryLines = [
@@ -2302,27 +2344,13 @@ const collectLogsInternally = async (
     }
 
     if (viaPortal && voucher) {
-      const uploaded = await uploadToPortal(
+      return await portalUploadResult(
         archivePath,
         voucher,
         portalCheck,
         options.portal ?? createSupportPortalClient({ logger }),
+        collectionSummaryLines,
       );
-
-      return {
-        output: formatOutput(
-          [
-            `Support voucher accepted (ticket ${portalCheck?.ticketKey ?? uploaded.ticketKey}).`,
-            ...collectionSummaryLines,
-            ...uploaded.lines,
-          ].join('\n'),
-        ),
-        uploadedVia: 'portal',
-        ticketKey: uploaded.ticketKey,
-        size: uploaded.size,
-        verified: uploaded.verified,
-        ...(uploaded.archivePath ? { archivePath: uploaded.archivePath } : {}),
-      };
     }
 
     const uploadResult = await uploadWithFallback(archivePath, collectContext);
@@ -2420,6 +2448,57 @@ const resolveCollectLogsRequest = (
   return { ticketId: normalizeTicketKey(ticketId) ?? ticketId, email };
 };
 
+// The 200 body: only what is set (Fastify's schema would drop the rest anyway)
+const successBody = (result: CollectLogsResult) => ({
+  success: true as const,
+  output: result.output,
+  ...(result.archivePath ? { archivePath: result.archivePath } : {}),
+  ...(result.uploadedVia ? { uploadedVia: result.uploadedVia } : {}),
+  ...(result.ticketKey ? { ticketKey: result.ticketKey } : {}),
+  ...(result.size === undefined ? {} : { size: result.size }),
+  ...(result.verified === undefined ? {} : { verified: result.verified }),
+});
+
+// Status and body of a failed collection
+const failureReply = (
+  error: unknown,
+): Readonly<{ statusCode: number; body: CollectLogsErrorResponse }> => {
+  if (isSupportPortalError(error)) {
+    return {
+      statusCode: error.httpStatus,
+      body: {
+        success: false,
+        error: error.message,
+        ...(error.details ? { details: error.details } : {}),
+        ...(error.code ? { code: error.code } : {}),
+        ...(error.maxBytes === undefined ? {} : { maxBytes: error.maxBytes }),
+      },
+    };
+  }
+
+  const local = buildLocalErrorReply(error, 'internal server error');
+
+  if (local) {
+    return { statusCode: local.statusCode, body: local.body };
+  }
+
+  if (isCollectLogsError(error)) {
+    return {
+      statusCode: 500,
+      body: {
+        success: false,
+        error: error.message,
+        details: error.details ? formatOutput(error.details) : undefined,
+      },
+    };
+  }
+
+  return {
+    statusCode: 500,
+    body: { success: false, error: 'internal server error' },
+  };
+};
+
 const handler: CollectLogsHandler = async (req, reply) => {
   const body = req.body as CollectLogsBodyFields;
   const { localOnly = false } = body;
@@ -2463,46 +2542,12 @@ const handler: CollectLogsHandler = async (req, reply) => {
       swarm: swarmLogsSourceOf(orchestrator, req.server.docker),
     });
 
-    return reply.code(200).send({
-      success: true,
-      output: result.output,
-      ...(result.archivePath ? { archivePath: result.archivePath } : {}),
-      ...(result.uploadedVia ? { uploadedVia: result.uploadedVia } : {}),
-      ...(result.ticketKey ? { ticketKey: result.ticketKey } : {}),
-      ...(result.size === undefined ? {} : { size: result.size }),
-      ...(result.verified === undefined ? {} : { verified: result.verified }),
-    });
+    return reply.code(200).send(successBody(result));
   } catch (error) {
     req.log.error({ error }, 'failed to collect logs internally');
 
-    if (isSupportPortalError(error)) {
-      return reply.code(error.httpStatus).send({
-        success: false,
-        error: error.message,
-        ...(error.details ? { details: error.details } : {}),
-        ...(error.code ? { code: error.code } : {}),
-        ...(error.maxBytes === undefined ? {} : { maxBytes: error.maxBytes }),
-      });
-    }
-
-    const local = buildLocalErrorReply(error, 'internal server error');
-
-    if (local) {
-      return reply.code(local.statusCode).send(local.body);
-    }
-
-    if (isCollectLogsError(error)) {
-      return reply.code(500).send({
-        success: false,
-        error: error.message,
-        details: error.details ? formatOutput(error.details) : undefined,
-      });
-    }
-
-    return reply.code(500).send({
-      success: false,
-      error: 'internal server error',
-    });
+    const failure = failureReply(error);
+    return reply.code(failure.statusCode).send(failure.body);
   }
 };
 

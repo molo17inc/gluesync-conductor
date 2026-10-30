@@ -129,13 +129,21 @@ const TOO_MANY_REQUESTS = 429;
 const EXPIRED_MARKER = /expired/i;
 const URL_QUERY = /(https?:\/\/[^\s?'"\])]+)\?[^\s'"\])]*/g;
 
+// A scan from the end, not a regex: no backtracking on a long run of slashes
+const trimTrailingSlashes = (url: string): string => {
+  let end = url.length;
+  while (end > 0 && url[end - 1] === '/') {
+    end -= 1;
+  }
+  return url.slice(0, end);
+};
+
 /** The override of the environment when it is not blank, otherwise production; never ends with a slash. */
 export const resolveSupportApiUrl = (
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): string =>
-  (env[SUPPORT_API_URL_ENV]?.trim() || SUPPORT_API_DEFAULT_URL).replace(
-    /\/+$/,
-    '',
+  trimTrailingSlashes(
+    env[SUPPORT_API_URL_ENV]?.trim() || SUPPORT_API_DEFAULT_URL,
   );
 
 export const resolveConductorVersion = (
@@ -223,7 +231,8 @@ const hostOf = (url: string): string => {
 const describeFailure = (error: unknown): string => {
   const raw = error instanceof Error ? error.message : String(error);
   const code = (error as { code?: unknown } | null)?.code;
-  const text = `${typeof code === 'string' ? `${code}: ` : ''}${raw}`;
+  const prefix = typeof code === 'string' ? `${code}: ` : '';
+  const text = prefix + raw;
 
   return redactVouchers(redactSecrets(text.replace(URL_QUERY, '$1')));
 };
@@ -295,8 +304,19 @@ const readMultipart = (value: unknown): Multipart | undefined =>
       }
     : undefined;
 
+const isSuccess = (status: number): boolean => status >= 200 && status < 300;
+
+// Seconds the portal asks to wait, when that is short enough to wait for
+const rateLimitWait = (reply: HttpReply): number | undefined =>
+  reply.retryAfterSeconds !== undefined &&
+  reply.retryAfterSeconds <= MAX_RATE_LIMIT_WAIT_SECONDS
+    ? reply.retryAfterSeconds
+    : undefined;
+
 const parseRetryAfter = (value: unknown): number | undefined => {
-  const seconds = Number.parseInt(String(value ?? '').trim(), 10);
+  const text =
+    typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+  const seconds = Number.parseInt(text.trim(), 10);
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
 };
 
@@ -354,9 +374,8 @@ export const createSupportPortalClient = (
     pause = defaultPause,
     backoffMs = DEFAULT_BACKOFF_MS,
   } = options;
-  const baseUrl = (options.baseUrl ?? resolveSupportApiUrl()).replace(
-    /\/+$/,
-    '',
+  const baseUrl = trimTrailingSlashes(
+    options.baseUrl ?? resolveSupportApiUrl(),
   );
   const version = options.version ?? resolveConductorVersion();
   const userAgent = `GluesyncConductor/${version}`;
@@ -425,8 +444,9 @@ export const createSupportPortalClient = (
     }
 
     const detail = redactVouchers(error?.message ?? `HTTP ${reply.status}`);
+    const named = error?.code ? `, ${error.code}` : '';
     return createSupportPortalError(
-      `The support portal refused the request (HTTP ${reply.status}${error?.code ? `, ${error.code}` : ''}): ${detail}`,
+      `The support portal refused the request (HTTP ${reply.status}${named}): ${detail}`,
       { httpStatus: 500 },
     );
   };
@@ -450,6 +470,22 @@ export const createSupportPortalClient = (
       },
     });
 
+  // Waits before the next try, or gives up as unreachable after the last one
+  const retryLater = async (
+    path: string,
+    attempt: number,
+    reason: string,
+  ): Promise<void> => {
+    if (attempt >= MAX_ATTEMPTS) {
+      throw unreachable(reason);
+    }
+    logger?.warn(
+      { path, attempt },
+      `The support portal call failed (${reason}), retrying.`,
+    );
+    await pause(backoffMs * attempt);
+  };
+
   // One call to the portal, retried on a server error or a broken connection,
   // waiting once when it rate limits, and mapped to the client's codes.
   const portalPost = async (
@@ -463,38 +499,30 @@ export const createSupportPortalClient = (
 
     for (;;) {
       attempt += 1;
-      let reply: HttpReply;
+      const outcome = await postOnce(
+        voucher,
+        path,
+        body,
+        PORTAL_TIMEOUT_MS,
+      ).then(
+        reply => ({ reply }),
+        // The axios error is not kept as the cause: its config holds the request headers, voucher included
+        (error: unknown) => ({ failure: describeFailure(error) }),
+      );
 
-      try {
-        reply = await postOnce(voucher, path, body, PORTAL_TIMEOUT_MS);
-      } catch (error) {
-        if (attempt >= MAX_ATTEMPTS) {
-          // The axios error is not kept as the cause: its config holds the request headers, voucher included
-          throw unreachable(describeFailure(error));
-        }
-        logger?.warn(
-          { path, attempt },
-          `The support portal call failed (${describeFailure(error)}), retrying.`,
-        );
-        await pause(backoffMs * attempt);
+      if ('failure' in outcome) {
+        await retryLater(path, attempt, outcome.failure);
         continue;
       }
 
-      if (
-        (reply.status >= 200 && reply.status < 300) ||
-        passthrough.includes(reply.status)
-      ) {
+      const { reply } = outcome;
+
+      if (isSuccess(reply.status) || passthrough.includes(reply.status)) {
         return reply;
       }
-
       if (reply.status === TOO_MANY_REQUESTS) {
-        const wait = reply.retryAfterSeconds;
-
-        if (
-          waitedForRateLimit ||
-          wait === undefined ||
-          wait > MAX_RATE_LIMIT_WAIT_SECONDS
-        ) {
+        const wait = waitedForRateLimit ? undefined : rateLimitWait(reply);
+        if (wait === undefined) {
           throw refusal(reply);
         }
         waitedForRateLimit = true;
@@ -505,20 +533,11 @@ export const createSupportPortalClient = (
         await pause(wait * 1000);
         continue;
       }
-
-      if (reply.status >= 500) {
-        if (attempt >= MAX_ATTEMPTS) {
-          throw unreachable(`it answered HTTP ${reply.status}`);
-        }
-        logger?.warn(
-          { path, attempt },
-          `The support portal answered HTTP ${reply.status}, retrying.`,
-        );
-        await pause(backoffMs * attempt);
-        continue;
+      if (reply.status < 500) {
+        throw refusal(reply);
       }
 
-      throw refusal(reply);
+      await retryLater(path, attempt, `it answered HTTP ${reply.status}`);
     }
   };
 

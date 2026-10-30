@@ -36,7 +36,10 @@ export const normalizeVoucher = (raw: string): string | null => {
     return null;
   }
 
-  const groups = code.match(new RegExp(`.{${GROUP_LENGTH}}`, 'g')) ?? [];
+  const groups = Array.from(
+    { length: CODE_LENGTH / GROUP_LENGTH },
+    (_, index) => code.slice(index * GROUP_LENGTH, (index + 1) * GROUP_LENGTH),
+  );
   return [PREFIX, ...groups].join('-');
 };
 
