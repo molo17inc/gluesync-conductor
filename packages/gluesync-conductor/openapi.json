@@ -1274,6 +1274,14 @@
                             "type": "string"
                           }
                         },
+                        "updateBlocked": {
+                          "type": "boolean",
+                          "description": "True when this service must not be updated from the Conductor: Core Hub and Chronos on a host whose Core Hub runs in a disaster-recovery pair"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "description": "Why the update is blocked (only with updateBlocked)"
+                        },
                         "releaseChannel": {
                           "type": "string"
                         },
@@ -1900,11 +1908,11 @@
             }
           },
           "409": {
-            "description": "A different container action is already running (one at a time). A retry of the same action on the same ids joins the running one instead. The Retry-After header says when to ask again.",
+            "description": "A different container action is already running (one at a time). A retry of the same action on the same ids joins the running one instead. The Retry-After header says when to ask again. Also the answer to an update of Core Hub or Chronos (or \"update all\") on a host whose Core Hub runs in a disaster-recovery pair: nothing is pulled or written, `details` points to the upgrade procedure.",
             "content": {
               "application/json": {
                 "schema": {
-                  "description": "A different container action is already running (one at a time). A retry of the same action on the same ids joins the running one instead. The Retry-After header says when to ask again.",
+                  "description": "A different container action is already running (one at a time). A retry of the same action on the same ids joins the running one instead. The Retry-After header says when to ask again. Also the answer to an update of Core Hub or Chronos (or \"update all\") on a host whose Core Hub runs in a disaster-recovery pair: nothing is pulled or written, `details` points to the upgrade procedure.",
                   "type": "object",
                   "properties": {
                     "success": {
@@ -1919,7 +1927,7 @@
                     },
                     "details": {
                       "type": "string",
-                      "description": "Which action is running and since when"
+                      "description": "Which action is running and since when, or the disaster-recovery upgrade procedure to follow"
                     }
                   },
                   "additionalProperties": false
@@ -2099,6 +2107,14 @@
                           "items": {
                             "type": "string"
                           }
+                        },
+                        "updateBlocked": {
+                          "type": "boolean",
+                          "description": "True when this service must not be updated from the Conductor: Core Hub and Chronos on a host whose Core Hub runs in a disaster-recovery pair"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "description": "Why the update is blocked (only with updateBlocked)"
                         },
                         "releaseChannel": {
                           "type": "string"

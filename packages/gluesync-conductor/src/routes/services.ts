@@ -477,6 +477,16 @@ const serviceRoutes = async (fastify: Readonly<FastifyInstance>) => {
                     type: 'string',
                   },
                 },
+                updateBlocked: {
+                  type: 'boolean',
+                  description:
+                    'True when this service must not be updated from the Conductor: Core Hub and Chronos on a host whose Core Hub runs in a disaster-recovery pair',
+                },
+                reason: {
+                  type: 'string',
+                  description:
+                    'Why the update is blocked (only with updateBlocked)',
+                },
                 releaseChannel: { type: 'string' },
                 changelog: { type: 'string' },
               },

@@ -46,6 +46,11 @@ import buildMigrationRefusedOnSwarmReply from '../../../helpers/orchestrator/bui
 import buildModeUnknownReply from '../../../helpers/orchestrator/buildModeUnknownReply/buildModeUnknownReply';
 import forceUpdateService from '../../../helpers/swarm/forceUpdateService/forceUpdateService';
 import restartSwarmStack from '../../../helpers/swarm/restartSwarmStack/restartSwarmStack';
+import {
+  DR_UPDATE_REFUSED_DETAILS,
+  DR_UPDATE_REFUSED_ERROR,
+  getDisasterRecoveryUpdateRefusal,
+} from '../../../helpers/disasterRecovery/disasterRecovery';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
@@ -407,6 +412,20 @@ const performUpdate = async (
   await ensureFreeSpace([composeFilePath()], getUpdateMinFreeBytes());
 
   const composeJson = await readComposeFile({ raw: true });
+
+  // A site of a disaster-recovery pair is upgraded with Gluesync Control, one
+  // site at a time: an in-place update here would migrate the databases of the
+  // active site and leave the standby unable to take over. Nothing is pulled
+  // or written.
+  if (await getDisasterRecoveryUpdateRefusal(composeJson, requestIds)) {
+    req.log.warn(
+      { ids: requestIds },
+      '[update-handler] refused: disaster recovery is enabled on this Core Hub',
+    );
+
+    return failed(409, DR_UPDATE_REFUSED_ERROR, DR_UPDATE_REFUSED_DETAILS);
+  }
+
   req.log.debug(
     `Checking for conductor update, ids length=${requestIds.length}`,
   );

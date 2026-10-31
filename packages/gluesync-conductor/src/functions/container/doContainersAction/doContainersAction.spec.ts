@@ -843,6 +843,149 @@ describe('doContainersAction update', () => {
   });
 });
 
+describe('doContainersAction update on a disaster-recovery host', () => {
+  const DETAILS =
+    'Update the sites one at a time with Gluesync Control, standby first, then a planned switchover. See https://docs.molo17.com/gluesync/latest/ (upgrade a disaster-recovery pair).';
+
+  const drCompose = (environment: unknown) => ({
+    services: {
+      'gluesync-core-hub': {
+        image: 'molo17/gluesync-core-hub:2.3.1',
+        environment,
+      },
+      'gluesync-chronos': { image: 'molo17/gluesync-chronos:0.2.4' },
+      'gluesync-mssql-ct': { image: 'molo17/gluesync-mssql-ct:2.3.1' },
+    },
+  });
+
+  const assertRefused = (
+    loaded: ReturnType<typeof load>,
+    reply: Reply,
+  ): void => {
+    assert.equal(reply.statusCode, 409);
+    assert.deepEqual(body(reply), {
+      success: false,
+      error: 'Disaster recovery is enabled on this Core Hub',
+      details: DETAILS,
+    });
+    // Only the generic action lookup: no update action, no version check, no
+    // compose rewrite, no pull, no migration, no prune
+    assert.equal(loaded.calls.createActions.length, 1);
+    assert.deepEqual(loaded.calls.checked, []);
+    assert.equal(loaded.calls.bulk.length, 0);
+    assert.equal(loaded.calls.conductorOnly.length, 0);
+    assert.equal(loaded.calls.migration.length, 0);
+    assert.equal(loaded.calls.grafana.length, 0);
+    assert.equal(loaded.calls.updateMode, 0);
+  };
+
+  it('refuses Core Hub with 409 when GS_DR_ENABLED is true in a list', async () => {
+    const loaded = load({
+      compose: drCompose(['GS_DR_ENABLED=true']),
+      actions: { update: async () => assert.fail('pulled') },
+    });
+    const reply = await run(loaded, {
+      action: 'update',
+      ids: ['gluesync-core-hub'],
+    });
+
+    assertRefused(loaded, reply);
+  });
+
+  it('refuses Chronos with 409 when GS_DR_ENABLED is true in a map', async () => {
+    const loaded = load({
+      compose: drCompose({ GS_DR_ENABLED: 'TRUE' }),
+    });
+    const reply = await run(loaded, {
+      action: 'update',
+      ids: ['gluesync-mssql-ct', 'gluesync-chronos'],
+    });
+
+    assertRefused(loaded, reply);
+  });
+
+  it('refuses "update all"', async () => {
+    const loaded = load({ compose: drCompose(['GS_DR_ENABLED=true']) });
+    const reply = await run(loaded, { action: 'update', ids: [] });
+
+    assertRefused(loaded, reply);
+  });
+
+  it('refuses a Core Hub with the migration due, before migrating', async () => {
+    const loaded = load({
+      compose: drCompose(['GS_DR_ENABLED=true']),
+      needsMigration: true,
+    });
+    const reply = await run(loaded, {
+      action: 'update',
+      ids: ['gluesync-core-hub'],
+    });
+
+    assertRefused(loaded, reply);
+  });
+
+  it('updates the agents and the conductor as usual', async () => {
+    const loaded = load({ compose: drCompose(['GS_DR_ENABLED=true']) });
+    const reply = await run(loaded, {
+      action: 'update',
+      ids: ['gluesync-mssql-ct'],
+    });
+
+    assert.equal(reply.statusCode, 200);
+    assert.equal(loaded.calls.bulk.length, 1);
+  });
+
+  it('updates the conductor alone when it is the only id', async () => {
+    const loaded = load({
+      compose: drCompose(['GS_DR_ENABLED=true']),
+      modules: {
+        'gluesync-conductor': {
+          needsUpdate: true,
+          id: 'gluesync-conductor',
+          availableVersion: '3.0.0',
+        },
+      },
+    });
+    const reply = await run(loaded, {
+      action: 'update',
+      ids: ['gluesync-conductor'],
+    });
+
+    assert.equal(reply.statusCode, 200);
+    assert.equal(loaded.calls.conductorOnly.length, 1);
+  });
+
+  it('updates Core Hub as before when disaster recovery is off or absent', async () => {
+    await Promise.all(
+      [['GS_DR_ENABLED=false'], ['JAVA_OPTS=-Xmx4g'], undefined].map(
+        async environment => {
+          const loaded = load({ compose: drCompose(environment) });
+          const reply = await run(loaded, {
+            action: 'update',
+            ids: ['gluesync-core-hub'],
+          });
+
+          assert.equal(reply.statusCode, 200);
+          assert.equal(loaded.calls.bulk.length, 1);
+        },
+      ),
+    );
+  });
+
+  it('does not stop a restart', async () => {
+    const loaded = load({
+      compose: drCompose(['GS_DR_ENABLED=true']),
+      actions: { restart: async () => 'restarted' },
+    });
+    const reply = await run(loaded, {
+      action: 'restart',
+      ids: ['gluesync-core-hub'],
+    });
+
+    assert.equal(reply.statusCode, 200);
+  });
+});
+
 describe('doContainersAction migration', () => {
   const eligible = {
     'gluesync-core-hub': ok('gluesync-core-hub'),

@@ -369,14 +369,15 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
         },
         409: {
           description:
-            'A different container action is already running (one at a time). A retry of the same action on the same ids joins the running one instead. The Retry-After header says when to ask again.',
+            'A different container action is already running (one at a time). A retry of the same action on the same ids joins the running one instead. The Retry-After header says when to ask again. Also the answer to an update of Core Hub or Chronos (or "update all") on a host whose Core Hub runs in a disaster-recovery pair: nothing is pulled or written, `details` points to the upgrade procedure.',
           type: 'object',
           properties: {
             success: { type: 'boolean', const: false },
             error: { type: 'string', description: 'Error message' },
             details: {
               type: 'string',
-              description: 'Which action is running and since when',
+              description:
+                'Which action is running and since when, or the disaster-recovery upgrade procedure to follow',
             },
           },
           additionalProperties: false,

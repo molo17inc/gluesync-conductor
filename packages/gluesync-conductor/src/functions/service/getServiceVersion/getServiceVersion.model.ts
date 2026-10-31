@@ -10,6 +10,10 @@ export type GetServiceVersionSuccessResponse = Readonly<{
   latestVersionGA?: Readonly<string>;
   mandatoryUpdate: boolean;
   servicesToUpdate: ReadonlyArray<string>;
+  // Disaster recovery is enabled on this Core Hub: Core Hub and Chronos are
+  // updated with Gluesync Control, never from here. `reason` says why.
+  updateBlocked: boolean;
+  reason?: string;
   changelogData?: Omit<ChangelogResponse, 'id'>;
 }>;
 
