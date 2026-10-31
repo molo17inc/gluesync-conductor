@@ -29,7 +29,7 @@ type Variables = Readonly<Record<string, string>>;
 
 // `$VAR`, `${VAR}`, `${VAR:-default}`, `${VAR-default}`; `$$` is a literal `$`
 const REFERENCE =
-  /\$(?:\$|([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?)-([^}]*))?\})/g;
+  /\$(?:\$|([A-Za-z_]\w*)|\{([A-Za-z_]\w*)(?:(:?)-([^}]*))?\})/g;
 
 const interpolate = (value: string, variables: Variables): string =>
   value.replace(
