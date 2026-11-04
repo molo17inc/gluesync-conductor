@@ -123,12 +123,15 @@ async function gluesyncPlugin(
     if (running) {
       return running;
     }
-    const attempt: Promise<void> = (async () =>
-      sdkClient.initialize())().finally(() => {
-      if (inFlightCell.get('current') === attempt) {
-        inFlightCell.delete('current');
-      }
-    });
+    // Promise.resolve().then(...) turns a synchronous throw from initialize()
+    // into a rejected promise, like an async function would.
+    const attempt: Promise<void> = Promise.resolve()
+      .then(() => sdkClient.initialize())
+      .finally(() => {
+        if (inFlightCell.get('current') === attempt) {
+          inFlightCell.delete('current');
+        }
+      });
     inFlightCell.set('current', attempt);
     return attempt;
   };

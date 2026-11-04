@@ -174,6 +174,37 @@ describe('gluesync plugin', () => {
     await app.close();
   });
 
+  it('treats a synchronous throw from initialize() as a failed attempt and calls it again on retry', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const { app, subject, client, warns, messages } = load({
+      initialize: [],
+    });
+    let calls = 0;
+    client.initialize = (() => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error('sync boom');
+      }
+      return Promise.resolve();
+    }) as typeof client.initialize;
+    await app.register(fp(subject.default));
+    await app.ready();
+    assert.equal(calls, 1);
+    assert.equal(warns.length, 1);
+    assert.match(warns[0].msg, /CoreHub not reachable at startup/);
+    assert.equal(warns[0].data.error.message, 'sync boom');
+
+    // The in-flight slot was cleared: the retry calls initialize() again
+    // instead of returning the rejected promise of the first attempt.
+    mock.timers.tick(1000);
+    await flush();
+    assert.equal(calls, 2);
+    assert.ok(
+      messages().includes('Connected to CoreHub after 1 background attempt(s)'),
+    );
+    await app.close();
+  });
+
   it('caps the background retry delay at 30 seconds', async () => {
     mock.timers.enable({ apis: ['setTimeout'] });
     const { app, subject, state, warns } = load({
