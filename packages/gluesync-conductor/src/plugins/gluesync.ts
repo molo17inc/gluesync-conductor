@@ -40,6 +40,10 @@ interface FastifyInstance {
   addHook: (name: string, handler: any) => void;
 }
 
+// How long the registration waits for the first connection to CoreHub. Well
+// under Fastify's default plugin timeout (10 s), which must stay untouched.
+export const STARTUP_WAIT_MS = 5000;
+
 /**
  * Gluesync SDK plugin for Fastify
  *
@@ -89,11 +93,17 @@ async function gluesyncPlugin(
     }
   });
 
-  // Try once before the server starts listening, as before. If CoreHub is not
-  // reachable (restarting, being updated, down), keep the conductor up and
-  // retry in the background: exiting here made the conductor crash-loop and
-  // unreachable for as long as CoreHub was down. Until it connects,
-  // authenticated calls answer 503 "CoreHub unavailable".
+  // Try before the server starts listening, but never block the registration on
+  // CoreHub: the SDK keeps discovering it (UDP broadcasts arrive every 5 s plus
+  // ~100 ms per port) and retrying with no upper bound, so initialize() can
+  // outlast Fastify's plugin timeout (10 s) and the conductor used to die with
+  // "Plugin did not start in time" until the restart policy got lucky. Wait a
+  // few seconds so that a CoreHub that is up still answers before the first
+  // request, then start anyway and let the attempt finish in the background.
+  // If CoreHub is unreachable (restarting, being updated, down) or the attempt
+  // fails, retry in the background as well: exiting made the conductor
+  // crash-loop and unreachable for as long as CoreHub was down. Until it
+  // connects, authenticated calls answer 503 "CoreHub unavailable".
   const logConnected = (): void => {
     fastify.log.info('Gluesync SDK client initialized successfully');
     fastify.log.info(`CoreHub URL: ${sdkClient.coreHubUrl ?? 'not set'}`);
@@ -103,6 +113,25 @@ async function gluesyncPlugin(
   const retryCell = new Map<string, NodeJS.Timeout | boolean>([
     ['stopped', false],
   ]);
+  const inFlightCell = new Map<'current', Promise<void>>();
+
+  // At most one initialize() runs at a time: the startup attempt that outlives
+  // the wait and a background retry must never overlap, because the SDK
+  // client builds a new connection on every call.
+  const attemptConnect = (): Promise<void> => {
+    const running = inFlightCell.get('current');
+    if (running) {
+      return running;
+    }
+    const attempt: Promise<void> = (async () =>
+      sdkClient.initialize())().finally(() => {
+      if (inFlightCell.get('current') === attempt) {
+        inFlightCell.delete('current');
+      }
+    });
+    inFlightCell.set('current', attempt);
+    return attempt;
+  };
 
   const retryInBackground = (attempt: number): void => {
     const delayMs = Math.min(30000, 1000 * 2 ** Math.min(attempt, 5));
@@ -111,7 +140,10 @@ async function gluesyncPlugin(
         return;
       }
       try {
-        await sdkClient.initialize();
+        await attemptConnect();
+        if (retryCell.get('stopped')) {
+          return;
+        }
         fastify.log.info(
           `Connected to CoreHub after ${attempt + 1} background attempt(s)`,
         );
@@ -141,15 +173,44 @@ async function gluesyncPlugin(
   });
 
   fastify.log.info('Initializing Gluesync SDK client...');
-  try {
-    await sdkClient.initialize();
-    logConnected();
-  } catch (error) {
-    getLogger().warn(
-      { error },
-      'CoreHub not reachable at startup; starting anyway and retrying in the background',
+  const startupAttempt = attemptConnect();
+  // Whenever the startup attempt ends, inside the wait or long after it
+  // (also the only place its rejection is handled, so none goes unhandled).
+  startupAttempt.then(
+    () => {
+      if (!retryCell.get('stopped')) {
+        logConnected();
+      }
+    },
+    error => {
+      if (!retryCell.get('stopped')) {
+        getLogger().warn(
+          { error },
+          'CoreHub not reachable at startup; starting anyway and retrying in the background',
+        );
+        retryInBackground(0);
+      }
+    },
+  );
+
+  const waitTimer = new Map<'current', NodeJS.Timeout>();
+  const waitedOut = await Promise.race([
+    startupAttempt.then(
+      () => false,
+      () => false,
+    ),
+    new Promise<boolean>(resolve => {
+      waitTimer.set(
+        'current',
+        setTimeout(() => resolve(true), STARTUP_WAIT_MS),
+      );
+    }),
+  ]);
+  clearTimeout(waitTimer.get('current'));
+  if (waitedOut) {
+    fastify.log.warn(
+      `CoreHub not connected after ${STARTUP_WAIT_MS} ms; starting anyway, the connection continues in the background`,
     );
-    retryInBackground(0);
   }
 
   done();
