@@ -1,5 +1,9 @@
 import type Docker from 'dockerode';
 import { getDocker } from '../../utils/docker/getDocker';
+import {
+  dockerHubManifest,
+  isDistributionUnavailable,
+} from '../dockerHubRegistry/dockerHubManifest';
 
 export type DockerImageExists = (
   image: string,
@@ -32,6 +36,10 @@ const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
  * through the daemon (`GET /distribution/{name}/json`), so the daemon's proxy,
  * mirror and credentials apply and no image is pulled.
  *
+ * An engine without that API (Podman answers 404 or 501) is not a daemon that
+ * knows the registry: the image is then looked up on Docker Hub itself (a
+ * manifest HEAD), when it is a Docker Hub image.
+ *
  * Any error (daemon down, registry unreachable, unknown tag, timeout) means
  * "does not exist": callers keep the image they have.
  */
@@ -48,10 +56,31 @@ const dockerImageExists: DockerImageExists = async (
     }
   };
 
-  return (
-    (await found(() => docker.getImage(image).inspect())) ||
-    found(() => docker.getImage(image).distribution())
-  );
+  // 'unavailable': the engine has no `GET /distribution` at all
+  const askDaemonRegistry = async (): Promise<
+    'found' | 'unknown' | 'unavailable'
+  > => {
+    try {
+      await withTimeout(docker.getImage(image).distribution(), timeoutMs);
+      return 'found';
+    } catch (error) {
+      return isDistributionUnavailable(error) ? 'unavailable' : 'unknown';
+    }
+  };
+
+  if (await found(() => docker.getImage(image).inspect())) {
+    return true;
+  }
+
+  const registry = await askDaemonRegistry();
+
+  return registry === 'unavailable'
+    ? found(async () => {
+        if (!(await dockerHubManifest(image, { timeoutMs }))) {
+          throw new Error('not on Docker Hub');
+        }
+      })
+    : registry === 'found';
 };
 
 export default dockerImageExists;

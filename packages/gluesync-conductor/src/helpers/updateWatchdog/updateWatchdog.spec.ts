@@ -5,6 +5,7 @@ import { afterEach, describe, it, mock } from 'node:test';
 import type Docker from 'dockerode';
 
 import loadWithStubs from '../../testing/loadWithStubs';
+import { helperRunning, imageExists } from './updateWatchdog';
 import {
   HealthStatus,
   StartUpdateWatchdog,
@@ -370,5 +371,71 @@ describe('startUpdateWatchdog', () => {
       });
       assert.equal(calls.count, 2);
     });
+  });
+});
+
+describe('the image names the watchdog looks for', () => {
+  // A Podman engine knows a pulled molo17/svc:1.0 as docker.io/molo17/svc:1.0
+  const engineKnowing = (known: ReadonlyArray<string>) => {
+    const inspected: string[] = [];
+    const listed: unknown[] = [];
+    const docker = {
+      getImage: (name: string) => ({
+        inspect: async () => {
+          inspected.push(name);
+          if (!known.includes(name)) {
+            throw new Error('No such image');
+          }
+          return {};
+        },
+      }),
+      listContainers: async (options: {
+        filters?: { ancestor?: string[] };
+      }) => {
+        listed.push(options);
+        return options.filters?.ancestor?.some(name => known.includes(name))
+          ? [{ Id: 'helper' }]
+          : [];
+      },
+    } as unknown as Docker;
+    return { docker, inspected, listed };
+  };
+
+  it('finds an image the engine only has fully qualified', async () => {
+    const { docker } = engineKnowing(['docker.io/molo17/svc:1.0']);
+
+    assert.equal(await imageExists(docker, 'molo17/svc:1.0'), true);
+  });
+
+  it('finds an image the engine has as written, and misses one it lacks', async () => {
+    assert.equal(
+      await imageExists(
+        engineKnowing(['molo17/svc:1.0']).docker,
+        'molo17/svc:1.0',
+      ),
+      true,
+    );
+    assert.equal(
+      await imageExists(engineKnowing([]).docker, 'molo17/svc:1.0'),
+      false,
+    );
+  });
+
+  it('finds a running helper by either spelling of its image', async () => {
+    const { docker, listed } = engineKnowing(['docker.io/library/docker:cli']);
+
+    assert.equal(await helperRunning(docker, 'docker:cli'), true);
+    assert.deepEqual(listed[0], {
+      filters: { ancestor: ['docker:cli', 'docker.io/library/docker:cli'] },
+    });
+  });
+
+  it('finds a helper by its name when no container has that ancestor', async () => {
+    const docker = {
+      listContainers: async (options: { filters?: { name?: string[] } }) =>
+        options.filters?.name ? [{ Id: 'named' }] : [],
+    } as unknown as Docker;
+
+    assert.equal(await helperRunning(docker, 'conductor-helper'), true);
   });
 });
