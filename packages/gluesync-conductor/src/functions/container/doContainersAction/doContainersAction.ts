@@ -46,6 +46,10 @@ import buildMigrationRefusedOnSwarmReply from '../../../helpers/orchestrator/bui
 import buildModeUnknownReply from '../../../helpers/orchestrator/buildModeUnknownReply/buildModeUnknownReply';
 import forceUpdateService from '../../../helpers/swarm/forceUpdateService/forceUpdateService';
 import restartSwarmStack from '../../../helpers/swarm/restartSwarmStack/restartSwarmStack';
+import {
+  HELPER_IMAGE_28,
+  HELPER_IMAGE_CLI,
+} from '../../../helpers/containerRuntime/helperImages';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
@@ -557,7 +561,7 @@ const rebootConductorAfterReply = (
     autoReboot({
       hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
       serviceName,
-      helperImage: isWindows ? helperImageWindows : 'docker:cli',
+      helperImage: isWindows ? helperImageWindows : HELPER_IMAGE_CLI,
       log: msg => req.log.info({ msg }, '[conductor-restart] restart log'),
     }).catch(error => {
       req.log.error({ error }, '[conductor-restart] autoReboot failed');
@@ -578,7 +582,7 @@ const restartFullStack = (req: Readonly<Request>): Outcome => {
 
     restartFn({
       hostProjectDir,
-      helperImage: isWindows ? helperImageWindows : 'docker:28',
+      helperImage: isWindows ? helperImageWindows : HELPER_IMAGE_28,
     }).catch(error => {
       req.log.error({ error }, '[conductor-restart] full restart failed');
     });

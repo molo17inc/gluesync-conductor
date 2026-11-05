@@ -8,6 +8,7 @@ import {
   isUpdateMode,
 } from '../../plugins/apiBlockerAsUpdating';
 import getCurrentVersion from '../getCurrentVersion/getCurrentVersion';
+import { imageNameVariants } from '../containerRuntime/canonicalImage';
 import {
   HealthStatus,
   ParsedImage,
@@ -66,13 +67,20 @@ export const imageExists = async (
   docker: Readonly<Docker>,
   imageTag: string,
 ): Promise<boolean> => {
-  try {
-    const image = docker.getImage(imageTag);
-    await image.inspect();
-    return true;
-  } catch {
-    return false;
-  }
+  // Podman lists a pulled `molo17/x:1` as `docker.io/molo17/x:1`: either
+  // spelling counts
+  const present = async (name: string): Promise<boolean> => {
+    try {
+      await docker.getImage(name).inspect();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const results = await Promise.all(imageNameVariants(imageTag).map(present));
+
+  return results.some(Boolean);
 };
 
 export const helperRunning = async (
@@ -80,8 +88,9 @@ export const helperRunning = async (
   helperImageOrName: string,
 ): Promise<boolean> => {
   try {
+    // Either spelling: Podman may only know the fully qualified name
     const byAncestor = await docker.listContainers({
-      filters: { ancestor: [helperImageOrName] },
+      filters: { ancestor: [...imageNameVariants(helperImageOrName)] },
     });
 
     if (byAncestor.length > 0) {

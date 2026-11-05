@@ -6,6 +6,7 @@ import { runCmd } from '../dockerode/createActions/createActions';
 import describeFailure from '../describeFailure/describeFailure';
 import { getLogger } from '../../utils/logger';
 import inSequence from '../../utils/inSequence';
+import { isSameImage } from '../containerRuntime/canonicalImage';
 import waitForDockerOutage from '../dockerode/waitForDockerOutage/waitForDockerOutage';
 import {
   fingerprintServices,
@@ -151,7 +152,8 @@ const composeProblemWith: RestoreStrategy['problemWith'] = async (
       return { id, reason: `${id} is not running (${seen.detail})` };
     }
     const expected = comparable(image);
-    return expected && seen.image !== expected
+    // Podman names the running image fully qualified (docker.io/molo17/x:1)
+    return expected && !isSameImage(seen.image ?? '', expected)
       ? {
           id,
           reason: `${id} runs ${seen.image} but the compose file says ${expected}`,

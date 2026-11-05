@@ -1,5 +1,6 @@
 import type Docker from 'dockerode';
 import { LabelPrefix } from '../../models/composeFile.model';
+import { canonicalImageName } from '../containerRuntime/canonicalImage';
 import type {
   FingerprintServices,
   ObserveService,
@@ -49,7 +50,8 @@ export const observeService: ObserveService = async (docker, id) => {
   const state = State.Restarting ? 'restarting' : State.Status;
   return {
     running: State.Running === true && !State.Restarting,
-    image: Config.Image,
+    // As the compose file names it: Podman reports docker.io/molo17/x:1
+    image: canonicalImageName(Config.Image),
     detail: state,
   };
 };
