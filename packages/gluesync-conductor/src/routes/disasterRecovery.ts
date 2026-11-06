@@ -2,6 +2,7 @@ import { FastifyPluginCallback } from 'fastify';
 
 import disableDisasterRecovery from '../functions/disasterRecovery/disableDisasterRecovery/disableDisasterRecovery';
 import getDisasterRecoverySetup from '../functions/disasterRecovery/getDisasterRecoverySetup/getDisasterRecoverySetup';
+import getPairingCode from '../functions/disasterRecovery/getPairingCode/getPairingCode';
 import joinSecondSite from '../functions/disasterRecovery/joinSecondSite/joinSecondSite';
 import setupFirstSite from '../functions/disasterRecovery/setupFirstSite/setupFirstSite';
 import { requireConfig } from '../security';
@@ -181,6 +182,37 @@ const disasterRecoveryRoutes: FastifyPluginCallback = (
     },
     preHandler: [requireConfig()],
     handler: setupFirstSite,
+  });
+
+  fastify.post('/disaster-recovery/setup/pairing-code', {
+    schema: {
+      tags: ['disaster-recovery'],
+      summary: 'Show the pairing code of the first site again',
+      description:
+        'Rebuilds the pairing code from `gluesync-dr.env` of this site, with the content `setup/first` returned: this site is the first, the peer is the joiner. For when the code was lost, for example because the UI session ended when Core Hub restarted. It is a POST so that it is never cached or logged as a URL, and the answer is not cached. The code contains the shared secret of the pair: keep it private. Only the first site of a pair set up by this Conductor can answer: any other host is answered with 409.',
+      response: {
+        200: successReply('The pairing code of this site', {
+          type: 'object',
+          required: ['pairingCode'],
+          additionalProperties: false,
+          properties: {
+            pairingCode: {
+              type: 'string',
+              description:
+                'GSDR1.<base64url of the JSON>, to enter on the second site. Contains the shared secret.',
+            },
+          },
+        }),
+        403: REFUSED_STATES[403],
+        409: errorReply(
+          'Disaster recovery is not enabled on this host, was not set up by this Conductor, or this is not the first site of a pair set up by this version (the env file lacks what the code needs). `details` says which.',
+        ),
+        503: REFUSED_STATES[503],
+        500: errorReply('The env file or the compose file could not be read.'),
+      },
+    },
+    preHandler: [requireConfig()],
+    handler: getPairingCode,
   });
 
   fastify.post('/disaster-recovery/setup/join', {

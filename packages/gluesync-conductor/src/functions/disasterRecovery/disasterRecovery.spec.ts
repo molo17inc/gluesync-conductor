@@ -284,6 +284,7 @@ describe('setup of the first site', () => {
         sharedSecret: '*',
         adminToken: '*',
         bootstrapActive: true,
+        pairing: { thisSiteUrl: 'http://10.0.0.1:1717', peerNodeId: 'site-b' },
       },
     );
     assert.equal(operatorToken, change.variables.adminToken);

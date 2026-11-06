@@ -1,4 +1,5 @@
 import {
+  buildPairingPayload,
   encodePairingCode,
   generateSecret,
   validateFirstSiteRequest,
@@ -31,15 +32,9 @@ const setupFirstSite: DisasterRecoveryHandler = async (request, reply) => {
     checked.value;
   const sharedSecret = generateSecret();
   const adminToken = generateSecret();
-  const pairingCode = encodePairingCode({
-    v: 1,
-    secret: sharedSecret,
-    failoverMode,
-    witnessUrl,
-    leaseTtlSeconds,
-    first: thisSite,
-    joiner: peerSite,
-  });
+  const pairingCode = encodePairingCode(
+    buildPairingPayload(sharedSecret, checked.value),
+  );
 
   await runDisasterRecoveryChange(request, reply, {
     action: 'dr-setup-first',
@@ -55,6 +50,7 @@ const setupFirstSite: DisasterRecoveryHandler = async (request, reply) => {
         sharedSecret,
         adminToken,
         bootstrapActive: true,
+        pairing: { thisSiteUrl: thisSite.url, peerNodeId: peerSite.nodeId },
       },
     },
     accepted: restarting => ({

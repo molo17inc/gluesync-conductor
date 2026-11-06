@@ -18,7 +18,13 @@ const fn = (p: string): string =>
 type Calls = Record<string, unknown[]>;
 
 const buildApp = async (replies: Record<string, unknown> = {}) => {
-  const calls: Calls = { get: [], first: [], join: [], disable: [] };
+  const calls: Calls = {
+    get: [],
+    first: [],
+    join: [],
+    disable: [],
+    pairing: [],
+  };
   const handler =
     (name: string, code = 200): RouteHandlerMethod =>
     async (req, reply) => {
@@ -32,6 +38,9 @@ const buildApp = async (replies: Record<string, unknown> = {}) => {
         default: handler('get'),
       },
       [fn('setupFirstSite/setupFirstSite')]: { default: handler('first', 202) },
+      [fn('getPairingCode/getPairingCode')]: {
+        default: handler('pairing'),
+      },
       [fn('joinSecondSite/joinSecondSite')]: { default: handler('join', 202) },
       [fn('disableDisasterRecovery/disableDisasterRecovery')]: {
         default: handler('disable', 202),
@@ -107,12 +116,25 @@ describe('disaster recovery routes', () => {
         { confirm: true },
         'monitor',
       ),
+      send(
+        app,
+        'POST',
+        '/disaster-recovery/setup/pairing-code',
+        undefined,
+        'monitor',
+      ),
     ];
 
     (await Promise.all(attempts)).forEach(res =>
       assert.equal(res.statusCode, 403),
     );
-    assert.deepEqual(calls, { get: [], first: [], join: [], disable: [] });
+    assert.deepEqual(calls, {
+      get: [],
+      first: [],
+      join: [],
+      disable: [],
+      pairing: [],
+    });
     await app.close();
   });
 
@@ -251,6 +273,35 @@ describe('disaster recovery routes', () => {
       success: true,
       data: { restarting: ['gluesync-core-hub'] },
     });
+    await app.close();
+  });
+
+  it('POST /disaster-recovery/setup/pairing-code takes no body and answers only the code', async () => {
+    const { app, calls } = await buildApp({
+      pairing: {
+        success: true,
+        data: { pairingCode: 'GSDR1.abc', sharedSecret: 'must-not-leave' },
+      },
+    });
+    const res = await send(
+      app,
+      'POST',
+      '/disaster-recovery/setup/pairing-code',
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.json(), {
+      success: true,
+      data: { pairingCode: 'GSDR1.abc' },
+    });
+    assert.ok(!res.body.includes('must-not-leave'));
+    assert.equal(calls.pairing.length, 1);
+    // never a GET: the code must not be cacheable or end up in a URL log
+    assert.equal(
+      (await send(app, 'GET', '/disaster-recovery/setup/pairing-code'))
+        .statusCode,
+      404,
+    );
     await app.close();
   });
 });

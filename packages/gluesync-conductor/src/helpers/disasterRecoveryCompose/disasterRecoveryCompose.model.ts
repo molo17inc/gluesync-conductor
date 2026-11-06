@@ -32,6 +32,8 @@ export type SiteVariables = Readonly<{
   adminToken: string;
   /** Only the first site keeps its data and starts active. */
   bootstrapActive: boolean;
+  /** Only the first site: what its pairing code needs besides the variables above. */
+  pairing?: Readonly<{ thisSiteUrl: string; peerNodeId: string }>;
   chronosDir: string;
 }>;
 

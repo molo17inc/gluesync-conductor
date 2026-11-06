@@ -54,3 +54,8 @@ export type PrepareDisasterRecoveryChange = (
   change: DisasterRecoveryChange,
   targets: DisasterRecoveryTargets,
 ) => Promise<PreparedDisasterRecoveryChange>;
+
+/** The variables of the DR env file of this site (it holds the secrets of the pair), `undefined` without the file. */
+export type ReadDisasterRecoveryEnv = () => Promise<
+  Readonly<Record<string, string>> | undefined
+>;

@@ -3,6 +3,8 @@ import { describe, it } from 'node:test';
 
 import {
   PAIRING_CODE_PREFIX,
+  buildPairingPayload,
+  rebuildPairingPayload,
   decodePairingCode,
   encodePairingCode,
   generateSecret,
@@ -271,5 +273,101 @@ describe('validateFirstSiteRequest', () => {
     ]);
     assert.deepEqual(problems(null), ['the body must be an object']);
     assert.ok(problems({}).length >= 3);
+  });
+});
+
+describe('rebuildPairingPayload', () => {
+  const request = (extra: object = {}) => {
+    const checked = validateFirstSiteRequest({
+      thisSite: { nodeId: 'site-a', url: 'HTTP://10.0.0.1:1717/' },
+      peerSite: { nodeId: 'site-b', url: 'http://10.0.0.2:1717' },
+      failoverMode: 'manual',
+      ...extra,
+    });
+
+    assert.ok(checked.valid);
+    return checked.value;
+  };
+
+  // What the first site writes to its env file, as parseEnvFile reads it
+  const fileOf = (
+    value: ReturnType<typeof request>,
+    secret: string,
+  ): Record<string, string> => ({
+    GS_DR_NODE_ID: value.thisSite.nodeId,
+    GS_DR_PEER_URL: value.peerSite.url,
+    GS_DR_FAILOVER_MODE: value.failoverMode,
+    ...(value.witnessUrl ? { GS_DR_WITNESS_URL: value.witnessUrl } : {}),
+    GS_DR_SHARED_SECRET: secret,
+    GS_DR_PAIRING_FIRST_URL: value.thisSite.url,
+    GS_DR_PAIRING_JOINER_NODE_ID: value.peerSite.nodeId,
+    GS_DR_PAIRING_LEASE_TTL_SECONDS: String(value.leaseTtlSeconds),
+  });
+
+  const rebuilt = (variables: Record<string, string>) => {
+    const result = rebuildPairingPayload(variables);
+
+    assert.ok(result.ok);
+    return result.payload;
+  };
+
+  it('gives the payload the setup handed out, field for field and in the same order', () => {
+    [
+      request(),
+      request({ leaseTtlSeconds: 90 }),
+      request({
+        failoverMode: 'witness',
+        witnessUrl: 'https://witness.example.com:8443/lease',
+        leaseTtlSeconds: 45,
+      }),
+    ].forEach(value => {
+      const original = buildPairingPayload(SECRET, value);
+
+      assert.equal(
+        encodePairingCode(rebuilt(fileOf(value, SECRET))),
+        encodePairingCode(original),
+      );
+      assert.deepEqual(
+        decodePairingCode(encodePairingCode(original)),
+        original,
+      );
+    });
+  });
+
+  it('names every variable the file lacks, so a joiner file or an older setup is told apart', () => {
+    const result = rebuildPairingPayload({
+      GS_DR_NODE_ID: 'site-b',
+      GS_DR_PEER_URL: 'http://10.0.0.1:1717',
+      GS_DR_FAILOVER_MODE: 'witness',
+      GS_DR_SHARED_SECRET: SECRET,
+    });
+
+    assert.ok(!result.ok);
+    assert.deepEqual(result.missing, [
+      'GS_DR_PAIRING_FIRST_URL',
+      'GS_DR_PAIRING_JOINER_NODE_ID',
+      'GS_DR_PAIRING_LEASE_TTL_SECONDS',
+      'GS_DR_WITNESS_URL',
+    ]);
+  });
+
+  it('refuses what a first-site request would refuse, without echoing a value', () => {
+    const file = fileOf(request(), SECRET);
+    const bad = [
+      { ...file, GS_DR_NODE_ID: 'Not Valid' },
+      { ...file, GS_DR_PAIRING_LEASE_TTL_SECONDS: '5' },
+      { ...file, GS_DR_PAIRING_JOINER_NODE_ID: 'site-a' },
+      { ...file, GS_DR_SHARED_SECRET: 'short secret' },
+    ].map(rebuildPairingPayload);
+
+    bad.forEach(result => {
+      assert.ok(!result.ok);
+      assert.deepEqual(result.missing, []);
+      assert.ok(result.problems.length > 0);
+      assert.ok(
+        !JSON.stringify(result).includes(SECRET) &&
+          !JSON.stringify(result).includes('short secret'),
+      );
+    });
   });
 });

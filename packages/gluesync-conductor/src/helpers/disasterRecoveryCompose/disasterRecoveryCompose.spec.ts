@@ -531,6 +531,25 @@ describe('renderDisasterRecoveryEnvFile', () => {
     });
   });
 
+  it('records what the pairing code needs only for the first site, with the lease even in a manual pair', () => {
+    const first = parse(
+      renderDisasterRecoveryEnvFile({
+        ...variables,
+        leaseTtlSeconds: 45,
+        pairing: { thisSiteUrl: 'http://10.0.0.1:1717', peerNodeId: 'site-b' },
+      }),
+    );
+    const joiner = parse(renderDisasterRecoveryEnvFile(variables));
+
+    assert.equal(first.GS_DR_PAIRING_FIRST_URL, 'http://10.0.0.1:1717');
+    assert.equal(first.GS_DR_PAIRING_JOINER_NODE_ID, 'site-b');
+    assert.equal(first.GS_DR_PAIRING_LEASE_TTL_SECONDS, '45');
+    assert.ok(!('GS_DR_LEASE_TTL_SECONDS' in first));
+    assert.ok(
+      !Object.keys(joiner).some(key => key.startsWith('GS_DR_PAIRING')),
+    );
+  });
+
   it('has no bootstrap flag on the joining site, and the witness and lease only with a witness', () => {
     const joiner = parse(
       renderDisasterRecoveryEnvFile({ ...variables, bootstrapActive: false }),

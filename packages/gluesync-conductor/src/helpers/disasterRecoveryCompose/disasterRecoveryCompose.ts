@@ -12,6 +12,15 @@ export const DR_ENV_FILE_NAME = 'gluesync-dr.env';
 export const MANAGED_BY_KEY = 'GS_DR_MANAGED_BY';
 export const MANAGED_BY_VALUE = 'conductor';
 
+/**
+ * What only the first site records besides the variables of Core Hub: the rest of its pairing
+ * code (its own URL, the node id of the peer and the lease TTL, which a manual pair does not
+ * pass to Core Hub), so that the code can be shown again. Core Hub ignores these.
+ */
+export const PAIRING_FIRST_URL_KEY = 'GS_DR_PAIRING_FIRST_URL';
+export const PAIRING_JOINER_NODE_ID_KEY = 'GS_DR_PAIRING_JOINER_NODE_ID';
+export const PAIRING_LEASE_TTL_KEY = 'GS_DR_PAIRING_LEASE_TTL_SECONDS';
+
 export const SINK_PORT = 1718;
 export const CONTROL_PORT = 1719;
 
@@ -557,6 +566,13 @@ export const renderDisasterRecoveryEnvFile: RenderDisasterRecoveryEnvFile =
         : []),
       line('GS_DR_SHARED_SECRET', variables.sharedSecret),
       line('GS_DR_ADMIN_TOKEN', variables.adminToken),
+      ...(variables.pairing
+        ? [
+            line(PAIRING_FIRST_URL_KEY, variables.pairing.thisSiteUrl),
+            line(PAIRING_JOINER_NODE_ID_KEY, variables.pairing.peerNodeId),
+            line(PAIRING_LEASE_TTL_KEY, String(variables.leaseTtlSeconds)),
+          ]
+        : []),
       ...(variables.bootstrapActive
         ? [line('GS_DR_BOOTSTRAP_ACTIVE', 'true')]
         : []),

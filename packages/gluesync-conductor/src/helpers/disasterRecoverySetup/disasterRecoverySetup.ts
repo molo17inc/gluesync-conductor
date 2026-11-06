@@ -16,6 +16,7 @@ import { runCmd } from '../dockerode/createActions/createActions';
 import safeWriteFile from '../file/safeWriteFile/safeWriteFile';
 import { getDecidedOrchestrator } from '../orchestrator/getOrchestrator/getOrchestrator';
 import giveChronosDataToCoreHub from '../disasterRecoveryOwnership/disasterRecoveryOwnership';
+import parseEnvFile from '../swarm/parseEnvFile/parseEnvFile';
 import verifyServiceStable from '../verifyServiceStable/verifyServiceStable';
 import {
   chronosName,
@@ -38,6 +39,7 @@ import type {
   DisasterRecoveryState,
   InspectDisasterRecovery,
   PrepareDisasterRecoveryChange,
+  ReadDisasterRecoveryEnv,
 } from './disasterRecoverySetup.model';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
@@ -173,6 +175,21 @@ export const inspectDisasterRecovery: InspectDisasterRecovery =
 
 const envFilePath = async (): Promise<string> =>
   join(await getKitFolder(), DR_ENV_FILE_NAME);
+
+/**
+ * The variables of the DR env file of this site, secrets included: for the caller that
+ * shows the pairing code again and nothing else. `undefined` when the file is not there.
+ */
+export const readDisasterRecoveryEnv: ReadDisasterRecoveryEnv = async () => {
+  try {
+    return parseEnvFile(await readFile(await envFilePath(), 'utf8'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return undefined;
+    }
+    throw error;
+  }
+};
 
 // 2026-11-06 -> 20261106T134501Z
 const utcStamp = (now: Readonly<Date>): string =>

@@ -19,6 +19,7 @@ import type { DisasterRecoveryTargets } from '../disasterRecoveryCompose/disaste
 import type {
   InspectDisasterRecovery,
   PrepareDisasterRecoveryChange,
+  ReadDisasterRecoveryEnv,
 } from './disasterRecoverySetup.model';
 
 const here = (p: string): string => path.resolve(__dirname, p);
@@ -87,6 +88,7 @@ type Recorder = {
 type Subject = Readonly<{
   inspectDisasterRecovery: InspectDisasterRecovery;
   prepareDisasterRecoveryChange: PrepareDisasterRecoveryChange;
+  readDisasterRecoveryEnv: ReadDisasterRecoveryEnv;
   getDisasterRecoveryTargets: (
     compose: object,
   ) => Promise<DisasterRecoveryTargets>;
@@ -274,6 +276,23 @@ describe('disasterRecoverySetup', () => {
       }
     }),
   );
+
+  describe('readDisasterRecoveryEnv', () => {
+    it('is undefined without the file, and reads what the setup wrote once there is one', async () => {
+      assert.equal(await subject.readDisasterRecoveryEnv(), undefined);
+
+      await prepareEnable({
+        ...VARIABLES,
+        pairing: { thisSiteUrl: 'http://10.0.0.1:1717', peerNodeId: 'site-b' },
+      } as never);
+
+      const variables = await subject.readDisasterRecoveryEnv();
+
+      assert.equal(variables?.GS_DR_MANAGED_BY, 'conductor');
+      assert.equal(variables?.GS_DR_SHARED_SECRET, VARIABLES.sharedSecret);
+      assert.equal(variables?.GS_DR_PAIRING_FIRST_URL, 'http://10.0.0.1:1717');
+    });
+  });
 
   describe('inspectDisasterRecovery', () => {
     it('reports a kit without DR as supported and not enabled', async () => {

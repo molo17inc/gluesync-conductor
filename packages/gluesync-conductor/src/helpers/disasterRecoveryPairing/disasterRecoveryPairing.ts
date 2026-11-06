@@ -1,13 +1,20 @@
 import { randomBytes } from 'node:crypto';
 
+import {
+  PAIRING_FIRST_URL_KEY,
+  PAIRING_JOINER_NODE_ID_KEY,
+  PAIRING_LEASE_TTL_KEY,
+} from '../disasterRecoveryCompose/disasterRecoveryCompose';
 import { PairingCodeError } from './disasterRecoveryPairing.errors';
 import {
+  BuildPairingPayload,
   DecodePairingCode,
   DisasterRecoverySite,
   EncodePairingCode,
   FailoverMode,
   GenerateSecret,
   PairingPayload,
+  RebuildPairingPayload,
   ValidateFirstSiteRequest,
   ValidationResult,
 } from './disasterRecoveryPairing.model';
@@ -199,6 +206,77 @@ export const validateFirstSiteRequest: ValidateFirstSiteRequest = request => {
         },
       }
     : { valid: false, problems };
+};
+
+export const buildPairingPayload: BuildPairingPayload = (secret, request) => ({
+  v: 1,
+  secret,
+  failoverMode: request.failoverMode,
+  witnessUrl: request.witnessUrl,
+  leaseTtlSeconds: request.leaseTtlSeconds,
+  first: request.thisSite,
+  joiner: request.peerSite,
+});
+
+const REBUILD_KEYS = [
+  'GS_DR_NODE_ID',
+  'GS_DR_PEER_URL',
+  'GS_DR_FAILOVER_MODE',
+  'GS_DR_SHARED_SECRET',
+  PAIRING_FIRST_URL_KEY,
+  PAIRING_JOINER_NODE_ID_KEY,
+  PAIRING_LEASE_TTL_KEY,
+] as const;
+
+/**
+ * The inverse of what the first site writes to its env file: the same checks as a first-site
+ * request, so a code that comes out is one the joining site accepts. A joiner's file has no
+ * pairing variables, so it is never turned into a code. Problems name variables, never values.
+ */
+export const rebuildPairingPayload: RebuildPairingPayload = variables => {
+  const present = (key: string): string => (variables[key] ?? '').trim();
+  const missing = REBUILD_KEYS.filter(key => present(key) === '');
+  const witness = present('GS_DR_FAILOVER_MODE') === 'witness';
+  const missingWitness =
+    witness && present('GS_DR_WITNESS_URL') === '' ? ['GS_DR_WITNESS_URL'] : [];
+
+  if (missing.length > 0 || missingWitness.length > 0) {
+    return {
+      ok: false,
+      missing: [...missing, ...missingWitness],
+      problems: [],
+    };
+  }
+
+  const checked = validateFirstSiteRequest({
+    thisSite: {
+      nodeId: present('GS_DR_NODE_ID'),
+      url: present(PAIRING_FIRST_URL_KEY),
+    },
+    peerSite: {
+      nodeId: present(PAIRING_JOINER_NODE_ID_KEY),
+      url: present('GS_DR_PEER_URL'),
+    },
+    failoverMode: present('GS_DR_FAILOVER_MODE'),
+    witnessUrl: witness ? present('GS_DR_WITNESS_URL') : undefined,
+    leaseTtlSeconds: Number(present(PAIRING_LEASE_TTL_KEY)),
+  });
+  const secret = present('GS_DR_SHARED_SECRET');
+
+  if (!checked.valid || !SECRET.test(secret)) {
+    return {
+      ok: false,
+      missing: [],
+      problems: [
+        ...(checked.valid
+          ? []
+          : ['the site, failover or lease variables are not valid']),
+        ...(SECRET.test(secret) ? [] : ['GS_DR_SHARED_SECRET is not valid']),
+      ],
+    };
+  }
+
+  return { ok: true, payload: buildPairingPayload(secret, checked.value) };
 };
 
 /** `GSDR1.` + base64url(JSON payload). The payload contains the shared secret of the pair. */

@@ -48,6 +48,28 @@ export type PairingPayload = Readonly<{
   joiner: DisasterRecoverySite;
 }>;
 
+/** The payload the first site hands out: one place decides which field is which and in what order. */
+export type BuildPairingPayload = (
+  secret: string,
+  request: ValidFirstSiteRequest,
+) => PairingPayload;
+
+/** The `GS_DR_*` variables of a first site's env file, by name. */
+export type EnvVariables = Readonly<Record<string, string>>;
+
+export type RebuiltPairing =
+  | Readonly<{ ok: true; payload: PairingPayload }>
+  | Readonly<{
+      ok: false;
+      /** Variables the code needs that the file does not hold. */
+      missing: ReadonlyArray<string>;
+      /** Names the problems; never a value. */
+      problems: ReadonlyArray<string>;
+    }>;
+
+/** The pairing payload of the first site, rebuilt from its env file. */
+export type RebuildPairingPayload = (variables: EnvVariables) => RebuiltPairing;
+
 export type EncodePairingCode = (payload: PairingPayload) => string;
 
 /** Throws a `PairingCodeError` when the code is malformed, of another version or not valid. */
