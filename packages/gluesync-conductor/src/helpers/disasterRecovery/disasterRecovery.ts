@@ -89,17 +89,24 @@ const projectVariables = (): Promise<Variables> =>
 // `GS_DR_ENABLED` alone (no value) takes the value from the project `.env`
 const withPassThrough = (
   environment: DisasterRecoveryService['environment'],
+  key: string,
 ): DisasterRecoveryService['environment'] =>
   Array.isArray(environment)
     ? environment.map(entry =>
-        typeof entry === 'string' && entry.trim() === DR_ENV_KEY
-          ? `${DR_ENV_KEY}=\${${DR_ENV_KEY}}`
+        typeof entry === 'string' && entry.trim() === key
+          ? `${key}=\${${key}}`
           : entry,
       )
     : environment;
 
-const declaredValue = async (
+/**
+ * The value a compose service declares for `key`: `environment` (list or map)
+ * first, then its `env_file`s, `${VAR}` references resolved from the project
+ * `.env`. Empty when nothing declares it.
+ */
+export const declaredValue = async (
   service: Readonly<DisasterRecoveryService>,
+  key: string = DR_ENV_KEY,
 ): Promise<string> => {
   const fromFiles = (
     await Promise.all(envFilePaths(service.env_file).map(readVariables))
@@ -107,16 +114,16 @@ const declaredValue = async (
 
   const fromEnvironment = extractKeyValue(
     '=',
-    withPassThrough(service.environment) as Parameters<
+    withPassThrough(service.environment, key) as Parameters<
       typeof extractKeyValue
     >[1],
   );
 
   // `environment` wins over `env_file`, like compose does
   const raw =
-    DR_ENV_KEY in fromEnvironment
-      ? (fromEnvironment[DR_ENV_KEY] ?? `\${${DR_ENV_KEY}}`)
-      : fromFiles[DR_ENV_KEY];
+    key in fromEnvironment
+      ? (fromEnvironment[key] ?? `\${${key}}`)
+      : fromFiles[key];
   const text = String(raw ?? '');
 
   return text.includes('$')
@@ -124,10 +131,10 @@ const declaredValue = async (
     : text;
 };
 
-const coreHubName = (): string =>
+export const coreHubName = (): string =>
   process.env.CORE_HUB_NAME || 'gluesync-core-hub';
 
-const chronosName = (): string =>
+export const chronosName = (): string =>
   process.env.CHRONOS_NAME || 'gluesync-chronos';
 
 export const isDisasterRecoveryEnabled: IsDisasterRecoveryEnabled =
