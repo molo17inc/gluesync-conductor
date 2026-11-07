@@ -110,10 +110,7 @@ const withEnvironmentValue = (
       ]
     : { ...(environment as Loose), [key]: value };
 
-const withoutEnvironmentKey = (
-  environment: unknown,
-  key: string,
-): unknown | undefined => {
+const withoutEnvironmentKey = (environment: unknown, key: string): unknown => {
   if (Array.isArray(environment)) {
     const kept = environment.filter(entry => environmentKey(entry) !== key);
 
@@ -211,8 +208,12 @@ type Mount = Readonly<{
   type?: string;
 }>;
 
+// Not a regex: `/\/+$/` backtracks quadratically on a long run of slashes that does not end the string
+const withoutTrailingSlashes = (path: string): string =>
+  path.slice(0, path.split('').findLastIndex(char => char !== '/') + 1);
+
 const normalizePath = (path: string, windows: boolean): string => {
-  const slashes = path.replaceAll('\\', '/').replace(/\/+$/, '');
+  const slashes = withoutTrailingSlashes(path.replaceAll('\\', '/'));
 
   return windows ? slashes.toLowerCase() : slashes;
 };
@@ -319,12 +320,15 @@ const UNIT_SECONDS: Readonly<Record<string, number>> = {
   m: 60,
   s: 1,
   ms: 0.001,
-  us: 0.000_001,
-  µs: 0.000_001,
-  ns: 0.000_000_001,
+  us: 1e-6,
+  µs: 1e-6,
+  ns: 1e-9,
 };
 
-const DURATION_PART = /(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)/g;
+// A duration is cut where a unit is followed by a number, and each piece must be a whole
+// number-and-unit: nothing is scanned for a match, so a long input cannot make it backtrack
+const DURATION_BOUNDARY = /(?<=[a-zµ])(?=\d)/;
+const DURATION_PART = /^(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)$/;
 
 /** Seconds of a compose duration (`1m30s`, `90s`), or `undefined` when it is not one. */
 const durationSeconds = (value: unknown): number | undefined => {
@@ -332,9 +336,13 @@ const durationSeconds = (value: unknown): number | undefined => {
     return undefined;
   }
 
-  const parts = [...value.trim().matchAll(DURATION_PART)];
+  const pieces = value
+    .trim()
+    .split(DURATION_BOUNDARY)
+    .map(piece => DURATION_PART.exec(piece));
+  const parts = pieces.filter((part): part is RegExpExecArray => part !== null);
 
-  return parts.map(part => part[0]).join('') === value.trim()
+  return parts.length === pieces.length
     ? parts.reduce(
         (sum, part) => sum + Number(part[1]) * UNIT_SECONDS[part[2]],
         0,
@@ -541,7 +549,9 @@ const line = (key: string, value: string): string => {
   }
 
   // A Windows path is quoted, so that its backslashes are taken literally
-  return `${key}=${value.includes('\\') ? `'${value}'` : value}`;
+  const written = value.includes('\\') ? `'${value}'` : value;
+
+  return `${key}=${written}`;
 };
 
 /**

@@ -31,15 +31,15 @@ const SECRET_BYTES = 32;
 
 // DrSettings.kt NODE_ID_REGEX
 const NODE_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
-const FAILOVER_MODES: ReadonlyArray<string> = ['manual', 'witness'];
+const FAILOVER_MODES: ReadonlySet<string> = new Set(['manual', 'witness']);
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
 
 // scheme://host[:port], no path, query, fragment or user info (DrSettings.kt checkBaseUrl)
 const SITE_URL =
-  /^(https?):\/\/((?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)|\[[0-9A-Fa-f:.]+\]):(\d{1,5})\/?$/i;
+  /^(https?):\/\/((?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)|\[[0-9a-f:.]+\]):(\d{1,5})\/?$/i;
 // The witness URL may have a path; it ends in an env file, so only characters that need no quoting
 const WITNESS_URL =
-  /^(https?):\/\/((?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)|\[[0-9A-Fa-f:.]+\])(?::(\d{1,5}))?(\/[A-Za-z0-9._~/%+=&?,:@-]*)?$/i;
+  /^(https?):\/\/((?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)|\[[0-9a-f:.]+\])(?::(\d{1,5}))?(\/[a-z0-9._~/%+=&?,:@-]*)?$/i;
 // A secret ends in an env file too: base64url, as generateSecret makes it
 const SECRET = /^[A-Za-z0-9_-]{32,}$/;
 const MAX_PORT = 65_535;
@@ -110,10 +110,7 @@ const validateFailover = (
     leaseTtlSeconds: number;
   }>
 > => {
-  if (
-    typeof failoverMode !== 'string' ||
-    !FAILOVER_MODES.includes(failoverMode)
-  ) {
+  if (typeof failoverMode !== 'string' || !FAILOVER_MODES.has(failoverMode)) {
     return {
       valid: false,
       problems: ['failoverMode must be "manual" or "witness"'],

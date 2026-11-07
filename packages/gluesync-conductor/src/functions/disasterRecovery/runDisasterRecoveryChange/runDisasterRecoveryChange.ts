@@ -177,7 +177,17 @@ const runDisasterRecoveryChange: RunDisasterRecoveryChange = async (
 
   // The recreate waits for the 202 to be out (a refusal ends the action on its own)
   if (outcome.statusCode === 202) {
-    whenFlushed(reply).then(() => flushed.resolve(undefined));
+    // Fire and forget on purpose: the action above waits on `flushed`, and it must go on even
+    // if watching the socket fails, so the chain ends in a handler that logs and resolves
+    whenFlushed(reply)
+      .then(() => flushed.resolve(undefined))
+      .catch((error: unknown) => {
+        logger.error(
+          { error, action: plan.action },
+          '[disaster-recovery] could not tell when the reply was flushed',
+        );
+        flushed.resolve(undefined);
+      });
   }
 };
 

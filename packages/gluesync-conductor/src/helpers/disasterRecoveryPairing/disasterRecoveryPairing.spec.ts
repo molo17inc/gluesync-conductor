@@ -230,6 +230,91 @@ describe('validateFirstSiteRequest', () => {
     );
   });
 
+  it('takes a host, an IPv6 address and a witness path in any case, and nothing outside the character sets', () => {
+    const peerProblems = (url: string): ReadonlyArray<string> =>
+      problems({ ...request, peerSite: { ...request.peerSite, url } });
+    const witnessProblems = (witnessUrl: string): ReadonlyArray<string> =>
+      problems({ ...request, failoverMode: 'witness', witnessUrl });
+
+    [
+      'HTTP://HUB-B.EXAMPLE.COM:1717',
+      'http://Hub-B.Example.com:1717/',
+      'http://A:1717',
+      'http://9:1717',
+      'http://a-b.C-d:1717',
+      'http://[FE80::ABCD:ef01]:1717',
+      'http://[::FFFF:10.0.0.2]:1717',
+    ].forEach(url => assert.deepEqual(peerProblems(url), [], url));
+    [
+      'http://-a:1717',
+      'http://a-:1717',
+      'http://.a:1717',
+      'http://a.:1717',
+      'http://a_b:1717',
+      'http://a b:1717',
+      'http://hüb:1717',
+      'http://[G::1]:1717',
+      'http://[::1:1717',
+      'http://::1]:1717',
+      'http://[]:1717',
+    ].forEach(url =>
+      assert.ok(peerProblems(url).length > 0, `${url} is refused`),
+    );
+
+    [
+      'HTTPS://Witness.Example.com',
+      'https://witness.example.com:8443',
+      'https://WITNESS.example.com:8443/Path/To_It-1.0~x%2F+=&?a,b:c@d',
+      'https://[FE80::1]/W',
+      'https://w/',
+    ].forEach(url => assert.deepEqual(witnessProblems(url), [], url));
+    [
+      'https://w/a b',
+      "https://w/a'b",
+      'https://w/a"b',
+      'https://w/a$b',
+      'https://w/a\\b',
+      'https://w/a#b',
+      'https://w/ä',
+      'https://w:0',
+      'https://w:65536',
+      'https://w path',
+      'https://user@w/',
+      'https://w?x=1',
+    ].forEach(url =>
+      assert.ok(witnessProblems(url).length > 0, `${url} is refused`),
+    );
+  });
+
+  it('knows exactly two failover modes', () => {
+    ['manual', 'witness'].forEach(failoverMode =>
+      assert.ok(
+        !problems({
+          ...request,
+          failoverMode,
+          witnessUrl:
+            failoverMode === 'witness' ? 'https://witness.example.com' : null,
+        })
+          .join()
+          .includes('failoverMode'),
+      ),
+    );
+    [
+      'Manual',
+      'WITNESS',
+      ' manual',
+      'constructor',
+      'toString',
+      '',
+      1,
+      null,
+    ].forEach(failoverMode =>
+      assert.deepEqual(problems({ ...request, failoverMode }), [
+        'failoverMode must be "manual" or "witness"',
+      ]),
+    );
+  });
+
   it('needs a witness url exactly with the witness mode', () => {
     assert.deepEqual(problems({ ...request, failoverMode: 'witness' }), [
       'witnessUrl is required with failoverMode "witness" and must be an http:// or https:// URL',

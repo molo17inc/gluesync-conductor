@@ -366,6 +366,172 @@ describe('applyDisasterRecoveryCompose', () => {
     assert.equal(grace(kit()), '60s');
   });
 
+  it('reads every shape of compose duration the same way: a minute or more stays, less is raised, what is not a duration stays', () => {
+    const grace = (value: unknown): unknown => {
+      const compose = kit();
+      service(compose, 'gluesync-core-hub').stop_grace_period = value;
+
+      return (applyDisasterRecoveryCompose(compose, targets) as any).services[
+        'gluesync-core-hub'
+      ].stop_grace_period;
+    };
+    const kept = [
+      '60s',
+      '1m',
+      '1m0s',
+      '0m60s',
+      '1m30s',
+      '30s30s',
+      '30s1m',
+      '1.5m',
+      '0.5h',
+      '1h',
+      '60000ms',
+      '59s1000ms',
+      '60.0s',
+      '  1m  ',
+      // not a duration: left alone whatever number it holds
+      '30',
+      's',
+      'm',
+      '1',
+      '1.s',
+      '.5s',
+      '1..5s',
+      '1.5.5s',
+      '1S',
+      '1M',
+      '1 m',
+      '1m 30s',
+      '10s 10s',
+      'x1s',
+      '1sx',
+      '1s2',
+      '1s.',
+      '1,5s',
+      '-1s',
+      '+1s',
+      '1e1s',
+      '1µ',
+      '1n',
+      '1u',
+      '1μs',
+      '',
+      '   ',
+      'soon',
+      'm1',
+      '1ss',
+      '1mss',
+      '1hm',
+    ];
+    const raised = [
+      '59s',
+      '59.9s',
+      '0s',
+      '0.5m',
+      '30s',
+      '1s',
+      '59999ms',
+      '30000000us',
+      '30000000µs',
+      '30ns',
+      '90us',
+      '90µs',
+      '10s20s',
+      '10s10s10s',
+      '  30s  ',
+      '0m1ms',
+      '00059s',
+      '0.0000s',
+    ];
+
+    kept.forEach(value => {
+      assert.equal(grace(value), value, `${JSON.stringify(value)} stays`);
+    });
+
+    raised.forEach(value => {
+      assert.equal(
+        grace(value),
+        STOP_GRACE_PERIOD,
+        `${JSON.stringify(value)} is raised`,
+      );
+    });
+  });
+
+  it('reads a very long value that is not a duration in no time', () => {
+    const compose = kit();
+    const hub = service(compose, 'gluesync-core-hub');
+
+    [
+      `${'1'.repeat(200_000)}x`,
+      `${'1.'.repeat(100_000)}x`,
+      `${'1s'.repeat(100_000)}1`,
+      '1'.repeat(200_000),
+    ].forEach(value => {
+      hub.stop_grace_period = value;
+      const started = Date.now();
+      const after = applyDisasterRecoveryCompose(compose, targets) as any;
+
+      assert.equal(
+        after.services['gluesync-core-hub'].stop_grace_period,
+        value,
+      );
+      assert.ok(Date.now() - started < 1000, 'it must not backtrack');
+    });
+
+    // and a long one that is a duration is summed
+    hub.stop_grace_period = '1s'.repeat(100_000);
+    assert.equal(
+      (applyDisasterRecoveryCompose(compose, targets) as any).services[
+        'gluesync-core-hub'
+      ].stop_grace_period,
+      '1s'.repeat(100_000),
+    );
+  });
+
+  it('finds the Chronos mount of a long-syntax volume whatever slashes end its target', () => {
+    const mountedWith = (target: string, windows = false): boolean => {
+      const compose = kit();
+      service(compose, 'gluesync-chronos').volumes = [
+        { type: 'volume', source: 'chronos-data', target },
+      ];
+
+      return (
+        findDisasterRecoveryBlocker(compose, { ...targets, windows }) === null
+      );
+    };
+
+    assert.equal(mountedWith('/app/data'), true);
+    assert.equal(mountedWith('/app/data/'), true);
+    assert.equal(mountedWith('/app/data////'), true);
+    assert.equal(mountedWith('/app/data\\'), true);
+    assert.equal(mountedWith('/app/data\\/\\//'), true);
+    assert.equal(mountedWith('/app/data/x'), false);
+    assert.equal(mountedWith('/app/data/ '), false);
+    assert.equal(mountedWith('//app/data'), false);
+    assert.equal(mountedWith('/app/datax////'), false);
+    assert.equal(mountedWith('////'), false);
+    assert.equal(mountedWith(''), false);
+    assert.equal(mountedWith(String.raw`C:\app\data`, true), true);
+    assert.equal(mountedWith(String.raw`c:\APP\Data\\`, true), true);
+    assert.equal(mountedWith(String.raw`C:\app\data\x`, true), false);
+  });
+
+  it('compares a very long target in no time', () => {
+    const compose = kit();
+    service(compose, 'gluesync-chronos').volumes = [
+      {
+        type: 'volume',
+        source: 'chronos-data',
+        target: `/app/data${'/'.repeat(100_000)}x`,
+      },
+    ];
+    const started = Date.now();
+
+    assert.notEqual(findDisasterRecoveryBlocker(compose, targets), null);
+    assert.ok(Date.now() - started < 1000, 'it must not backtrack');
+  });
+
   it('takes the Windows layout: Windows paths and the Windows root folder', () => {
     const windows = { ...targets, windows: true };
     const compose = kit();
