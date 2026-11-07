@@ -122,9 +122,9 @@ const composeFile = () => path.join(env.kitDir, 'docker-compose.yml');
 // put back to CoreHub's tag from before the update, without touching the container; the restart must keep the running
 // tag, write it back into both files, and refuse the second request while the first runs.
 const CORE_HUB = 'gluesync-core-hub';
-const coreHubTagIn = text => new RegExp(`/${SERVICES[CORE_HUB].image}:([^\\s"']+)`).exec(text)?.[1] ?? null;
+const coreHubTagIn = text => new RegExp(String.raw`/${SERVICES[CORE_HUB].image}:([^\s"']+)`).exec(text)?.[1] ?? null;
 const withCoreHubTag = (text, tag) =>
-  text.replace(new RegExp(`(/${SERVICES[CORE_HUB].image}):[^\\s"']+`), (_m, name) => `${name}:${tag}`);
+  text.replace(new RegExp(String.raw`(/${SERVICES[CORE_HUB].image}):[^\s"']+`), (_m, name) => `${name}:${tag}`);
 
 const restartWithDrift = async (ctx, it) => {
   const drift = (it.restartDrift ||= {});
