@@ -37,8 +37,13 @@ const findPin = async (
     return undefined;
   }
 
-  const { image } = await observeService(docker, id);
+  const { image, detail } = await observeService(docker, id);
   const running = parseImage(image ?? '');
+
+  getLogger().debug(
+    { service: id, compose: service.image, running: image, state: detail },
+    '[conductor-restart] compose image against the container',
+  );
 
   // A different image altogether, or one known only by its id, is not drift
   if (
