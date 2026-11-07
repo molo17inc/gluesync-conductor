@@ -83,6 +83,12 @@ describe('restartWindows', () => {
     assert.match(name, /^gluesync-restart-helper-\d+$/);
     assert.ok(args.indexOf('-d') < args.indexOf('helper:win'));
     assert.ok(args.indexOf('--name') < args.indexOf('helper:win'));
+    // A second restart request finds it by this label
+    assert.equal(
+      args[args.indexOf('--label') + 1],
+      'com.molo17.conductor.helper=full-stack-restart',
+    );
+    assert.ok(args.indexOf('--label') < args.indexOf('helper:win'));
     assert.ok(args.includes('E:/Gluesync:C:/update_context'));
   });
 

@@ -4,6 +4,7 @@ import {
   helperContainerName,
   HELPER_LOG_DIR,
 } from '../autoReboot/windowsHelper';
+import { FULL_RESTART_HELPER_LABEL } from './fullRestartInProgress';
 
 type RestartWindows = (
   options: Readonly<{
@@ -97,6 +98,9 @@ const restartWindows: RestartWindows = async ({
     '-d', // detached: must outlive the conductor it stops
     '--name',
     helperName,
+    // Found by a second restart request, even by the conductor this one recreates
+    '--label',
+    FULL_RESTART_HELPER_LABEL,
     '--user',
     'ContainerAdministrator',
     '--rm',

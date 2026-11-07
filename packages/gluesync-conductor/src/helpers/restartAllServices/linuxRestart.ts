@@ -7,6 +7,7 @@ import {
   ENGINE_SOCKET_IN_CONTAINER,
   resolveHostSocketPath,
 } from '../containerRuntime/hostSocketPath';
+import { FULL_RESTART_HELPER_LABEL } from './fullRestartInProgress';
 
 type RestartLinux = (
   options: Readonly<{
@@ -70,6 +71,9 @@ const restartLinux: RestartLinux = async ({
   const args: ReadonlyArray<string> = [
     'run',
     '--rm',
+    // Found by a second restart request, even by the conductor this one recreates
+    '--label',
+    FULL_RESTART_HELPER_LABEL,
     '--security-opt',
     'label=disable',
     '-v',
