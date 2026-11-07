@@ -24,9 +24,11 @@ type RestartWindows = (
  * folder and to `docker logs <name>`.
  *
  * This version performs a full stack refresh:
- *   docker-compose pull
  *   docker-compose down
  *   docker-compose up -d
+ *
+ * No `pull`: a restart brings back the images that ran, it never updates
+ * them. `up` still pulls an image that is not on the host.
  *
  * The flow is:
  *   1. This code (inside gluesync-conductor) calls `docker run -d ...`.
@@ -37,7 +39,6 @@ type RestartWindows = (
  *   4. Inside the helper, pwsh runs:
  *        $env:BASE_PATH='<basePath>';
  *        $env:DOCKER_HOST='npipe:////./pipe/docker_engine';
- *        docker-compose pull;
  *        docker-compose down;
  *        docker-compose up -d;
  */
@@ -77,10 +78,6 @@ const restartWindows: RestartWindows = async ({
       `$env:PROXY_HTTPS='${process.env.PROXY_HTTPS ?? ''}'`,
     ],
     steps: [
-      {
-        label: 'pull',
-        command: `docker-compose -f "${internalComposeFile}" pull`,
-      },
       {
         label: 'down',
         command: `docker-compose -f "${internalComposeFile}" down --remove-orphans`,

@@ -17,7 +17,7 @@ const isCoreHub = (service: Readonly<RawComposeService>): boolean => {
   return labels.includes(CORE_HUB_LABEL);
 };
 
-// The service when its container runs a newer tag of the same image than the
+// The service when its container runs another tag of the same image than the
 // compose file names. A container that exists but has stopped counts too: its
 // data (CoreHub's database above all) was already migrated by that image.
 const findPin = async (
@@ -41,11 +41,16 @@ const findPin = async (
   const running = parseImage(image ?? '');
 
   // A different image altogether, or one known only by its id, is not drift
-  if (!image || running.fullName !== declared.fullName || running.digest) {
+  if (
+    !image ||
+    !running.tag ||
+    running.fullName !== declared.fullName ||
+    running.digest
+  ) {
     return undefined;
   }
 
-  if (compareImageTags(declared.tag, running.tag) !== 'older') {
+  if (declared.tag === running.tag) {
     return undefined;
   }
 
@@ -54,18 +59,22 @@ const findPin = async (
     coreHub: isCoreHub(service),
     composeImage: service.image,
     runningImage: `${declared.fullName}:${running.tag}`,
+    composeIs: compareImageTags(declared.tag, running.tag),
   };
 };
 
 /**
- * Before a full stack restart: a service whose compose file names an older
- * tag than its container runs (an update made outside the conductor, with
- * Portainer or `docker`) would be recreated on that older tag. CoreHub cannot
- * go back: its database was migrated forward and has no way down, so it exits
- * on every start (2026-11-07, HQ: compose 2.3.1.3, running 2.3.1.4).
+ * Before a full stack restart, which recreates every service from the compose
+ * file: a restart brings back the versions that run, it never changes them.
+ * A service whose compose file names another tag than its container runs gets
+ * the running tag written into the compose file (and so into its last-good
+ * copy). Returns what was changed.
  *
- * The running tag is written into the compose file (and so into its last-good
- * copy): a restart brings back what was running. Returns what was changed.
+ * An older compose tag is the dangerous one: it comes from an update made
+ * outside the conductor (Portainer, `docker`), and CoreHub cannot go back. Its
+ * database was migrated forward and has no way down, so it exits on every
+ * start (2026-11-07, HQ: compose 2.3.1.3, running 2.3.1.4). A newer one is an
+ * update that did not finish: it is for the update to apply, not a restart.
  */
 const pinRunningImages: PinRunningImages = async docker => {
   const composeJson = await readComposeFile({ raw: true });
@@ -97,8 +106,8 @@ const pinRunningImages: PinRunningImages = async docker => {
 
   pins.forEach(pin => {
     getLogger().warn(
-      { ...pin, reason: 'compose-older-than-running' },
-      '[conductor-restart] compose file named an older image than the running container: pinned the running tag before restarting',
+      { ...pin, reason: 'compose-differs-from-running' },
+      '[conductor-restart] compose file named another image tag than the running container: pinned the running tag before restarting',
     );
   });
 

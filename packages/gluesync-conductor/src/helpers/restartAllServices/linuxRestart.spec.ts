@@ -71,7 +71,11 @@ describe('restartLinux', () => {
     ]);
     assert.equal(args[11], '/srv/gs');
     assert.equal(args[12], 'docker.io/library/docker:28');
-    assert.match(args[args.length - 1], /docker compose pull/);
+    // A restart never updates: no pull, only down and up
+    assert.equal(
+      args[args.length - 1],
+      'docker compose down --remove-orphans && docker compose up -d',
+    );
   });
 
   it('mounts the host path of the socket this container runs on (Podman rootful)', async () => {

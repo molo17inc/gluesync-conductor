@@ -583,7 +583,7 @@ describe('doContainersAction restart', () => {
     );
   });
 
-  it('reports the images it kept so the compose file would not downgrade them', async () => {
+  it('reports the images it kept so the restart would not change their version', async () => {
     const loaded = load({
       pins: [
         {
@@ -591,6 +591,14 @@ describe('doContainersAction restart', () => {
           coreHub: true,
           composeImage: 'molo17/gluesync-core-hub:2.3.1.3',
           runningImage: 'molo17/gluesync-core-hub:2.3.1.4',
+          composeIs: 'older',
+        },
+        {
+          service: 'gluesync-mssql-ee',
+          coreHub: false,
+          composeImage: 'molo17/gluesync-mssql-ee:2.3.2.0',
+          runningImage: 'molo17/gluesync-mssql-ee:2.3.1.4',
+          composeIs: 'newer',
         },
       ],
     });
@@ -604,6 +612,9 @@ describe('doContainersAction restart', () => {
     assert.equal(kept.status, 'OK');
     assert.match(kept.message, /Kept molo17\/gluesync-core-hub:2\.3\.1\.4/);
     assert.match(kept.message, /2\.3\.1\.3/);
+    assert.match(kept.message, /would have downgraded gluesync-core-hub/);
+    const agent = body(reply).data.containers[2];
+    assert.match(agent.message, /would have upgraded gluesync-mssql-ee/);
   });
 
   it('does not restart when the running images cannot be checked', async () => {

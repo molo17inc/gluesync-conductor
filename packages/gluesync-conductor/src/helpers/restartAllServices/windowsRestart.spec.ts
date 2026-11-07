@@ -98,18 +98,17 @@ describe('restartWindows', () => {
     assert.deepEqual(spawned[0]?.opts, { keepUpdateMode: true });
   });
 
-  it('pulls, takes the stack down and brings it up, logging each step to the kit folder', async () => {
+  it('takes the stack down and brings it up without pulling, logging each step to the kit folder', async () => {
     const { spawned } = await run();
     const args = spawned[0]?.args ?? [];
     const name = args[args.indexOf('--name') + 1] as string;
     const script = args.at(-1) as string;
 
-    const pull = script.indexOf(
-      'docker-compose -f "C:/update_context/docker-compose.yml" pull',
-    );
     const down = script.indexOf('down --remove-orphans');
     const up = script.indexOf('--project-directory "E:/Gluesync" up -d');
-    assert.ok(pull > 0 && pull < down && down < up);
+    assert.ok(down > 0 && down < up);
+    // A restart never updates the images it brings back
+    assert.ok(!script.includes(' pull'));
     assert.ok(
       script.includes(
         `$log='C:/update_context/.conductor/helper-logs/${name}.log'`,

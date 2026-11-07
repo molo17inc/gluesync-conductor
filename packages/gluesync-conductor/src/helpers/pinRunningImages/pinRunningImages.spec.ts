@@ -85,6 +85,7 @@ describe('pinRunningImages', () => {
         coreHub: true,
         composeImage: 'molo17/gluesync-core-hub:2.3.1.3',
         runningImage: 'molo17/gluesync-core-hub:2.3.1.4',
+        composeIs: 'older',
       },
     ]);
     assert.equal(sandbox.read(sandbox.compose), compose('2.3.1.4'));
@@ -99,11 +100,30 @@ describe('pinRunningImages', () => {
     assert.equal(existsSync(sandbox.lastGood), false);
   });
 
-  it('leaves a newer compose tag alone: the restart is the upgrade', async () => {
+  it('pins a newer compose tag too: a restart is not an update', async () => {
     sandbox.setCompose(compose('2.3.2.0'));
 
-    assert.deepEqual(await pinRunningImages(docker(running('2.3.1.4'))), []);
-    assert.equal(sandbox.read(sandbox.compose), compose('2.3.2.0'));
+    const pins = await pinRunningImages(docker(running('2.3.1.4')));
+
+    assert.deepEqual(
+      pins.map(pin => [pin.runningImage, pin.composeIs]),
+      [['molo17/gluesync-core-hub:2.3.1.4', 'newer']],
+    );
+    assert.equal(sandbox.read(sandbox.compose), compose('2.3.1.4'));
+  });
+
+  it('pins a tag it cannot order: latest, or another build of the release', async () => {
+    sandbox.setCompose(compose('latest'));
+    const fromLatest = await pinRunningImages(docker(running('2.3.1.4')));
+    assert.equal(fromLatest[0]?.composeIs, 'unknown');
+    assert.equal(sandbox.read(sandbox.compose), compose('2.3.1.4'));
+
+    sandbox.setCompose(compose('2.3.2.0.0c1f2e3a9b'));
+    const otherBuild = await pinRunningImages(
+      docker(running('2.3.2.0.4dbdd8aa7e')),
+    );
+    assert.equal(otherBuild[0]?.composeIs, 'unknown');
+    assert.equal(sandbox.read(sandbox.compose), compose('2.3.2.0.4dbdd8aa7e'));
   });
 
   it('pins a running beta over its older release', async () => {

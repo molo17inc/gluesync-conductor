@@ -575,10 +575,18 @@ const rebootConductorAfterReply = (
   });
 };
 
+const PIN_EFFECT: Readonly<Record<PinnedImage['composeIs'], string>> = {
+  older: 'downgraded',
+  newer: 'upgraded',
+  equal: 'changed',
+  unknown: 'changed',
+};
+
+// A restart brings back the versions that run: what the compose file said instead
 const pinnedItem = (pin: Readonly<PinnedImage>): DoContainersActionItem => ({
   id: pin.service,
   status: 'OK',
-  message: `Kept ${pin.runningImage}: the compose file named ${pin.composeImage}, older than the running container, and restarting on it would have downgraded ${pin.service}.`,
+  message: `Kept ${pin.runningImage}: the compose file named ${pin.composeImage}, and restarting on it would have ${PIN_EFFECT[pin.composeIs]} ${pin.service}.`,
 });
 
 // No ids: the whole stack, conductor included, through a helper container that
@@ -606,7 +614,7 @@ const restartFullStack = async (req: Readonly<Request>): Promise<Outcome> => {
   const endFullRestart = beginFullRestart();
 
   // `compose up` recreates every service from the compose file: one that
-  // names an older tag than its container runs would be downgraded
+  // names another tag than its container runs would change version
   const pins = await pinRunningImages(req.server.docker).catch(error => {
     endFullRestart();
     throw error;
