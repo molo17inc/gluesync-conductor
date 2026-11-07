@@ -34,6 +34,10 @@ type Options = {
   bulk?: { orderedIds: string[]; results: PromiseSettledResult<unknown>[] };
   rebootError?: unknown;
   restartError?: unknown;
+  // The full restart helper runs until this settles
+  restartRuns?: Promise<void>;
+  // What pinRunningImages finds, or how it fails
+  pins?: ReadonlyArray<unknown> | Error;
   availableBytes?: number;
   // Compose unless told otherwise; `null` is "Docker not answering"
   orchestrator?: unknown;
@@ -83,6 +87,7 @@ const load = (options: Options = {}) => {
     grafana: [] as Call[],
     swarmForceUpdates: [] as string[],
     swarmStackRestarts: [] as Call[],
+    pinned: 0,
   };
   const log =
     (level: string) =>
@@ -207,9 +212,24 @@ const load = (options: Options = {}) => {
       [helper('restartAllServices/linuxRestart')]: {
         default: async (...args: unknown[]) => {
           calls.restartLinux.push(args);
+          await options.restartRuns;
           if (options.restartError) {
             throw options.restartError;
           }
+        },
+      },
+      // Fresh per load: whether a full restart runs is module state
+      [helper('restartAllServices/fullRestartInProgress')]: loadWithStubs(
+        helper('restartAllServices/fullRestartInProgress'),
+        {},
+      ),
+      [helper('pinRunningImages/pinRunningImages')]: {
+        default: async () => {
+          calls.pinned += 1;
+          if (options.pins instanceof Error) {
+            throw options.pins;
+          }
+          return options.pins ?? [];
         },
       },
       [helper('migrationNeeded/migrationNeeded')]: {
@@ -278,6 +298,7 @@ const fakeReply = (): Reply => {
 type Docker = {
   ping?: () => Promise<unknown>;
   pruneImages?: (opts: unknown) => Promise<unknown>;
+  listContainers?: (opts: unknown) => Promise<unknown>;
 };
 
 const run = async (
@@ -560,6 +581,101 @@ describe('doContainersAction restart', () => {
         'error: [conductor-restart] full restart failed',
       ),
     );
+  });
+
+  it('reports the images it kept so the restart would not change their version', async () => {
+    const loaded = load({
+      pins: [
+        {
+          service: 'gluesync-core-hub',
+          coreHub: true,
+          composeImage: 'molo17/gluesync-core-hub:2.3.1.3',
+          runningImage: 'molo17/gluesync-core-hub:2.3.1.4',
+          composeIs: 'older',
+        },
+        {
+          service: 'gluesync-mssql-ee',
+          coreHub: false,
+          composeImage: 'molo17/gluesync-mssql-ee:2.3.2.0',
+          runningImage: 'molo17/gluesync-mssql-ee:2.3.1.4',
+          composeIs: 'newer',
+        },
+      ],
+    });
+    const reply = await run(loaded, { action: 'restart', ids: [] });
+
+    assert.equal(reply.statusCode, 200);
+    assert.equal(loaded.calls.pinned, 1);
+    const [all, kept] = body(reply).data.containers;
+    assert.equal(all.id, 'ALL');
+    assert.equal(kept.id, 'gluesync-core-hub');
+    assert.equal(kept.status, 'OK');
+    assert.match(kept.message, /Kept molo17\/gluesync-core-hub:2\.3\.1\.4/);
+    assert.match(kept.message, /2\.3\.1\.3/);
+    assert.match(kept.message, /would have downgraded gluesync-core-hub/);
+    const agent = body(reply).data.containers[2];
+    assert.match(agent.message, /would have upgraded gluesync-mssql-ee/);
+  });
+
+  it('does not restart when the running images cannot be checked', async () => {
+    const loaded = load({ pins: new Error('engine went away') });
+    const reply = await run(loaded, { action: 'restart', ids: [] });
+    await pending();
+
+    assert.equal(reply.statusCode, 500);
+    assert.equal(loaded.calls.updateMode, 0);
+    assert.equal(loaded.calls.restartLinux.length, 0);
+
+    // Nothing left marked as running: the next request is checked again,
+    // not refused as a second restart
+    const retried = await run(loaded, { action: 'restart', ids: [] });
+    assert.equal(retried.statusCode, 500);
+    assert.equal(loaded.calls.pinned, 2);
+  });
+
+  it('refuses a second full restart while the first one runs (2026-11-07)', async () => {
+    const helper = { done: () => {} };
+    const loaded = load({
+      restartRuns: new Promise<void>(resolve => {
+        helper.done = resolve;
+      }),
+    });
+
+    const first = await run(loaded, { action: 'restart', ids: [] });
+    await pending();
+    // The gate is free: the first reply went out before the helper finished
+    const second = await run(loaded, { action: 'restart', ids: [] });
+
+    assert.equal(first.statusCode, 200);
+    assert.equal(second.statusCode, 409);
+    assert.equal(
+      body(second).error,
+      'A full stack restart is already in progress',
+    );
+    assert.equal(loaded.calls.restartLinux.length, 1);
+    assert.equal(loaded.calls.pinned, 1);
+    assert.ok(
+      loaded.calls.logs.includes(
+        'warn: [conductor-restart] refused: a full stack restart is already running',
+      ),
+    );
+
+    helper.done();
+    await pending();
+    await pending();
+    const third = await run(loaded, { action: 'restart', ids: [] });
+    assert.equal(third.statusCode, 200);
+  });
+
+  it('refuses a full restart while the helper of another conductor runs', async () => {
+    const loaded = load();
+    const reply = await run(loaded, { action: 'restart', ids: [] }, {
+      listContainers: async () => [{ Created: 1_794_052_310 }],
+    } as Docker);
+
+    assert.equal(reply.statusCode, 409);
+    assert.match(body(reply).details, /2026-11-07T11:51:50/);
+    assert.equal(loaded.calls.pinned, 0);
   });
 
   it('reboots only the conductor after the reply when it is the only id', async () => {

@@ -7,6 +7,7 @@ import {
   ENGINE_SOCKET_IN_CONTAINER,
   resolveHostSocketPath,
 } from '../containerRuntime/hostSocketPath';
+import { FULL_RESTART_HELPER_LABEL } from './fullRestartInProgress';
 
 type RestartLinux = (
   options: Readonly<{
@@ -17,9 +18,11 @@ type RestartLinux = (
 
 /**
  * Runs a helper container that performs:
- *   docker compose pull
  *   docker compose down
  *   docker compose up -d
+ *
+ * No `pull`: a restart brings back the images that ran, it never updates
+ * them. `up` still pulls an image that is not on the host.
  *
  * Automatically detects whether the system has `docker compose` or `docker-compose`.
  * Fully functional style: no `let` or `for`.
@@ -58,7 +61,6 @@ const restartLinux: RestartLinux = async ({
   }
 
   const innerCmd = [
-    `${composeCmd} pull`,
     `${composeCmd} down --remove-orphans`,
     `${composeCmd} up -d`,
   ].join(' && ');
@@ -70,6 +72,9 @@ const restartLinux: RestartLinux = async ({
   const args: ReadonlyArray<string> = [
     'run',
     '--rm',
+    // Found by a second restart request, even by the conductor this one recreates
+    '--label',
+    FULL_RESTART_HELPER_LABEL,
     '--security-opt',
     'label=disable',
     '-v',

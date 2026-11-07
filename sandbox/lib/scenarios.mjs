@@ -39,7 +39,7 @@ import { DISK_FULL_TEXT, env, SERVICES, versionsFor } from './env.mjs';
 import { composeProblem } from './composeSampler.mjs';
 import { releaseDiskFault, startDiskFault } from './diskFault.mjs';
 import { backofficeAdmin, kitCompose } from './setup.mjs';
-import { callConductor, containers, corehub, dockerProxy, waitConductor } from './stack.mjs';
+import { callConductor, containers, corehub, dockerProxy, health, waitConductor } from './stack.mjs';
 import { docker, now, sleep, waitFor } from './util.mjs';
 
 const ALL = Object.keys(SERVICES);
@@ -116,6 +116,77 @@ const FLAP_OPEN_KIB = 96; // above the 64 KiB minimum: pre-flights pass while th
 const FLAP_ROUNDS = 3; // bulk rounds under flapping before the filler stops and the update must converge
 
 const composeFile = () => path.join(env.kitDir, 'docker-compose.yml');
+
+// full-restart-drift (2026-11-07, HQ): CoreHub runs a newer tag than the compose file names (an update made outside
+// the conductor), then "restart all" is pressed twice, 28 s apart on HQ. The compose file and its last-good copy are
+// put back to CoreHub's tag from before the update, without touching the container; the restart must keep the running
+// tag, write it back into both files, and refuse the second request while the first runs.
+const CORE_HUB = 'gluesync-core-hub';
+const coreHubTagIn = text => new RegExp(String.raw`/${SERVICES[CORE_HUB].image}:([^\s"']+)`).exec(text)?.[1] ?? null;
+const withCoreHubTag = (text, tag) =>
+  text.replace(new RegExp(String.raw`(/${SERVICES[CORE_HUB].image}):[^\s"']+`), (_m, name) => `${name}:${tag}`);
+
+const restartWithDrift = async (ctx, it) => {
+  const drift = (it.restartDrift ||= {});
+  const running = await containerOf(CORE_HUB);
+  drift.runningTag = running?.tag ?? null;
+  await waitFor('last-good backup', async () => fs.existsSync(env.lastGoodFile), { timeoutMs: 30000, intervalMs: 1000 });
+  // What the compose file named before the update: the older tag
+  fs.writeFileSync(composeFile(), withCoreHubTag(fs.readFileSync(composeFile(), 'utf8'), drift.olderTag));
+  fs.writeFileSync(env.lastGoodFile, withCoreHubTag(fs.readFileSync(env.lastGoodFile, 'utf8'), drift.olderTag));
+  it.notes.push(`compose and last-good put back to ${CORE_HUB}:${drift.olderTag} while it runs ${drift.runningTag}`);
+
+  // On HQ the compose file had been behind for days. Here it was rewritten from the host a moment after the
+  // conductor's own write at the end of the update, at the same size: the Docker Desktop file share can serve the
+  // conductor its cached copy for a while. The restart goes out once the conductor reads the older tag itself.
+  const conductorBefore = await containerOf('gluesync-conductor');
+  const visible = await waitFor(
+    'conductor sees the older core-hub tag',
+    async () =>
+      (await docker(['exec', conductorBefore.id, 'grep', '-c', `${SERVICES[CORE_HUB].image}:${drift.olderTag}`, '/opt/gluesync-conductor/root-folder/docker-compose.yml'])).out.trim() === '1',
+    { timeoutMs: 10000, intervalMs: 100 },
+  );
+  it.metrics.composeVisibleInConductorMs = visible.ms;
+  const restart = label =>
+    callConductor(it, label, 'POST', '/containers', { token: ctx.adminToken, body: { action: 'restart', ids: [] }, timeoutMs: 60000 });
+  // On HQ both requests reached the same conductor process (req-au, req-b4): the second one goes out as soon as
+  // the first is answered, before the helper has recreated anything
+  const first = await restart('full restart 1');
+  const second = await restart('full restart 2 (while the first runs)');
+  drift.statuses = [first.status, second.status];
+  drift.firstItems = first.json?.data?.containers ?? [];
+  drift.secondError = second.json?.error ?? null;
+  it.notes.push(`full restarts answered ${drift.statuses.join(' then ')}`);
+
+  const back = await waitFor(
+    'conductor after full restart',
+    async () => {
+      const c = await containerOf('gluesync-conductor');
+      return c && c.id !== conductorBefore?.id;
+    },
+    { timeoutMs: 300000, intervalMs: 3000 },
+  );
+  it.metrics.fullRestartMs = back.ms;
+  if (!back.ok) it.notes.push('conductor container was not recreated by the full restart within 5 minutes');
+  await waitFor('core-hub running after full restart', async () => !!(await containerOf(CORE_HUB)), { timeoutMs: 120000, intervalMs: 2000 });
+  drift.afterContainerTag = (await containerOf(CORE_HUB))?.tag ?? null;
+  drift.afterComposeTag = coreHubTagIn(fs.readFileSync(composeFile(), 'utf8'));
+  drift.afterLastGoodTag = fs.existsSync(env.lastGoodFile) ? coreHubTagIn(fs.readFileSync(env.lastGoodFile, 'utf8')) : null;
+
+  // A conductor the restart recreated knows nothing of it: it finds a running helper by the helper's label
+  await waitFor('conductor answers after full restart', async () => (await health()).status === 200, { timeoutMs: 120000, intervalMs: 2000 });
+  const helper = await docker([
+    'run', '-d', '--rm', '--name', `${env.keepPrefix}fake-restart-helper`,
+    '--label', 'com.molo17.conductor.helper=full-stack-restart', '--entrypoint', 'sleep', env.fakeBase, '120',
+  ]);
+  try {
+    const third = await restart('full restart 3 (helper of another conductor running)');
+    drift.helperStatus = third.status;
+  } finally {
+    if (helper.code === 0) await docker(['rm', '-f', helper.out.trim()]);
+  }
+  it.notes.push(`with a labelled helper running, a full restart answered ${drift.helperStatus}`);
+};
 
 // compose-blanked: what the compose file looks like to a reader that polls it from the moment
 // the conductor starts: blank (empty, or only the newlines safeWriteFile pads with) until it is restored, and never anything else but the last-good bytes.
@@ -449,7 +520,7 @@ export const PROFILES = [
   },
   {
     name: 'full-restart',
-    description: 'After the update, the "restart all" action (pull, down, up through a helper container).',
+    description: 'After the update, the "restart all" action (down, up through a helper container; no pull).',
     plan: () => ({ expect: 'updated', extraCoreHubStarts: 1 }),
     after: async (ctx, it) => {
       const before = await containerOf('gluesync-conductor');
@@ -470,6 +541,16 @@ export const PROFILES = [
       it.metrics.fullRestartMs = back.ms;
       if (!back.ok) it.notes.push('conductor container was not recreated by the full restart within 5 minutes');
     },
+  },
+  {
+    name: 'full-restart-drift',
+    description:
+      'The 2026-11-07 HQ outage: after the update, the compose file and its last-good copy name the core-hub tag from before the update while the newer one runs (updated outside the conductor). "Restart all" is sent twice in a row. The restart must keep the running tag (no downgrade), write it into both files and say so, and refuse the second request with 409. Then a container with the restart helper label runs: the recreated conductor must refuse a restart with 409 too.',
+    plan: () => ({ expect: 'updated', extraCoreHubStarts: 1, restartDrift: true }),
+    before: async (ctx, it) => {
+      it.restartDrift = { olderTag: (await containerOf(CORE_HUB))?.tag ?? null };
+    },
+    after: restartWithDrift,
   },
   {
     name: 'compose-customization',
