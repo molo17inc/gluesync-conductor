@@ -354,7 +354,7 @@ describe('setup of the first site', () => {
     assert.equal(reply.statusCode, 202);
     assert.equal(bodyOf(reply).success, true);
     assert.deepEqual(bodyOf(reply).data.warnings, [
-      'The witness at https://witness.example.com:8443 does not answer yet. Start it with the shared secret of gluesync-dr.env: this site serves only once the witness answers or the second site joins.',
+      'The witness at https://witness.example.com:8443 does not answer yet. This site serves meanwhile; start the witness with the shared secret of gluesync-dr.env before the second site joins: the join is refused while the witness does not answer.',
     ]);
     assert.equal(recorder.changes.length, 1);
     assert.ok(recorder.events.includes('recreate:done'));

@@ -178,7 +178,7 @@ export const witnessWarnings: WitnessWarnings = (witnessUrl, probe) => {
     case 'unreachable':
     case 'rejected':
       return [
-        `The witness at ${witnessUrl} does not answer yet. Start it with the shared secret of gluesync-dr.env: this site serves only once the witness answers or the second site joins.`,
+        `The witness at ${witnessUrl} does not answer yet. This site serves meanwhile; start the witness with the shared secret of gluesync-dr.env before the second site joins: the join is refused while the witness does not answer.`,
       ];
     case 'not-a-witness':
       return [

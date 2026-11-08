@@ -245,7 +245,7 @@ describe('witnessWarnings', () => {
 
   it('says that the witness does not answer yet, naming the url and gluesync-dr.env', () => {
     const expected = [
-      `The witness at ${URL} does not answer yet. Start it with the shared secret of gluesync-dr.env: this site serves only once the witness answers or the second site joins.`,
+      `The witness at ${URL} does not answer yet. This site serves meanwhile; start the witness with the shared secret of gluesync-dr.env before the second site joins: the join is refused while the witness does not answer.`,
     ];
 
     assert.deepEqual(
