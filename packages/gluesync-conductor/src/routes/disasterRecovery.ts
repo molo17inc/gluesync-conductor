@@ -67,7 +67,7 @@ const REFUSED_STATES = {
   400: errorReply('The request is not valid. `details` lists every problem.'),
   403: errorReply('The role of the caller cannot modify the configuration.'),
   409: errorReply(
-    'Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running.',
+    'Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running. A join in witness mode is also refused when the witness does not answer, is not a witness, or rejects the shared secret: `details` names the witness URL.',
   ),
   503: errorReply(
     'Docker is not answering, so compose cannot be told from swarm yet.',
@@ -162,7 +162,7 @@ const disasterRecoveryRoutes: FastifyPluginCallback = (
       response: {
         202: successReply('Accepted: the services are recreated next', {
           type: 'object',
-          required: ['pairingCode', 'operatorToken', 'restarting'],
+          required: ['pairingCode', 'operatorToken', 'restarting', 'warnings'],
           additionalProperties: false,
           properties: {
             pairingCode: {
@@ -175,6 +175,12 @@ const disasterRecoveryRoutes: FastifyPluginCallback = (
               description: 'Operator token of the control port of this site',
             },
             restarting: restartingProperty,
+            warnings: {
+              type: 'array',
+              description:
+                'What the setup found that the operator should know, one sentence each; empty when all is well. In witness mode: the witness does not answer yet (usual: it starts with the shared secret this setup generates) or answers as something else than a witness. The setup is not refused for it.',
+              items: { type: 'string' },
+            },
           },
         }),
         ...REFUSED_STATES,
@@ -220,7 +226,7 @@ const disasterRecoveryRoutes: FastifyPluginCallback = (
       tags: ['disaster-recovery'],
       summary: 'Set up the second site of a disaster recovery pair',
       description:
-        'Decodes the pairing code of the first site, writes this site as the joiner, answers 202, then recreates Chronos and Core Hub. This site becomes the standby: it moves its own databases aside and follows the first one.',
+        'Decodes the pairing code of the first site, writes this site as the joiner, answers 202, then recreates Chronos and Core Hub. This site becomes the standby: it moves its own databases aside and follows the first one. With a witness, the witness must already run with the shared secret of the pair: it is probed first (`GET /health`, then a signed read of the lease), and the join is refused with 409, before anything is changed, when it does not answer, is not a witness, or rejects the signature.',
       body: {
         type: 'object',
         required: ['pairingCode', 'confirmDataMovedAside'],

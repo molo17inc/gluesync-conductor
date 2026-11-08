@@ -4,6 +4,10 @@ import {
   generateSecret,
   validateFirstSiteRequest,
 } from '../../../helpers/disasterRecoveryPairing/disasterRecoveryPairing';
+import {
+  probeWitness,
+  witnessWarnings,
+} from '../../../helpers/disasterRecoveryWitness/disasterRecoveryWitness';
 import { refuseSetup } from '../refuseDisasterRecovery/refuseDisasterRecovery';
 import runDisasterRecoveryChange from '../runDisasterRecoveryChange/runDisasterRecoveryChange';
 import type {
@@ -14,7 +18,9 @@ import type {
 /**
  * Sets this site up as the first of a pair: it keeps its data and starts active. The
  * answer carries the pairing code for the second site, which holds the shared secret of the
- * pair: it is returned once and never logged.
+ * pair: it is returned once and never logged. In witness mode the witness is probed: it usually
+ * does not run yet, as it starts with the secret this setup generates, so an answer that is
+ * missing is a warning in the reply, not a refusal.
  */
 const setupFirstSite: DisasterRecoveryHandler = async (request, reply) => {
   const checked = validateFirstSiteRequest(request.body as FirstSiteBody);
@@ -30,6 +36,10 @@ const setupFirstSite: DisasterRecoveryHandler = async (request, reply) => {
 
   const { thisSite, peerSite, failoverMode, witnessUrl, leaseTtlSeconds } =
     checked.value;
+  const warnings =
+    witnessUrl === null
+      ? []
+      : witnessWarnings(witnessUrl, await probeWitness(witnessUrl));
   const sharedSecret = generateSecret();
   const adminToken = generateSecret();
   const pairingCode = encodePairingCode(
@@ -57,6 +67,7 @@ const setupFirstSite: DisasterRecoveryHandler = async (request, reply) => {
       pairingCode,
       operatorToken: adminToken,
       restarting,
+      warnings,
     }),
   });
 };

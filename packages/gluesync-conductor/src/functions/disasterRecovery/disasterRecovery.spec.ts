@@ -6,6 +6,14 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import createActionGate from '../../helpers/actionGate/actionGate';
 import { decodePairingCode } from '../../helpers/disasterRecoveryPairing/disasterRecoveryPairing';
+import {
+  witnessJoinRefusal,
+  witnessWarnings,
+} from '../../helpers/disasterRecoveryWitness/disasterRecoveryWitness';
+import type {
+  WitnessCredentials,
+  WitnessProbe,
+} from '../../helpers/disasterRecoveryWitness/disasterRecoveryWitness.model';
 import { DiskFullError } from '../../helpers/file/safeWriteFile/safeWriteFile.errors';
 import deferred from '../../utils/deferred';
 import loadWithStubs from '../../testing/loadWithStubs';
@@ -65,12 +73,15 @@ type Options = {
   /** Holds the recreate until released */
   recreateGate?: Promise<void>;
   inspectError?: unknown;
+  /** What the witness answers to the probe, default a witness that answers */
+  witness?: WitnessProbe;
 };
 
 type Recorder = {
   events: string[];
   changes: DisasterRecoveryChange[];
   logs: string[];
+  probes: { url: string; credentials?: WitnessCredentials }[];
 };
 
 type Reply = {
@@ -99,7 +110,12 @@ afterEach(() => {
 });
 
 const build = (options: Options = {}) => {
-  const recorder: Recorder = { events: [], changes: [], logs: [] };
+  const recorder: Recorder = {
+    events: [],
+    changes: [],
+    logs: [],
+    probes: [],
+  };
   const gate = createActionGate<any>();
   const log =
     (level: string) =>
@@ -169,6 +185,19 @@ const build = (options: Options = {}) => {
     loadWithStubs<{ default: DisasterRecoveryHandler }>(here(name), {
       [here('./runDisasterRecoveryChange/runDisasterRecoveryChange')]: {
         default: runner,
+      },
+      // the real texts, a probe that never touches the network
+      [helper('disasterRecoveryWitness/disasterRecoveryWitness')]: {
+        witnessWarnings,
+        witnessJoinRefusal,
+        probeWitness: async (url: string, credentials?: WitnessCredentials) => {
+          recorder.probes.push({ url, credentials });
+          recorder.events.push('probe');
+          return options.witness ?? { kind: 'answers' };
+        },
+      },
+      [path.resolve(__dirname, '../../utils/logger')]: {
+        getLogger: () => logger,
       },
     }).default;
 
@@ -256,6 +285,7 @@ describe('setup of the first site', () => {
 
     // the services are not touched before the answer has left the socket
     assert.deepEqual(recorder.events, [
+      'probe',
       'inspect',
       'prepare',
       'reply:202',
@@ -300,6 +330,91 @@ describe('setup of the first site', () => {
       first: { nodeId: 'site-a', url: 'http://10.0.0.1:1717' },
       joiner: { nodeId: 'site-b', url: 'http://10.0.0.2:1717' },
     });
+  });
+
+  it('probes the witness without a signature, and answers an empty list of warnings when it answers', async () => {
+    const { recorder, call } = build();
+    const reply = await call(FIRST, FIRST_BODY);
+
+    assert.equal(reply.statusCode, 202);
+    assert.deepEqual(bodyOf(reply).data.warnings, []);
+    assert.deepEqual(recorder.probes, [
+      { url: 'https://witness.example.com:8443', credentials: undefined },
+    ]);
+  });
+
+  it('still sets up, with a warning that names the witness, when the witness does not answer yet', async () => {
+    const { recorder, call, settled } = build({
+      witness: { kind: 'unreachable', reason: 'ECONNREFUSED' },
+    });
+    const reply = await call(FIRST, FIRST_BODY);
+
+    await settled();
+
+    assert.equal(reply.statusCode, 202);
+    assert.equal(bodyOf(reply).success, true);
+    assert.deepEqual(bodyOf(reply).data.warnings, [
+      'The witness at https://witness.example.com:8443 does not answer yet. Start it with the shared secret of gluesync-dr.env: this site serves only once the witness answers or the second site joins.',
+    ]);
+    assert.equal(recorder.changes.length, 1);
+    assert.ok(recorder.events.includes('recreate:done'));
+  });
+
+  it('warns, and still sets up, when the witness url answers as something else than a witness', async () => {
+    const { call } = build({
+      witness: { kind: 'not-a-witness', role: 'NODE' },
+    });
+    const reply = await call(FIRST, FIRST_BODY);
+
+    assert.equal(reply.statusCode, 202);
+    assert.equal(bodyOf(reply).data.warnings.length, 1);
+    assert.match(
+      bodyOf(reply).data.warnings[0],
+      /^The service at https:\/\/witness\.example\.com:8443 answers as a Core Hub with the role "NODE", not as a witness\./,
+    );
+  });
+
+  it('does not probe anything in manual mode, and answers an empty list of warnings', async () => {
+    const { recorder, call } = build({
+      witness: { kind: 'unreachable', reason: 'x' },
+    });
+    const reply = await call(FIRST, {
+      ...FIRST_BODY,
+      failoverMode: 'manual',
+      witnessUrl: undefined,
+    });
+
+    assert.equal(reply.statusCode, 202);
+    assert.deepEqual(bodyOf(reply).data.warnings, []);
+    assert.deepEqual(recorder.probes, []);
+  });
+
+  it('refuses a malformed witness url with 400 and probes nothing', async () => {
+    const malformed = [
+      'ftp://witness.example.com:1719',
+      'witness.example.com:1719',
+      'https://witness.example.com:0',
+      'https://witness.example.com:70000',
+      'https://:1719',
+      'https://user:pw@witness.example.com',
+      'https://wit ness.example.com',
+    ];
+
+    await Promise.all(
+      malformed.map(async witnessUrl => {
+        const { recorder, call } = build();
+        const reply = await call(FIRST, { ...FIRST_BODY, witnessUrl });
+
+        assert.equal(reply.statusCode, 400, witnessUrl);
+        assert.equal(bodyOf(reply).error, 'Invalid disaster recovery setup');
+        assert.match(
+          bodyOf(reply).details,
+          /witnessUrl is required with failoverMode "witness" and must be an http:\/\/ or https:\/\/ URL with a host/,
+        );
+        assert.deepEqual(recorder.probes, []);
+        assert.deepEqual(recorder.events, ['reply:400']);
+      }),
+    );
   });
 
   it('never logs the secret, the token or the code', async () => {
@@ -348,8 +463,12 @@ describe('setup of the first site', () => {
     assert.match(bodyOf(first).details, /Disable it first/);
     assert.equal(second.statusCode, 409);
     assert.match(bodyOf(second).details, /set up by hand/);
-    assert.deepEqual(managed.recorder.events, ['inspect', 'reply:409']);
-    assert.deepEqual(byHand.recorder.events, ['inspect', 'reply:409']);
+    assert.deepEqual(managed.recorder.events, [
+      'probe',
+      'inspect',
+      'reply:409',
+    ]);
+    assert.deepEqual(byHand.recorder.events, ['probe', 'inspect', 'reply:409']);
   });
 
   it('answers 409 with the reason when the host is not supported', async () => {
@@ -364,7 +483,7 @@ describe('setup of the first site', () => {
       'Disaster recovery cannot be set up here',
     );
     assert.equal(bodyOf(reply).details, 'Docker Swarm: by hand');
-    assert.deepEqual(recorder.events, ['inspect', 'reply:409']);
+    assert.deepEqual(recorder.events, ['probe', 'inspect', 'reply:409']);
   });
 
   it('answers 503 while Docker does not answer', async () => {
@@ -490,6 +609,13 @@ describe('setup of the second site', () => {
       'peerUrl',
       'restarting',
     ]);
+    // the witness was probed with the signature of this site, from the secret of the code
+    assert.deepEqual(recorder.probes, [
+      {
+        url: 'https://witness.example.com:8443',
+        credentials: { nodeId: 'site-b', secret },
+      },
+    ]);
     assert.equal(data.nodeId, 'site-b');
     assert.equal(data.peerUrl, 'http://10.0.0.1:1717');
     assert.deepEqual(
@@ -507,12 +633,95 @@ describe('setup of the second site', () => {
     );
     assert.equal(data.operatorToken, change.variables.adminToken);
     assert.notEqual(data.operatorToken, token);
-    assert.deepEqual(recorder.events.filter(e => e !== 'inspect').slice(0, 4), [
+    assert.deepEqual(recorder.events.filter(e => e !== 'inspect').slice(0, 5), [
+      'probe',
       'prepare',
       'reply:202',
       'flushed',
       'recreate:start',
     ]);
+  });
+
+  it('refuses the join with 409 before anything is changed when the witness does not answer', async () => {
+    const { code } = await pairingCode();
+    const { recorder, call } = build({
+      witness: { kind: 'unreachable', reason: 'ETIMEDOUT' },
+    });
+    const reply = await call(JOIN, {
+      pairingCode: code,
+      confirmDataMovedAside: true,
+    });
+
+    assert.equal(reply.statusCode, 409);
+    assert.equal(bodyOf(reply).success, false);
+    assert.equal(bodyOf(reply).error, 'The witness does not answer');
+    assert.equal(
+      bodyOf(reply).details,
+      'The witness at https://witness.example.com:8443 does not answer (ETIMEDOUT). It must be running with the shared secret of the pair before this site joins: start it, then join again.',
+    );
+    // not even the host was looked at, and nothing was written
+    assert.deepEqual(recorder.events, ['probe', 'reply:409']);
+    assert.deepEqual(recorder.changes, []);
+  });
+
+  it('refuses the join with 409 when the witness rejects the signature of the shared secret', async () => {
+    const { code, secret } = await pairingCode();
+    const { recorder, call } = build({ witness: { kind: 'rejected' } });
+    const reply = await call(JOIN, {
+      pairingCode: code,
+      confirmDataMovedAside: true,
+    });
+
+    assert.equal(reply.statusCode, 409);
+    assert.equal(
+      bodyOf(reply).error,
+      'The witness refuses the shared secret of the pair',
+    );
+    assert.match(
+      bodyOf(reply).details,
+      /^The witness at https:\/\/witness\.example\.com:8443 rejected the signature of this site\. It must be running with the shared secret of the pair/,
+    );
+    assert.deepEqual(recorder.events, ['probe', 'reply:409']);
+    assert.deepEqual(recorder.changes, []);
+    assert.ok(!JSON.stringify(reply.sent).includes(secret));
+    assert.ok(!recorder.logs.join('\n').includes(secret));
+  });
+
+  it('refuses the join with 409 when the witness url answers as something else than a witness', async () => {
+    const { code } = await pairingCode();
+    const { recorder, call } = build({
+      witness: { kind: 'not-a-witness', role: null },
+    });
+    const reply = await call(JOIN, {
+      pairingCode: code,
+      confirmDataMovedAside: true,
+    });
+
+    assert.equal(reply.statusCode, 409);
+    assert.equal(bodyOf(reply).error, 'The witness is not a witness');
+    assert.match(bodyOf(reply).details, /witness\.example\.com:8443/);
+    assert.deepEqual(recorder.changes, []);
+  });
+
+  it('does not probe a witness in manual mode', async () => {
+    const first = build();
+    const created = await first.call(FIRST, {
+      ...FIRST_BODY,
+      failoverMode: 'manual',
+      witnessUrl: undefined,
+    });
+    const { recorder, call, settled } = build({
+      witness: { kind: 'unreachable', reason: 'x' },
+    });
+    const reply = await call(JOIN, {
+      pairingCode: bodyOf(created).data.pairingCode,
+      confirmDataMovedAside: true,
+    });
+
+    await settled();
+
+    assert.equal(reply.statusCode, 202);
+    assert.deepEqual(recorder.probes, []);
   });
 
   it('answers 400 for a malformed code, a code of another version and a damaged one', async () => {

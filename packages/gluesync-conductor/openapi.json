@@ -2947,7 +2947,8 @@
                       "required": [
                         "pairingCode",
                         "operatorToken",
-                        "restarting"
+                        "restarting",
+                        "warnings"
                       ],
                       "additionalProperties": false,
                       "properties": {
@@ -2962,6 +2963,13 @@
                         "restarting": {
                           "type": "array",
                           "description": "The services recreated after this answer is sent, Core Hub first. The UI loses its connection while they restart.",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "warnings": {
+                          "type": "array",
+                          "description": "What the setup found that the operator should know, one sentence each; empty when all is well. In witness mode: the witness does not answer yet (usual: it starts with the shared secret this setup generates) or answers as something else than a witness. The setup is not refused for it.",
                           "items": {
                             "type": "string"
                           }
@@ -3046,11 +3054,11 @@
             }
           },
           "409": {
-            "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running.",
+            "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running. A join in witness mode is also refused when the witness does not answer, is not a witness, or rejects the shared secret: `details` names the witness URL.",
             "content": {
               "application/json": {
                 "schema": {
-                  "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running.",
+                  "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running. A join in witness mode is also refused when the witness does not answer, is not a witness, or rejects the shared secret: `details` names the witness URL.",
                   "type": "object",
                   "required": [
                     "success",
@@ -3390,7 +3398,7 @@
         "tags": [
           "disaster-recovery"
         ],
-        "description": "Decodes the pairing code of the first site, writes this site as the joiner, answers 202, then recreates Chronos and Core Hub. This site becomes the standby: it moves its own databases aside and follows the first one.",
+        "description": "Decodes the pairing code of the first site, writes this site as the joiner, answers 202, then recreates Chronos and Core Hub. This site becomes the standby: it moves its own databases aside and follows the first one. With a witness, the witness must already run with the shared secret of the pair: it is probed first (`GET /health`, then a signed read of the lease), and the join is refused with 409, before anything is changed, when it does not answer, is not a witness, or rejects the signature.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3545,11 +3553,11 @@
             }
           },
           "409": {
-            "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running.",
+            "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running. A join in witness mode is also refused when the witness does not answer, is not a witness, or rejects the shared secret: `details` names the witness URL.",
             "content": {
               "application/json": {
                 "schema": {
-                  "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running.",
+                  "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running. A join in witness mode is also refused when the witness does not answer, is not a witness, or rejects the shared secret: `details` names the witness URL.",
                   "type": "object",
                   "required": [
                     "success",
@@ -3834,11 +3842,11 @@
             }
           },
           "409": {
-            "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running.",
+            "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running. A join in witness mode is also refused when the witness does not answer, is not a witness, or rejects the shared secret: `details` names the witness URL.",
             "content": {
               "application/json": {
                 "schema": {
-                  "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running.",
+                  "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running. A join in witness mode is also refused when the witness does not answer, is not a witness, or rejects the shared secret: `details` names the witness URL.",
                   "type": "object",
                   "required": [
                     "success",

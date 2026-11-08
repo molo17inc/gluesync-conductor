@@ -128,7 +128,7 @@ const validateFailover = (
     return typeof witnessUrl === 'string' &&
       normalizeWitnessUrl(witnessUrl) !== null
       ? undefined
-      : 'witnessUrl is required with failoverMode "witness" and must be an http:// or https:// URL';
+      : 'witnessUrl is required with failoverMode "witness" and must be an http:// or https:// URL with a host and, if it has a port, one from 1 to 65535 (for example http://10.0.0.3:1719)';
   })();
   const ttl = leaseTtlSeconds ?? DEFAULT_LEASE_TTL_SECONDS;
   const ttlProblem =

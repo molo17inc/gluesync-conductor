@@ -3,6 +3,11 @@ import {
   generateSecret,
 } from '../../../helpers/disasterRecoveryPairing/disasterRecoveryPairing';
 import { PairingCodeError } from '../../../helpers/disasterRecoveryPairing/disasterRecoveryPairing.errors';
+import {
+  probeWitness,
+  witnessJoinRefusal,
+} from '../../../helpers/disasterRecoveryWitness/disasterRecoveryWitness';
+import { getLogger } from '../../../utils/logger';
 import { refuseSetup } from '../refuseDisasterRecovery/refuseDisasterRecovery';
 import runDisasterRecoveryChange from '../runDisasterRecoveryChange/runDisasterRecoveryChange';
 import type {
@@ -13,7 +18,10 @@ import type {
 /**
  * Sets this site up as the second of a pair, from the pairing code of the first. This site
  * becomes the standby: it moves its own databases aside and follows the first one, which is
- * what `confirmDataMovedAside` acknowledges. It gets an operator token of its own.
+ * what `confirmDataMovedAside` acknowledges. It gets an operator token of its own. With a witness,
+ * the witness must already run with the shared secret of the pair: this site has to get the
+ * lease from it, so a witness that does not answer, or refuses the signature, refuses the join
+ * before anything is changed.
  */
 const joinSecondSite: DisasterRecoveryHandler = async (request, reply) => {
   const { pairingCode } = request.body as JoinBody;
@@ -41,6 +49,27 @@ const joinSecondSite: DisasterRecoveryHandler = async (request, reply) => {
 
   const { secret, failoverMode, witnessUrl, leaseTtlSeconds, first, joiner } =
     decoded;
+  const witnessRefusal =
+    witnessUrl === null
+      ? null
+      : witnessJoinRefusal(
+          witnessUrl,
+          await probeWitness(witnessUrl, { nodeId: joiner.nodeId, secret }),
+        );
+
+  if (witnessRefusal) {
+    getLogger().warn(
+      { action: 'dr-setup-join', witnessUrl },
+      `[disaster-recovery] refused: ${witnessRefusal.error}`,
+    );
+    reply.code(409).send({
+      success: false,
+      error: witnessRefusal.error,
+      details: witnessRefusal.details,
+    });
+    return;
+  }
+
   const adminToken = generateSecret();
 
   await runDisasterRecoveryChange(request, reply, {

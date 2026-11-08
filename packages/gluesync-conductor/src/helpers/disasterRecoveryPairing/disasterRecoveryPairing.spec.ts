@@ -317,7 +317,7 @@ describe('validateFirstSiteRequest', () => {
 
   it('needs a witness url exactly with the witness mode', () => {
     assert.deepEqual(problems({ ...request, failoverMode: 'witness' }), [
-      'witnessUrl is required with failoverMode "witness" and must be an http:// or https:// URL',
+      'witnessUrl is required with failoverMode "witness" and must be an http:// or https:// URL with a host and, if it has a port, one from 1 to 65535 (for example http://10.0.0.3:1719)',
     ]);
     assert.ok(
       problems({

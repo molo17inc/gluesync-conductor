@@ -165,6 +165,9 @@ describe('disaster recovery routes', () => {
           pairingCode: 'GSDR1.abc',
           operatorToken: 'token',
           restarting: ['gluesync-core-hub', 'gluesync-chronos'],
+          warnings: [
+            'The witness at https://w.example.com does not answer yet.',
+          ],
           internal: 'dropped',
         },
       },
@@ -184,6 +187,7 @@ describe('disaster recovery routes', () => {
         pairingCode: 'GSDR1.abc',
         operatorToken: 'token',
         restarting: ['gluesync-core-hub', 'gluesync-chronos'],
+        warnings: ['The witness at https://w.example.com does not answer yet.'],
       },
     });
     assert.deepEqual(calls.first, [body]);
