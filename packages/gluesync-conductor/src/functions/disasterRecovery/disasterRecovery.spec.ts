@@ -269,6 +269,9 @@ const DISABLE = './disableDisasterRecovery/disableDisasterRecovery';
 
 const bodyOf = (reply: Reply): any => reply.sent[0];
 
+const UUID_V4 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
 describe('setup of the first site', () => {
   it('answers 202 with the pairing code, and only after the answer is out recreates the services', async () => {
     const { recorder, call, settled } = build();
@@ -304,7 +307,7 @@ describe('setup of the first site', () => {
     assert.equal(change.kind, 'enable');
     assert.ok(change.kind === 'enable');
     assert.deepEqual(
-      { ...change.variables, sharedSecret: '*', adminToken: '*' },
+      { ...change.variables, sharedSecret: '*', setupId: '*', adminToken: '*' },
       {
         nodeId: 'site-a',
         peerUrl: 'http://10.0.0.2:1717',
@@ -312,6 +315,7 @@ describe('setup of the first site', () => {
         witnessUrl: 'https://witness.example.com:8443',
         leaseTtlSeconds: 40,
         sharedSecret: '*',
+        setupId: '*',
         adminToken: '*',
         bootstrapActive: true,
         pairing: { thisSiteUrl: 'http://10.0.0.1:1717', peerNodeId: 'site-b' },
@@ -415,6 +419,33 @@ describe('setup of the first site', () => {
         assert.deepEqual(recorder.events, ['reply:400']);
       }),
     );
+  });
+
+  it('writes a new random setup id per run, a UUID v4 that is not in the pairing code', async () => {
+    const runs = await Promise.all(
+      [0, 1].map(async () => {
+        const { recorder, call } = build();
+        const reply = await call(FIRST, FIRST_BODY);
+        const [change] = recorder.changes;
+
+        assert.ok(change.kind === 'enable');
+        return {
+          id: change.variables.setupId,
+          code: bodyOf(reply).data.pairingCode,
+        };
+      }),
+    );
+
+    runs.forEach(({ id, code }) => {
+      assert.match(id, UUID_V4);
+      assert.ok(!JSON.stringify(decodePairingCode(code)).includes(id));
+      assert.ok(
+        !Buffer.from(code.slice('GSDR1.'.length), 'base64url')
+          .toString()
+          .includes(id),
+      );
+    });
+    assert.notEqual(runs[0].id, runs[1].id);
   });
 
   it('never logs the secret, the token or the code', async () => {
@@ -653,7 +684,7 @@ describe('setup of the second site', () => {
     assert.equal(data.nodeId, 'site-b');
     assert.equal(data.peerUrl, 'http://10.0.0.1:1717');
     assert.deepEqual(
-      { ...change.variables, adminToken: '*' },
+      { ...change.variables, setupId: '*', adminToken: '*' },
       {
         nodeId: 'site-b',
         peerUrl: 'http://10.0.0.1:1717',
@@ -661,6 +692,7 @@ describe('setup of the second site', () => {
         witnessUrl: 'https://witness.example.com:8443',
         leaseTtlSeconds: 40,
         sharedSecret: secret,
+        setupId: '*',
         adminToken: '*',
         bootstrapActive: false,
       },
@@ -736,6 +768,35 @@ describe('setup of the second site', () => {
     assert.equal(bodyOf(reply).error, 'The witness is not a witness');
     assert.match(bodyOf(reply).details, /witness\.example\.com:8443/);
     assert.deepEqual(recorder.changes, []);
+  });
+
+  it('writes a setup id of its own per run, different from the one of the first site', async () => {
+    const { code } = await pairingCode();
+    const body = { pairingCode: code, confirmDataMovedAside: true };
+    const ids = await Promise.all(
+      [0, 1].map(async () => {
+        const { recorder, call } = build();
+
+        await call(JOIN, body);
+        const [change] = recorder.changes;
+
+        assert.ok(change.kind === 'enable');
+        return change.variables.setupId;
+      }),
+    );
+    const first = build();
+
+    await first.call(FIRST, FIRST_BODY);
+
+    ids.forEach(id => assert.match(id, UUID_V4));
+    assert.notEqual(ids[0], ids[1]);
+    assert.ok(first.recorder.changes[0].kind === 'enable');
+    assert.ok(
+      !ids.includes(
+        (first.recorder.changes[0] as { variables: { setupId: string } })
+          .variables.setupId,
+      ),
+    );
   });
 
   it('does not probe a witness in manual mode', async () => {

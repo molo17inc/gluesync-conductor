@@ -575,6 +575,7 @@ export const renderDisasterRecoveryEnvFile: RenderDisasterRecoveryEnvFile =
           ]
         : []),
       line('GS_DR_SHARED_SECRET', variables.sharedSecret),
+      line('GS_DR_SETUP_ID', variables.setupId),
       line('GS_DR_ADMIN_TOKEN', variables.adminToken),
       ...(variables.pairing
         ? [

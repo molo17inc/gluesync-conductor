@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import {
   buildPairingPayload,
   encodePairingCode,
@@ -65,6 +67,7 @@ const setupFirstSite: DisasterRecoveryHandler = async (request, reply) => {
         witnessUrl,
         leaseTtlSeconds,
         sharedSecret,
+        setupId: randomUUID(),
         adminToken,
         bootstrapActive: true,
         pairing: { thisSiteUrl: thisSite.url, peerNodeId: peerSite.nodeId },

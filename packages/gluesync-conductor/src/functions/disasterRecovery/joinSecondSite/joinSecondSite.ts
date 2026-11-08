@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import {
   decodePairingCode,
   generateSecret,
@@ -73,6 +75,7 @@ const joinSecondSite: DisasterRecoveryHandler = async (request, reply) => {
         witnessUrl,
         leaseTtlSeconds,
         sharedSecret: secret,
+        setupId: randomUUID(),
         adminToken,
         bootstrapActive: false,
       },

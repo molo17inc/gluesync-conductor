@@ -185,6 +185,7 @@ const VARIABLES = {
   witnessUrl: null,
   leaseTtlSeconds: 30,
   sharedSecret: 'q8Zr0yKc-mP3v_XtN2bHsLw9aUeD5fGjR7oIiYkTnVA',
+  setupId: '0b9c1f4e-2d7a-4c58-9e3b-6a1d5f7c8e20',
   adminToken: 'Zt3kLw9aUeD5fGjR7oIiYkTnVAq8Zr0yKc-mP3v_XtN',
   bootstrapActive: true,
 } as const;
@@ -290,6 +291,7 @@ describe('disasterRecoverySetup', () => {
 
       assert.equal(variables?.GS_DR_MANAGED_BY, 'conductor');
       assert.equal(variables?.GS_DR_SHARED_SECRET, VARIABLES.sharedSecret);
+      assert.equal(variables?.GS_DR_SETUP_ID, VARIABLES.setupId);
       assert.equal(variables?.GS_DR_PAIRING_FIRST_URL, 'http://10.0.0.1:1717');
     });
   });
@@ -392,6 +394,10 @@ describe('disasterRecoverySetup', () => {
       assert.match(env, /^GS_DR_BOOTSTRAP_ACTIVE=true$/m);
       assert.match(env, /^GS_DR_CHRONOS_DIR=\/opt\/gluesync\/chronos$/m);
       assert.match(env, /^GS_DR_SHARED_SECRET=q8Zr0yKc/m);
+      assert.match(
+        env,
+        new RegExp(`^GS_DR_SETUP_ID=${VARIABLES.setupId}$`, 'm'),
+      );
       assert.equal(statSync(envPath()).mode % 0o1000, 0o600);
 
       // the compose file: edited in place, comments kept, secrets never in it

@@ -29,6 +29,11 @@ export type SiteVariables = Readonly<{
   witnessUrl: string | null;
   leaseTtlSeconds: number;
   sharedSecret: string;
+  /**
+   * `GS_DR_SETUP_ID`: a UUID v4 made anew by every run of a guided setup, never part of the pairing code (each site has its own).
+   * Core Hub tells a deliberate new pairing from a changed or mistyped shared secret by it.
+   */
+  setupId: string;
   adminToken: string;
   /** Only the first site keeps its data and starts active. */
   bootstrapActive: boolean;
