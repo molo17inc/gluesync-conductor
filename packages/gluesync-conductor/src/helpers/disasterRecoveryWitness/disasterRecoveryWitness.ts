@@ -54,10 +54,14 @@ const reasonOf = (error: unknown): string => {
   return error instanceof Error ? error.message : String(error);
 };
 
+// Plain string work: a regex for trailing slashes backtracks super-linearly on a long run of them
+const withoutTrailingSlashes = (text: string): string =>
+  text.slice(0, [...text].findLastIndex(char => char !== '/') + 1);
+
 // The path the witness sees: the one of the URL plus the route, as DrWitnessClient.kt signs it
 const pathOf = (baseUrl: string, route: string): string => {
   try {
-    return `${new URL(baseUrl).pathname.replace(/\/+$/, '')}${route}`;
+    return `${withoutTrailingSlashes(new URL(baseUrl).pathname)}${route}`;
   } catch {
     return route;
   }
@@ -123,7 +127,7 @@ export const probeWitness: ProbeWitness = async (
   credentials,
   deps = defaultDeps,
 ) => {
-  const baseUrl = witnessUrl.trim().replace(/\/+$/, '');
+  const baseUrl = withoutTrailingSlashes(witnessUrl.trim());
 
   try {
     const health = await get(`${baseUrl}${HEALTH_PATH}`, {}, deps);

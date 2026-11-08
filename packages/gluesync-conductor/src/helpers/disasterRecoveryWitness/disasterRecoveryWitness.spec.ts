@@ -86,6 +86,18 @@ describe('probeWitness', () => {
       { kind: 'answers' },
     );
     assert.equal(requests[0].url, 'http://10.0.0.3:1719/witness/health');
+
+    const many = fake({
+      status: 200,
+      data: JSON.stringify({ role: 'witness' }),
+    });
+
+    await probeWitness(
+      ` http://10.0.0.3:1719/witness${'/'.repeat(5000)} `,
+      undefined,
+      many.deps,
+    );
+    assert.equal(many.requests[0].url, 'http://10.0.0.3:1719/witness/health');
   });
 
   it('is unreachable when nothing answers, with the code of the failure', async () => {
