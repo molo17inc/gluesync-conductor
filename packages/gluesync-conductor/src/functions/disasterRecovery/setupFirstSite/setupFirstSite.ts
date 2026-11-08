@@ -20,7 +20,8 @@ import type {
  * answer carries the pairing code for the second site, which holds the shared secret of the
  * pair: it is returned once and never logged. In witness mode the witness is probed: it usually
  * does not run yet, as it starts with the secret this setup generates, so an answer that is
- * missing is a warning in the reply, not a refusal.
+ * missing is a warning in the reply (`warnings`), not a refusal. The probe runs after the host
+ * checks, under the lock of the container actions.
  */
 const setupFirstSite: DisasterRecoveryHandler = async (request, reply) => {
   const checked = validateFirstSiteRequest(request.body as FirstSiteBody);
@@ -36,10 +37,6 @@ const setupFirstSite: DisasterRecoveryHandler = async (request, reply) => {
 
   const { thisSite, peerSite, failoverMode, witnessUrl, leaseTtlSeconds } =
     checked.value;
-  const warnings =
-    witnessUrl === null
-      ? []
-      : witnessWarnings(witnessUrl, await probeWitness(witnessUrl));
   const sharedSecret = generateSecret();
   const adminToken = generateSecret();
   const pairingCode = encodePairingCode(
@@ -49,6 +46,16 @@ const setupFirstSite: DisasterRecoveryHandler = async (request, reply) => {
   await runDisasterRecoveryChange(request, reply, {
     action: 'dr-setup-first',
     refuse: refuseSetup,
+    // The witness is probed once the host is known to take the change, under the lock, before anything is written
+    preflight: async () => ({
+      refusal: null,
+      data: {
+        warnings:
+          witnessUrl === null
+            ? []
+            : witnessWarnings(witnessUrl, await probeWitness(witnessUrl)),
+      },
+    }),
     change: {
       kind: 'enable',
       variables: {
@@ -67,7 +74,6 @@ const setupFirstSite: DisasterRecoveryHandler = async (request, reply) => {
       pairingCode,
       operatorToken: adminToken,
       restarting,
-      warnings,
     }),
   });
 };

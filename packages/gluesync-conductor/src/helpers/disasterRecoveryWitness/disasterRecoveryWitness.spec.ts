@@ -108,6 +108,29 @@ describe('probeWitness', () => {
     );
   });
 
+  it('says what happened instead of the code of axios: a timeout, a body over the cap', async () => {
+    const failure = (code: string): Error =>
+      Object.assign(new Error(`axios ${code}`), {
+        isAxiosError: true,
+        code,
+      });
+    const reasons = await Promise.all(
+      ['ECONNABORTED', 'ETIMEDOUT', 'ERR_CANCELED', 'ERR_BAD_RESPONSE'].map(
+        async code => probeWitness(URL, undefined, fake(failure(code)).deps),
+      ),
+    );
+
+    assert.deepEqual(reasons, [
+      { kind: 'unreachable', reason: 'no answer within 3 s' },
+      { kind: 'unreachable', reason: 'no answer within 3 s' },
+      { kind: 'unreachable', reason: 'no answer within 3 s' },
+      {
+        kind: 'unreachable',
+        reason: 'answered something that is not a witness',
+      },
+    ]);
+  });
+
   it('is unreachable when /health does not answer 200, and signs nothing then', async () => {
     const { requests, deps } = fake({ status: 502 });
 
@@ -253,14 +276,22 @@ describe('witnessWarnings', () => {
 
 describe('witnessJoinRefusal', () => {
   it('has none when the witness answers', () => {
-    assert.equal(witnessJoinRefusal(URL, { kind: 'answers' }), null);
+    assert.equal(witnessJoinRefusal(URL, { kind: 'answers' }, 'site-b'), null);
   });
 
   it('names the witness url and says it must run with the shared secret of the pair', () => {
     const refusals = [
-      witnessJoinRefusal(URL, { kind: 'unreachable', reason: 'ECONNREFUSED' }),
-      witnessJoinRefusal(URL, { kind: 'rejected' }),
-      witnessJoinRefusal(URL, { kind: 'not-a-witness', role: 'NODE' }),
+      witnessJoinRefusal(
+        URL,
+        { kind: 'unreachable', reason: 'ECONNREFUSED' },
+        'site-b',
+      ),
+      witnessJoinRefusal(URL, { kind: 'rejected' }, 'site-b'),
+      witnessJoinRefusal(
+        URL,
+        { kind: 'not-a-witness', role: 'NODE' },
+        'site-b',
+      ),
     ];
 
     refusals.forEach(refusal => {
@@ -270,5 +301,9 @@ describe('witnessJoinRefusal', () => {
     });
     assert.match(refusals[0]?.details ?? '', /\(ECONNREFUSED\)/);
     assert.match(refusals[1]?.details ?? '', /within 60 seconds/);
+    assert.match(
+      refusals[1]?.details ?? '',
+      /its node id \(GS_DR_NODE_ID\) must differ from the node id of this site, "site-b"/,
+    );
   });
 });

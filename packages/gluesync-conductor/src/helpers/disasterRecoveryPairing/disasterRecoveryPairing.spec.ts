@@ -264,7 +264,7 @@ describe('validateFirstSiteRequest', () => {
     [
       'HTTPS://Witness.Example.com',
       'https://witness.example.com:8443',
-      'https://WITNESS.example.com:8443/Path/To_It-1.0~x%2F+=&?a,b:c@d',
+      'https://WITNESS.example.com:8443/Path/To_It-1.0~x%2F+a,b:c',
       'https://[FE80::1]/W',
       'https://w/',
     ].forEach(url => assert.deepEqual(witnessProblems(url), [], url));
@@ -281,6 +281,12 @@ describe('validateFirstSiteRequest', () => {
       'https://w path',
       'https://user@w/',
       'https://w?x=1',
+      'https://w/?x=1',
+      'https://w/a?b',
+      'https://w/a&b',
+      'https://w/a=b',
+      'https://w/a@b',
+      'https://w:1719/p?q#f',
     ].forEach(url =>
       assert.ok(witnessProblems(url).length > 0, `${url} is refused`),
     );

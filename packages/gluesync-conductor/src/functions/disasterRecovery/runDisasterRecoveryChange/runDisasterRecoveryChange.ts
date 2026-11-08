@@ -120,6 +120,23 @@ const runDisasterRecoveryChange: RunDisasterRecoveryChange = async (
         });
       }
 
+      const preflight = await plan.preflight?.();
+
+      if (preflight?.refusal) {
+        logger.warn(
+          { action: plan.action, reason: preflight.refusal.details },
+          `[disaster-recovery] refused: ${preflight.refusal.error}`,
+        );
+        answer.resolve(
+          errorReply(409, preflight.refusal.error, preflight.refusal.details),
+        );
+        return finished(409, {
+          success: false,
+          error: preflight.refusal.error,
+          details: preflight.refusal.details,
+        });
+      }
+
       const prepared = await prepareDisasterRecoveryChange(
         plan.change,
         inspection.targets,
@@ -127,7 +144,13 @@ const runDisasterRecoveryChange: RunDisasterRecoveryChange = async (
 
       answer.resolve({
         statusCode: 202,
-        body: { success: true, data: plan.accepted(prepared.restarting) },
+        body: {
+          success: true,
+          data: {
+            ...plan.accepted(prepared.restarting),
+            ...preflight?.data,
+          },
+        },
       });
       await flushed.promise;
       await prepared.recreate();

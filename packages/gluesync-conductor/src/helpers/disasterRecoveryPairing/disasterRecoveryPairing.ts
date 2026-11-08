@@ -37,9 +37,10 @@ const BASE64URL = /^[A-Za-z0-9_-]+$/;
 // scheme://host[:port], no path, query, fragment or user info (DrSettings.kt checkBaseUrl)
 const SITE_URL =
   /^(https?):\/\/((?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)|\[[0-9a-f:.]+\]):(\d{1,5})\/?$/i;
-// The witness URL may have a path; it ends in an env file, so only characters that need no quoting
+// scheme://host[:port] and an optional plain path: no user info, query or fragment, as the probe appends /health to it. It ends in an
+// env file, so only characters that need no quoting
 const WITNESS_URL =
-  /^(https?):\/\/((?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)|\[[0-9a-f:.]+\])(?::(\d{1,5}))?(\/[a-z0-9._~/%+=&?,:@-]*)?$/i;
+  /^(https?):\/\/((?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)|\[[0-9a-f:.]+\])(?::(\d{1,5}))?(\/[a-z0-9._~/%+,:-]*)?$/i;
 // A secret ends in an env file too: base64url, as generateSecret makes it
 const SECRET = /^[A-Za-z0-9_-]{32,}$/;
 const MAX_PORT = 65_535;

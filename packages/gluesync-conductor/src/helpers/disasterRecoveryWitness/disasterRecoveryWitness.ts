@@ -36,9 +36,19 @@ const defaultDeps: WitnessProbeDeps = {
   nonce: () => randomBytes(NONCE_BYTES).toString('hex'),
 };
 
+// What an operator can act on, instead of the raw code of axios
 const reasonOf = (error: unknown): string => {
   if (axios.isAxiosError(error)) {
-    return error.code ?? error.message;
+    switch (error.code) {
+      case 'ECONNABORTED':
+      case 'ETIMEDOUT':
+      case 'ERR_CANCELED':
+        return `no answer within ${WITNESS_PROBE_TIMEOUT_MS / 1000} s`;
+      case 'ERR_BAD_RESPONSE':
+        return 'answered something that is not a witness';
+      default:
+        return error.code ?? error.message;
+    }
   }
 
   return error instanceof Error ? error.message : String(error);
@@ -179,7 +189,11 @@ export const witnessWarnings: WitnessWarnings = (witnessUrl, probe) => {
   }
 };
 
-export const witnessJoinRefusal: WitnessJoinRefusal = (witnessUrl, probe) => {
+export const witnessJoinRefusal: WitnessJoinRefusal = (
+  witnessUrl,
+  probe,
+  nodeId,
+) => {
   switch (probe.kind) {
     case 'unreachable':
       return {
@@ -189,7 +203,7 @@ export const witnessJoinRefusal: WitnessJoinRefusal = (witnessUrl, probe) => {
     case 'rejected':
       return {
         error: 'The witness refuses the shared secret of the pair',
-        details: `The witness at ${witnessUrl} rejected the signature of this site. It must be running with the shared secret of the pair, and the clocks of the hosts must agree within ${MAX_SKEW_SECONDS} seconds.`,
+        details: `The witness at ${witnessUrl} rejected the signature of this site. It must be running with the shared secret of the pair, the clocks of the hosts must agree within ${MAX_SKEW_SECONDS} seconds, and its node id (GS_DR_NODE_ID) must differ from the node id of this site, "${nodeId}".`,
       };
     case 'not-a-witness':
       return {

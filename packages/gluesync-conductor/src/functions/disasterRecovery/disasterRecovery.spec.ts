@@ -285,8 +285,8 @@ describe('setup of the first site', () => {
 
     // the services are not touched before the answer has left the socket
     assert.deepEqual(recorder.events, [
-      'probe',
       'inspect',
+      'probe',
       'prepare',
       'reply:202',
       'flushed',
@@ -463,12 +463,8 @@ describe('setup of the first site', () => {
     assert.match(bodyOf(first).details, /Disable it first/);
     assert.equal(second.statusCode, 409);
     assert.match(bodyOf(second).details, /set up by hand/);
-    assert.deepEqual(managed.recorder.events, [
-      'probe',
-      'inspect',
-      'reply:409',
-    ]);
-    assert.deepEqual(byHand.recorder.events, ['probe', 'inspect', 'reply:409']);
+    assert.deepEqual(managed.recorder.events, ['inspect', 'reply:409']);
+    assert.deepEqual(byHand.recorder.events, ['inspect', 'reply:409']);
   });
 
   it('answers 409 with the reason when the host is not supported', async () => {
@@ -483,7 +479,45 @@ describe('setup of the first site', () => {
       'Disaster recovery cannot be set up here',
     );
     assert.equal(bodyOf(reply).details, 'Docker Swarm: by hand');
-    assert.deepEqual(recorder.events, ['probe', 'inspect', 'reply:409']);
+    assert.deepEqual(recorder.events, ['inspect', 'reply:409']);
+  });
+
+  it('refuses a host that cannot take the setup for that, not for a witness that does not answer, and probes nothing', async () => {
+    const dead = { kind: 'unreachable', reason: 'ETIMEDOUT' } as const;
+    const enabled = build({ state: MANAGED, witness: dead });
+    const unsupported = build({
+      state: { ...DISABLED, supported: false, reason: 'no Chronos' },
+      witness: dead,
+    });
+    const release = deferred<undefined>();
+    const running = build({ recreateGate: release.promise, witness: dead });
+
+    const first = await enabled.call(FIRST, FIRST_BODY);
+    const second = await unsupported.call(FIRST, FIRST_BODY);
+
+    assert.equal(
+      bodyOf(first).error,
+      'Disaster recovery is already enabled on this Core Hub',
+    );
+    assert.equal(
+      bodyOf(second).error,
+      'Disaster recovery cannot be set up here',
+    );
+    assert.deepEqual(enabled.recorder.probes, []);
+    assert.deepEqual(unsupported.recorder.probes, []);
+
+    // another container action holds the lock: the witness is not asked a second time
+    await running.call(FIRST, FIRST_BODY);
+    await running.started();
+    const refused = await running.call(FIRST, FIRST_BODY);
+
+    assert.equal(
+      bodyOf(refused).error,
+      'Another container action is in progress',
+    );
+    assert.equal(running.recorder.probes.length, 1);
+    release.resolve(undefined);
+    await running.settled();
   });
 
   it('answers 503 while Docker does not answer', async () => {
@@ -659,8 +693,8 @@ describe('setup of the second site', () => {
       bodyOf(reply).details,
       'The witness at https://witness.example.com:8443 does not answer (ETIMEDOUT). It must be running with the shared secret of the pair before this site joins: start it, then join again.',
     );
-    // not even the host was looked at, and nothing was written
-    assert.deepEqual(recorder.events, ['probe', 'reply:409']);
+    // the host was looked at first, and nothing was written
+    assert.deepEqual(recorder.events, ['inspect', 'probe', 'reply:409']);
     assert.deepEqual(recorder.changes, []);
   });
 
@@ -681,7 +715,8 @@ describe('setup of the second site', () => {
       bodyOf(reply).details,
       /^The witness at https:\/\/witness\.example\.com:8443 rejected the signature of this site\. It must be running with the shared secret of the pair/,
     );
-    assert.deepEqual(recorder.events, ['probe', 'reply:409']);
+    assert.match(bodyOf(reply).details, /GS_DR_NODE_ID.*"site-b"/);
+    assert.deepEqual(recorder.events, ['inspect', 'probe', 'reply:409']);
     assert.deepEqual(recorder.changes, []);
     assert.ok(!JSON.stringify(reply.sent).includes(secret));
     assert.ok(!recorder.logs.join('\n').includes(secret));
@@ -762,6 +797,32 @@ describe('setup of the second site', () => {
     assert.equal((await unsupported.call(JOIN, body)).statusCode, 409);
     assert.deepEqual(enabled.recorder.changes, []);
     assert.deepEqual(unsupported.recorder.changes, []);
+  });
+
+  it('refuses a host that cannot take the join for that, not for a witness that does not answer, and probes nothing', async () => {
+    const { code } = await pairingCode();
+    const dead = { kind: 'unreachable', reason: 'ETIMEDOUT' } as const;
+    const enabled = build({ state: MANAGED, witness: dead });
+    const unsupported = build({
+      state: { ...DISABLED, supported: false, reason: 'no Chronos' },
+      witness: dead,
+    });
+    const body = { pairingCode: code, confirmDataMovedAside: true };
+    const first = await enabled.call(JOIN, body);
+    const second = await unsupported.call(JOIN, body);
+
+    assert.equal(
+      bodyOf(first).error,
+      'Disaster recovery is already enabled on this Core Hub',
+    );
+    assert.equal(
+      bodyOf(second).error,
+      'Disaster recovery cannot be set up here',
+    );
+    assert.deepEqual(enabled.recorder.events, ['inspect', 'reply:409']);
+    assert.deepEqual(unsupported.recorder.events, ['inspect', 'reply:409']);
+    assert.deepEqual(enabled.recorder.probes, []);
+    assert.deepEqual(unsupported.recorder.probes, []);
   });
 });
 

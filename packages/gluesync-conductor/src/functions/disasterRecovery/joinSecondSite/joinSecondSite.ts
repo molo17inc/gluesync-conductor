@@ -7,7 +7,6 @@ import {
   probeWitness,
   witnessJoinRefusal,
 } from '../../../helpers/disasterRecoveryWitness/disasterRecoveryWitness';
-import { getLogger } from '../../../utils/logger';
 import { refuseSetup } from '../refuseDisasterRecovery/refuseDisasterRecovery';
 import runDisasterRecoveryChange from '../runDisasterRecoveryChange/runDisasterRecoveryChange';
 import type {
@@ -21,7 +20,7 @@ import type {
  * what `confirmDataMovedAside` acknowledges. It gets an operator token of its own. With a witness,
  * the witness must already run with the shared secret of the pair: this site has to get the
  * lease from it, so a witness that does not answer, or refuses the signature, refuses the join
- * before anything is changed.
+ * with 409 once the host checks have passed and before anything is changed.
  */
 const joinSecondSite: DisasterRecoveryHandler = async (request, reply) => {
   const { pairingCode } = request.body as JoinBody;
@@ -49,32 +48,22 @@ const joinSecondSite: DisasterRecoveryHandler = async (request, reply) => {
 
   const { secret, failoverMode, witnessUrl, leaseTtlSeconds, first, joiner } =
     decoded;
-  const witnessRefusal =
-    witnessUrl === null
-      ? null
-      : witnessJoinRefusal(
-          witnessUrl,
-          await probeWitness(witnessUrl, { nodeId: joiner.nodeId, secret }),
-        );
-
-  if (witnessRefusal) {
-    getLogger().warn(
-      { action: 'dr-setup-join', witnessUrl },
-      `[disaster-recovery] refused: ${witnessRefusal.error}`,
-    );
-    reply.code(409).send({
-      success: false,
-      error: witnessRefusal.error,
-      details: witnessRefusal.details,
-    });
-    return;
-  }
-
   const adminToken = generateSecret();
 
   await runDisasterRecoveryChange(request, reply, {
     action: 'dr-setup-join',
     refuse: refuseSetup,
+    // Once the host is known to take the change, under the lock, before anything is written
+    preflight: async () => ({
+      refusal:
+        witnessUrl === null
+          ? null
+          : witnessJoinRefusal(
+              witnessUrl,
+              await probeWitness(witnessUrl, { nodeId: joiner.nodeId, secret }),
+              joiner.nodeId,
+            ),
+    }),
     change: {
       kind: 'enable',
       variables: {

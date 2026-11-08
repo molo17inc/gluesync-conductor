@@ -42,8 +42,9 @@ export type WitnessWarnings = (
   probe: WitnessProbe,
 ) => ReadonlyArray<string>;
 
-/** Why this site cannot join, `null` when the witness is fine. */
+/** Why this site (`nodeId`) cannot join, `null` when the witness is fine. */
 export type WitnessJoinRefusal = (
   witnessUrl: string,
   probe: WitnessProbe,
+  nodeId: string,
 ) => Refusal | null;
