@@ -72,6 +72,8 @@ describe('addStackMountToCoreHub', () => {
         true,
       ],
       [{ image: 'x', volumes: [`./data:${STACK_TARGET_LINUX}:ro`] }, false],
+      [{ image: 'x', volumes: [`./data:${STACK_TARGET_LINUX}///`] }, false],
+      [{ image: 'x', volumes: ['./data:C:/opt/gluesync/stack/\\'] }, true],
       [
         {
           image: 'x',

@@ -19,12 +19,19 @@ const targetOf = (volume: string | LongVolume): string | undefined => {
   return match?.[1];
 };
 
+// Without trailing slashes or backslashes; not /[\\/]+$/, which backtracks quadratically on a long run of separators.
+const withoutTrailingSeparators = (p: string): string =>
+  p.slice(
+    0,
+    p.split('').findLastIndex(char => char !== '/' && char !== '\\') + 1,
+  );
+
 const sameTarget = (a: string, b: string, isWindows: boolean): boolean => {
-  const normalize = (p: string) => p.replace(/[\\/]+$/, '');
+  const left = withoutTrailingSeparators(a);
+  const right = withoutTrailingSeparators(b);
   return isWindows
-    ? normalize(a).replaceAll('/', '\\').toLowerCase() ===
-        normalize(b).toLowerCase()
-    : normalize(a) === normalize(b);
+    ? left.replaceAll('/', '\\').toLowerCase() === right.toLowerCase()
+    : left === right;
 };
 
 const addStackMountToCoreHub: AddStackMountToCoreHub = (
