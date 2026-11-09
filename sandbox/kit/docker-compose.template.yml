@@ -109,6 +109,8 @@ services:
       - GLUESYNC_HOST=https://gluesync-core-hub:1717
       # Sandbox wiring: backoffice through the fake proxy, Docker through the chaos socket.
       - PROXY_HTTPS=http://{{PROXY_USER}}:{{PROXY_PASS}}@host.docker.internal:3128
+      # The fake support portal of the voucher log upload, served by the fake backoffice
+      - GLUESYNC_SUPPORT_API_URL=https://api.backoffice.molo17.com/support-api
       - NODE_EXTRA_CA_CERTS=/opt/gluesync/data/sandbox-ca.pem
       - DOCKER_HOST=unix:///var/run/sandbox-sock/docker.sock
       # Sandbox-only tuning, not for a real kit: the disk-full profiles give the compose file a
