@@ -2,6 +2,7 @@ import { posix, win32 } from 'node:path';
 import type Docker from 'dockerode';
 
 import { getLogger } from '../../utils/logger';
+import stripTrailingSlashes from '../../utils/stripTrailingSlashes';
 import { KIT_DIR_IN_CONTAINER } from '../containerRuntime/composeEnv';
 import { inspectSelf } from '../orchestrator/getOrchestrator/getOrchestrator';
 
@@ -16,7 +17,7 @@ const isAbsoluteHostPath = (value: string): boolean =>
   posix.isAbsolute(value) || win32.isAbsolute(value);
 
 const normalizeForCompare = (value: string): string =>
-  value.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
+  stripTrailingSlashes(value.replaceAll('\\', '/')).toLowerCase();
 
 const isKitDir = (destination: string): boolean =>
   [KIT_DIR_IN_CONTAINER, WINDOWS_KIT_DIR_IN_CONTAINER]
