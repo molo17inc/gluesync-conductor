@@ -70,14 +70,14 @@ export const getHttpsAgentFor = (url: string): HttpsProxyAgent | undefined =>
 export const getProxyInfo = (): RedactedProxy | undefined =>
   proxyUrl ? describeProxyUrl(proxyUrl) : undefined;
 
-const RETRIABLE_CLIENT_STATUSES: ReadonlyArray<number> = [408, 429];
+const RETRIABLE_CLIENT_STATUSES: ReadonlySet<number> = new Set([408, 429]);
 
 /** A 4xx other than a timeout or a throttle: retrying returns the same answer. */
 export const isDefinitiveAnswer = (status: number | undefined): boolean =>
   status !== undefined &&
   status >= 400 &&
   status < 500 &&
-  !RETRIABLE_CLIENT_STATUSES.includes(status);
+  !RETRIABLE_CLIENT_STATUSES.has(status);
 
 const sleep = (ms: number): Promise<void> =>
   new Promise(resolve => {
