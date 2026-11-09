@@ -69,7 +69,13 @@ const listArchive = async bytes => {
   }
 };
 
-const ops = requests => requests.map(r => `${r.op ?? r.method}${r.part ? `:${r.part}` : ''}=${r.status ?? 'dropped'}`).join(' ');
+const ops = requests =>
+  requests
+    .map(r => {
+      const part = r.part ? `:${r.part}` : '';
+      return `${r.op ?? r.method}${part}=${r.status ?? 'dropped'}`;
+    })
+    .join(' ');
 
 // The happy path, with a dropped part and an expired link on the way
 const uploadWithVoucher = async (ctx, it) => {
@@ -86,11 +92,12 @@ const uploadWithVoucher = async (ctx, it) => {
   const state = await portalState();
   const body = res.json ?? {};
   const upload = state.uploads.find(u => u.ticketKey === TICKET && u.completed) ?? state.uploads.at(-1);
+  const refusal = res.status === 200 ? '' : ` / ${body.error ?? res.error} ${body.code ?? ''} ${body.details ?? ''}`;
   step(
     it,
     'logs.voucher-upload-ok',
     res.status === 200 && body.success && body.uploadedVia === 'portal' && body.ticketKey === TICKET && body.verified === true && !body.archivePath,
-    `HTTP ${res.status}: uploadedVia ${body.uploadedVia}, ticket ${body.ticketKey}, size ${body.size}, verified ${body.verified}, archivePath ${body.archivePath ?? 'none'}${res.status === 200 ? '' : ` / ${body.error ?? res.error} ${body.code ?? ''} ${body.details ?? ''}`}`,
+    `HTTP ${res.status}: uploadedVia ${body.uploadedVia}, ticket ${body.ticketKey}, size ${body.size}, verified ${body.verified}, archivePath ${body.archivePath ?? 'none'}${refusal}`,
   );
   if (!upload) {
     step(it, 'logs.portal-received', false, `the portal saw no upload (${ops(state.requests)})`);
@@ -128,14 +135,11 @@ const uploadWithVoucher = async (ctx, it) => {
   const entries = kind ? await listArchive(bytes) : null;
   const wanted = ['gluesync-conductor', 'gluesync-core-hub'];
   const missing = wanted.filter(w => !entries?.some(e => e.includes(w)));
-  step(
-    it,
-    'logs.archive-readable',
-    !!kind && !!entries && missing.length === 0,
-    !kind
-      ? `the bytes the portal joined are not an archive (${bytes?.subarray(0, 8).toString('hex') ?? 'nothing'})`
-      : `${kind} archive of ${bytes.length} bytes, ${entries?.length ?? 'unreadable:'} entries${missing.length ? `, nothing for ${missing.join(', ')}` : `, logs of ${wanted.join(' and ')} inside`}`,
-  );
+  const contents = missing.length ? `, nothing for ${missing.join(', ')}` : `, logs of ${wanted.join(' and ')} inside`;
+  const archiveDetail = kind
+    ? `${kind} archive of ${bytes.length} bytes, ${entries?.length ?? 'unreadable:'} entries${contents}`
+    : `the bytes the portal joined are not an archive (${bytes?.subarray(0, 8).toString('hex') ?? 'nothing'})`;
+  step(it, 'logs.archive-readable', !!kind && !!entries && missing.length === 0, archiveDetail);
 };
 
 // Every refusal of the contract, each with what it may and may not have done at the portal

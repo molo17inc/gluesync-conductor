@@ -386,10 +386,13 @@ const createSupportPortal = () => {
   const fresh = () => ({ partBytes: 16 * 1024 * 1024, maxBytes: 5 * 1024 ** 3, faults: [], requests: [], uploads: {}, seq: 0 });
   let portal = fresh();
 
-  const link = (id, partNumber) => ({
-    ...(partNumber ? { partNumber } : {}),
-    url: `https://api.backoffice.molo17.com${S3_PREFIX}${id}/${partNumber ? `part/${partNumber}` : 'single'}?X-Amz-Expires=3600&X-Amz-Signature=sbx`,
-  });
+  const link = (id, partNumber) => {
+    const tail = partNumber ? `part/${partNumber}` : 'single';
+    return {
+      ...(partNumber ? { partNumber } : {}),
+      url: `https://api.backoffice.molo17.com${S3_PREFIX}${id}/${tail}?X-Amz-Expires=3600&X-Amz-Signature=sbx`,
+    };
+  };
 
   // faults: [{ op: check|start|links|complete|put, part?, action: destroy|status, status?, body?, times? }]
   const faultFor = (op, part) => {
@@ -405,6 +408,35 @@ const createSupportPortal = () => {
     return null;
   };
 
+  // The reply of "start": one signed URL, or one per part above the part size
+  const startReply = (id, ticketKey, json, multipart, count) =>
+    multipart
+      ? { id, ticketKey, expiresIn: 3600, multipart: { partSize: portal.partBytes, parts: Array.from({ length: count }, (_, k) => link(id, k + 1)), headers: { 'Content-Type': 'application/octet-stream' } } }
+      : { id, ticketKey, expiresIn: 3600, single: { ...link(id), headers: { 'Content-Type': json.contentType } } };
+
+  const startUpload = (res, record, ticketKey, json) => {
+    if (json.size > portal.maxBytes) return send(res, 413, { error: { code: 'file_too_large', message: 'too large', maxBytes: portal.maxBytes } });
+    portal.seq += 1;
+    const id = `up-${portal.seq}`;
+    const multipart = json.size > portal.partBytes;
+    const count = multipart ? Math.ceil(json.size / portal.partBytes) : 1;
+    portal.uploads[id] = { id, ticketKey, declared: json.size, contentType: json.contentType, fileName: json.fileName, multipart, count, parts: {}, completed: false, aborted: false };
+    record.uploadId = id;
+    return send(res, 200, startReply(id, ticketKey, json, multipart, count));
+  };
+
+  const linksReply = (id, json) =>
+    json.partNumbers ? { expiresIn: 3600, parts: json.partNumbers.map(n => link(id, n)) } : { expiresIn: 3600, single: link(id) };
+
+  const completeUpload = (res, upload, ticketKey) => {
+    const keys = upload.multipart ? Array.from({ length: upload.count }, (_, k) => String(k + 1)) : ['single'];
+    const missing = keys.filter(k => !upload.parts[k]);
+    if (missing.length) return send(res, 409, { error: { code: 'upload_incomplete', message: 'parts missing', missingParts: missing.map(Number) } });
+    const size = keys.reduce((sum, k) => sum + upload.parts[k].length, 0);
+    Object.assign(upload, { completed: true, size, verified: size === upload.declared });
+    return send(res, 200, { id: upload.id, ticketKey, size, verified: upload.verified, attachmentId: `att-${upload.id}` });
+  };
+
   const api = async (req, res, p, body, record) => {
     const voucher = req.headers[VOUCHER_HEADER];
     const op = p === PORTAL_PREFIX ? 'start' : p.split('/').pop();
@@ -417,33 +449,13 @@ const createSupportPortal = () => {
     const { ticketKey } = VOUCHERS[voucher];
     const json = body.length ? JSON.parse(body.toString('utf8')) : {};
     if (op === 'check') return send(res, 200, { ticketKey, voucherExpiresAt: null, maxBytes: portal.maxBytes, partBytes: portal.partBytes });
-    if (op === 'start') {
-      if (json.size > portal.maxBytes) return send(res, 413, { error: { code: 'file_too_large', message: 'too large', maxBytes: portal.maxBytes } });
-      portal.seq += 1;
-      const id = `up-${portal.seq}`;
-      const multipart = json.size > portal.partBytes;
-      const count = multipart ? Math.ceil(json.size / portal.partBytes) : 1;
-      portal.uploads[id] = { id, ticketKey, declared: json.size, contentType: json.contentType, fileName: json.fileName, multipart, count, parts: {}, completed: false, aborted: false };
-      record.uploadId = id;
-      return send(res, 200, multipart
-        ? { id, ticketKey, expiresIn: 3600, multipart: { partSize: portal.partBytes, parts: Array.from({ length: count }, (_, k) => link(id, k + 1)), headers: { 'Content-Type': 'application/octet-stream' } } }
-        : { id, ticketKey, expiresIn: 3600, single: { ...link(id), headers: { 'Content-Type': json.contentType } } });
-    }
+    if (op === 'start') return startUpload(res, record, ticketKey, json);
     const id = p.slice(PORTAL_PREFIX.length + 1).split('/')[0];
     const upload = portal.uploads[id];
     record.uploadId = id;
     if (!upload) return send(res, 404, { error: { code: 'not_found', message: `no upload ${id}` } });
-    if (op === 'links') {
-      return send(res, 200, json.partNumbers ? { expiresIn: 3600, parts: json.partNumbers.map(n => link(id, n)) } : { expiresIn: 3600, single: link(id) });
-    }
-    if (op === 'complete') {
-      const keys = upload.multipart ? Array.from({ length: upload.count }, (_, k) => String(k + 1)) : ['single'];
-      const missing = keys.filter(k => !upload.parts[k]);
-      if (missing.length) return send(res, 409, { error: { code: 'upload_incomplete', message: 'parts missing', missingParts: missing.map(Number) } });
-      const size = keys.reduce((sum, k) => sum + upload.parts[k].length, 0);
-      Object.assign(upload, { completed: true, size, verified: size === upload.declared });
-      return send(res, 200, { id, ticketKey, size, verified: upload.verified, attachmentId: `att-${id}` });
-    }
+    if (op === 'links') return send(res, 200, linksReply(id, json));
+    if (op === 'complete') return completeUpload(res, upload, ticketKey);
     if (op === 'abort') {
       upload.aborted = true;
       res.writeHead(204);

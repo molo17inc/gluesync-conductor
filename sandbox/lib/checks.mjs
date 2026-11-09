@@ -294,16 +294,9 @@ const refusalCheck = (it, plan) => {
   if (!r.composeUnchanged) problems.push('the compose bytes changed (or could not be read) during the refused update');
   if (!r.containersUnchanged) problems.push(`containers changed during the refused update: ${r.changedContainers.join(', ')}`);
   if (r.servicesStatus !== 200) problems.push(`the conductor answered ${r.servicesStatus} afterwards (update mode not released)`);
-  return result(
-    'compose',
-    id,
-    problems.length === 0,
-    problems.length
-      ? problems.join('; ')
-      : `update refused ("${plan.refusal.phrase}", HTTP ${plan.refusal.status}${plan.refusal.code ? `, ${plan.refusal.code}` : ''}), compose identical (${r.composeBytes} bytes), no container touched`,
-    'fail',
-    problems.length ? r : undefined,
-  );
+  const refusalCode = plan.refusal.code ? `, ${plan.refusal.code}` : '';
+  const detail = `update refused ("${plan.refusal.phrase}", HTTP ${plan.refusal.status}${refusalCode}), compose identical (${r.composeBytes} bytes), no container touched`;
+  return result('compose', id, problems.length === 0, problems.length ? problems.join('; ') : detail, 'fail', problems.length ? r : undefined);
 };
 
 // disk-flapping: every update that failed while the disk flapped must say why.

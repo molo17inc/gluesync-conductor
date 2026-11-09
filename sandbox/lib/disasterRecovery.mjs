@@ -197,24 +197,51 @@ const change = async (ctx, it, label, p, body, kind) => {
     { timeoutMs: 180000, intervalMs: 2000 },
   );
   await ctx.collector.sync();
+  const doneLogged = new RegExp(String.raw`\[disaster-recovery\] (${kind} done|recreating the services failed)`);
   const logged = await waitFor(
     `${label}: done logged`,
-    async () => ctx.collector.since('gluesync-conductor', since).find(l => new RegExp(`\\[disaster-recovery\\] (${kind} done|recreating the services failed)`).test(l.line)),
+    async () => ctx.collector.since('gluesync-conductor', since).find(l => doneLogged.test(l.line)),
     { timeoutMs: 180000, intervalMs: 2000 },
   );
   const doneLine = logged.ok ? logged.value.line : null;
   return { res, recreated: recreated.ok, done: !!doneLine && doneLine.includes(`${kind} done`), doneLine, ms: recreated.ms };
 };
 
-const changeStep = (it, id, { res, recreated, done, doneLine }, extra = true, extraDetail = '') =>
-  step(
-    it,
-    id,
-    res.status === 202 && recreated && done && extra,
-    `HTTP ${res.status}${res.status === 202 ? '' : ` ${res.json?.error ?? res.error} ${res.json?.details ?? ''}`}, chronos and core-hub recreated: ${recreated}, done logged: ${done}${doneLine && !done ? ` (${doneLine.slice(0, 160)})` : ''}${extraDetail}`,
-  );
+const changeStep = (it, id, { res, recreated, done, doneLine }, extra = true, extraDetail = '') => {
+  const refusal = res.status === 202 ? '' : ` ${res.json?.error ?? res.error} ${res.json?.details ?? ''}`;
+  const doneNote = doneLine && !done ? ` (${doneLine.slice(0, 160)})` : '';
+  return step(it, id, res.status === 202 && recreated && done && extra, `HTTP ${res.status}${refusal}, chronos and core-hub recreated: ${recreated}, done logged: ${done}${doneNote}${extraDetail}`);
+};
 
 const coreHubPorts = svc => (svc?.ports || []).map(p => String(typeof p === 'object' ? p.target : String(p).split(':').pop()));
+
+// What the compose file must say about Core Hub and Chronos on a set-up site.
+const composeProblems = (hub, chronos) => {
+  const problems = [];
+  if (!(hub.env_file || []).some(e => String(e?.path ?? e).endsWith(DR_ENV_FILE))) problems.push(`core-hub env_file does not name ${DR_ENV_FILE}`);
+  const ports = coreHubPorts(hub);
+  if (!ports.includes('1718') || !ports.includes('1719')) problems.push(`core-hub does not publish 1718 and 1719 (ports: ${ports.join(',')})`);
+  if (!(hub.volumes || []).some(v => String(v?.target ?? v).includes(':/opt/gluesync/chronos') || v?.target === '/opt/gluesync/chronos')) problems.push('core-hub does not mount the chronos data at /opt/gluesync/chronos');
+  if (hub.stop_grace_period !== '60s') problems.push(`core-hub stop_grace_period is ${hub.stop_grace_period}`);
+  if (!(chronos.environment || []).some(e => String(e).startsWith('GS_DR_CONTROL_URL='))) problems.push('chronos has no GS_DR_CONTROL_URL');
+  return problems;
+};
+
+const envFileProblems = (envFile, nodeId) => {
+  if (!envFile) return [`${DR_ENV_FILE} was not written`];
+  const problems = [];
+  if (envFile.GS_DR_ENABLED !== 'true') problems.push(`${DR_ENV_FILE}: GS_DR_ENABLED=${envFile.GS_DR_ENABLED}`);
+  if (envFile.GS_DR_NODE_ID !== nodeId) problems.push(`${DR_ENV_FILE}: GS_DR_NODE_ID=${envFile.GS_DR_NODE_ID}, expected ${nodeId}`);
+  if (envFile.GS_DR_MANAGED_BY !== 'conductor') problems.push(`${DR_ENV_FILE}: GS_DR_MANAGED_BY=${envFile.GS_DR_MANAGED_BY}`);
+  if (!envFile.GS_DR_SHARED_SECRET) problems.push(`${DR_ENV_FILE} has no shared secret`);
+  return problems;
+};
+
+const runningEnvProblems = (runningEnv, nodeId) => {
+  if (runningEnv.includes('GS_DR_ENABLED=true') && runningEnv.includes(`GS_DR_NODE_ID=${nodeId}`)) return [];
+  const drVars = runningEnv.filter(e => e.startsWith('GS_DR_') && !/SECRET|TOKEN/.test(e)).join(' ') || 'none';
+  return [`the running core-hub does not have the variables (GS_DR_*: ${drVars})`];
+};
 
 // The compose file and the container as a set-up site must have them.
 const enabledStep = async (it, id, nodeId) => {
@@ -223,23 +250,7 @@ const enabledStep = async (it, id, nodeId) => {
   const chronos = compose.services[CHRONOS];
   const envFile = readEnvFile();
   const runningEnv = await containerEnv(CORE_HUB);
-  const problems = [];
-  if (!(hub.env_file || []).some(e => String(e?.path ?? e).endsWith(DR_ENV_FILE))) problems.push(`core-hub env_file does not name ${DR_ENV_FILE}`);
-  const ports = coreHubPorts(hub);
-  if (!ports.includes('1718') || !ports.includes('1719')) problems.push(`core-hub does not publish 1718 and 1719 (ports: ${ports.join(',')})`);
-  if (!(hub.volumes || []).some(v => String(v?.target ?? v).includes(':/opt/gluesync/chronos') || v?.target === '/opt/gluesync/chronos')) problems.push('core-hub does not mount the chronos data at /opt/gluesync/chronos');
-  if (hub.stop_grace_period !== '60s') problems.push(`core-hub stop_grace_period is ${hub.stop_grace_period}`);
-  if (!(chronos.environment || []).some(e => String(e).startsWith('GS_DR_CONTROL_URL='))) problems.push('chronos has no GS_DR_CONTROL_URL');
-  if (!envFile) problems.push(`${DR_ENV_FILE} was not written`);
-  else {
-    if (envFile.GS_DR_ENABLED !== 'true') problems.push(`${DR_ENV_FILE}: GS_DR_ENABLED=${envFile.GS_DR_ENABLED}`);
-    if (envFile.GS_DR_NODE_ID !== nodeId) problems.push(`${DR_ENV_FILE}: GS_DR_NODE_ID=${envFile.GS_DR_NODE_ID}, expected ${nodeId}`);
-    if (envFile.GS_DR_MANAGED_BY !== 'conductor') problems.push(`${DR_ENV_FILE}: GS_DR_MANAGED_BY=${envFile.GS_DR_MANAGED_BY}`);
-    if (!envFile.GS_DR_SHARED_SECRET) problems.push(`${DR_ENV_FILE} has no shared secret`);
-  }
-  if (!runningEnv.includes('GS_DR_ENABLED=true') || !runningEnv.includes(`GS_DR_NODE_ID=${nodeId}`)) {
-    problems.push(`the running core-hub does not have the variables (GS_DR_*: ${runningEnv.filter(e => e.startsWith('GS_DR_') && !/SECRET|TOKEN/.test(e)).join(' ') || 'none'})`);
-  }
+  const problems = [...composeProblems(hub, chronos), ...envFileProblems(envFile, nodeId), ...runningEnvProblems(runningEnv, nodeId)];
   if (runningEnv.length && (await containerEnv(CHRONOS)).some(e => e.startsWith('GS_DR_SHARED_SECRET'))) problems.push('chronos got the shared secret');
   step(it, id, problems.length === 0, problems.length ? problems.join('; ') : `compose, ${DR_ENV_FILE} and the running core-hub carry the DR site ${nodeId}`);
   return envFile;
@@ -259,27 +270,14 @@ const disabledStep = async (it, id, original) => {
   return step(it, id, problems.length === 0, problems.length ? problems.join('; ') : 'core-hub and chronos as before the setup, env file removed, no GS_DR_* in the container');
 };
 
-export const guidedSetup = async (ctx, it) => {
-  const dr = (it.dr ||= { steps: [] });
-  const original = readCompose();
-  const originalText = fs.readFileSync(composeFile(), 'utf8');
-
-  const initial = await getSetup(ctx, it, 'dr: setup state');
-  step(it, 'dr.setup-supported', initial.supported === true && initial.enabled === false, `supported ${initial.supported} (${initial.reason ?? 'no reason'}), enabled ${initial.enabled}`);
-  if (!initial.supported) return;
-
-  const invalid = await callConductor(it, 'dr: first with an invalid node id', 'POST', '/disaster-recovery/setup/first', {
-    token: ctx.adminToken,
-    body: { thisSite: { ...FIRST, nodeId: 'Not_Valid' }, peerSite: PEER, failoverMode: 'manual' },
-  });
-  step(it, 'dr.invalid-request-refused', invalid.status === 400 && fs.readFileSync(composeFile(), 'utf8') === originalText, `invalid node id -> HTTP ${invalid.status} ${invalid.json?.details ?? invalid.json?.error ?? ''}`);
-
-  // ---- first site
+// The first site: setup accepted, then the compose file, the env file and the backup it wrote.
+// Resolves to { accepted, pairing }, or null when the conductor did not accept the setup.
+const acceptFirstSite = async (ctx, it, dr) => {
   const first = await change(ctx, it, 'dr: setup first site', '/disaster-recovery/setup/first', { thisSite: FIRST, peerSite: PEER, failoverMode: 'manual' }, 'enable');
   const accepted = first.res.json?.data ?? {};
   const pairing = decodePairing(accepted.pairingCode);
   changeStep(it, 'dr.first-site-accepted', first, String(accepted.pairingCode).startsWith('GSDR1.') && !!pairing && !!accepted.operatorToken, `, pairing code decodes: ${!!pairing}, restarting ${JSON.stringify(accepted.restarting)}`);
-  if (first.res.status !== 202) return;
+  if (first.res.status !== 202) return null;
   dr.secrets = [accepted.operatorToken, accepted.pairingCode].filter(Boolean);
   const envFile = await enabledStep(it, 'dr.first-site-written', FIRST.nodeId);
   if (envFile?.GS_DR_SHARED_SECRET) dr.secrets.push(envFile.GS_DR_SHARED_SECRET);
@@ -289,7 +287,11 @@ export const guidedSetup = async (ctx, it) => {
   const backups = path.join(env.kitDir, '.conductor', 'dr-backup');
   const stamps = fs.existsSync(backups) ? fs.readdirSync(backups) : [];
   step(it, 'dr.backup-written', stamps.some(s => fs.existsSync(path.join(backups, s, 'docker-compose.yml'))), `${stamps.length} backup folder(s) in .conductor/dr-backup`);
+  return { accepted, pairing };
+};
 
+// What the setup endpoint reports for the first site, and that it never carries a secret.
+const firstSiteState = async (ctx, it, dr) => {
   const state = await getSetup(ctx, it, 'dr: setup state after first');
   step(
     it,
@@ -299,7 +301,10 @@ export const guidedSetup = async (ctx, it) => {
   );
   const stateText = JSON.stringify(it.api.at(-1)?.json ?? {});
   step(it, 'dr.state-has-no-secret', !dr.secrets.some(s => stateText.includes(s)), 'GET /disaster-recovery/setup carries neither the shared secret nor a token');
+};
 
+// A second setup, the update guard on a set-up site, and the pairing code shown again.
+const firstSiteGuards = async (ctx, it, pairing) => {
   const again = await callConductor(it, 'dr: setup first site again', 'POST', '/disaster-recovery/setup/first', {
     token: ctx.adminToken,
     body: { thisSite: FIRST, peerSite: PEER, failoverMode: 'manual' },
@@ -319,14 +324,31 @@ export const guidedSetup = async (ctx, it) => {
   const shown = await callConductor(it, 'dr: pairing code again', 'POST', '/disaster-recovery/setup/pairing-code', { token: ctx.adminToken });
   const shownPairing = decodePairing(shown.json?.data?.pairingCode);
   step(it, 'dr.pairing-code-again', shown.status === 200 && !!shownPairing && stable(shownPairing) === stable(pairing), `HTTP ${shown.status}, same content as the first answer: ${!!shownPairing && stable(shownPairing) === stable(pairing)}`);
+};
 
+const disableFirstSite = async (ctx, it, original) => {
   const off = await change(ctx, it, 'dr: disable (first site)', '/disaster-recovery/disable', { confirm: true }, 'disable');
   changeStep(it, 'dr.disable-accepted', off);
   await disabledStep(it, 'dr.disable-restores', original);
   const afterOff = await getSetup(ctx, it, 'dr: setup state after disable');
   step(it, 'dr.state-disabled', afterOff.enabled === false && afterOff.supported === true, `enabled ${afterOff.enabled}, supported ${afterOff.supported}`);
+};
 
-  // ---- second site: the same host joins with the code of the first
+// The joiner: set up as the peer, no pairing code of its own, then disabled again.
+const checkJoiner = async (ctx, it, dr, original, joined) => {
+  if (joined.operatorToken) dr.secrets.push(joined.operatorToken);
+  await enabledStep(it, 'dr.join-written', PEER.nodeId);
+  const joinState = await getSetup(ctx, it, 'dr: setup state after join');
+  step(it, 'dr.state-joiner', joinState.enabled && joinState.nodeId === PEER.nodeId && joinState.peerUrl === FIRST.url && joinState.bootstrapActive === false, `node ${joinState.nodeId}, peer ${joinState.peerUrl}, bootstrapActive ${joinState.bootstrapActive}`);
+  const notFirst = await callConductor(it, 'dr: pairing code on the joiner', 'POST', '/disaster-recovery/setup/pairing-code', { token: ctx.adminToken });
+  step(it, 'dr.joiner-has-no-pairing-code', notFirst.status === 409, `HTTP ${notFirst.status} ${notFirst.json?.details ?? ''}`);
+  const off2 = await change(ctx, it, 'dr: disable (joiner)', '/disaster-recovery/disable', { confirm: true }, 'disable');
+  changeStep(it, 'dr.disable-joiner-accepted', off2);
+  await disabledStep(it, 'dr.disable-joiner-restores', original);
+};
+
+// Second site: the same host joins with the code of the first
+const joinSecondSite = async (ctx, it, dr, original, accepted) => {
   const garbage = await callConductor(it, 'dr: join with a bad code', 'POST', '/disaster-recovery/setup/join', {
     token: ctx.adminToken,
     body: { pairingCode: 'GSDR1.bm90LWEtY29kZQ', confirmDataMovedAside: true },
@@ -336,17 +358,33 @@ export const guidedSetup = async (ctx, it) => {
   const join = await change(ctx, it, 'dr: join as second site', '/disaster-recovery/setup/join', { pairingCode: accepted.pairingCode, confirmDataMovedAside: true }, 'enable');
   const joined = join.res.json?.data ?? {};
   changeStep(it, 'dr.join-accepted', join, joined.nodeId === PEER.nodeId && joined.peerUrl === FIRST.url, `, node ${joined.nodeId}, peer ${joined.peerUrl}`);
-  if (join.res.status === 202) {
-    if (joined.operatorToken) dr.secrets.push(joined.operatorToken);
-    await enabledStep(it, 'dr.join-written', PEER.nodeId);
-    const joinState = await getSetup(ctx, it, 'dr: setup state after join');
-    step(it, 'dr.state-joiner', joinState.enabled && joinState.nodeId === PEER.nodeId && joinState.peerUrl === FIRST.url && joinState.bootstrapActive === false, `node ${joinState.nodeId}, peer ${joinState.peerUrl}, bootstrapActive ${joinState.bootstrapActive}`);
-    const notFirst = await callConductor(it, 'dr: pairing code on the joiner', 'POST', '/disaster-recovery/setup/pairing-code', { token: ctx.adminToken });
-    step(it, 'dr.joiner-has-no-pairing-code', notFirst.status === 409, `HTTP ${notFirst.status} ${notFirst.json?.details ?? ''}`);
-    const off2 = await change(ctx, it, 'dr: disable (joiner)', '/disaster-recovery/disable', { confirm: true }, 'disable');
-    changeStep(it, 'dr.disable-joiner-accepted', off2);
-    await disabledStep(it, 'dr.disable-joiner-restores', original);
-  }
+  if (join.res.status === 202) await checkJoiner(ctx, it, dr, original, joined);
+};
+
+export const guidedSetup = async (ctx, it) => {
+  const dr = (it.dr ||= { steps: [] });
+  const original = readCompose();
+  const originalText = fs.readFileSync(composeFile(), 'utf8');
+
+  const initial = await getSetup(ctx, it, 'dr: setup state');
+  step(it, 'dr.setup-supported', initial.supported === true && initial.enabled === false, `supported ${initial.supported} (${initial.reason ?? 'no reason'}), enabled ${initial.enabled}`);
+  if (!initial.supported) return;
+
+  const invalid = await callConductor(it, 'dr: first with an invalid node id', 'POST', '/disaster-recovery/setup/first', {
+    token: ctx.adminToken,
+    body: { thisSite: { ...FIRST, nodeId: 'Not_Valid' }, peerSite: PEER, failoverMode: 'manual' },
+  });
+  step(it, 'dr.invalid-request-refused', invalid.status === 400 && fs.readFileSync(composeFile(), 'utf8') === originalText, `invalid node id -> HTTP ${invalid.status} ${invalid.json?.details ?? invalid.json?.error ?? ''}`);
+
+  // ---- first site
+  const first = await acceptFirstSite(ctx, it, dr);
+  if (!first) return;
+  await firstSiteState(ctx, it, dr);
+  await firstSiteGuards(ctx, it, first.pairing);
+  await disableFirstSite(ctx, it, original);
+
+  // ---- second site
+  await joinSecondSite(ctx, it, dr, original, first.accepted);
 };
 
 // ---------------------------------------------------------------- checks
