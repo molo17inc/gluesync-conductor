@@ -148,6 +148,69 @@ describe('GET /services/:id/version in swarm mode', () => {
     assert.deepEqual(res.json().data.servicesToUpdate, ['gluesync-conductor']);
   });
 
+  describe('on a Core Hub with disaster recovery enabled', () => {
+    const deployed = {
+      services: [
+        buildService('gluesync-core-hub', {
+          image: 'molo17/gluesync-core-hub:2.3.0',
+        }),
+        buildService('gluesync-chronos', {
+          image: 'molo17/gluesync-chronos:0.2.4',
+        }),
+        buildService('grafana', { image: 'molo17/grafana:13.0.2.dashboard3' }),
+      ],
+    };
+
+    const withDr = (value: string): RawComposeFile =>
+      ({
+        ...labStack,
+        services: {
+          ...labStack.services,
+          'gluesync-core-hub': {
+            ...labStack.services?.['gluesync-core-hub'],
+            environment: [`GS_DR_ENABLED=${value}`],
+          },
+        },
+      }) as RawComposeFile;
+
+    it('blocks the update of Core Hub and Chronos with the reason, still listing versions', async () => {
+      stack = withDr('true');
+
+      const hub = await versionOf(deployed, 'gluesync-core-hub');
+      const chronos = await versionOf(deployed, 'gluesync-chronos');
+
+      assert.equal(hub.statusCode, 200);
+      assert.equal(hub.json().data.updateBlocked, true);
+      assert.match(
+        hub.json().data.reason,
+        /^Disaster recovery is enabled on this Core Hub: update the sites one at a time with Gluesync Control/,
+      );
+      assert.match(hub.json().data.reason, /gluesync\/latest\//);
+      assert.equal(hub.json().data.latestVersionGA, '2.3.1');
+      assert.ok(hub.json().data.servicesToUpdate.includes('gluesync-chronos'));
+      assert.equal(chronos.json().data.updateBlocked, true);
+      assert.equal(chronos.json().data.latestVersionGA, '0.2.5');
+    });
+
+    it('leaves the other services unblocked', async () => {
+      stack = withDr('true');
+
+      const res = await versionOf(deployed, 'grafana');
+
+      assert.equal(res.json().data.updateBlocked, false);
+      assert.equal(res.json().data.reason, undefined);
+    });
+
+    it('blocks nothing when disaster recovery is off', async () => {
+      stack = withDr('false');
+
+      const res = await versionOf(deployed, 'gluesync-core-hub');
+
+      assert.equal(res.json().data.updateBlocked, false);
+      assert.equal(res.json().data.reason, undefined);
+    });
+  });
+
   it('answers 404 for a service that is not in the stack file', async () => {
     const res = await versionOf({}, 'ghost');
 

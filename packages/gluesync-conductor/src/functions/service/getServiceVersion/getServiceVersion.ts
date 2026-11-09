@@ -21,6 +21,7 @@ import getCurrentVersion from '../../../helpers/getCurrentVersion/getCurrentVers
 import buildOutboundErrorReply from '../../../diagnosis/buildOutboundErrorReply';
 import normalizeUpstreamErrorBody from '../../../helpers/normalizeUpstreamErrorBody/normalizeUpstreamErrorBody';
 import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
+import { getDisasterRecoveryUpdateBlock } from '../../../helpers/disasterRecovery/disasterRecovery';
 
 const logger = getLogger();
 
@@ -274,6 +275,10 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       }
     })();
 
+    // Core Hub and Chronos of a disaster-recovery pair are not updated from
+    // here: the UI shows why the button is disabled
+    const updateBlock = await getDisasterRecoveryUpdateBlock(composeJson, id);
+
     return reply.send({
       success: true,
       data: {
@@ -283,6 +288,7 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
         latestVersionGA: offered(serviceInfo?.latestVersionGA),
         mandatoryUpdate: mandatoryUpdateResult.mandatoryUpdate,
         servicesToUpdate: mandatoryUpdateResult.servicesToUpdate,
+        ...updateBlock,
         changelogData,
       },
     });
