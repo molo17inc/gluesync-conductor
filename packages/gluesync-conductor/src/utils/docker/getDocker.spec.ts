@@ -108,6 +108,37 @@ describe('getDocker on Linux', () => {
   });
 });
 
+describe('getDocker on a Windows named pipe', () => {
+  type Built = Readonly<{ socketPath?: string; agent?: unknown }>;
+
+  it('retries a busy pipe when DOCKER_HOST is an npipe', () => {
+    process.env.DOCKER_HOST = 'npipe:////./pipe/docker_engine';
+
+    const options = clientOptions('win32') as Built;
+
+    assert.ok(options.agent);
+    assert.equal(options.socketPath, undefined);
+  });
+
+  it('retries a busy pipe on the Windows default pipe', () => {
+    const options = clientOptions('win32') as Built;
+
+    assert.equal(options.socketPath, '\\\\.\\pipe\\docker_engine');
+    assert.ok(options.agent);
+  });
+
+  it('gives a unix socket no agent', () => {
+    process.env.DOCKER_HOST = 'unix:///var/run/docker.sock';
+    assert.equal(clientOptions('linux'), undefined);
+
+    delete process.env.DOCKER_HOST;
+    assert.equal(
+      (clientOptions('linux', ['/var/run/docker.sock']) as Built).agent,
+      undefined,
+    );
+  });
+});
+
 describe('dockerOptionsFromContainerHost', () => {
   const { dockerOptionsFromContainerHost } = load('linux').subject;
 

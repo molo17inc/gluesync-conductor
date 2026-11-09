@@ -1,7 +1,9 @@
 import Docker from 'dockerode';
+import http from 'node:http';
 import os from 'os';
 import fs from 'fs';
 import { getLogger } from '../logger';
+import { createNpipeAgent } from './npipeAgent';
 
 /**
  * Options for a `CONTAINER_HOST` (the variable Podman's own tools read):
@@ -50,6 +52,13 @@ export const linuxSocketCandidates = (
   ...(env.XDG_RUNTIME_DIR ? [`${env.XDG_RUNTIME_DIR}/podman/podman.sock`] : []),
 ];
 
+// docker-modem passes `agent` on to http.request; dockerode's types omit it
+type DockerOptionsWithAgent = Docker.DockerOptions &
+  Readonly<{ agent?: http.Agent }>;
+
+const dockerWithAgent = (options: Readonly<DockerOptionsWithAgent>): Docker =>
+  new Docker(options);
+
 /**
  * Factory that creates a fresh Docker client
  * Fully cross‑platform: Windows, macOS, Linux
@@ -62,7 +71,10 @@ const createDocker = (): Docker => {
     logger.info(
       `Using Docker host from environment: ${process.env.DOCKER_HOST}`,
     );
-    return new Docker();
+    // Parallel connects to a Windows named pipe fail while it is busy
+    return process.env.DOCKER_HOST.startsWith('npipe://')
+      ? dockerWithAgent({ agent: createNpipeAgent() })
+      : new Docker();
   }
 
   // 1b. CONTAINER_HOST override (Podman)
@@ -82,7 +94,10 @@ const createDocker = (): Docker => {
   // 2. Windows named pipe
   if (os.platform() === 'win32') {
     logger.info('Using Windows Docker named pipe: \\\\.\\pipe\\docker_engine');
-    return new Docker({ socketPath: '\\\\.\\pipe\\docker_engine' });
+    return dockerWithAgent({
+      socketPath: String.raw`\\.\pipe\docker_engine`,
+      agent: createNpipeAgent(),
+    });
   }
 
   // 3. macOS: search multiple possible socket paths
