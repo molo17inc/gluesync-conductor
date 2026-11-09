@@ -10,17 +10,20 @@
 //   freshToken    drive the update with a token the conductor has not cached
 //   concurrent    send each update request N times in parallel
 //   expectConductorRestarts   Docker restarts of the conductor the profile causes on purpose
-//   refusal       { phrase, code, status }: the first update round must be refused with a failure
-//                 containing the phrase, answered with that HTTP status and a diagnosis of
-//                 that code, and leave everything untouched. The fault is
-//                 released right after that round and the user clicks again, so the same
-//                 iteration must still converge.
+//   refusal       { phrase, code, status, id }: the first update round must be refused with a failure
+//                 containing the phrase, answered with that HTTP status and (when `code` is set) a
+//                 diagnosis of that code, and leave everything untouched; checked as `id` (default
+//                 compose.disk-full-refused). The fault is released right after that round (a disk
+//                 fault always, anything else by the profile's `releaseRefusal(ctx, it)`) and the user
+//                 clicks again, so the same iteration must still converge.
 //   minRounds     keep clicking (after a failed or stalled round) until at least this many rounds
 //   flapping      the profile toggles a fault while the bulk update runs (see beforeRound)
 //   blanked       the profile blanks the compose file before the update (see compose-blanked)
 //   downgraded    services the profile deliberately puts back on their old tag: ok-means-ok expects that tag for them
 //   expectedDrift [{ service, key }] compose fields the profile changes on purpose: compose.no-unrelated-changes ignores them
 //   proxyPages    the proxy-error-pages profile: evidence is recorded in it.proxyPages and checked (see checks.mjs)
+//   drGuard, drSetup   the disaster recovery profiles: steps recorded in it.dr (see disasterRecovery.mjs)
+//   logUpload     the log-upload-voucher profile: steps recorded in it.logUpload (see logUpload.mjs)
 //   faultActive   (on the profile, not the plan) (ctx, it) => boolean | Promise<boolean>: true while the
 //                 profile's Docker fault is in effect. The driver waits for it to end before it judges
 //                 a round, so rounds that fail inside the fault do not count as "no progress"
@@ -38,6 +41,8 @@ import path from 'node:path';
 import { DISK_FULL_TEXT, env, SERVICES, versionsFor } from './env.mjs';
 import { composeProblem } from './composeSampler.mjs';
 import { releaseDiskFault, startDiskFault } from './diskFault.mjs';
+import { DR_REFUSED_TEXT, enableDrByHand, guardOnSingleServices, guidedSetup } from './disasterRecovery.mjs';
+import { logUploadWithVoucher } from './logUpload.mjs';
 import { backofficeAdmin, kitCompose } from './setup.mjs';
 import { callConductor, containers, corehub, dockerProxy, health, waitConductor } from './stack.mjs';
 import { docker, now, sleep, waitFor } from './util.mjs';
@@ -597,6 +602,35 @@ export const PROFILES = [
       'What the Core Hub UI does: one update request per service, in the UI order, through the reverse proxy, with the UI auto-retry policy. Updating reverse-proxy recreates the proxy the request travels through.',
     // The UI never updates agents from the platform updates modal.
     plan: () => ({ expect: 'updated', ui: true, lagging: ['gluesync-postgresql-cdc-source-agent'] }),
+  },
+  {
+    name: 'dr-update-guard',
+    description:
+      'Core Hub runs in a disaster-recovery pair (GS_DR_ENABLED=true set by hand in its environment). "Update all" must be refused with 409 and touch nothing, the version replies must mark Core Hub and Chronos updateBlocked, Chronos or Core Hub alone must be refused while grafana alone updates; once DR is off the update converges.',
+    plan: () => ({
+      expect: 'updated',
+      refusal: { phrase: DR_REFUSED_TEXT, status: 409, id: 'dr.update-all-refused' },
+      drGuard: true,
+      // GS_DR_ENABLED is in the compose file when the iteration starts and gone at its end
+      expectedDrift: [{ service: 'gluesync-core-hub', key: 'environment' }],
+    }),
+    before: enableDrByHand,
+    releaseRefusal: guardOnSingleServices,
+  },
+  {
+    name: 'dr-guided-setup',
+    description:
+      'After the update, the guided disaster-recovery setup of a single-host Compose kit: first site (env file, compose changes, Core Hub and Chronos recreated, pairing code), update refused through the env file, pairing code shown again, disable back to the original compose; then the same host joins with that code as the second site and is disabled again. No secret may reach a reply that is not meant for it, or the log.',
+    // Core Hub is recreated by every change: first, disable, join, disable
+    plan: () => ({ expect: 'updated', drSetup: true, extraCoreHubStarts: 4 }),
+    after: guidedSetup,
+  },
+  {
+    name: 'log-upload-voucher',
+    description:
+      'After the update, "collect logs" with a support voucher: the archive goes to the fake support portal in parts through the proxy, a dropped part and an expired link are recovered, the portal verifies every byte and the archive holds the logs; a malformed, revoked or expired voucher, a voucher with an e-mail and an archive above the portal limit are refused with their codes. The voucher never leaves its header or reaches the log.',
+    plan: () => ({ expect: 'updated', logUpload: true }),
+    after: logUploadWithVoucher,
   },
   {
     name: 'conductor-bad-release',

@@ -5,6 +5,8 @@ import fs from 'node:fs';
 import { DISK_FULL_TEXT, env, RESTORED_LOG, SERVICES } from './env.mjs';
 import { composeProblem } from './composeSampler.mjs';
 import { describeState } from './util.mjs';
+import { drChecks } from './disasterRecovery.mjs';
+import { logUploadChecks } from './logUpload.mjs';
 
 // severity is what a failure means; it defaults to 'fail'.
 const result = (area, id, ok, detail, severity, evidence) => ({
@@ -273,32 +275,28 @@ const lastGoodCheck = () => {
   );
 };
 
-// disk-full and disk-almost-full: the first update is refused up front and changes nothing.
+// disk-full, disk-almost-full and dr-update-guard: the first update is refused up front and changes nothing.
 const refusalCheck = (it, plan) => {
   const r = it.refusal;
-  if (!r) return result('compose', 'compose.disk-full-refused', false, 'no update round was recorded under the disk fault');
+  const id = plan.refusal.id ?? 'compose.disk-full-refused';
+  if (!r) return result('compose', id, false, 'no update round was recorded under the fault');
   const problems = [];
   if (!r.refused) {
     problems.push(`the update was not refused with "${plan.refusal.phrase}" (round ${r.round}: ${r.statuses?.join('/')} ${r.text || ''})`);
   }
   // The UI words the refusal from the diagnosis code, not from the English text: it must be there.
-  if (r.refused && !r.diagnoses?.every(code => code === plan.refusal.code)) {
+  if (r.refused && plan.refusal.code && !r.diagnoses?.every(code => code === plan.refusal.code)) {
     problems.push(`the refusal does not carry diagnosis.code "${plan.refusal.code}" (got ${JSON.stringify(r.diagnoses)})`);
   }
   if (r.refused && !r.statuses?.every(status => status === plan.refusal.status)) {
     problems.push(`the refusal was not answered with HTTP ${plan.refusal.status} (got ${r.statuses?.join('/')})`);
   }
-  if (!r.composeUnchanged) problems.push('the compose bytes changed (or could not be read) while the disk was full');
+  if (!r.composeUnchanged) problems.push('the compose bytes changed (or could not be read) during the refused update');
   if (!r.containersUnchanged) problems.push(`containers changed during the refused update: ${r.changedContainers.join(', ')}`);
   if (r.servicesStatus !== 200) problems.push(`the conductor answered ${r.servicesStatus} afterwards (update mode not released)`);
-  return result(
-    'compose',
-    'compose.disk-full-refused',
-    problems.length === 0,
-    problems.length ? problems.join('; ') : `update refused ("${plan.refusal.phrase}", HTTP ${plan.refusal.status}, ${plan.refusal.code}), compose identical (${r.composeBytes} bytes), no container touched`,
-    'fail',
-    problems.length ? r : undefined,
-  );
+  const refusalCode = plan.refusal.code ? `, ${plan.refusal.code}` : '';
+  const detail = `update refused ("${plan.refusal.phrase}", HTTP ${plan.refusal.status}${refusalCode}), compose identical (${r.composeBytes} bytes), no container touched`;
+  return result('compose', id, problems.length === 0, problems.length ? problems.join('; ') : detail, 'fail', problems.length ? r : undefined);
 };
 
 // disk-flapping: every update that failed while the disk flapped must say why.
@@ -459,7 +457,8 @@ const apiChecks = x => {
   }
 
   const slow = it.api
-    .filter(a => !a.label.startsWith('update round') && !a.label.startsWith('session:') && !a.label.startsWith('full restart'))
+    // Reads only: updates, restarts, setups and log collections take as long as they take
+    .filter(a => a.method === 'GET' && !a.label.startsWith('session:'))
     .filter(a => a.ms > 10000)
     .map(a => `${a.label} ${a.ms}ms`);
   out.push(result('errors', 'errors.read-latency', slow.length === 0, slow.length ? slow.join('; ') : 'reads under 10s', 'warn'));
@@ -779,4 +778,18 @@ const proxyPagesChecks = it => {
   ];
 };
 
-export const runChecks = x => [...stackChecks(x), ...composeSafetyChecks(x), ...apiChecks(x), ...resilienceChecks(x), ...loggingChecks(x), ...(x.plan.proxyPages ? proxyPagesChecks(x.it) : [])];
+// The steps a feature profile recorded, as checks of its own area
+const featureChecks = ({ it, plan, conductorLogs }) => [
+  ...(plan.drGuard || plan.drSetup ? drChecks(it, plan, conductorLogs).map(s => result('dr', s.id, s.ok, s.detail, s.severity)) : []),
+  ...(plan.logUpload ? logUploadChecks(it, conductorLogs).map(s => result('logs', s.id, s.ok, s.detail, s.severity)) : []),
+];
+
+export const runChecks = x => [
+  ...stackChecks(x),
+  ...composeSafetyChecks(x),
+  ...apiChecks(x),
+  ...resilienceChecks(x),
+  ...loggingChecks(x),
+  ...(x.plan.proxyPages ? proxyPagesChecks(x.it) : []),
+  ...featureChecks(x),
+];
