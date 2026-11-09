@@ -22,7 +22,13 @@ type AutoReboot = (
 export const spawnAsync = (
   cmd: string,
   args: ReadonlyArray<string>,
-  opts: Readonly<{ cwd?: string }> = {},
+  opts: Readonly<{
+    cwd?: string;
+    // The command only STARTS a detached helper (`docker run -d`), which has
+    // not done its work when this resolves: update mode must stay on until the
+    // watchdog or the restart ends it
+    keepUpdateMode?: boolean;
+  }> = {},
 ): Promise<boolean> =>
   new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
@@ -48,7 +54,9 @@ export const spawnAsync = (
 
     child.on('close', code => {
       if (code === 0) {
-        disableUpdateMode();
+        if (!opts.keepUpdateMode) {
+          disableUpdateMode();
+        }
 
         resolve(true);
       } else {

@@ -359,6 +359,36 @@ const crashComposeCheck = it => {
   );
 };
 
+
+// full-restart-drift: "restart all" with the compose file one core-hub tag behind the running container.
+const restartDriftCheck = (it, conductorLogs) => {
+  const d = it.restartDrift;
+  if (!d?.statuses) return result('compose', 'compose.restart-keeps-running-tag', false, 'the profile did not get to the restart');
+  const problems = [];
+  if (d.olderTag === d.runningTag) problems.push(`no drift was set up: core-hub was on ${d.runningTag} before and after the update`);
+  if (d.statuses[0] !== 200) problems.push(`the first restart answered ${d.statuses[0]}`);
+  if (d.statuses[1] !== 409) problems.push(`the second restart, sent while the first ran, answered ${d.statuses[1]} instead of 409`);
+  if (d.helperStatus !== 409) problems.push(`with the helper of another conductor running, a restart answered ${d.helperStatus} instead of 409`);
+  if (d.afterContainerTag !== d.runningTag) problems.push(`core-hub came back on ${d.afterContainerTag}, it ran ${d.runningTag}`);
+  if (d.afterComposeTag !== d.runningTag) problems.push(`the compose file names core-hub ${d.afterComposeTag}, not the running ${d.runningTag}`);
+  if (d.afterLastGoodTag !== d.runningTag) problems.push(`the last-good copy names core-hub ${d.afterLastGoodTag}, not the running ${d.runningTag}`);
+  const kept = d.firstItems.find(c => c.id === 'gluesync-core-hub');
+  if (!kept || !/would have downgraded/.test(kept.message)) problems.push(`the restart reply does not say core-hub was kept: ${JSON.stringify(d.firstItems)}`);
+  const logged = conductorLogs.filter(l => l.line.includes('compose-differs-from-running') && l.line.includes('gluesync-core-hub'));
+  if (!logged.length) problems.push('the conductor never logged the pinned core-hub tag (reason compose-differs-from-running)');
+  else if (!logged.some(l => /"level":40/.test(l.line))) problems.push('the pinned core-hub tag was not logged at warn level');
+  return result(
+    'compose',
+    'compose.restart-keeps-running-tag',
+    problems.length === 0,
+    problems.length
+      ? problems.join('; ')
+      : `compose named ${d.olderTag}, core-hub ran ${d.runningTag}: restart kept ${d.runningTag} in the container, the compose file and last-good, logged at warn; second restart refused with 409, and refused again while a labelled helper ran`,
+    'fail',
+    problems.length ? d : undefined,
+  );
+};
+
 const composeSafetyChecks = x => {
   const { it, plan, conductorLogs } = x;
   return [
@@ -367,6 +397,7 @@ const composeSafetyChecks = x => {
     ...(plan.refusal ? [refusalCheck(it, plan)] : []),
     ...(plan.flapping ? [flappingCheck(it)] : []),
     ...(plan.blanked ? [blankedCheck(it, conductorLogs)] : []),
+    ...(plan.restartDrift ? [restartDriftCheck(it, conductorLogs)] : []),
     ...(it.crashCompose ? [crashComposeCheck(it)] : []),
   ];
 };

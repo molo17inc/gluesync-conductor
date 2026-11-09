@@ -1166,3 +1166,126 @@ describe('collectLogsInternally', () => {
     );
   });
 });
+
+describe('writeDockerReport and the container engine', () => {
+  const podman = {
+    engine: 'podman',
+    rootless: true,
+    version: '5.8.2',
+  } as const;
+
+  const reportOf = async (
+    script: Script,
+    engine?: Parameters<typeof internals.writeDockerReport>[2],
+  ): Promise<string> => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'docker-report-'));
+    const file = path.join(dir, 'docker-report.txt');
+    doubles.script = script;
+    await internals.writeDockerReport(file, undefined, engine);
+    return readFileSync(file, 'utf8');
+  };
+
+  const sectionOf = (report: string, title: string): string => {
+    const start = report.indexOf(`### ${title}`);
+    const next = report.indexOf('### ', start + 1);
+    return report.slice(start, next === -1 ? undefined : next);
+  };
+
+  // What a Podman socket answers to the docker CLI: stats and the standalone
+  // docker-compose do not work
+  const podmanScript: Script = (command, args) => {
+    if (command === 'docker-compose') {
+      return { code: 1, error: new Error('spawn docker-compose ENOENT') };
+    }
+    if (args[0] === 'stats') {
+      return { code: 125, stderr: 'stats: not supported' };
+    }
+    return { code: 0, stdout: `${command} ${args.join(' ')} ok` };
+  };
+
+  it('labels the report as Podman and names the engine', async () => {
+    const report = await reportOf(podmanScript, podman);
+
+    assert.match(report, /^Podman diagnostics generated on: /);
+    assert.match(report, /Container engine: Podman 5\.8\.2 \(rootless\)/);
+    assert.doesNotMatch(report, /^Docker diagnostics/);
+    assert.match(report, /### docker ps -a\ndocker ps -a ok/);
+  });
+
+  it('does not report the commands Podman lacks as failures', async () => {
+    const report = await reportOf(podmanScript, podman);
+
+    ['docker stats --no-stream', 'docker-compose --version'].forEach(title => {
+      const section = sectionOf(report, title);
+      assert.match(section, /not available on this Podman engine/, title);
+      assert.doesNotMatch(section, /command exited with status/, title);
+    });
+  });
+
+  it('still reports a failing command that matters on Podman', async () => {
+    const report = await reportOf(
+      (command, args) =>
+        args[0] === 'info'
+          ? { code: 1, stderr: 'cannot connect' }
+          : podmanScript(command, args),
+      podman,
+    );
+
+    assert.match(
+      sectionOf(report, 'docker info'),
+      /command exited with status 1/,
+    );
+  });
+
+  it('keeps the Docker report as it was', async () => {
+    const report = await reportOf(
+      (command, args) =>
+        args[0] === 'stats'
+          ? { code: 1, stderr: 'boom' }
+          : { code: 0, stdout: `${command} ok` },
+      { engine: 'docker', rootless: false, version: '29.0.1' },
+    );
+
+    assert.match(report, /^Docker diagnostics generated on: /);
+    assert.match(report, /Container engine: Docker 29\.0\.1\n/);
+    assert.match(
+      sectionOf(report, 'docker stats --no-stream'),
+      /command exited with status 1/,
+    );
+    assert.doesNotMatch(report, /Podman/);
+  });
+
+  it('is a Docker report when the engine is not known', async () => {
+    const report = await reportOf(() => ({ code: 0, stdout: 'ok' }));
+
+    assert.match(report, /^Docker diagnostics generated on: /);
+    assert.match(report, /Container engine: unknown/);
+  });
+
+  it('says Podman in the collection summary and the report lines', () => {
+    assert.match(
+      internals.describeDockerCollection(120, undefined, undefined, podman),
+      /Collecting logs from Podman/,
+    );
+    assert.match(
+      internals.describeDockerCollection(120, undefined),
+      /Collecting logs from Docker/,
+    );
+    const lines = internals.buildCollectionReportLines({
+      isWindows: false,
+      logLookbackDays: 5,
+      dockerSinceHours: 120,
+      dockerTailLines: undefined,
+      engine: podman,
+      collectLogsFromFiles: true,
+      candidateCount: 0,
+      readableCount: 0,
+      searchDir: '/srv/root',
+      wellKnownLogDirsScanned: [],
+      successfulSnapshots: [],
+      snapshotFailures: [],
+    });
+    assert.ok(lines.includes('Podman log window: last 120h'));
+    assert.ok(lines.includes('Podman tail lines: all'));
+  });
+});

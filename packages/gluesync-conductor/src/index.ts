@@ -53,6 +53,8 @@ import updateModeEmitter from './plugins/updateModeEmitter';
 import { startUpdateWatchdog } from './helpers/updateWatchdog/updateWatchdog';
 import errorHandlerPlugin from './plugins/errorHandlerPlugin';
 import installShutdownHandlers from './helpers/installShutdownHandlers/installShutdownHandlers';
+import { getContainerEngine } from './helpers/containerRuntime/containerEngine';
+import { HELPER_IMAGE_CLI } from './helpers/containerRuntime/helperImages';
 
 type FastifyServices = {
   docker: Docker;
@@ -218,7 +220,7 @@ const healConductorAtStartup = async (
     autoReboot({
       hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
       serviceName: 'gluesync-conductor',
-      helperImage: shouldUseWindows ? helperImageWindows : 'docker:cli',
+      helperImage: shouldUseWindows ? helperImageWindows : HELPER_IMAGE_CLI,
       log: msg => logger.info({ msg }, '[conductor-healer] self-heal log'),
     }).catch((error: unknown) => {
       logger.error({ error }, '[conductor-healer] self-heal reboot failed');
@@ -231,6 +233,14 @@ const runPostListenStartup = async (
   docker: Readonly<Docker>,
   logger: Readonly<ReturnType<typeof getLogger>>,
 ): Promise<void> => {
+  // Docker or Podman, rootful or rootless: asked once here, so it is in the log
+  // of every report
+  const engine = await getContainerEngine(docker);
+
+  if (engine) {
+    logger.info({ engine }, '[container-engine] container engine detected');
+  }
+
   // Both modes: DKR_COMPOSE_FILE is the compose file or the stack file, and
   // either is read and rewritten below (and on every request), so a damaged one
   // is restored from its last-good copy before anything touches it
@@ -342,7 +352,7 @@ const startServer = async (): Promise<void> => {
               helperImage:
                 process.env.IS_WINDOWS?.toLowerCase() === 'true'
                   ? process.env.HELPER_IMAGE_BASE || ''
-                  : 'docker:cli',
+                  : HELPER_IMAGE_CLI,
               log: msg => getLogger().info({ msg }, '[watchdog-recovery]'),
             });
             return true;
