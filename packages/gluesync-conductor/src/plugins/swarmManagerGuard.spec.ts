@@ -7,14 +7,17 @@ import loadWithStubs from '../testing/loadWithStubs';
 
 type Subject = Readonly<{ default: FastifyPluginAsync }>;
 
-const build = async (orchestrator: unknown) => {
+const build = async (orchestrator: unknown, refusedOnPodman = false) => {
   const subject = loadWithStubs<Subject>(
     path.resolve(__dirname, './swarmManagerGuard'),
     {
       [path.resolve(
         __dirname,
         '../helpers/orchestrator/getOrchestrator/getOrchestrator',
-      )]: { default: async () => orchestrator },
+      )]: {
+        default: async () => orchestrator,
+        isSwarmRefusedOnPodman: async () => refusedOnPodman,
+      },
     },
   );
   const app = fastify();
@@ -57,6 +60,22 @@ describe('swarmManagerGuard', () => {
     assert.deepEqual(body.diagnosis.resolutionCodes, [
       'RUN_CONDUCTOR_ON_SWARM_MANAGER',
     ]);
+    await app.close();
+  });
+
+  it('answers 501 SWARM_UNSUPPORTED_ON_PODMAN when swarm is asked for on Podman', async () => {
+    const app = await build(swarm(true), true);
+
+    const response = await app.inject({ method: 'GET', url: '/containers' });
+    const body = response.json();
+
+    assert.equal(response.statusCode, 501);
+    assert.equal(body.success, false);
+    assert.equal(body.diagnosis.code, 'SWARM_UNSUPPORTED_ON_PODMAN');
+    assert.equal(body.diagnosis.owner, 'local');
+
+    const health = await app.inject({ method: 'GET', url: '/health' });
+    assert.equal(health.statusCode, 200);
     await app.close();
   });
 

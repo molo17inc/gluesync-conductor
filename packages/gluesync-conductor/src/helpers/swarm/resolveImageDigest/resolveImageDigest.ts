@@ -1,5 +1,9 @@
 import { getLogger } from '../../../utils/logger';
 import isTransientDockerConnError from '../../dockerode/isTransientDockerConnError/isTransientDockerConnError';
+import {
+  dockerHubManifest,
+  isDistributionUnavailable,
+} from '../../dockerHubRegistry/dockerHubManifest';
 import { ResolveImageDigest } from './resolveImageDigest.model';
 
 /**
@@ -10,8 +14,24 @@ import { ResolveImageDigest } from './resolveImageDigest.model';
  *
  * Like the CLI, an image whose registry cannot be asked (a local build, no
  * network) keeps its tag. A Docker API that dropped is not one of those: the
- * caller retries the whole update.
+ * caller retries the whole update. An engine without `GET /distribution`
+ * (Podman) is not asked: Docker Hub is, for the image's own manifest.
  */
+const digestFromDockerHub = async (
+  image: string,
+): Promise<string | undefined> => {
+  try {
+    return (await dockerHubManifest(image))?.digest;
+  } catch (error) {
+    getLogger().warn(
+      { image, error },
+      '[swarm] could not ask Docker Hub for the image digest',
+    );
+
+    return undefined;
+  }
+};
+
 const resolveImageDigest: ResolveImageDigest = async (docker, image) => {
   if (image.includes('@')) {
     return image;
@@ -24,6 +44,14 @@ const resolveImageDigest: ResolveImageDigest = async (docker, image) => {
   } catch (error) {
     if (isTransientDockerConnError(error)) {
       throw error;
+    }
+
+    const digest = isDistributionUnavailable(error)
+      ? await digestFromDockerHub(image)
+      : undefined;
+
+    if (digest) {
+      return `${image}@${digest}`;
     }
 
     getLogger().warn(
