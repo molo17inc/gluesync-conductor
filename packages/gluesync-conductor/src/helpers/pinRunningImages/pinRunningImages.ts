@@ -85,11 +85,17 @@ const pinRunningImages: PinRunningImages = async docker => {
   const composeJson = await readComposeFile({ raw: true });
   const services = Object.entries(composeJson.services ?? {});
 
-  const pins = (
-    await Promise.all(
-      services.map(([id, service]) => findPin(docker, id, service)),
-    )
-  ).filter((pin): pin is PinnedImage => pin !== undefined);
+  // One service after the other: a Windows named pipe fails the connects made
+  // all at once
+  const found = await services.reduce(
+    async (previous, [id, service]) => [
+      ...(await previous),
+      await findPin(docker, id, service),
+    ],
+    Promise.resolve([] as ReadonlyArray<PinnedImage | undefined>),
+  );
+
+  const pins = found.filter((pin): pin is PinnedImage => pin !== undefined);
 
   if (pins.length === 0) {
     return pins;
