@@ -41,6 +41,7 @@ const isTransientDockerConnError = (error: unknown): boolean => {
   // Message‑based detection
   if (
     message.includes('docker.sock') ||
+    message.includes('podman.sock') ||
     message.includes('connection refused') ||
     message.includes('connection reset') ||
     message.includes('broken pipe') ||

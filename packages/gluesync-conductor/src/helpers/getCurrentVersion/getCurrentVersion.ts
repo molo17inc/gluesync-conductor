@@ -1,4 +1,5 @@
 import parseImage from '../parseImage/parseImage';
+import { canonicalImageName } from '../containerRuntime/canonicalImage';
 import { LabelPrefix } from '../../models/composeFile.model';
 import isTransientDockerConnError from '../dockerode/isTransientDockerConnError/isTransientDockerConnError';
 import { getLogger } from '../../utils/logger';
@@ -71,7 +72,7 @@ const getCurrentVersion: GetCurrentVersion = async (
     }
 
     const inspect = await docker.getContainer(running.Id).inspect();
-    const runningImage = inspect.Config.Image;
+    const runningImage = canonicalImageName(inspect.Config.Image);
 
     const { tag } = parseImage(runningImage);
     return tag; // FULL TAG — do NOT truncate

@@ -1,6 +1,13 @@
 import { getLogger } from '../../utils/logger';
 import { spawnAsync } from './autoReboot';
 import { readComposeFile } from '../composeFile/readComposeFile/readComposeFile';
+import { getDocker } from '../../utils/docker/getDocker';
+import { helperSocketEnvArgs } from '../containerRuntime/composeEnv';
+import { HELPER_IMAGE_28 } from '../containerRuntime/helperImages';
+import {
+  ENGINE_SOCKET_IN_CONTAINER,
+  resolveHostSocketPath,
+} from '../containerRuntime/hostSocketPath';
 
 type AutoReboot = (
   options: Readonly<{
@@ -123,7 +130,7 @@ const currentImageOf = async (serviceName: string): Promise<string> => {
 const autoRebootLinux: AutoReboot = async ({
   hostProjectDir,
   serviceName = 'gluesync-conductor',
-  helperImage = 'docker:28', // image with docker CLI + compose plugin
+  helperImage = HELPER_IMAGE_28, // image with docker CLI + compose plugin
   rollbackImage,
 }) => {
   if (!hostProjectDir) {
@@ -134,15 +141,23 @@ const autoRebootLinux: AutoReboot = async ({
   const withRollback =
     !!rollbackImage && !!newImage && newImage !== rollbackImage;
 
+  // The `-v` source is resolved by the HOST engine: on Podman the socket is not
+  // at /var/run/docker.sock. label=disable lets the helper use it on SELinux.
+  const docker = getDocker();
+  const hostSocket = await resolveHostSocketPath(docker);
+
   const args: ReadonlyArray<string> = [
     'run',
     '--rm',
+    '--security-opt',
+    'label=disable',
     '-v',
-    '/var/run/docker.sock:/var/run/docker.sock',
+    `${hostSocket}:${ENGINE_SOCKET_IN_CONTAINER}`,
     '-v',
     `${hostProjectDir}:${hostProjectDir}`,
     '-w',
     hostProjectDir,
+    ...(await helperSocketEnvArgs(docker)),
     '-e',
     `SVC=${serviceName}`,
     '-e',

@@ -222,6 +222,30 @@ describe('rollbackServiceImages', () => {
     assert.deepEqual(ups(events), ['up chronos']);
   });
 
+  it('takes the fully qualified image Podman reports for the one the compose file names', async () => {
+    const { rollback, events } = load({
+      now: { grafana: 'g1', chronos: 'c1' },
+      observations: {
+        grafana: [up('docker.io/library/grafana:old')],
+        chronos: [up('docker.io/library/chronos:1')],
+      },
+    });
+    await rollback([{ id: 'grafana', image: 'grafana:old' }], restore());
+    assert.deepEqual(ups(events), []);
+  });
+
+  it('still starts a service on another tag when the engine qualifies the name', async () => {
+    const { rollback, events } = load({
+      now: { grafana: 'g1', chronos: 'c1' },
+      observations: {
+        grafana: [up('grafana:old')],
+        chronos: [up('docker.io/library/chronos:2'), up('chronos:1')],
+      },
+    });
+    await rollback([{ id: 'grafana', image: 'grafana:old' }], restore());
+    assert.deepEqual(ups(events), ['up chronos']);
+  });
+
   it('names a service it could not bring back instead of reporting it fine', async () => {
     const { rollback, events } = load({
       now: { grafana: 'g2', chronos: 'c1' },

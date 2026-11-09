@@ -12,6 +12,8 @@ describe('isTransientDockerConnError', () => {
       'write unix @->/x/sock: write: broken pipe',
       'read unix @->/x/sock: read: connection reset by peer',
       'dial unix /x/sock: connect: connection refused',
+      'Cannot connect to Podman. Please verify your connection to the Linux system using `podman system connection list`, or try `podman machine init` and `podman machine start`: unix:///run/user/1000/podman/podman.sock',
+      'failed to connect to the docker API at unix:///run/podman/podman.sock',
     ].forEach(message => {
       assert.equal(isTransientDockerConnError({ message }), true, message);
     });

@@ -27,6 +27,10 @@ import { AxiosError } from 'axios';
 import type Docker from 'dockerode';
 import { text } from 'node:stream/consumers';
 import {
+  getContainerEngine,
+  type ContainerEngine,
+} from '../../../helpers/containerRuntime/containerEngine';
+import {
   CollectLogsErrorResponse,
   CollectLogsHandler,
   UploadedVia,
@@ -102,6 +106,8 @@ type CollectLogsOptions = Readonly<{
   swarm?: SwarmLogsSource;
   /** Talks to the support portal; defaults to the one the environment names. */
   portal?: SupportPortalClient;
+  // The engine behind the socket: the reports name it (Docker, Podman)
+  engine?: ContainerEngine;
 }>;
 
 type CollectLogsError = Error &
@@ -124,7 +130,23 @@ type FileCollectionOptions = Readonly<{
 type DockerCommand = Readonly<{
   cmd: string;
   args: ReadonlyArray<string>;
+  // Podman does not implement every Docker command: failing there is no news
+  optionalOnPodman?: boolean;
 }>;
+
+const engineLabel = (engine?: ContainerEngine): string =>
+  engine?.engine === 'podman' ? 'Podman' : 'Docker';
+
+const describeEngine = (engine?: ContainerEngine): string =>
+  engine
+    ? [
+        engineLabel(engine),
+        engine.version,
+        engine.rootless ? '(rootless)' : undefined,
+      ]
+        .filter(Boolean)
+        .join(' ')
+    : 'unknown';
 
 type DockerPsContainer = Readonly<Record<string, string>>;
 
@@ -745,15 +767,17 @@ const writeFileDump = async (
 const writeDockerReport = async (
   outputPath: string,
   swarm?: SwarmLogsSource,
+  engine?: ContainerEngine,
 ): Promise<void> => {
+  const isPodman = engine?.engine === 'podman';
   const commands: ReadonlyArray<DockerCommand> = [
     { cmd: 'docker', args: ['--version'] },
     { cmd: 'docker', args: ['info'] },
     { cmd: 'docker', args: ['ps', '-a'] },
     { cmd: 'docker', args: ['images'] },
-    { cmd: 'docker', args: ['stats', '--no-stream'] },
+    { cmd: 'docker', args: ['stats', '--no-stream'], optionalOnPodman: true },
     { cmd: 'docker', args: ['compose', 'version'] },
-    { cmd: 'docker-compose', args: ['--version'] },
+    { cmd: 'docker-compose', args: ['--version'], optionalOnPodman: true },
     ...(swarm ? swarmReportCommands(swarm.namespace) : []),
   ];
 
@@ -762,6 +786,14 @@ const writeDockerReport = async (
       const result = await runCommandCapture(entry.cmd, entry.args);
       const body = `${result.stdout}${result.stderr}`.trim();
       const title = `### ${entry.cmd} ${entry.args.join(' ')}`.trim();
+
+      if (result.exitCode !== 0 && isPodman && entry.optionalOnPodman) {
+        return [
+          title,
+          `(not available on this Podman engine: exit status ${result.exitCode})`,
+          '',
+        ];
+      }
 
       if (result.exitCode !== 0) {
         return [
@@ -779,7 +811,8 @@ const writeDockerReport = async (
   await writeFile(
     outputPath,
     [
-      `Docker diagnostics generated on: ${new Date().toISOString()}`,
+      `${engineLabel(engine)} diagnostics generated on: ${new Date().toISOString()}`,
+      `Container engine: ${describeEngine(engine)}`,
       '',
       ...sections.flat(),
     ].join('\n'),
@@ -1450,12 +1483,13 @@ const describeDockerCollection = (
   sinceHours: number,
   tailLines: number | undefined,
   swarm?: SwarmLogsSource,
+  engine?: ContainerEngine,
 ): string => {
   const lines =
     typeof tailLines === 'number' ? `${tailLines} tail lines` : 'all lines';
   const unit = swarm ? 'service' : 'container';
 
-  return `Collecting logs from Docker (since ${sinceHours}h, ${lines} per ${unit}).`;
+  return `Collecting logs from ${engineLabel(engine)} (since ${sinceHours}h, ${lines} per ${unit}).`;
 };
 
 type DirScan = Readonly<{ path: string; exists: boolean; matched: number }>;
@@ -1732,6 +1766,8 @@ type CollectionReportInput = Readonly<{
   logLookbackDays: number;
   dockerSinceHours: number;
   dockerTailLines: number | undefined;
+  // Defaults to Docker
+  engine?: ContainerEngine;
   collectLogsFromFiles: boolean;
   candidateCount: number;
   readableCount: number;
@@ -1749,6 +1785,7 @@ const buildCollectionReportLines = (
     logLookbackDays,
     dockerSinceHours,
     dockerTailLines,
+    engine,
     collectLogsFromFiles,
     candidateCount,
     readableCount,
@@ -1768,8 +1805,8 @@ const buildCollectionReportLines = (
     `Generated on: ${new Date().toISOString()}`,
     `Platform: ${isWindows ? 'Windows' : 'Linux'}`,
     `Log lookback: ${logLookbackDays} day(s)`,
-    `Docker log window: last ${dockerSinceHours}h`,
-    `Docker tail lines: ${
+    `${engineLabel(engine)} log window: last ${dockerSinceHours}h`,
+    `${engineLabel(engine)} tail lines: ${
       typeof dockerTailLines === 'number' ? String(dockerTailLines) : 'all'
     }`,
     `File-based log collection: ${
@@ -2117,7 +2154,8 @@ const legacyWithoutArchivePath = async (
 const collectLogsInternally = async (
   options: CollectLogsOptions,
 ): Promise<CollectLogsResult> => {
-  const { ticketId, email, voucher, localOnly, logger, swarm } = options;
+  const { ticketId, email, voucher, localOnly, logger, swarm, engine } =
+    options;
   const viaPortal = Boolean(voucher) && !localOnly;
   const ticket = ticketId ?? '';
   const emailAddr = email ?? '';
@@ -2170,7 +2208,7 @@ const collectLogsInternally = async (
         excludeDir: extraDir,
         isWindows,
       }),
-      writeDockerReport(dockerReportPath, swarm),
+      writeDockerReport(dockerReportPath, swarm, engine),
     ]);
 
     // Docker logs
@@ -2279,6 +2317,7 @@ const collectLogsInternally = async (
       logLookbackDays,
       dockerSinceHours,
       dockerTailLines,
+      engine,
       collectLogsFromFiles,
       candidateCount: candidateFiles.length,
       readableCount: readableFiles.length,
@@ -2321,7 +2360,12 @@ const collectLogsInternally = async (
 
     const collectionSummaryLines = [
       `Collecting logs from last ${logLookbackDays} day(s).`,
-      describeDockerCollection(dockerSinceHours, dockerTailLines, swarm),
+      describeDockerCollection(
+        dockerSinceHours,
+        dockerTailLines,
+        swarm,
+        engine,
+      ),
       collectLogsFromFiles
         ? 'File-based log collection enabled (default).'
         : 'File-based log collection disabled via COLLECT_LOGS_FROM_FILES=false.',
@@ -2540,6 +2584,7 @@ const handler: CollectLogsHandler = async (req, reply) => {
       localOnly,
       logger: req.log as unknown as Logger,
       swarm: swarmLogsSourceOf(orchestrator, req.server.docker),
+      engine: await getContainerEngine(req.server.docker),
     });
 
     return reply.code(200).send(successBody(result));
@@ -2567,6 +2612,8 @@ export const collectLogsInternals = {
   collectLogsInternally,
   resolveCollectLogsRequest,
   formatSize,
+  writeDockerReport,
+  describeDockerCollection,
 };
 
 export default handler;

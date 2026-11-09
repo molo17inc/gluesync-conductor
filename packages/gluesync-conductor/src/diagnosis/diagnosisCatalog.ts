@@ -239,6 +239,16 @@ export const DIAGNOSIS_CATALOG: Readonly<Record<DiagnosisCode, CatalogEntry>> =
       summary: params =>
         `${text(params, 'feature')} is not supported when Gluesync runs as a Docker Swarm stack.`,
     },
+    SWARM_UNSUPPORTED_ON_PODMAN: {
+      owner: 'local',
+      httpStatus: 501,
+      resolutionCodes: [],
+      paramKeys: [],
+      exampleParams: {},
+      title: 'Docker Swarm is not available on Podman',
+      summary: () =>
+        'CONDUCTOR_ORCHESTRATOR is set to swarm, but this engine is Podman, which has no Swarm mode. Run Gluesync with Compose instead.',
+    },
     UNKNOWN: {
       owner: 'unknown',
       httpStatus: 502,

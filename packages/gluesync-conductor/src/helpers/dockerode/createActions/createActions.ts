@@ -29,6 +29,11 @@ import waitForDockerOutage, {
 } from '../waitForDockerOutage/waitForDockerOutage';
 import { PREFLIGHT_MAX_MS } from '../waitForDockerPreflight/waitForDockerPreflight';
 import { getDocker } from '../../../utils/docker/getDocker';
+import {
+  composeChildEnv,
+  composeEnvFileOptions,
+} from '../../containerRuntime/composeEnv';
+import { HELPER_IMAGE_CLI } from '../../containerRuntime/helperImages';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
@@ -78,6 +83,11 @@ export const runCmd: RunCmd = async (
   extraOptions,
   maxRetries = 3,
 ) => {
+  // The project directory is a HOST path (relative binds resolve against it),
+  // which usually does not exist in here: the kit `.env` is given by path, and
+  // the socket this Conductor runs on is added when no `.env` says it (a
+  // recreate of the Conductor or of the proxy must keep its socket mount).
+  const env = await composeChildEnv(getDocker());
   const commonOptions: any = {
     cwd: getRootPath(),
     config: filename,
@@ -85,8 +95,10 @@ export const runCmd: RunCmd = async (
     composeOptions: [
       '--project-directory',
       getRootPath({ basePath: process.env.BASE_PATH }),
+      ...composeEnvFileOptions(),
     ],
     commandOptions: [...(extraOptions ?? []), id],
+    ...(env && { env }),
   };
 
   // On Windows, force standalone docker-compose (spawns `docker-compose ...`)
@@ -127,9 +139,7 @@ const composeActions = ({
     removeNetwork: id => cleanupOrphanNetworkByName(docker, id),
     restart: id => runCmd(restartAll, id, filename, ['--no-deps']),
     start: async id => {
-      if (isWindows) {
-        await ensureVolumeDirs(id);
-      }
+      await ensureVolumeDirs(id);
       return runCmd(upAll, id, filename, ['--no-deps']);
     },
     stop: id => runCmd(stop, id, filename),
@@ -171,7 +181,7 @@ const composeActions = ({
           autoReboot({
             hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
             serviceName: CONDUCTOR_SERVICE,
-            helperImage: isWindows ? helperImageWindows : 'docker:cli',
+            helperImage: isWindows ? helperImageWindows : HELPER_IMAGE_CLI,
             rollbackImage: previousImages[CONDUCTOR_SERVICE],
             log: msg =>
               logger.info({ msg }, '[conductor-updater] self-update log'),

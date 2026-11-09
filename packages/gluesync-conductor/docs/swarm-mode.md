@@ -17,6 +17,10 @@ process:
    prefix.
 3. Anything else (no label, inspect fails, not in a container) is **compose**.
 
+Podman has no Swarm mode: with `CONDUCTOR_ORCHESTRATOR=swarm` on Podman every
+route except `/health` answers 501 with diagnosis `SWARM_UNSUPPORTED_ON_PODMAN`
+(see [podman.md](./podman.md)).
+
 In swarm mode `docker.info().Swarm.ControlAvailable` must be true: the Swarm
 API (services, tasks, service logs) only answers on managers. On a worker,
 every route except `/health` answers 503 with diagnosis `SWARM_NOT_MANAGER`.
