@@ -1,5 +1,5 @@
 import Docker from 'dockerode';
-import http from 'http';
+import http from 'node:http';
 import os from 'os';
 import fs from 'fs';
 import { getLogger } from '../logger';
@@ -95,7 +95,7 @@ const createDocker = (): Docker => {
   if (os.platform() === 'win32') {
     logger.info('Using Windows Docker named pipe: \\\\.\\pipe\\docker_engine');
     return dockerWithAgent({
-      socketPath: '\\\\.\\pipe\\docker_engine',
+      socketPath: String.raw`\\.\pipe\docker_engine`,
       agent: createNpipeAgent(),
     });
   }
