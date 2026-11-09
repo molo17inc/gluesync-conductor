@@ -38,6 +38,8 @@ Reports are written to `sandbox/reports/<timestamp>-seed<N>/`:
 | Docker Hub | Local registry `localhost:5000` inside the sandbox daemon; one image per service per version |
 | Docker API | The conductor's `DOCKER_HOST` points at a pass-through socket proxy that can delay or refuse connections |
 
+The kit's `proxy/` folder comes from `kit/proxy/` (a customer's `traefik.yml` with a `websecure` entry point, their own middleware, ACME resolver, log level and comments, plus the shipped `certs.yml`), not from `debug-container`: the conductor edits `traefik.yml` for the error pages wiring and must never lose any of it.
+
 The kit (`kit/docker-compose.template.yml`) mirrors `debug-container/linux/docker-compose.yml`. It keeps the labels, the `$$` escapes, `sysctls`, `env_file` and the comment header, so that compose rewrite bugs show up.
 
 ## An iteration
@@ -71,8 +73,10 @@ The kit (`kit/docker-compose.template.yml`) mirrors `debug-container/linux/docke
 | disk-almost-full | 32 KiB free: more than the compose file, less than the conductor's minimum (64 KiB in the sandbox); same expectation as disk-full |
 | disk-flapping | during the bulk update the filesystem toggles between full and 96 KiB free every 20-50 ms; the UI-like driver keeps retrying; the compose is never blank or invalid, and after the filler stops the update converges |
 | compose-blanked | the compose file is truncated to 0 bytes and the conductor restarted; within 60s it must restore it byte for byte from `.conductor/docker-compose.last-good.yml`, log `restored docker-compose.yml from last-good backup`, and never write a stub compose |
-| full-restart | "restart all" (helper container: pull, down, up) |
+| full-restart | "restart all" (helper container: down, up; no pull) |
+| full-restart-drift | the 2026-11-07 HQ outage: after the update, the compose file and its last-good copy name core-hub's tag from before the update while the newer one keeps running (updated outside the conductor); "restart all" is sent twice in a row; then a container carrying the restart helper label runs and a third restart is asked for. Core-hub must come back on the running tag, both files must name it, the pin must be logged at warn and listed in the reply, and the second and third requests must get 409 (`compose.restart-keeps-running-tag`) |
 | compose-customization | customer env var, `$$` label and comment added before the update |
+| proxy-error-pages | the update moves `reverse-proxy` to a capable `molo17/traefik` tag (`3.7.16.<n>`, the profile's `versions(i)`); the conductor must add the MOLO17 error pages wiring by itself (`gluesync-pages@docker` and the `gluesyncerrorpages` plugin in `proxy/traefik.yml`, the labels on the `reverse-proxy` service), back up `docker-compose.yml` and `traefik.yml` to `.conductor/proxy-backup/<stamp>/`, recreate the proxy, keep every line of the customer's `traefik.yml` and never change `certs.yml`. Then the compose file goes back to the old tag and the proxy is recreated (a Docker start event): the wiring must go again, `traefik.yml` and the proxy's compose block as they were. Checks `proxy.*` (`lib/checks.mjs`) |
 | ui-sequence | no fault; drives the update like the Core Hub UI's modal instead of "update all": one request per service in the UI's order, through the reverse proxy, with the UI's auto-retries (3, after 2s/4s/8s), then a manual Retry if it halted (`lib/uiDriver.mjs`) |
 | conductor-bad-release | *(only with `--destructive`)* the new conductor image crashes on start |
 

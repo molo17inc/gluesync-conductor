@@ -18,22 +18,28 @@
 //   minRounds     keep clicking (after a failed or stalled round) until at least this many rounds
 //   flapping      the profile toggles a fault while the bulk update runs (see beforeRound)
 //   blanked       the profile blanks the compose file before the update (see compose-blanked)
+//   downgraded    services the profile deliberately puts back on their old tag: ok-means-ok expects that tag for them
+//   expectedDrift [{ service, key }] compose fields the profile changes on purpose: compose.no-unrelated-changes ignores them
+//   proxyPages    the proxy-error-pages profile: evidence is recorded in it.proxyPages and checked (see checks.mjs)
 //   faultActive   (on the profile, not the plan) (ctx, it) => boolean | Promise<boolean>: true while the
 //                 profile's Docker fault is in effect. The driver waits for it to end before it judges
 //                 a round, so rounds that fail inside the fault do not count as "no progress"
+//
+// A profile may also set versions(i) -> { service: version }: tags used instead of versionsFor(i) for those services.
 //
 // before/during/after get (ctx, it). `during` runs alongside the update driver and
 // can watch ctx.inflight to strike while an update request is in progress.
 // beforeRound(ctx, it, { round, phase }) runs right before each update request is sent,
 // for faults that must not be active during the conductor's self-update.
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DISK_FULL_TEXT, env, SERVICES, versionsFor } from './env.mjs';
 import { composeProblem } from './composeSampler.mjs';
 import { releaseDiskFault, startDiskFault } from './diskFault.mjs';
 import { backofficeAdmin, kitCompose } from './setup.mjs';
-import { callConductor, containers, corehub, dockerProxy, waitConductor } from './stack.mjs';
+import { callConductor, containers, corehub, dockerProxy, health, waitConductor } from './stack.mjs';
 import { docker, now, sleep, waitFor } from './util.mjs';
 
 const ALL = Object.keys(SERVICES);
@@ -111,6 +117,77 @@ const FLAP_ROUNDS = 3; // bulk rounds under flapping before the filler stops and
 
 const composeFile = () => path.join(env.kitDir, 'docker-compose.yml');
 
+// full-restart-drift (2026-11-07, HQ): CoreHub runs a newer tag than the compose file names (an update made outside
+// the conductor), then "restart all" is pressed twice, 28 s apart on HQ. The compose file and its last-good copy are
+// put back to CoreHub's tag from before the update, without touching the container; the restart must keep the running
+// tag, write it back into both files, and refuse the second request while the first runs.
+const CORE_HUB = 'gluesync-core-hub';
+const coreHubTagIn = text => new RegExp(String.raw`/${SERVICES[CORE_HUB].image}:([^\s"']+)`).exec(text)?.[1] ?? null;
+const withCoreHubTag = (text, tag) =>
+  text.replace(new RegExp(String.raw`(/${SERVICES[CORE_HUB].image}):[^\s"']+`), (_m, name) => `${name}:${tag}`);
+
+const restartWithDrift = async (ctx, it) => {
+  const drift = (it.restartDrift ||= {});
+  const running = await containerOf(CORE_HUB);
+  drift.runningTag = running?.tag ?? null;
+  await waitFor('last-good backup', async () => fs.existsSync(env.lastGoodFile), { timeoutMs: 30000, intervalMs: 1000 });
+  // What the compose file named before the update: the older tag
+  fs.writeFileSync(composeFile(), withCoreHubTag(fs.readFileSync(composeFile(), 'utf8'), drift.olderTag));
+  fs.writeFileSync(env.lastGoodFile, withCoreHubTag(fs.readFileSync(env.lastGoodFile, 'utf8'), drift.olderTag));
+  it.notes.push(`compose and last-good put back to ${CORE_HUB}:${drift.olderTag} while it runs ${drift.runningTag}`);
+
+  // On HQ the compose file had been behind for days. Here it was rewritten from the host a moment after the
+  // conductor's own write at the end of the update, at the same size: the Docker Desktop file share can serve the
+  // conductor its cached copy for a while. The restart goes out once the conductor reads the older tag itself.
+  const conductorBefore = await containerOf('gluesync-conductor');
+  const visible = await waitFor(
+    'conductor sees the older core-hub tag',
+    async () =>
+      (await docker(['exec', conductorBefore.id, 'grep', '-c', `${SERVICES[CORE_HUB].image}:${drift.olderTag}`, '/opt/gluesync-conductor/root-folder/docker-compose.yml'])).out.trim() === '1',
+    { timeoutMs: 10000, intervalMs: 100 },
+  );
+  it.metrics.composeVisibleInConductorMs = visible.ms;
+  const restart = label =>
+    callConductor(it, label, 'POST', '/containers', { token: ctx.adminToken, body: { action: 'restart', ids: [] }, timeoutMs: 60000 });
+  // On HQ both requests reached the same conductor process (req-au, req-b4): the second one goes out as soon as
+  // the first is answered, before the helper has recreated anything
+  const first = await restart('full restart 1');
+  const second = await restart('full restart 2 (while the first runs)');
+  drift.statuses = [first.status, second.status];
+  drift.firstItems = first.json?.data?.containers ?? [];
+  drift.secondError = second.json?.error ?? null;
+  it.notes.push(`full restarts answered ${drift.statuses.join(' then ')}`);
+
+  const back = await waitFor(
+    'conductor after full restart',
+    async () => {
+      const c = await containerOf('gluesync-conductor');
+      return c && c.id !== conductorBefore?.id;
+    },
+    { timeoutMs: 300000, intervalMs: 3000 },
+  );
+  it.metrics.fullRestartMs = back.ms;
+  if (!back.ok) it.notes.push('conductor container was not recreated by the full restart within 5 minutes');
+  await waitFor('core-hub running after full restart', async () => !!(await containerOf(CORE_HUB)), { timeoutMs: 120000, intervalMs: 2000 });
+  drift.afterContainerTag = (await containerOf(CORE_HUB))?.tag ?? null;
+  drift.afterComposeTag = coreHubTagIn(fs.readFileSync(composeFile(), 'utf8'));
+  drift.afterLastGoodTag = fs.existsSync(env.lastGoodFile) ? coreHubTagIn(fs.readFileSync(env.lastGoodFile, 'utf8')) : null;
+
+  // A conductor the restart recreated knows nothing of it: it finds a running helper by the helper's label
+  await waitFor('conductor answers after full restart', async () => (await health()).status === 200, { timeoutMs: 120000, intervalMs: 2000 });
+  const helper = await docker([
+    'run', '-d', '--rm', '--name', `${env.keepPrefix}fake-restart-helper`,
+    '--label', 'com.molo17.conductor.helper=full-stack-restart', '--entrypoint', 'sleep', env.fakeBase, '120',
+  ]);
+  try {
+    const third = await restart('full restart 3 (helper of another conductor running)');
+    drift.helperStatus = third.status;
+  } finally {
+    if (helper.code === 0) await docker(['rm', '-f', helper.out.trim()]);
+  }
+  it.notes.push(`with a labelled helper running, a full restart answered ${drift.helperStatus}`);
+};
+
 // compose-blanked: what the compose file looks like to a reader that polls it from the moment
 // the conductor starts: blank (empty, or only the newlines safeWriteFile pads with) until it is restored, and never anything else but the last-good bytes.
 const watchRestore = async (lastGood, blanked) => {
@@ -160,6 +237,9 @@ const blankCompose = async (ctx, it) => {
     fs.truncateSync(file, 0);
     it.notes.push(`compose truncated to 0 bytes with the conductor ${c?.id} stopped at ${now()}`);
     if (c) await docker(['start', c.id]);
+    // The restore is logged by this start of the conductor, which the round-1 self-update
+    // replaces within a couple of seconds: follow its logs now rather than at the collector's next tick.
+    await ctx.collector.sync();
     await watchRestore(lastGood, blanked);
     blanked.byteEqual = !!lastGood && fs.readFileSync(file).equals(lastGood);
     if (blanked.restoredMs === null) {
@@ -175,6 +255,88 @@ const blankCompose = async (ctx, it) => {
   } finally {
     ctx.sampler?.resume();
   }
+};
+
+// ---------------------------------------------------------------- proxy-error-pages
+
+// The kit's proxy folder is sandbox/kit/proxy: a customer's traefik.yml (their own middleware, ACME
+// resolver, log level, comments) and the kit's certs.yml, which nothing may ever change.
+const proxyFile = name => path.join(env.kitDir, 'proxy', name);
+const sha256 = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const PROXY_SERVICE_BLOCK = /\n {2}reverse-proxy:\n(?:(?: {4}.*)?\n)*/;
+const proxyBlock = () => PROXY_SERVICE_BLOCK.exec(fs.readFileSync(composeFile(), 'utf8'))?.[0] ?? '';
+const proxyTag = () => /molo17\/traefik:(\S+)/.exec(proxyBlock())?.[1];
+const wiringIn = () => {
+  const conf = fs.readFileSync(proxyFile('traefik.yml'), 'utf8');
+  return {
+    static: conf.includes('- gluesync-pages@docker') && conf.includes('gluesyncerrorpages:'),
+    labels: proxyBlock().includes('gluesyncerrorpages.mode=wrap'),
+  };
+};
+const wired = () => {
+  const w = wiringIn();
+  return w.static && w.labels;
+};
+const unwired = () => {
+  const w = wiringIn();
+  return !w.static && !w.labels;
+};
+
+const proxyBackups = () => {
+  const dir = path.join(env.kitDir, '.conductor', 'proxy-backup');
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).map(stamp => ({ stamp, files: fs.readdirSync(path.join(dir, stamp)).sort() }));
+};
+
+const conductorLogged = async (ctx, it, pattern) => {
+  await ctx.collector.sync();
+  return ctx.collector.since('gluesync-conductor', it.startedAt).some(l => pattern.test(l.line));
+};
+
+// What the proxy folder and the proxy's compose block look like right now.
+const proxyState = () => ({
+  conf: fs.readFileSync(proxyFile('traefik.yml'), 'utf8'),
+  certsSha: sha256(proxyFile('certs.yml')),
+  block: proxyBlock(),
+  tag: proxyTag(),
+});
+
+const proxyBaseline = async (ctx, it) => {
+  it.proxyPages = { baseline: proxyState(), originalTag: proxyTag() };
+};
+
+// The profile's two halves: the update moves reverse-proxy to a tag that can serve the pages, and the wiring must
+// appear on its own; then the compose file goes back to the old tag (what a downgrade does) and the proxy is
+// recreated, which the conductor sees as a Docker start event, and the wiring must go again, leaving the
+// customer's files as they were.
+const proxyErrorPages = async (ctx, it) => {
+  const pages = it.proxyPages;
+  const added = await waitFor('error pages wiring added', async () => wired(), { timeoutMs: 180000, intervalMs: 2000 });
+  pages.added = { ok: added.ok, ms: added.ms };
+  // The conductor writes both files, then recreates the proxy: wait until it says so before going on.
+  pages.addedLogged = (
+    await waitFor('add logged', () => conductorLogged(ctx, it, /\[proxy-error-pages\] (add|convert) done/), { timeoutMs: 120000, intervalMs: 2000 })
+  ).ok;
+  Object.assign(pages.added, proxyState(), { backups: proxyBackups() });
+
+  const file = composeFile();
+  const original = pages.originalTag;
+  if (!original) {
+    it.notes.push('could not read the proxy tag the iteration started with');
+    return;
+  }
+  ctx.sampler?.pause();
+  try {
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/(molo17\/traefik:)\S+/, (_, head) => `${head}${original}`));
+  } finally {
+    ctx.sampler?.resume();
+  }
+  const up = await kitCompose(['up', '-d', 'reverse-proxy'], { timeoutMs: 120000 });
+  it.notes.push(`proxy put back on ${original} and recreated (up exit ${up.code}); the conductor must notice the start event`);
+  const removed = await waitFor('error pages wiring removed', async () => unwired(), { timeoutMs: 120000, intervalMs: 2000 });
+  pages.removed = { ok: removed.ok, ms: removed.ms };
+  pages.removedLogged = (await waitFor('remove logged', () => conductorLogged(ctx, it, /\[proxy-error-pages\] remove done/), { timeoutMs: 60000, intervalMs: 2000 })).ok;
+  Object.assign(pages.removed, proxyState());
 };
 
 export const PROFILES = [
@@ -358,7 +520,7 @@ export const PROFILES = [
   },
   {
     name: 'full-restart',
-    description: 'After the update, the "restart all" action (pull, down, up through a helper container).',
+    description: 'After the update, the "restart all" action (down, up through a helper container; no pull).',
     plan: () => ({ expect: 'updated', extraCoreHubStarts: 1 }),
     after: async (ctx, it) => {
       const before = await containerOf('gluesync-conductor');
@@ -381,6 +543,16 @@ export const PROFILES = [
     },
   },
   {
+    name: 'full-restart-drift',
+    description:
+      'The 2026-11-07 HQ outage: after the update, the compose file and its last-good copy name the core-hub tag from before the update while the newer one runs (updated outside the conductor). "Restart all" is sent twice in a row. The restart must keep the running tag (no downgrade), write it into both files and say so, and refuse the second request with 409. Then a container with the restart helper label runs: the recreated conductor must refuse a restart with 409 too.',
+    plan: () => ({ expect: 'updated', extraCoreHubStarts: 1, restartDrift: true }),
+    before: async (ctx, it) => {
+      it.restartDrift = { olderTag: (await containerOf(CORE_HUB))?.tag ?? null };
+    },
+    after: restartWithDrift,
+  },
+  {
     name: 'compose-customization',
     description: 'A customer edit (env var, label with $$, a comment) is added before the update and must survive it.',
     plan: () => ({ expect: 'updated', customization: true }),
@@ -401,6 +573,23 @@ export const PROFILES = [
       const r = await kitCompose(['up', '-d', 'grafana']);
       it.notes.push(`customised grafana in compose (up exit ${r.code})`);
     },
+  },
+  {
+    name: 'proxy-error-pages',
+    description:
+      'The update moves reverse-proxy to a molo17/traefik tag with the error pages wrapper (3.7.16.x): the conductor must add the wiring on its own (gluesync-pages middleware and plugin in proxy/traefik.yml, labels on the proxy service), back up both files first, recreate the proxy, never touch certs.yml and keep every line of the customer traefik.yml. Then the old tag is put back and the proxy recreated: the wiring must go again and traefik.yml and the proxy block of the compose file must be as they were.',
+    versions: i => ({ 'reverse-proxy': `3.7.16.${100 + i}` }),
+    // The proxy ends the iteration on the tag it started with, which is the downgrade half: the generic checks must
+    // expect that tag for it, and the labels of its compose block (our wiring) may differ from before.
+    plan: () => ({
+      expect: 'updated',
+      lagging: ['reverse-proxy'],
+      proxyPages: true,
+      downgraded: ['reverse-proxy'],
+      expectedDrift: [{ service: 'reverse-proxy', key: 'labels' }],
+    }),
+    before: proxyBaseline,
+    after: proxyErrorPages,
   },
   {
     name: 'ui-sequence',

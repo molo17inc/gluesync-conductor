@@ -143,8 +143,10 @@ const prepareKitFiles = async () => {
   );
   writeIfMissing(kit('shared', 'logback.xml'), fs.readFileSync(path.join(debugKit, 'shared', 'logback.xml')));
   writeIfMissing(kit('bootstrap-core-hub.json'), fs.readFileSync(path.join(debugKit, 'bootstrap-core-hub.json')));
-  writeIfMissing(kit('proxy', 'traefik.yml'), fs.readFileSync(path.join(debugKit, 'proxy', 'traefik.yml')));
-  writeIfMissing(kit('proxy', 'certs.yml'), fs.readFileSync(path.join(debugKit, 'proxy', 'certs.yml')));
+  // The proxy folder is the sandbox's own (sandbox/kit/proxy): a customer's traefik.yml with settings
+  // of their own, which the error pages wiring must leave alone, and the kit's certs.yml, which nothing may touch.
+  writeIfMissing(kit('proxy', 'traefik.yml'), fs.readFileSync(path.join(env.sandboxDir, 'kit', 'proxy', 'traefik.yml')));
+  writeIfMissing(kit('proxy', 'certs.yml'), fs.readFileSync(path.join(env.sandboxDir, 'kit', 'proxy', 'certs.yml')));
   writeIfMissing(kit('prometheus', 'prometheus.yml'), 'global:\n  scrape_interval: 15s\n');
   writeIfMissing(kit('.env'), '');
   // A migrated v2 install; without this the conductor takes the v1 -> v2 migration path.

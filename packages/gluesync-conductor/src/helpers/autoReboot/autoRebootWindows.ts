@@ -2,6 +2,11 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { spawnAsync } from './autoReboot';
+import {
+  buildHelperScript,
+  helperContainerName,
+  HELPER_LOG_DIR,
+} from './windowsHelper';
 import { getLogger } from '../../utils/logger';
 
 type AutoReboot = (
@@ -18,8 +23,14 @@ const logger = getLogger();
  * Runs a helper Windows container (ephemeral) from inside the current
  * Windows conductor container.
  *
+ * The helper is started DETACHED (`docker run -d`): it stops this conductor, and
+ * an attached client would die with it, possibly taking the helper along half
+ * way through the recreate. So this resolves once the helper is started, not
+ * when it is done; its output goes to `.conductor/helper-logs/<name>.log` in
+ * the kit folder and to `docker logs <name>`.
+ *
  * The flow is:
- *   1. This code (inside gluesync-conductor) calls `docker run ...`.
+ *   1. This code (inside gluesync-conductor) calls `docker run -d ...`.
  *   2. `docker.exe` talks to the host Docker Engine via DOCKER_HOST=npipe:////./pipe/docker_engine.
  *   3. The host engine starts the helper container, mounting:
  *      - the host Docker pipe
@@ -76,23 +87,37 @@ const autoRebootWindows: AutoReboot = async ({
    * - Use -f to point to the configuration file
    * - Use --project-directory to point the Engine back to the E: drive
    */
-  const psCommand = [
-    `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'`,
-    `$env:BASE_PATH='${hostPath}'`,
-    `$env:PROXY_HTTP='${proxyHttp}'`,
-    `$env:PROXY_HTTPS='${proxyHttps}'`,
+  const composeCmd = (command: string): string =>
+    `docker-compose -f "${internalComposeFile}" ${envFileArgs} --project-directory "${hostPath}" ${command}`
+      .replaceAll(/\s+/g, ' ')
+      .trim();
 
-    `docker-compose -f "${internalComposeFile}" ${envFileArgs} --project-directory "${hostPath}" pull ${serviceName}`
-      .replaceAll(/\s+/g, ' ')
-      .trim(),
-    `docker-compose -f "${internalComposeFile}" ${envFileArgs} --project-directory "${hostPath}" up -d --force-recreate ${serviceName}`
-      .replaceAll(/\s+/g, ' ')
-      .trim(),
-  ].join('; ');
+  const helperName = helperContainerName('gluesync-conductor-updater');
+
+  const psCommand = buildHelperScript({
+    internalPath,
+    name: helperName,
+    preamble: [
+      `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'`,
+      `$env:BASE_PATH='${hostPath}'`,
+      `$env:PROXY_HTTP='${proxyHttp}'`,
+      `$env:PROXY_HTTPS='${proxyHttps}'`,
+    ],
+    steps: [
+      { label: 'pull', command: composeCmd(`pull ${serviceName}`) },
+      {
+        label: 'recreate',
+        command: composeCmd(`up -d --force-recreate ${serviceName}`),
+      },
+    ],
+  });
 
   const args = [
     'run',
+    '-d', // detached: must outlive the conductor it replaces
     '--rm', // Ensure helper is removed after execution
+    '--name',
+    helperName,
     '--user',
     'ContainerAdministrator',
     '-v',
@@ -126,7 +151,11 @@ const autoRebootWindows: AutoReboot = async ({
   logger.info(
     `[conductor-updater] Rebooting service "${serviceName}" on drive ${hostPath[0]}:`,
   );
-  await spawnAsync('docker', args);
+  // `docker run -d` prints the helper's container id (logged by spawnAsync)
+  await spawnAsync('docker', args, { keepUpdateMode: true });
+  logger.info(
+    `[conductor-updater] helper container "${helperName}" started detached; follow it with "docker logs ${helperName}" or in ${HELPER_LOG_DIR}/${helperName}.log in the kit folder`,
+  );
   return true;
 };
 

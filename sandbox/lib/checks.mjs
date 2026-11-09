@@ -197,14 +197,16 @@ const stackChecks = x => {
     ),
   );
 
-  const drift = composeDrift(pre, post, preServices, services);
+  // A profile may declare the fields it changes on purpose (plan.expectedDrift: [{ service, key }])
+  const expectedDrift = plan.expectedDrift || [];
+  const drift = composeDrift(pre, post, preServices, services).filter(d => !expectedDrift.some(e => e.service === d.service && e.key === d.key));
   const driftList = drift.map(d => `${d.service}.${d.key}`).join(', ');
   out.push(
     result(
       'compose',
       'compose.no-unrelated-changes',
       drift.length === 0,
-      drift.length ? `fields other than image changed: ${driftList}` : 'only image tags changed',
+      drift.length ? `fields other than image changed: ${driftList}` : 'only image tags changed (or fields the profile changes on purpose)',
       'warn',
       drift.length ? drift : undefined,
     ),
@@ -357,6 +359,36 @@ const crashComposeCheck = it => {
   );
 };
 
+
+// full-restart-drift: "restart all" with the compose file one core-hub tag behind the running container.
+const restartDriftCheck = (it, conductorLogs) => {
+  const d = it.restartDrift;
+  if (!d?.statuses) return result('compose', 'compose.restart-keeps-running-tag', false, 'the profile did not get to the restart');
+  const problems = [];
+  if (d.olderTag === d.runningTag) problems.push(`no drift was set up: core-hub was on ${d.runningTag} before and after the update`);
+  if (d.statuses[0] !== 200) problems.push(`the first restart answered ${d.statuses[0]}`);
+  if (d.statuses[1] !== 409) problems.push(`the second restart, sent while the first ran, answered ${d.statuses[1]} instead of 409`);
+  if (d.helperStatus !== 409) problems.push(`with the helper of another conductor running, a restart answered ${d.helperStatus} instead of 409`);
+  if (d.afterContainerTag !== d.runningTag) problems.push(`core-hub came back on ${d.afterContainerTag}, it ran ${d.runningTag}`);
+  if (d.afterComposeTag !== d.runningTag) problems.push(`the compose file names core-hub ${d.afterComposeTag}, not the running ${d.runningTag}`);
+  if (d.afterLastGoodTag !== d.runningTag) problems.push(`the last-good copy names core-hub ${d.afterLastGoodTag}, not the running ${d.runningTag}`);
+  const kept = d.firstItems.find(c => c.id === 'gluesync-core-hub');
+  if (!kept || !/would have downgraded/.test(kept.message)) problems.push(`the restart reply does not say core-hub was kept: ${JSON.stringify(d.firstItems)}`);
+  const logged = conductorLogs.filter(l => l.line.includes('compose-differs-from-running') && l.line.includes('gluesync-core-hub'));
+  if (!logged.length) problems.push('the conductor never logged the pinned core-hub tag (reason compose-differs-from-running)');
+  else if (!logged.some(l => /"level":40/.test(l.line))) problems.push('the pinned core-hub tag was not logged at warn level');
+  return result(
+    'compose',
+    'compose.restart-keeps-running-tag',
+    problems.length === 0,
+    problems.length
+      ? problems.join('; ')
+      : `compose named ${d.olderTag}, core-hub ran ${d.runningTag}: restart kept ${d.runningTag} in the container, the compose file and last-good, logged at warn; second restart refused with 409, and refused again while a labelled helper ran`,
+    'fail',
+    problems.length ? d : undefined,
+  );
+};
+
 const composeSafetyChecks = x => {
   const { it, plan, conductorLogs } = x;
   return [
@@ -365,6 +397,7 @@ const composeSafetyChecks = x => {
     ...(plan.refusal ? [refusalCheck(it, plan)] : []),
     ...(plan.flapping ? [flappingCheck(it)] : []),
     ...(plan.blanked ? [blankedCheck(it, conductorLogs)] : []),
+    ...(plan.restartDrift ? [restartDriftCheck(it, conductorLogs)] : []),
     ...(it.crashCompose ? [crashComposeCheck(it)] : []),
   ];
 };
@@ -372,7 +405,7 @@ const composeSafetyChecks = x => {
 // ---------------------------------------------------------------- API error handling
 
 const apiChecks = x => {
-  const { it, post, target, plan } = x;
+  const { it, pre, post, target, plan } = x;
   const out = [];
 
   const badShape = it.api
@@ -401,7 +434,9 @@ const apiChecks = x => {
     .filter(c => c.status === 'OK' && SERVICES[c.id] && c.id !== 'gluesync-conductor')
     .filter(c => {
       const now = post.byService[c.id];
-      return now?.state !== 'running' || now.health === 'unhealthy' || now.tag !== target[c.id] || (plan.crashImages || []).includes(c.id);
+      // A service the profile deliberately puts back on its old tag (plan.downgraded) is expected on that tag at the end
+      const expectedTag = (plan.downgraded || []).includes(c.id) ? pre.byService[c.id]?.tag : target[c.id];
+      return now?.state !== 'running' || now.health === 'unhealthy' || now.tag !== expectedTag || (plan.crashImages || []).includes(c.id);
     })
     .map(c => {
       const now = post.byService[c.id];
@@ -666,4 +701,82 @@ const loggingChecks = x => {
   return out;
 };
 
-export const runChecks = x => [...stackChecks(x), ...composeSafetyChecks(x), ...apiChecks(x), ...resilienceChecks(x), ...loggingChecks(x)];
+// ---------------------------------------------------------------- proxy error pages
+
+// The lines of a file that are not in another one (comments and blank lines are lines too).
+const missingLines = (original, now) => {
+  const have = new Set(now.split('\n'));
+  return original.split('\n').filter(l => l.trim() && !have.has(l));
+};
+
+// proxy-error-pages profile: see scenarios.mjs. A capable tag brings the wiring, the old tag takes it away,
+// and nothing but our own keys ever changes.
+const wiringAddedCheck = (p, added) => {
+  const notLogged = p.addedLogged ? '' : ', but the conductor never logged "add done"';
+  const detail = added?.ok
+    ? `wiring added ${Math.round(added.ms / 1000)}s after the iteration's update step${notLogged}`
+    : 'the wiring (middleware and plugin in traefik.yml, labels on reverse-proxy) did not appear within 3 minutes of the update to a capable tag';
+  return result('proxy', 'proxy.wiring-added', !!added?.ok && !!p.addedLogged, detail);
+};
+
+// What the update to a capable tag must have kept and left behind: the customer's own lines and the backup.
+const addedFilesChecks = (base, added) => {
+  const lost = missingLines(base.conf, added.conf);
+  const backup = (added.backups || []).find(b => b.files.includes('docker-compose.yml') && b.files.includes('traefik.yml'));
+  const certsBackedUp = (added.backups || []).some(b => b.files.includes('certs.yml'));
+  return [
+    result(
+      'proxy',
+      'proxy.customer-settings-kept',
+      lost.length === 0 && added.conf.includes('- customer-headers@file') && added.conf.includes('certResolver: sandbox-resolver'),
+      lost.length ? `lines of the customer traefik.yml lost: ${lost.join(' | ')}` : 'every line of the customer traefik.yml (middleware, ACME resolver, log level, comments) is still there',
+    ),
+    result(
+      'proxy',
+      'proxy.backup-made',
+      !!backup && !certsBackedUp,
+      backup ? `backup ${backup.stamp} holds ${backup.files.join(', ')}` : 'no <kit>/.conductor/proxy-backup/<stamp>/ with docker-compose.yml and traefik.yml',
+    ),
+  ];
+};
+
+const certsUntouchedCheck = (base, added, removed) => {
+  const same = base.certsSha === added?.certsSha && base.certsSha === removed?.certsSha;
+  return result(
+    'proxy',
+    'proxy.certs-untouched',
+    same,
+    same ? 'proxy/certs.yml has the same bytes before, with the wiring and after it was removed' : 'proxy/certs.yml changed',
+  );
+};
+
+const wiringRemovedDetail = (p, removed, restored) => {
+  if (restored) {
+    const notLogged = p.removedLogged ? '' : ', but the conductor never logged "remove done"';
+    return `wiring removed ${Math.round(removed.ms / 1000)}s after the old tag was back; traefik.yml and the proxy block are as they were${notLogged}`;
+  }
+  if (removed?.ok) {
+    return 'the wiring went but traefik.yml or the proxy block of the compose file is not what it was before';
+  }
+  return 'the wiring was still there 2 minutes after reverse-proxy went back to a tag that cannot serve it';
+};
+
+const wiringRemovedCheck = (p, base, removed) => {
+  const restored = !!removed?.ok && removed.conf === base.conf && removed.block.replace(/image: \S+/, '') === base.block.replace(/image: \S+/, '');
+  return result('proxy', 'proxy.wiring-removed', restored && !!p.removedLogged, wiringRemovedDetail(p, removed, restored));
+};
+
+const proxyPagesChecks = it => {
+  const p = it.proxyPages;
+  if (!p) return [result('proxy', 'proxy.evidence', false, 'the profile recorded nothing about the proxy files')];
+  const { baseline: base, added, removed } = p;
+
+  return [
+    wiringAddedCheck(p, added),
+    ...(added?.ok ? addedFilesChecks(base, added) : []),
+    certsUntouchedCheck(base, added, removed),
+    wiringRemovedCheck(p, base, removed),
+  ];
+};
+
+export const runChecks = x => [...stackChecks(x), ...composeSafetyChecks(x), ...apiChecks(x), ...resilienceChecks(x), ...loggingChecks(x), ...(x.plan.proxyPages ? proxyPagesChecks(x.it) : [])];

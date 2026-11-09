@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
-import getOrchestrator from '../helpers/orchestrator/getOrchestrator/getOrchestrator';
+import getOrchestrator, {
+  isSwarmRefusedOnPodman,
+} from '../helpers/orchestrator/getOrchestrator/getOrchestrator';
 import buildDiagnosis from '../diagnosis/buildDiagnosis';
 
 // Answered without the Swarm API, so they work on a worker too
@@ -21,7 +23,8 @@ const isAlwaysAllowed = (url: string): boolean => {
 
 /**
  * Services, tasks and service logs only answer on a swarm manager. A Conductor
- * that landed on a worker says so instead of failing in every route.
+ * that landed on a worker says so instead of failing in every route. Swarm
+ * asked for on Podman, which has none, is refused the same way.
  */
 const swarmManagerGuardPlugin = (
   fastify: Readonly<FastifyInstance>,
@@ -30,6 +33,17 @@ const swarmManagerGuardPlugin = (
 ): void => {
   fastify.addHook('onRequest', async (req, reply) => {
     if (isAlwaysAllowed(req.url)) {
+      return;
+    }
+
+    if (await isSwarmRefusedOnPodman(fastify.docker)) {
+      await reply.code(501).send({
+        success: false,
+        error: 'Docker Swarm is not available on Podman',
+        message:
+          'CONDUCTOR_ORCHESTRATOR=swarm was asked for, but this engine is Podman, which has no Swarm mode. Run Gluesync with Compose.',
+        diagnosis: buildDiagnosis({ code: 'SWARM_UNSUPPORTED_ON_PODMAN' }),
+      });
       return;
     }
 

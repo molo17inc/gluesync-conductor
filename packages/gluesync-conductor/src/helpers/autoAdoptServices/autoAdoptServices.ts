@@ -571,7 +571,7 @@ const autoAdoptServices = async (): Promise<{
     const {
       services: cpuCompatibleLabeledServices,
       updatedIds: cpuCompatibilityLabeledIds,
-    } = applyCpuCompatibilityToImage(
+    } = await applyCpuCompatibilityToImage(
       coreHubTweakedServices,
       adjustedIds,
       isWindows,
@@ -729,7 +729,11 @@ const autoAdoptServices = async (): Promise<{
     const {
       services: cpuCompatibleServices,
       updatedIds: cpuCompatibilityUpdatedIds,
-    } = applyCpuCompatibilityToImage(mergedServices, allServiceIds, isWindows);
+    } = await applyCpuCompatibilityToImage(
+      mergedServices,
+      allServiceIds,
+      isWindows,
+    );
 
     const { services: portAddedServices, updatedIds: portAddedIds } =
       addPortToCoreHub(cpuCompatibleServices, allServiceIds);

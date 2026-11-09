@@ -22,11 +22,18 @@ import { composeFilePath } from '../../../helpers/composeFile/composeBackup/comp
 import getRootPath from '../../../helpers/getRootPath/getRootPath';
 import restartWindows from '../../../helpers/restartAllServices/windowsRestart';
 import restartLinux from '../../../helpers/restartAllServices/linuxRestart';
+import {
+  beginFullRestart,
+  fullRestartRunningSince,
+} from '../../../helpers/restartAllServices/fullRestartInProgress';
+import pinRunningImages from '../../../helpers/pinRunningImages/pinRunningImages';
+import { PinnedImage } from '../../../helpers/pinRunningImages/pinRunningImages.model';
 import migrationWithUpdate from './migrationWithUpdate/migrationWithUpdate';
 import updateNormalBulk from './handleUpdate/updateNormalBulk';
 import { migrationNeeded } from '../../../helpers/migrationNeeded/migrationNeeded';
 import handleGrafanaEmbeddedDashboard from '../../../helpers/handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard';
 import { HandleGrafanaEmbeddedDashboardResult } from '../../../helpers/handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard.model';
+import healProxyErrorPages from '../../../helpers/healProxyErrorPages/healProxyErrorPages';
 import { getLogger } from '../../../utils/logger';
 import describeFailure from '../../../helpers/describeFailure/describeFailure';
 import buildDiagnosis from '../../../diagnosis/buildDiagnosis';
@@ -45,6 +52,15 @@ import buildMigrationRefusedOnSwarmReply from '../../../helpers/orchestrator/bui
 import buildModeUnknownReply from '../../../helpers/orchestrator/buildModeUnknownReply/buildModeUnknownReply';
 import forceUpdateService from '../../../helpers/swarm/forceUpdateService/forceUpdateService';
 import restartSwarmStack from '../../../helpers/swarm/restartSwarmStack/restartSwarmStack';
+import {
+  DR_UPDATE_REFUSED_DETAILS,
+  DR_UPDATE_REFUSED_ERROR,
+  getDisasterRecoveryUpdateRefusal,
+} from '../../../helpers/disasterRecovery/disasterRecovery';
+import {
+  HELPER_IMAGE_28,
+  HELPER_IMAGE_CLI,
+} from '../../../helpers/containerRuntime/helperImages';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
@@ -92,6 +108,20 @@ const gate = createActionGate<DoContainersActionResponse>({
     buildLocalErrorReply(error, ACTION_FAILED) ??
     failed(500, ACTION_FAILED, errorMessage(error)),
 });
+
+/** True while an update, restart or other container action is running. */
+export const isContainerActionRunning = (): boolean =>
+  gate.current() !== undefined;
+
+/**
+ * Runs `perform` as a container action of its own: it holds the same lock as an
+ * update or a restart, so none of them runs meanwhile and the other way round.
+ * The disaster-recovery setup recreates Core Hub and Chronos under it.
+ */
+export const enterContainerAction = (
+  key: Readonly<{ action: string; ids: ReadonlyArray<string> }>,
+  perform: () => Promise<Outcome>,
+) => gate.enter(key, perform);
 
 // One reply item per settled action, in the order the ids were given.
 const toItems = (
@@ -269,6 +299,44 @@ const recreateGrafanaIfEmbedded = async (
   ];
 };
 
+const WIRING_VERB: Readonly<Record<string, string>> = {
+  add: 'added',
+  remove: 'removed',
+  convert: 'converted',
+  recreate: 'recreated',
+};
+
+// The MOLO17 error pages wiring follows the reverse-proxy image the update
+// just left in the compose file (see healProxyErrorPages). Compose only; it
+// never fails the update.
+const healProxyErrorPagesAfterUpdate = async (
+  req: Readonly<Request>,
+  orchestrator: Readonly<Orchestrator>,
+): Promise<ReadonlyArray<DoContainersActionItem>> => {
+  if (orchestrator.mode !== 'compose') {
+    return [];
+  }
+
+  const outcome = await healProxyErrorPages({ reason: 'update' });
+
+  if (!outcome.recreated) {
+    return [];
+  }
+
+  req.log.info(
+    { service: outcome.recreated, action: outcome.action },
+    '[update-handler] error pages wiring changed, reverse-proxy recreated',
+  );
+
+  return [
+    {
+      id: outcome.recreated,
+      status: 'OK',
+      message: `MOLO17 error pages wiring ${WIRING_VERB[outcome.action] ?? 'changed'} (${outcome.reason}); reverse-proxy recreated.`,
+    },
+  ];
+};
+
 const migrationRefusedOnSwarm = (): Outcome => ({
   statusCode: 501,
   body: buildMigrationRefusedOnSwarmReply(),
@@ -364,6 +432,20 @@ const performUpdate = async (
   await ensureFreeSpace([composeFilePath()], getUpdateMinFreeBytes());
 
   const composeJson = await readComposeFile({ raw: true });
+
+  // A site of a disaster-recovery pair is upgraded with Gluesync Control, one
+  // site at a time: an in-place update here would migrate the databases of the
+  // active site and leave the standby unable to take over. Nothing is pulled
+  // or written.
+  if (await getDisasterRecoveryUpdateRefusal(composeJson, requestIds)) {
+    req.log.warn(
+      { ids: requestIds },
+      '[update-handler] refused: disaster recovery is enabled on this Core Hub',
+    );
+
+    return failed(409, DR_UPDATE_REFUSED_ERROR, DR_UPDATE_REFUSED_DETAILS);
+  }
+
   req.log.debug(
     `Checking for conductor update, ids length=${requestIds.length}`,
   );
@@ -441,6 +523,7 @@ const performUpdate = async (
   req.log.debug(`Container action update: ${JSON.stringify(results)}`);
 
   const grafanaItems = await recreateGrafanaIfEmbedded(req, orchestrator);
+  const proxyItems = await healProxyErrorPagesAfterUpdate(req, orchestrator);
   const pruneOutcome = swarm
     ? skipPruneOnSwarm()
     : await pruneImages(req.server.docker);
@@ -449,7 +532,12 @@ const performUpdate = async (
     success: true,
     data: {
       ...pruneOutcome,
-      containers: [...toItems(ids, results), ...refusedItems, ...grafanaItems],
+      containers: [
+        ...toItems(ids, results),
+        ...refusedItems,
+        ...grafanaItems,
+        ...proxyItems,
+      ],
     },
   });
 };
@@ -508,7 +596,7 @@ const rebootConductorAfterReply = (
     autoReboot({
       hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
       serviceName,
-      helperImage: isWindows ? helperImageWindows : 'docker:cli',
+      helperImage: isWindows ? helperImageWindows : HELPER_IMAGE_CLI,
       log: msg => req.log.info({ msg }, '[conductor-restart] restart log'),
     }).catch(error => {
       req.log.error({ error }, '[conductor-restart] autoReboot failed');
@@ -516,10 +604,50 @@ const rebootConductorAfterReply = (
   });
 };
 
+const PIN_EFFECT: Readonly<Record<PinnedImage['composeIs'], string>> = {
+  older: 'downgraded',
+  newer: 'upgraded',
+  equal: 'changed',
+  unknown: 'changed',
+};
+
+// A restart brings back the versions that run: what the compose file said instead
+const pinnedItem = (pin: Readonly<PinnedImage>): DoContainersActionItem => ({
+  id: pin.service,
+  status: 'OK',
+  message: `Kept ${pin.runningImage}: the compose file named ${pin.composeImage}, and restarting on it would have ${PIN_EFFECT[pin.composeIs]} ${pin.service}.`,
+});
+
 // No ids: the whole stack, conductor included, through a helper container that
 // runs once the reply has gone out.
-const restartFullStack = (req: Readonly<Request>): Outcome => {
+const restartFullStack = async (req: Readonly<Request>): Promise<Outcome> => {
   req.log.info('[conductor-restart] full stack restart requested');
+
+  // The action gate is free again as soon as this replies, long before the
+  // helper is done: a second restart would run `down` and `up` against the
+  // first one. Refused, not queued: the caller asked for one restart.
+  const runningSince = await fullRestartRunningSince(req.server.docker);
+
+  if (runningSince) {
+    req.log.warn(
+      { since: runningSince },
+      '[conductor-restart] refused: a full stack restart is already running',
+    );
+    return failed(
+      409,
+      'A full stack restart is already in progress',
+      `Started at ${runningSince}; try again when the stack is back up`,
+    );
+  }
+
+  const endFullRestart = beginFullRestart();
+
+  // `compose up` recreates every service from the compose file: one that
+  // names another tag than its container runs would change version
+  const pins = await pinRunningImages(req.server.docker).catch(error => {
+    endFullRestart();
+    throw error;
+  });
 
   enableUpdateMode();
 
@@ -529,10 +657,12 @@ const restartFullStack = (req: Readonly<Request>): Outcome => {
 
     restartFn({
       hostProjectDir,
-      helperImage: isWindows ? helperImageWindows : 'docker:28',
-    }).catch(error => {
-      req.log.error({ error }, '[conductor-restart] full restart failed');
-    });
+      helperImage: isWindows ? helperImageWindows : HELPER_IMAGE_28,
+    })
+      .catch(error => {
+        req.log.error({ error }, '[conductor-restart] full restart failed');
+      })
+      .finally(endFullRestart);
   });
 
   return ok({
@@ -540,6 +670,7 @@ const restartFullStack = (req: Readonly<Request>): Outcome => {
     data: {
       containers: [
         { id: 'ALL', status: 'OK', message: 'Full stack restart initiated.' },
+        ...pins.map(pinnedItem),
       ],
     },
   });

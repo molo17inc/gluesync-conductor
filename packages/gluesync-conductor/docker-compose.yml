@@ -1,0 +1,27 @@
+name: gluesync
+services:
+  gluesync-core-hub:
+    image: molo17/gluesync-core-hub:2.3.0.0
+    labels:
+      - traefik.enable=true
+      - com.molo17.conductor.type=core-hub
+  reverse-proxy:
+    restart: unless-stopped
+    image: molo17/traefik:3.7.16.3-win-nanoserver-ltsc2022
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/folders/cf/ts602qbn205603_1zwvn89080000gq/T/compose-831aH1/proxy/traefik.yml:/etc/traefik/traefik.yml:ro
+      - /var/folders/cf/ts602qbn205603_1zwvn89080000gq/T/compose-831aH1/proxy/certs.yml:/etc/traefik/certs.yml:ro
+    labels:
+      - com.molo17.conductor.type=third-party
+      - traefik.enable=true
+      - traefik.http.middlewares.gluesync-pages.plugin.gluesyncerrorpages.root=C:\gluesync\error-pages
+      - traefik.http.middlewares.gluesync-pages.plugin.gluesyncerrorpages.mode=wrap
+      - traefik.http.middlewares.gluesync-unavailable.plugin.gluesyncerrorpages.root=C:\gluesync\error-pages
+      - traefik.http.middlewares.gluesync-unavailable.plugin.gluesyncerrorpages.mode=unavailable
+      - traefik.http.routers.gluesync-unavailable.rule=PathPrefix(`/`)
+      - traefik.http.routers.gluesync-unavailable.priority=1
+      - traefik.http.routers.gluesync-unavailable.entrypoints=websecure
+      - traefik.http.routers.gluesync-unavailable.tls=true
+      - traefik.http.routers.gluesync-unavailable.service=noop@internal
+      - traefik.http.routers.gluesync-unavailable.middlewares=gluesync-unavailable@docker

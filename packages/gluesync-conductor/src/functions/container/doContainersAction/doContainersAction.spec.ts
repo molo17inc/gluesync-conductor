@@ -34,6 +34,10 @@ type Options = {
   bulk?: { orderedIds: string[]; results: PromiseSettledResult<unknown>[] };
   rebootError?: unknown;
   restartError?: unknown;
+  // The full restart helper runs until this settles
+  restartRuns?: Promise<void>;
+  // What pinRunningImages finds, or how it fails
+  pins?: ReadonlyArray<unknown> | Error;
   availableBytes?: number;
   // Compose unless told otherwise; `null` is "Docker not answering"
   orchestrator?: unknown;
@@ -83,6 +87,7 @@ const load = (options: Options = {}) => {
     grafana: [] as Call[],
     swarmForceUpdates: [] as string[],
     swarmStackRestarts: [] as Call[],
+    pinned: 0,
   };
   const log =
     (level: string) =>
@@ -207,9 +212,24 @@ const load = (options: Options = {}) => {
       [helper('restartAllServices/linuxRestart')]: {
         default: async (...args: unknown[]) => {
           calls.restartLinux.push(args);
+          await options.restartRuns;
           if (options.restartError) {
             throw options.restartError;
           }
+        },
+      },
+      // Fresh per load: whether a full restart runs is module state
+      [helper('restartAllServices/fullRestartInProgress')]: loadWithStubs(
+        helper('restartAllServices/fullRestartInProgress'),
+        {},
+      ),
+      [helper('pinRunningImages/pinRunningImages')]: {
+        default: async () => {
+          calls.pinned += 1;
+          if (options.pins instanceof Error) {
+            throw options.pins;
+          }
+          return options.pins ?? [];
         },
       },
       [helper('migrationNeeded/migrationNeeded')]: {
@@ -278,6 +298,7 @@ const fakeReply = (): Reply => {
 type Docker = {
   ping?: () => Promise<unknown>;
   pruneImages?: (opts: unknown) => Promise<unknown>;
+  listContainers?: (opts: unknown) => Promise<unknown>;
 };
 
 const run = async (
@@ -526,7 +547,12 @@ describe('doContainersAction restart', () => {
 
     await pending();
     assert.deepEqual(loaded.calls.restartLinux, [
-      [{ hostProjectDir: '/host/project', helperImage: 'docker:28' }],
+      [
+        {
+          hostProjectDir: '/host/project',
+          helperImage: 'docker.io/library/docker:28',
+        },
+      ],
     ]);
     assert.equal(loaded.calls.restartWindows.length, 0);
   });
@@ -557,6 +583,101 @@ describe('doContainersAction restart', () => {
     );
   });
 
+  it('reports the images it kept so the restart would not change their version', async () => {
+    const loaded = load({
+      pins: [
+        {
+          service: 'gluesync-core-hub',
+          coreHub: true,
+          composeImage: 'molo17/gluesync-core-hub:2.3.1.3',
+          runningImage: 'molo17/gluesync-core-hub:2.3.1.4',
+          composeIs: 'older',
+        },
+        {
+          service: 'gluesync-mssql-ee',
+          coreHub: false,
+          composeImage: 'molo17/gluesync-mssql-ee:2.3.2.0',
+          runningImage: 'molo17/gluesync-mssql-ee:2.3.1.4',
+          composeIs: 'newer',
+        },
+      ],
+    });
+    const reply = await run(loaded, { action: 'restart', ids: [] });
+
+    assert.equal(reply.statusCode, 200);
+    assert.equal(loaded.calls.pinned, 1);
+    const [all, kept] = body(reply).data.containers;
+    assert.equal(all.id, 'ALL');
+    assert.equal(kept.id, 'gluesync-core-hub');
+    assert.equal(kept.status, 'OK');
+    assert.match(kept.message, /Kept molo17\/gluesync-core-hub:2\.3\.1\.4/);
+    assert.match(kept.message, /2\.3\.1\.3/);
+    assert.match(kept.message, /would have downgraded gluesync-core-hub/);
+    const agent = body(reply).data.containers[2];
+    assert.match(agent.message, /would have upgraded gluesync-mssql-ee/);
+  });
+
+  it('does not restart when the running images cannot be checked', async () => {
+    const loaded = load({ pins: new Error('engine went away') });
+    const reply = await run(loaded, { action: 'restart', ids: [] });
+    await pending();
+
+    assert.equal(reply.statusCode, 500);
+    assert.equal(loaded.calls.updateMode, 0);
+    assert.equal(loaded.calls.restartLinux.length, 0);
+
+    // Nothing left marked as running: the next request is checked again,
+    // not refused as a second restart
+    const retried = await run(loaded, { action: 'restart', ids: [] });
+    assert.equal(retried.statusCode, 500);
+    assert.equal(loaded.calls.pinned, 2);
+  });
+
+  it('refuses a second full restart while the first one runs (2026-11-07)', async () => {
+    const helper = { done: () => {} };
+    const loaded = load({
+      restartRuns: new Promise<void>(resolve => {
+        helper.done = resolve;
+      }),
+    });
+
+    const first = await run(loaded, { action: 'restart', ids: [] });
+    await pending();
+    // The gate is free: the first reply went out before the helper finished
+    const second = await run(loaded, { action: 'restart', ids: [] });
+
+    assert.equal(first.statusCode, 200);
+    assert.equal(second.statusCode, 409);
+    assert.equal(
+      body(second).error,
+      'A full stack restart is already in progress',
+    );
+    assert.equal(loaded.calls.restartLinux.length, 1);
+    assert.equal(loaded.calls.pinned, 1);
+    assert.ok(
+      loaded.calls.logs.includes(
+        'warn: [conductor-restart] refused: a full stack restart is already running',
+      ),
+    );
+
+    helper.done();
+    await pending();
+    await pending();
+    const third = await run(loaded, { action: 'restart', ids: [] });
+    assert.equal(third.statusCode, 200);
+  });
+
+  it('refuses a full restart while the helper of another conductor runs', async () => {
+    const loaded = load();
+    const reply = await run(loaded, { action: 'restart', ids: [] }, {
+      listContainers: async () => [{ Created: 1_794_052_310 }],
+    } as Docker);
+
+    assert.equal(reply.statusCode, 409);
+    assert.match(body(reply).details, /2026-11-07T11:51:50/);
+    assert.equal(loaded.calls.pinned, 0);
+  });
+
   it('reboots only the conductor after the reply when it is the only id', async () => {
     const loaded = load();
     const reply = await run(loaded, {
@@ -578,7 +699,7 @@ describe('doContainersAction restart', () => {
     const [params] = loaded.calls.reboot[0] as [Record<string, unknown>];
     assert.equal(params.hostProjectDir, '/host/project');
     assert.equal(params.serviceName, 'gluesync-conductor');
-    assert.equal(params.helperImage, 'docker:cli');
+    assert.equal(params.helperImage, 'docker.io/library/docker:cli');
     (params.log as (m: string) => void)('rebooting');
     assert.ok(loaded.calls.logs.includes('info: 2'));
   });
@@ -840,6 +961,149 @@ describe('doContainersAction update', () => {
         message: 'Grafana recreated with embedded dashboard (volumes removed).',
       },
     ]);
+  });
+});
+
+describe('doContainersAction update on a disaster-recovery host', () => {
+  const DETAILS =
+    'Update the sites one at a time with Gluesync Control, standby first, then a planned switchover. See https://docs.molo17.com/gluesync/latest/ (upgrade a disaster-recovery pair).';
+
+  const drCompose = (environment: unknown) => ({
+    services: {
+      'gluesync-core-hub': {
+        image: 'molo17/gluesync-core-hub:2.3.1',
+        environment,
+      },
+      'gluesync-chronos': { image: 'molo17/gluesync-chronos:0.2.4' },
+      'gluesync-mssql-ct': { image: 'molo17/gluesync-mssql-ct:2.3.1' },
+    },
+  });
+
+  const assertRefused = (
+    loaded: ReturnType<typeof load>,
+    reply: Reply,
+  ): void => {
+    assert.equal(reply.statusCode, 409);
+    assert.deepEqual(body(reply), {
+      success: false,
+      error: 'Disaster recovery is enabled on this Core Hub',
+      details: DETAILS,
+    });
+    // Only the generic action lookup: no update action, no version check, no
+    // compose rewrite, no pull, no migration, no prune
+    assert.equal(loaded.calls.createActions.length, 1);
+    assert.deepEqual(loaded.calls.checked, []);
+    assert.equal(loaded.calls.bulk.length, 0);
+    assert.equal(loaded.calls.conductorOnly.length, 0);
+    assert.equal(loaded.calls.migration.length, 0);
+    assert.equal(loaded.calls.grafana.length, 0);
+    assert.equal(loaded.calls.updateMode, 0);
+  };
+
+  it('refuses Core Hub with 409 when GS_DR_ENABLED is true in a list', async () => {
+    const loaded = load({
+      compose: drCompose(['GS_DR_ENABLED=true']),
+      actions: { update: async () => assert.fail('pulled') },
+    });
+    const reply = await run(loaded, {
+      action: 'update',
+      ids: ['gluesync-core-hub'],
+    });
+
+    assertRefused(loaded, reply);
+  });
+
+  it('refuses Chronos with 409 when GS_DR_ENABLED is true in a map', async () => {
+    const loaded = load({
+      compose: drCompose({ GS_DR_ENABLED: 'TRUE' }),
+    });
+    const reply = await run(loaded, {
+      action: 'update',
+      ids: ['gluesync-mssql-ct', 'gluesync-chronos'],
+    });
+
+    assertRefused(loaded, reply);
+  });
+
+  it('refuses "update all"', async () => {
+    const loaded = load({ compose: drCompose(['GS_DR_ENABLED=true']) });
+    const reply = await run(loaded, { action: 'update', ids: [] });
+
+    assertRefused(loaded, reply);
+  });
+
+  it('refuses a Core Hub with the migration due, before migrating', async () => {
+    const loaded = load({
+      compose: drCompose(['GS_DR_ENABLED=true']),
+      needsMigration: true,
+    });
+    const reply = await run(loaded, {
+      action: 'update',
+      ids: ['gluesync-core-hub'],
+    });
+
+    assertRefused(loaded, reply);
+  });
+
+  it('updates the agents and the conductor as usual', async () => {
+    const loaded = load({ compose: drCompose(['GS_DR_ENABLED=true']) });
+    const reply = await run(loaded, {
+      action: 'update',
+      ids: ['gluesync-mssql-ct'],
+    });
+
+    assert.equal(reply.statusCode, 200);
+    assert.equal(loaded.calls.bulk.length, 1);
+  });
+
+  it('updates the conductor alone when it is the only id', async () => {
+    const loaded = load({
+      compose: drCompose(['GS_DR_ENABLED=true']),
+      modules: {
+        'gluesync-conductor': {
+          needsUpdate: true,
+          id: 'gluesync-conductor',
+          availableVersion: '3.0.0',
+        },
+      },
+    });
+    const reply = await run(loaded, {
+      action: 'update',
+      ids: ['gluesync-conductor'],
+    });
+
+    assert.equal(reply.statusCode, 200);
+    assert.equal(loaded.calls.conductorOnly.length, 1);
+  });
+
+  it('updates Core Hub as before when disaster recovery is off or absent', async () => {
+    await Promise.all(
+      [['GS_DR_ENABLED=false'], ['JAVA_OPTS=-Xmx4g'], undefined].map(
+        async environment => {
+          const loaded = load({ compose: drCompose(environment) });
+          const reply = await run(loaded, {
+            action: 'update',
+            ids: ['gluesync-core-hub'],
+          });
+
+          assert.equal(reply.statusCode, 200);
+          assert.equal(loaded.calls.bulk.length, 1);
+        },
+      ),
+    );
+  });
+
+  it('does not stop a restart', async () => {
+    const loaded = load({
+      compose: drCompose(['GS_DR_ENABLED=true']),
+      actions: { restart: async () => 'restarted' },
+    });
+    const reply = await run(loaded, {
+      action: 'restart',
+      ids: ['gluesync-core-hub'],
+    });
+
+    assert.equal(reply.statusCode, 200);
   });
 });
 

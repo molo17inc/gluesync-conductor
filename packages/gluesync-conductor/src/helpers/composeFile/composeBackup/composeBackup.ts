@@ -49,6 +49,19 @@ const findMountedFolder = async (): Promise<string | undefined> =>
   ).find(folder => folder !== undefined);
 
 /**
+ * The folder of the kit as the Conductor sees it: the root-folder mount, else the folder of
+ * the compose file. Files that belong next to the compose file (and survive the recreation
+ * of the Conductor) are kept here.
+ */
+export const getKitFolder = async (): Promise<string> => {
+  const [rootFolder] = mountedFolders();
+
+  return (await isDirectory(rootFolder))
+    ? rootFolder
+    : dirname(composeFilePath());
+};
+
+/**
  * Where the last-good copy lives. In the root-folder mount it is on the host
  * next to the kit, so it survives container recreation and is reachable when
  * the compose file itself is gone.

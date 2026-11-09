@@ -35,6 +35,7 @@ const load = ({
   orchestrator = { mode: 'compose' },
 }: Setup = {}) => {
   const calls: string[] = [];
+  const ensured: Array<{ id: string; composeCallsBefore: number }> = [];
   const swarmCalls: Array<{ options: unknown; action: string; id: string }> =
     [];
   const stable: string[] = [];
@@ -92,7 +93,10 @@ const load = ({
         },
       },
       [here('../../ensureVolumeDirs/ensureVolumeDirs')]: {
-        default: async () => undefined,
+        default: async (id: string) => {
+          // compose calls made before the folders were prepared
+          ensured.push({ id, composeCallsBefore: calls.length });
+        },
       },
       [here('../../../plugins/apiBlockerAsUpdating')]: {
         enableUpdateMode: () => {
@@ -156,6 +160,7 @@ const load = ({
   return {
     createActions,
     calls,
+    ensured,
     swarmCalls,
     stable,
     dockerWaits,
@@ -190,6 +195,15 @@ describe('createActions', () => {
       'upAll --no-deps svc',
       'stop svc',
     ]);
+  });
+
+  it('prepares the bind folders of a service before it starts, on Linux too', async () => {
+    delete process.env.IS_WINDOWS;
+    const { createActions, ensured } = load();
+
+    await createActions({ docker }).start('gs-agent-1');
+
+    assert.deepEqual(ensured, [{ id: 'gs-agent-1', composeCallsBefore: 0 }]);
   });
 
   it('rejects with the compose error output', async () => {
@@ -281,7 +295,7 @@ describe('createActions', () => {
       {
         hostProjectDir: '/srv/gs',
         serviceName: 'gluesync-conductor',
-        helperImage: 'docker:cli',
+        helperImage: 'docker.io/library/docker:cli',
         rollbackImage: 'conductor:1',
         log: undefined,
       },

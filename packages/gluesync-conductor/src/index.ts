@@ -39,15 +39,23 @@ import {
 import healConductorConf from './helpers/healConductorConf/healConductorConf';
 import syncCollectLogsScripts from './helpers/syncCollectLogsScripts/syncCollectLogsScripts';
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
+import healProxyErrorPages from './helpers/healProxyErrorPages/healProxyErrorPages';
+import watchProxyStartEvents from './helpers/healProxyErrorPages/watchProxyStartEvents';
+import { findProxyServiceName } from './helpers/healTraefikConf/healTraefikConf';
+import { readComposeFile } from './helpers/composeFile/readComposeFile/readComposeFile';
+import { isContainerActionRunning } from './functions/container/doContainersAction/doContainersAction';
 import awaitDecidedOrchestrator from './helpers/orchestrator/awaitDecidedOrchestrator/awaitDecidedOrchestrator';
 import reconcileSelfImage from './helpers/swarm/reconcileSelfImage/reconcileSelfImage';
 import { restoreSelfUpdateConfig } from './helpers/swarm/restoreUpdateConfig/restoreUpdateConfig';
 import migrateRoutes from './routes/migrate';
 import envRoutes from './routes/env';
+import disasterRecoveryRoutes from './routes/disasterRecovery';
 import updateModeEmitter from './plugins/updateModeEmitter';
 import { startUpdateWatchdog } from './helpers/updateWatchdog/updateWatchdog';
 import errorHandlerPlugin from './plugins/errorHandlerPlugin';
 import installShutdownHandlers from './helpers/installShutdownHandlers/installShutdownHandlers';
+import { getContainerEngine } from './helpers/containerRuntime/containerEngine';
+import { HELPER_IMAGE_CLI } from './helpers/containerRuntime/helperImages';
 
 type FastifyServices = {
   docker: Docker;
@@ -117,6 +125,32 @@ const adoptServicesAtStartup = async (
   }
 };
 
+// Compose only. After the adoption above, which rewrites the compose file
+// from what it read at its start: this step reads and writes it afterwards.
+const healProxyErrorPagesAtStartup = async (
+  docker: Readonly<Docker>,
+): Promise<void> => {
+  await runStartupStep(
+    'proxy error pages',
+    () => healProxyErrorPages({ reason: 'startup' }),
+    undefined,
+  );
+
+  const proxyServiceName = await runStartupStep(
+    'proxy error pages events',
+    async () => findProxyServiceName(await readComposeFile({ raw: true })),
+    null,
+  );
+
+  if (proxyServiceName) {
+    watchProxyStartEvents({
+      docker,
+      proxyServiceName,
+      isBusy: isContainerActionRunning,
+    });
+  }
+};
+
 type DecidedOrchestrator = Awaited<ReturnType<typeof awaitDecidedOrchestrator>>;
 
 const prepareForOrchestrator = async (
@@ -146,6 +180,7 @@ const prepareForOrchestrator = async (
     );
   } else {
     await adoptServicesAtStartup(docker, logger);
+    await healProxyErrorPagesAtStartup(docker);
   }
 };
 
@@ -186,7 +221,7 @@ const healConductorAtStartup = async (
     autoReboot({
       hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
       serviceName: 'gluesync-conductor',
-      helperImage: shouldUseWindows ? helperImageWindows : 'docker:cli',
+      helperImage: shouldUseWindows ? helperImageWindows : HELPER_IMAGE_CLI,
       log: msg => logger.info({ msg }, '[conductor-healer] self-heal log'),
     }).catch((error: unknown) => {
       logger.error({ error }, '[conductor-healer] self-heal reboot failed');
@@ -199,6 +234,14 @@ const runPostListenStartup = async (
   docker: Readonly<Docker>,
   logger: Readonly<ReturnType<typeof getLogger>>,
 ): Promise<void> => {
+  // Docker or Podman, rootful or rootless: asked once here, so it is in the log
+  // of every report
+  const engine = await getContainerEngine(docker);
+
+  if (engine) {
+    logger.info({ engine }, '[container-engine] container engine detected');
+  }
+
   // Both modes: DKR_COMPOSE_FILE is the compose file or the stack file, and
   // either is read and rewritten below (and on every request), so a damaged one
   // is restored from its last-good copy before anything touches it
@@ -310,7 +353,7 @@ const startServer = async (): Promise<void> => {
               helperImage:
                 process.env.IS_WINDOWS?.toLowerCase() === 'true'
                   ? process.env.HELPER_IMAGE_BASE || ''
-                  : 'docker:cli',
+                  : HELPER_IMAGE_CLI,
               log: msg => getLogger().info({ msg }, '[watchdog-recovery]'),
             });
             return true;
@@ -366,6 +409,7 @@ const startServer = async (): Promise<void> => {
   await server.register(supportRoutes);
   await server.register(migrateRoutes);
   await server.register(envRoutes);
+  await server.register(disasterRecoveryRoutes);
 
   await server.ready();
   await server.listen({ host, port });

@@ -112,12 +112,24 @@ const parseTag = image => {
   return i > image.lastIndexOf('/') ? image.slice(i + 1) : 'latest';
 };
 
+// `docker inspect a b` exits 1 when b was removed after `ps` listed it (the conductor's startup adoption recreates
+// the kit), but still prints a: keep what it found, or the whole kit reads as gone for that one look.
+const inspectAll = async ids => {
+  const insp = await docker(['inspect', ...ids]);
+  const onlyVanished = insp.err.split('\n').filter(Boolean).every(line => /no such object/i.test(line));
+  if (insp.code !== 0 && !onlyVanished) return [];
+  try {
+    const parsed = JSON.parse(insp.out || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 export const containers = async () => {
   const ids = await docker(['ps', '-aq', '--filter', `label=com.docker.compose.project=${env.project}`]);
   if (ids.code !== 0 || !ids.out) return [];
-  const insp = await docker(['inspect', ...ids.out.split('\n')]);
-  if (insp.code !== 0) return [];
-  return JSON.parse(insp.out).map(c => ({
+  return (await inspectAll(ids.out.split('\n'))).map(c => ({
     id: c.Id.slice(0, 12),
     name: c.Name.replace(/^\//, ''),
     service: c.Config.Labels['com.docker.compose.service'],
@@ -285,9 +297,10 @@ const waitHealerVerdict = async (id, deadline) => {
 
 export const waitConductorStartup = async ({ timeoutMs = 180000 } = {}) => {
   const started = Date.now();
-  const c = await conductorContainer();
-  if (!c) throw new Error('conductor startup: no running conductor container');
-  await waitHealerVerdict(c.id, started + timeoutMs);
+  // One look could land while the startup adoption recreates containers, or while the conductor replaces itself
+  const found = await waitFor('running conductor container', conductorContainer, { timeoutMs: Math.min(60000, timeoutMs), intervalMs: 1000 });
+  if (!found.ok) throw new Error(`conductor startup: no running conductor container after ${Math.round(found.ms / 1000)}s`);
+  await waitHealerVerdict(found.value.id, started + timeoutMs);
   say(`conductor startup done after ${Math.round((Date.now() - started) / 1000)}s (adoption finished)`);
 };
 
@@ -332,6 +345,10 @@ export const settle = async (ctx, token, { timeoutMs = 180000, ignore = [] } = {
 
 // ---------------------------------------------------------------- log collection
 
+// A Docker restart keeps the id, so a follow is keyed by the start as well: the follow of the
+// previous start may not have closed yet when the container is running again.
+const followKey = c => `${c.id}@${c.startedAt}`;
+
 // Follows the docker logs of every incarnation of the watched services, so logs
 // survive the container being replaced by an update.
 export class LogCollector {
@@ -347,18 +364,25 @@ export class LogCollector {
 
   start() {
     const tick = async () => {
-      try {
-        const list = await containers();
-        list
-          .filter(c => this.services.includes(c.service) && c.state === 'running' && !this.followed.has(c.id))
-          .forEach(c => this.follow(c));
-      } catch {
-        /* daemon blip: try again next tick */
-      }
+      await this.sync();
       if (!this.stopped) this.timer = setTimeout(tick, 2000);
     };
-    // tick never rejects: it catches the daemon errors itself.
+    // tick never rejects: sync catches the daemon errors itself.
     void tick();
+  }
+
+  // Follows every running incarnation not followed yet. The timer does this every 2s; a caller
+  // that has just started a container which may be gone again within 2s (the conductor
+  // restarted right before a self-update replaces it) calls it at once, so its lines are not lost.
+  async sync() {
+    try {
+      const list = await containers();
+      list
+        .filter(c => this.services.includes(c.service) && c.state === 'running' && !this.followed.has(followKey(c)))
+        .forEach(c => this.follow(c));
+    } catch {
+      /* daemon blip: try again next tick */
+    }
   }
 
   follow(c) {
@@ -393,9 +417,9 @@ export class LogCollector {
     onData(child.stderr);
     child.on('close', () => {
       file.end();
-      this.followed.delete(c.id);
+      this.followed.delete(followKey(c));
     });
-    this.followed.set(c.id, child);
+    this.followed.set(followKey(c), child);
   }
 
   since(service, isoTs) {

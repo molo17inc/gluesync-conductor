@@ -19,7 +19,6 @@ const upAdoptedServices: StartUpdatedServicesArgs = async (
 ) => {
   const logger = getLogger();
   const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
-  const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
   if (updatedIds.length === 0) {
     logger.info('No updated services to start');
@@ -37,12 +36,8 @@ const upAdoptedServices: StartUpdatedServicesArgs = async (
     process.env.CONDUCTOR_NAME || 'gluesync-conductor';
 
   // Run all starts in parallel, each service once
-  const promises = servicesToStart(updatedIds, conductorServiceName).map(id => {
-    const ensureVolumesPromise = isWindows
-      ? ensureVolumeDirs(id)
-      : Promise.resolve();
-
-    return ensureVolumesPromise
+  const promises = servicesToStart(updatedIds, conductorServiceName).map(id =>
+    ensureVolumeDirs(id)
       .then(() => {
         logger.info(`Starting adopted service: ${id}`);
         return actions.start(id);
@@ -52,8 +47,8 @@ const upAdoptedServices: StartUpdatedServicesArgs = async (
       })
       .catch(error => {
         logger.error({ error, service: id }, 'Failed to start adopted service');
-      });
-  });
+      }),
+  );
 
   await Promise.all(promises);
 };
