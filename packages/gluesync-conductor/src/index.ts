@@ -56,6 +56,7 @@ import errorHandlerPlugin from './plugins/errorHandlerPlugin';
 import installShutdownHandlers from './helpers/installShutdownHandlers/installShutdownHandlers';
 import { getContainerEngine } from './helpers/containerRuntime/containerEngine';
 import { HELPER_IMAGE_CLI } from './helpers/containerRuntime/helperImages';
+import resolveHostBasePath from './helpers/resolveHostBasePath/resolveHostBasePath';
 
 type FastifyServices = {
   docker: Docker;
@@ -299,6 +300,10 @@ const startServer = async (): Promise<void> => {
 
   // Register Docker plugin
   await server.register(dockerPlugin);
+
+  // Before any route, healer or adoption reads BASE_PATH: a kit started by hand
+  // has `.`, which the daemon would resolve against this container's own cwd
+  await resolveHostBasePath(server.docker);
 
   // Register Gluesync plugin
   await server.register(gluesyncPlugin);
