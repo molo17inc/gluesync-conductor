@@ -2683,6 +2683,1310 @@
           }
         }
       }
+    },
+    "/disaster-recovery/setup": {
+      "get": {
+        "summary": "Get the disaster recovery setup",
+        "tags": [
+          "disaster-recovery"
+        ],
+        "description": "Whether the guided disaster recovery setup is available on this host, and what is set up. Read from the compose file alone, so it answers on a standby site too. Never returns a secret.",
+        "responses": {
+          "200": {
+            "description": "The state of disaster recovery on this host",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The state of disaster recovery on this host",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "supported",
+                        "reason",
+                        "enabled",
+                        "managedByConductor",
+                        "nodeId",
+                        "peerUrl",
+                        "failoverMode",
+                        "witnessUrl",
+                        "bootstrapActive"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "supported": {
+                          "type": "boolean",
+                          "description": "False on Docker Swarm, when the Core Hub or Chronos service or the data directory of Chronos cannot be found, or when GS_DR_* variables are set by hand in the Core Hub environment"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "managedByConductor": {
+                          "type": "boolean",
+                          "description": "True when the variables were written by this setup; disaster recovery enabled by hand is enabled but not managed"
+                        },
+                        "nodeId": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "peerUrl": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "failoverMode": {
+                          "type": "string",
+                          "enum": [
+                            "manual",
+                            "witness"
+                          ],
+                          "nullable": true
+                        },
+                        "witnessUrl": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "bootstrapActive": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role of the caller cannot modify the configuration.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The role of the caller cannot modify the configuration.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The compose file could not be read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The compose file could not be read.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/disaster-recovery/setup/first": {
+      "post": {
+        "summary": "Set up the first site of a disaster recovery pair",
+        "tags": [
+          "disaster-recovery"
+        ],
+        "description": "Writes the GS_DR_* variables (in `gluesync-dr.env`, read by Core Hub only) and the compose changes a DR site needs, answers 202 with the pairing code for the second site, then recreates Chronos and Core Hub. This site keeps its data and starts active. The pairing code contains the shared secret of the pair, and the operator token is shown only here: keep both private.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "thisSite",
+                  "peerSite",
+                  "failoverMode"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "thisSite": {
+                    "type": "object",
+                    "required": [
+                      "nodeId",
+                      "url"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "nodeId": {
+                        "type": "string",
+                        "description": "Id of the site: 1 to 32 characters, lower-case letters, digits and \"-\", starting with a letter or digit"
+                      },
+                      "url": {
+                        "type": "string",
+                        "description": "Core Hub base URL of the site, http:// or https:// host:port with no path. The control port and the replication sink are on the same host."
+                      }
+                    }
+                  },
+                  "peerSite": {
+                    "type": "object",
+                    "required": [
+                      "nodeId",
+                      "url"
+                    ],
+                    "additionalProperties": false,
+                    "properties": {
+                      "nodeId": {
+                        "type": "string",
+                        "description": "Id of the site: 1 to 32 characters, lower-case letters, digits and \"-\", starting with a letter or digit"
+                      },
+                      "url": {
+                        "type": "string",
+                        "description": "Core Hub base URL of the site, http:// or https:// host:port with no path. The control port and the replication sink are on the same host."
+                      }
+                    }
+                  },
+                  "failoverMode": {
+                    "type": "string",
+                    "enum": [
+                      "manual",
+                      "witness"
+                    ]
+                  },
+                  "witnessUrl": {
+                    "type": "string",
+                    "description": "Required with failoverMode \"witness\""
+                  },
+                  "leaseTtlSeconds": {
+                    "type": "integer",
+                    "description": "Lease time to live with a witness, 20 to 600 seconds, default 30"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted: the services are recreated next",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Accepted: the services are recreated next",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "pairingCode",
+                        "operatorToken",
+                        "restarting",
+                        "warnings"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "pairingCode": {
+                          "type": "string",
+                          "description": "GSDR1.<base64url of the JSON>, to enter on the second site. Contains the shared secret."
+                        },
+                        "operatorToken": {
+                          "type": "string",
+                          "description": "Operator token of the control port of this site"
+                        },
+                        "restarting": {
+                          "type": "array",
+                          "description": "The services recreated after this answer is sent, Core Hub first. The UI loses its connection while they restart.",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "warnings": {
+                          "type": "array",
+                          "description": "What the setup found that the operator should know, one sentence each; empty when all is well. In witness mode: the witness does not answer yet (usual: it starts with the shared secret this setup generates) or answers as something else than a witness. The setup is not refused for it.",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid. `details` lists every problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The request is not valid. `details` lists every problem.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role of the caller cannot modify the configuration.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The role of the caller cannot modify the configuration.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running. A join in witness mode is also refused when the witness does not answer, is not a witness, or rejects the shared secret: `details` names the witness URL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running. A join in witness mode is also refused when the witness does not answer, is not a witness, or rejects the shared secret: `details` names the witness URL.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A file could not be written, or the services failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "A file could not be written, or the services failed.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Docker is not answering, so compose cannot be told from swarm yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Docker is not answering, so compose cannot be told from swarm yet.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/disaster-recovery/setup/pairing-code": {
+      "post": {
+        "summary": "Show the pairing code of the first site again",
+        "tags": [
+          "disaster-recovery"
+        ],
+        "description": "Rebuilds the pairing code from `gluesync-dr.env` of this site, with the content `setup/first` returned: this site is the first, the peer is the joiner. For when the code was lost, for example because the UI session ended when Core Hub restarted. It is a POST so that it is never cached or logged as a URL, and the answer is not cached. The code contains the shared secret of the pair: keep it private. Only the first site of a pair set up by this Conductor can answer: any other host is answered with 409.",
+        "responses": {
+          "200": {
+            "description": "The pairing code of this site",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The pairing code of this site",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "pairingCode"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "pairingCode": {
+                          "type": "string",
+                          "description": "GSDR1.<base64url of the JSON>, to enter on the second site. Contains the shared secret."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role of the caller cannot modify the configuration.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The role of the caller cannot modify the configuration.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Disaster recovery is not enabled on this host, was not set up by this Conductor, or this is not the first site of a pair set up by this version (the env file lacks what the code needs). `details` says which.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Disaster recovery is not enabled on this host, was not set up by this Conductor, or this is not the first site of a pair set up by this version (the env file lacks what the code needs). `details` says which.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The env file or the compose file could not be read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The env file or the compose file could not be read.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Docker is not answering, so compose cannot be told from swarm yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Docker is not answering, so compose cannot be told from swarm yet.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/disaster-recovery/setup/join": {
+      "post": {
+        "summary": "Set up the second site of a disaster recovery pair",
+        "tags": [
+          "disaster-recovery"
+        ],
+        "description": "Decodes the pairing code of the first site, writes this site as the joiner, answers 202, then recreates Chronos and Core Hub. This site becomes the standby: it moves its own databases aside and follows the first one. With a witness, the witness must already run with the shared secret of the pair: it is probed first (`GET /health`, then a signed read of the lease), and the join is refused with 409, before anything is changed, when it does not answer, is not a witness, or rejects the signature.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "pairingCode",
+                  "confirmDataMovedAside"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "pairingCode": {
+                    "type": "string"
+                  },
+                  "confirmDataMovedAside": {
+                    "type": "boolean",
+                    "description": "Must be true: the databases of this site are moved aside",
+                    "enum": [
+                      true
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted: the services are recreated next",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Accepted: the services are recreated next",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "operatorToken",
+                        "nodeId",
+                        "peerUrl",
+                        "restarting"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "operatorToken": {
+                          "type": "string",
+                          "description": "Operator token of the control port of this site"
+                        },
+                        "nodeId": {
+                          "type": "string"
+                        },
+                        "peerUrl": {
+                          "type": "string"
+                        },
+                        "restarting": {
+                          "type": "array",
+                          "description": "The services recreated after this answer is sent, Core Hub first. The UI loses its connection while they restart.",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid. `details` lists every problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The request is not valid. `details` lists every problem.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role of the caller cannot modify the configuration.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The role of the caller cannot modify the configuration.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running. A join in witness mode is also refused when the witness does not answer, is not a witness, or rejects the shared secret: `details` names the witness URL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running. A join in witness mode is also refused when the witness does not answer, is not a witness, or rejects the shared secret: `details` names the witness URL.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A file could not be written, or the services failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "A file could not be written, or the services failed.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Docker is not answering, so compose cannot be told from swarm yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Docker is not answering, so compose cannot be told from swarm yet.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/disaster-recovery/disable": {
+      "post": {
+        "summary": "Disable the disaster recovery set up by this Conductor",
+        "tags": [
+          "disaster-recovery"
+        ],
+        "description": "Removes every GS_DR_* variable, the published ports, the Chronos mount and the Chronos control URL that the setup added (anything else stays), answers 202, then recreates Chronos and Core Hub. Only a setup made by this Conductor is undone: disaster recovery enabled by hand is answered with 409.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "confirm"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "confirm": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted: the services are recreated next",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Accepted: the services are recreated next",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "data"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "restarting"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "restarting": {
+                          "type": "array",
+                          "description": "The services recreated after this answer is sent, Core Hub first. The UI loses its connection while they restart.",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid. `details` lists every problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The request is not valid. `details` lists every problem.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The role of the caller cannot modify the configuration.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "The role of the caller cannot modify the configuration.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running. A join in witness mode is also refused when the witness does not answer, is not a witness, or rejects the shared secret: `details` names the witness URL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Disaster recovery is already enabled, cannot be set up on this installation, or another container action is running. A join in witness mode is also refused when the witness does not answer, is not a witness, or rejects the shared secret: `details` names the witness URL.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "A file could not be written, or the services failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "A file could not be written, or the services failed.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Docker is not answering, so compose cannot be told from swarm yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Docker is not answering, so compose cannot be told from swarm yet.",
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "There is not enough free disk space on the host. Nothing was changed. `diagnosis.code` is DISK_FULL.",
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "diagnosis": {
+                      "type": "object",
+                      "description": "Diagnosis contract v1 (see contracts/diagnosis.v1.schema.json): why the request failed and what to do.",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "error"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "tags": [

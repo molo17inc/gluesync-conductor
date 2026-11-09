@@ -49,6 +49,7 @@ import reconcileSelfImage from './helpers/swarm/reconcileSelfImage/reconcileSelf
 import { restoreSelfUpdateConfig } from './helpers/swarm/restoreUpdateConfig/restoreUpdateConfig';
 import migrateRoutes from './routes/migrate';
 import envRoutes from './routes/env';
+import disasterRecoveryRoutes from './routes/disasterRecovery';
 import updateModeEmitter from './plugins/updateModeEmitter';
 import { startUpdateWatchdog } from './helpers/updateWatchdog/updateWatchdog';
 import errorHandlerPlugin from './plugins/errorHandlerPlugin';
@@ -408,6 +409,7 @@ const startServer = async (): Promise<void> => {
   await server.register(supportRoutes);
   await server.register(migrateRoutes);
   await server.register(envRoutes);
+  await server.register(disasterRecoveryRoutes);
 
   await server.ready();
   await server.listen({ host, port });

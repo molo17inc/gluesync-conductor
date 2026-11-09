@@ -113,6 +113,16 @@ const gate = createActionGate<DoContainersActionResponse>({
 export const isContainerActionRunning = (): boolean =>
   gate.current() !== undefined;
 
+/**
+ * Runs `perform` as a container action of its own: it holds the same lock as an
+ * update or a restart, so none of them runs meanwhile and the other way round.
+ * The disaster-recovery setup recreates Core Hub and Chronos under it.
+ */
+export const enterContainerAction = (
+  key: Readonly<{ action: string; ids: ReadonlyArray<string> }>,
+  perform: () => Promise<Outcome>,
+) => gate.enter(key, perform);
+
 // One reply item per settled action, in the order the ids were given.
 const toItems = (
   ids: Ids,
