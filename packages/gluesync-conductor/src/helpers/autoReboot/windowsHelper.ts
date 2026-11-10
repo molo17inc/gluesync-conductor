@@ -4,6 +4,8 @@
 // that conductor (and can pass the termination on to the helper), which left
 // the stack half recreated.
 
+import stripTrailingSlashes from '../../utils/stripTrailingSlashes';
+
 // Where the kit folder is mounted inside a helper container (C: is safer for
 // HCS). It exists only in the helper: it must never reach a recreated
 // container's environment, so `BASE_PATH` in a helper is always the host path.
@@ -13,7 +15,7 @@ export const HELPER_KIT_DIR = 'C:/update_context';
 // optional trailing slash: a Conductor recreated by an older helper carries it
 // as its own BASE_PATH.
 export const isHelperKitDir = (value: string): boolean =>
-  value.trim().replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase() ===
+  stripTrailingSlashes(value.trim().replaceAll('\\', '/')).toLowerCase() ===
   HELPER_KIT_DIR.toLowerCase();
 
 // Where the helper writes its log, relative to the mounted kit folder. Nobody
