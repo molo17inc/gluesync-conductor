@@ -1,4 +1,5 @@
 import fetchAgentInfo from '../agentInfo/agentInfo';
+import { isImageNotPublished } from '../agentInfo/agentInfo.errors';
 import parseImage from '../parseImage/parseImage';
 import getVersionByChannel from '../releaseChannel/getVersionByChannel';
 
@@ -47,9 +48,18 @@ export const retagThirdPartyImageToMolo17GA = async (
 
   const imageNameToFetch = isWindows ? `${repo}-win-${windowsYear}` : repo;
 
-  // fetch GA version from backoffice using the repo name as imageName
-  const info = await fetchAgentInfo(imageNameToFetch);
-  const ga = getVersionByChannel(info, 'ga');
+  // fetch GA version from backoffice using the repo name as imageName. A
+  // variant it does not publish (a Windows year without a build) is left as
+  // it is, so the adoption of the other services goes on.
+  const info = await fetchAgentInfo(imageNameToFetch).catch(
+    (error: unknown) => {
+      if (isImageNotPublished(error)) {
+        return null;
+      }
+      throw error;
+    },
+  );
+  const ga = info === null ? null : getVersionByChannel(info, 'ga');
 
   // If version is null/undefined/empty -> simply exit (no changes).
   if (ga == null || ga === '') {
