@@ -85,6 +85,58 @@ describe('resolveHostBasePath', () => {
     untouchedWindows('C:/Program Files/Gluesync'),
   );
 
+  const healedHelperPath = (value: string) => async () => {
+    process.env.BASE_PATH = value;
+    const { run, logs } = load(async () => ({
+      Config: { Labels: { [WORKING_DIR]: String.raw`E:\Kits\gluesync` } },
+    }));
+
+    await run();
+
+    assert.equal(process.env.BASE_PATH, String.raw`E:\Kits\gluesync`);
+    assert.equal(logs.length, 1);
+    assert.match(logs[0], /^info: \[base-path\] BASE_PATH "/);
+    assert.ok(logs[0].includes(value));
+    assert.ok(logs[0].includes(String.raw`E:\Kits\gluesync`));
+  };
+
+  it(
+    'replaces the helper mount point C:/update_context',
+    healedHelperPath('C:/update_context'),
+  );
+
+  it(
+    'replaces the helper mount point with backslashes, any case and a trailing slash',
+    healedHelperPath('c:\\update_context\\'),
+  );
+
+  it(
+    'replaces the helper mount point with a trailing forward slash',
+    healedHelperPath('C:/UPDATE_CONTEXT/'),
+  );
+
+  it('keeps the helper mount point and warns when the host path is unknown', async () => {
+    process.env.BASE_PATH = 'C:/update_context';
+    const { run, logs } = load(async () => ({ Config: { Labels: {} } }));
+
+    await run();
+
+    assert.equal(process.env.BASE_PATH, 'C:/update_context');
+    assert.match(logs[0], /^warn: \[base-path\]/);
+  });
+
+  it('does not mistake a host path that merely contains update_context for the helper mount point', async () => {
+    process.env.BASE_PATH = 'C:/update_context/gluesync';
+    const { run, logs } = load(async () => ({
+      Config: { Labels: { [WORKING_DIR]: '/other' } },
+    }));
+
+    await run();
+
+    assert.equal(process.env.BASE_PATH, 'C:/update_context/gluesync');
+    assert.deepEqual(logs, []);
+  });
+
   it('replaces "." with the working_dir label', async () => {
     process.env.BASE_PATH = '.';
     const { run, logs } = load(async () => ({

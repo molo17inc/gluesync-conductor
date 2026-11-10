@@ -5,6 +5,7 @@ import { spawnAsync } from './autoReboot';
 import {
   buildHelperScript,
   helperContainerName,
+  HELPER_KIT_DIR,
   HELPER_LOG_DIR,
 } from './windowsHelper';
 import { getLogger } from '../../utils/logger';
@@ -59,7 +60,7 @@ const autoRebootWindows: AutoReboot = async ({
   const hostPath = hostProjectDir.replace(/\\/g, '/').replace(/\/$/, '');
 
   // 2. Fixed internal path for the helper container (C: is safer for HCS)
-  const internalPath = 'C:/update_context';
+  const internalPath = HELPER_KIT_DIR;
 
   // 3. Define the explicit path to the compose file inside the helper
   const internalComposeFile = `${internalPath}/docker-compose.yml`;
