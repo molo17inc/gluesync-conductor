@@ -2,6 +2,7 @@ import { spawnAsync } from '../autoReboot/autoReboot';
 import {
   buildHelperScript,
   helperContainerName,
+  HELPER_KIT_DIR,
   HELPER_LOG_DIR,
 } from '../autoReboot/windowsHelper';
 import { FULL_RESTART_HELPER_LABEL } from './fullRestartInProgress';
@@ -37,7 +38,8 @@ type RestartWindows = (
  *      - the host Docker pipe
  *      - the host project directory
  *   4. Inside the helper, pwsh runs:
- *        $env:BASE_PATH='<basePath>';
+ *        $env:BASE_PATH='<hostProjectDir>';   (the host path, never the helper's own mount point:
+ *                                              compose copies it into the recreated conductor)
  *        $env:DOCKER_HOST='npipe:////./pipe/docker_engine';
  *        docker-compose down;
  *        docker-compose up -d;
@@ -60,7 +62,7 @@ const restartWindows: RestartWindows = async ({
   const hostPath = hostProjectDir.replace(/\\/g, '/').replace(/\/$/, '');
 
   // 2. Fixed internal path for the helper container
-  const internalPath = 'C:/update_context';
+  const internalPath = HELPER_KIT_DIR;
 
   // 3. Define the explicit path to the compose file inside the helper
   const internalComposeFile = `${internalPath}/docker-compose.yml`;
@@ -73,7 +75,7 @@ const restartWindows: RestartWindows = async ({
     name: helperName,
     preamble: [
       `$env:DOCKER_HOST='npipe:////./pipe/docker_engine'`,
-      `$env:BASE_PATH='${internalPath}'`,
+      `$env:BASE_PATH='${hostPath}'`,
       `$env:PROXY_HTTP='${process.env.PROXY_HTTP ?? ''}'`,
       `$env:PROXY_HTTPS='${process.env.PROXY_HTTPS ?? ''}'`,
     ],

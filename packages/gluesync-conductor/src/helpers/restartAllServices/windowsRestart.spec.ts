@@ -117,6 +117,21 @@ describe('restartWindows', () => {
     assert.ok(script.includes("Log ('up exit code ' + $LASTEXITCODE)"));
   });
 
+  it('sets BASE_PATH to the host path, never to the helper mount point', async () => {
+    const { spawned } = await run();
+    const script = spawned[0]?.args.at(-1) as string;
+
+    // compose copies it into the recreated conductor, whose BASE_PATH must be
+    // the host project directory (normalised: forward slashes, no trailing one)
+    assert.ok(
+      script.startsWith(
+        "$env:DOCKER_HOST='npipe:////./pipe/docker_engine'; $env:BASE_PATH='E:/Gluesync'; ",
+      ),
+    );
+    assert.ok(!script.includes("$env:BASE_PATH='C:/update_context'"));
+    assert.equal(script.match(/\$env:BASE_PATH='[^']*'/g)?.length, 1);
+  });
+
   it('rejects when the helper cannot be started', async () => {
     await assert.rejects(run(new Error('no such image')), /no such image/);
   });
