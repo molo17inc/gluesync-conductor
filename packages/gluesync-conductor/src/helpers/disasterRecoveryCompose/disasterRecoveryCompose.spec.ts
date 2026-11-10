@@ -21,6 +21,18 @@ const targets: DisasterRecoveryTargets = {
   controlScheme: 'http',
 };
 
+// CPU time of a call, in ms. The "no backtracking" checks below measure CPU, not the wall clock: a busy CI
+// runner stretched a linear 200k-character pass past 1 s of wall time. A backtracking pattern on these inputs
+// needs minutes of CPU (quadratic or worse), so 5 s of CPU still tells the two apart.
+const NO_BACKTRACKING_CPU_MS = 5000;
+const cpuMs = (run: () => void): number => {
+  const before = process.cpuUsage();
+  run();
+  const { user, system } = process.cpuUsage(before);
+
+  return (user + system) / 1000;
+};
+
 const ENV_FILES = [
   { path: '.env', required: false },
   { path: '/opt/gluesync-conductor/root-folder/.env', required: false },
@@ -469,14 +481,16 @@ describe('applyDisasterRecoveryCompose', () => {
       '1'.repeat(200_000),
     ].forEach(value => {
       hub.stop_grace_period = value;
-      const started = Date.now();
-      const after = applyDisasterRecoveryCompose(compose, targets) as any;
+      let after: any;
+      const spent = cpuMs(() => {
+        after = applyDisasterRecoveryCompose(compose, targets);
+      });
 
       assert.equal(
         after.services['gluesync-core-hub'].stop_grace_period,
         value,
       );
-      assert.ok(Date.now() - started < 1000, 'it must not backtrack');
+      assert.ok(spent < NO_BACKTRACKING_CPU_MS, 'it must not backtrack');
     });
 
     // and a long one that is a duration is summed
@@ -526,10 +540,13 @@ describe('applyDisasterRecoveryCompose', () => {
         target: `/app/data${'/'.repeat(100_000)}x`,
       },
     ];
-    const started = Date.now();
+    let blocker: unknown;
+    const spent = cpuMs(() => {
+      blocker = findDisasterRecoveryBlocker(compose, targets);
+    });
 
-    assert.notEqual(findDisasterRecoveryBlocker(compose, targets), null);
-    assert.ok(Date.now() - started < 1000, 'it must not backtrack');
+    assert.notEqual(blocker, null);
+    assert.ok(spent < NO_BACKTRACKING_CPU_MS, 'it must not backtrack');
   });
 
   it('takes the Windows layout: Windows paths and the Windows root folder', () => {
