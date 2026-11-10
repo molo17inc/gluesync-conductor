@@ -1,11 +1,25 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import path from 'node:path';
+import { beforeEach, describe, it } from 'node:test';
 
 import type { RawComposeService } from '../../models/composeFile.model';
-import addStackMountToCoreHub, {
-  STACK_TARGET_LINUX,
-  STACK_TARGET_WINDOWS,
-} from './addStackMountToCoreHub';
+import loadWithStubs from '../../testing/loadWithStubs';
+import type { AddStackMountToCoreHub } from './addStackMountToCoreHub.model';
+
+const here = (p: string): string => path.resolve(__dirname, p);
+
+const infoLines: string[] = [];
+const loaded = loadWithStubs<{
+  default: AddStackMountToCoreHub;
+  STACK_TARGET_LINUX: string;
+  STACK_TARGET_WINDOWS: string;
+}>(here('./addStackMountToCoreHub'), {
+  [here('../../utils/logger')]: {
+    getLogger: () => ({ info: (message: string) => infoLines.push(message) }),
+  },
+});
+const addStackMountToCoreHub = loaded.default;
+const { STACK_TARGET_LINUX, STACK_TARGET_WINDOWS } = loaded;
 
 const windowsCoreHub: RawComposeService = {
   image: 'molo17/gluesync-core-hub:2.3.1.1-win-nanoserver-ltsc2022',
@@ -25,6 +39,10 @@ const linuxCoreHub: RawComposeService = {
 };
 
 describe('addStackMountToCoreHub', () => {
+  beforeEach(() => {
+    infoLines.length = 0;
+  });
+
   it('adds the platform data folder next to Core Hub own mounts on Windows, which stay as they are', () => {
     const services = {
       'gluesync-core-hub': windowsCoreHub,
@@ -40,6 +58,9 @@ describe('addStackMountToCoreHub', () => {
     assert.deepEqual(result.services['gluesync-core-hub'].volumes, [
       ...(windowsCoreHub.volumes ?? []),
       `./data:${STACK_TARGET_WINDOWS}`,
+    ]);
+    assert.deepEqual(infoLines, [
+      `[addStackMountToCoreHub] Mounting ./data at ${STACK_TARGET_WINDOWS} in gluesync-core-hub`,
     ]);
     assert.equal(
       result.services['gluesync-chronos'],
@@ -98,6 +119,7 @@ describe('addStackMountToCoreHub', () => {
         'the same object: nothing to write',
       );
     });
+    assert.deepEqual(infoLines, [], 'nothing mounted, nothing logged');
   });
 
   it('leaves alone a compose file without Core Hub, and a Core Hub this run does not handle', () => {

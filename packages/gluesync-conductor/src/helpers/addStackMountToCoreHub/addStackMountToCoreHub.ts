@@ -1,4 +1,5 @@
 import { LongVolume, RawComposeService } from '../../models/composeFile.model';
+import { getLogger } from '../../utils/logger';
 import { AddStackMountToCoreHub } from './addStackMountToCoreHub.model';
 
 // The platform's whole data folder, mounted in Core Hub next to its own data: Core Hub's backup takes Chronos' jobs
@@ -60,7 +61,7 @@ const addStackMountToCoreHub: AddStackMountToCoreHub = (
     ...svc,
     volumes: [...volumes, `${STACK_SOURCE}:${target}`],
   };
-  console.log(
+  getLogger().info(
     `[addStackMountToCoreHub] Mounting ${STACK_SOURCE} at ${target} in ${coreHubName}`,
   );
 
