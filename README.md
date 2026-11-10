@@ -279,10 +279,11 @@ confirms it holds every byte (`verified: true`); otherwise it stays and
 `archivePath` says where. Without a voucher the legacy path runs unchanged:
 WebDAV, then FTP, then the legacy script.
 
-The portal address defaults to production and can be overridden with
-`GLUESYNC_SUPPORT_API_URL`. Requests (the API and the storage uploads) go through
-`PROXY_HTTPS` / `PROXY_HTTP` when they are set. The `User-Agent` carries
-`CONDUCTOR_VERSION` when it is set.
+The portal address defaults to `https://api.support.molo17.com` and can be
+overridden with `GLUESYNC_SUPPORT_API_URL` (a trailing slash is ignored).
+Requests (the API and the storage uploads) go through `PROXY_HTTPS` /
+`PROXY_HTTP` when they are set. The `User-Agent` carries `CONDUCTOR_VERSION`
+when it is set.
 
 **Response Format:**
 ```json

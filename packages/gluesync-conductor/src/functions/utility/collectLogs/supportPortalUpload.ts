@@ -20,8 +20,7 @@ import { redactSecrets } from '../../../utils/redact';
 import { redactVouchers } from './supportVoucher';
 
 export const SUPPORT_API_URL_ENV = 'GLUESYNC_SUPPORT_API_URL';
-export const SUPPORT_API_DEFAULT_URL =
-  'https://ot57o7swl7.execute-api.eu-central-1.amazonaws.com/prod';
+export const SUPPORT_API_DEFAULT_URL = 'https://api.support.molo17.com';
 export const SUPPORT_MAX_BYTES = 5 * 1024 * 1024 * 1024;
 
 export type SupportPortalErrorCode =

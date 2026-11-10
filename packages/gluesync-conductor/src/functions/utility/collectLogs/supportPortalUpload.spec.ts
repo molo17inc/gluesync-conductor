@@ -111,6 +111,103 @@ describe('configuration', () => {
     );
   });
 
+  it('defaults to the support portal custom domain, without a stage suffix', () => {
+    assert.equal(SUPPORT_API_DEFAULT_URL, 'https://api.support.molo17.com');
+    assert.equal(resolveSupportApiUrl({}), 'https://api.support.molo17.com');
+    assert.equal(
+      resolveSupportApiUrl({
+        GLUESYNC_SUPPORT_API_URL: 'https://api.support.molo17.com/',
+      }),
+      'https://api.support.molo17.com',
+    );
+  });
+
+  it('overrides the default with and without a trailing slash', () => {
+    assert.equal(
+      resolveSupportApiUrl({ GLUESYNC_SUPPORT_API_URL: 'https://x.example' }),
+      'https://x.example',
+    );
+    assert.equal(
+      resolveSupportApiUrl({ GLUESYNC_SUPPORT_API_URL: 'https://x.example/' }),
+      'https://x.example',
+    );
+    assert.equal(
+      resolveSupportApiUrl({
+        GLUESYNC_SUPPORT_API_URL: 'https://x.example/stage/',
+      }),
+      'https://x.example/stage',
+    );
+  });
+
+  it('sends the check to the default domain with a single slash before the path', async () => {
+    const requested: string[] = [];
+    const stubbed = loadWithStubs<typeof import('./supportPortalUpload')>(
+      path.resolve(__dirname, './supportPortalUpload'),
+      {
+        axios: {
+          __esModule: true,
+          default: async (config: { url: string }) => {
+            requested.push(config.url);
+            return {
+              status: 200,
+              data: JSON.stringify({
+                ticketKey: 'GSSD-1',
+                voucherExpiresAt: null,
+                maxBytes: 1,
+                partBytes: 1,
+              }),
+              headers: {},
+            };
+          },
+        },
+      },
+    );
+
+    await stubbed
+      .createSupportPortalClient({
+        baseUrl: stubbed.resolveSupportApiUrl({}),
+        version: '1.0.0',
+      })
+      .check(VOUCHER);
+
+    assert.deepEqual(requested, [
+      'https://api.support.molo17.com/support/log-uploads/check',
+    ]);
+  });
+
+  it('sends requests to the overridden base, with or without a trailing slash', async () => {
+    const requested: string[] = [];
+    const stubbed = loadWithStubs<typeof import('./supportPortalUpload')>(
+      path.resolve(__dirname, './supportPortalUpload'),
+      {
+        axios: {
+          __esModule: true,
+          default: async (config: { url: string }) => {
+            requested.push(config.url);
+            return {
+              status: 200,
+              data: JSON.stringify({ ticketKey: 'GSSD-1' }),
+              headers: {},
+            };
+          },
+        },
+      },
+    );
+
+    await Promise.all(
+      ['https://x.example/stage', 'https://x.example/stage/'].map(baseUrl =>
+        stubbed
+          .createSupportPortalClient({ baseUrl, version: '1.0.0' })
+          .check(VOUCHER),
+      ),
+    );
+
+    assert.deepEqual(requested, [
+      'https://x.example/stage/support/log-uploads/check',
+      'https://x.example/stage/support/log-uploads/check',
+    ]);
+  });
+
   it('reads the override from the environment', () => {
     const saved = process.env.GLUESYNC_SUPPORT_API_URL;
     process.env.GLUESYNC_SUPPORT_API_URL = 'http://localhost:9/x/';
