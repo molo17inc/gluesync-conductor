@@ -678,13 +678,33 @@ const restartFullStack = async (req: Readonly<Request>): Promise<Outcome> => {
 
 // No ids on Swarm: every stack service, the conductor last, all after the
 // reply (the rollouts take longer than a request should)
-const restartFullStackOnSwarm = (
+const restartFullStackOnSwarm = async (
   req: Readonly<Request>,
   orchestrator: Readonly<SwarmOrchestrator>,
-): Outcome => {
+): Promise<Outcome> => {
   req.log.info('[conductor-restart] swarm: full stack restart requested');
 
+  // Same as on compose: the action gate is free again once this replies, and a
+  // second request would start a second set of rollouts (2026-11-10)
+  const runningSince = await fullRestartRunningSince(req.server.docker);
+
+  if (runningSince) {
+    req.log.warn(
+      { since: runningSince },
+      '[conductor-restart] swarm: refused: a full stack restart is already running',
+    );
+    return failed(
+      409,
+      'A full stack restart is already in progress',
+      `Started at ${runningSince}; try again when the stack is back up`,
+    );
+  }
+
+  const endFullRestart = beginFullRestart();
+
   setImmediate(() => {
+    // The conductor is rolled out last, so this mark ends with the old
+    // conductor: fine, the other services are done by then
     restartSwarmStack(req.server.docker, orchestrator)
       .then(results => {
         req.log.info(
@@ -694,7 +714,8 @@ const restartFullStackOnSwarm = (
       })
       .catch(error => {
         req.log.error({ error }, '[conductor-restart] full restart failed');
-      });
+      })
+      .finally(endFullRestart);
   });
 
   return ok({
