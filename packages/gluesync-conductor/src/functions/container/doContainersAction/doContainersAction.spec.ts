@@ -256,6 +256,10 @@ const load = (options: Options = {}) => {
       [helper('swarm/restartSwarmStack/restartSwarmStack')]: {
         default: async (...args: unknown[]) => {
           calls.swarmStackRestarts.push(args);
+          await options.restartRuns;
+          if (options.restartError) {
+            throw options.restartError;
+          }
           return [];
         },
       },
@@ -1428,6 +1432,79 @@ describe('doContainersAction on Docker Swarm', () => {
       assert.equal(loaded.calls.restartWindows.length, 0);
       assert.equal(loaded.calls.reboot.length, 0);
       assert.equal(loaded.calls.updateMode, 0);
+    });
+
+    it('refuses a second full restart while the first rollout runs (2026-11-10)', async () => {
+      const rollout = { done: () => {} };
+      const loaded = swarm({
+        restartRuns: new Promise<void>(resolve => {
+          rollout.done = resolve;
+        }),
+      });
+
+      const first = await run(loaded, { action: 'restart', ids: [] });
+      await pending();
+      // The gate is free: the first reply went out before the rollouts ended
+      const second = await run(loaded, { action: 'restart', ids: [] });
+      await pending();
+
+      assert.equal(first.statusCode, 200);
+      assert.equal(second.statusCode, 409);
+      assert.equal(
+        body(second).error,
+        'A full stack restart is already in progress',
+      );
+      assert.match(body(second).details, /try again when the stack is back up/);
+      assert.equal(loaded.calls.swarmStackRestarts.length, 1);
+      assert.ok(
+        loaded.calls.logs.includes(
+          'warn: [conductor-restart] swarm: refused: a full stack restart is already running',
+        ),
+      );
+
+      rollout.done();
+      await pending();
+      await pending();
+    });
+
+    it('accepts a new full restart once the rollout has finished', async () => {
+      const rollout = { done: () => {} };
+      const loaded = swarm({
+        restartRuns: new Promise<void>(resolve => {
+          rollout.done = resolve;
+        }),
+      });
+
+      await run(loaded, { action: 'restart', ids: [] });
+      await pending();
+      rollout.done();
+      await pending();
+      await pending();
+
+      const next = await run(loaded, { action: 'restart', ids: [] });
+      await pending();
+
+      assert.equal(next.statusCode, 200);
+      assert.equal(loaded.calls.swarmStackRestarts.length, 2);
+    });
+
+    it('accepts a new full restart after a rollout that failed', async () => {
+      const loaded = swarm({ restartError: new Error('rollout failed') });
+
+      await run(loaded, { action: 'restart', ids: [] });
+      await pending();
+      await pending();
+
+      const next = await run(loaded, { action: 'restart', ids: [] });
+      await pending();
+
+      assert.equal(next.statusCode, 200);
+      assert.equal(loaded.calls.swarmStackRestarts.length, 2);
+      assert.ok(
+        loaded.calls.logs.some(
+          l => l.startsWith('error: ') && l.includes('full restart failed'),
+        ),
+      );
     });
 
     it('restarts the conductor service itself after the reply, with no autoReboot', async () => {
