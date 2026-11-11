@@ -10,17 +10,20 @@
 //   freshToken    drive the update with a token the conductor has not cached
 //   concurrent    send each update request N times in parallel
 //   expectConductorRestarts   Docker restarts of the conductor the profile causes on purpose
-//   refusal       { phrase, code, status }: the first update round must be refused with a failure
-//                 containing the phrase, answered with that HTTP status and a diagnosis of
-//                 that code, and leave everything untouched. The fault is
-//                 released right after that round and the user clicks again, so the same
-//                 iteration must still converge.
+//   refusal       { phrase, code, status, id }: the first update round must be refused with a failure
+//                 containing the phrase, answered with that HTTP status and (when `code` is set) a
+//                 diagnosis of that code, and leave everything untouched; checked as `id` (default
+//                 compose.disk-full-refused). The fault is released right after that round (a disk
+//                 fault always, anything else by the profile's `releaseRefusal(ctx, it)`) and the user
+//                 clicks again, so the same iteration must still converge.
 //   minRounds     keep clicking (after a failed or stalled round) until at least this many rounds
 //   flapping      the profile toggles a fault while the bulk update runs (see beforeRound)
 //   blanked       the profile blanks the compose file before the update (see compose-blanked)
 //   downgraded    services the profile deliberately puts back on their old tag: ok-means-ok expects that tag for them
 //   expectedDrift [{ service, key }] compose fields the profile changes on purpose: compose.no-unrelated-changes ignores them
 //   proxyPages    the proxy-error-pages profile: evidence is recorded in it.proxyPages and checked (see checks.mjs)
+//   drGuard, drSetup   the disaster recovery profiles: steps recorded in it.dr (see disasterRecovery.mjs)
+//   logUpload     the log-upload-voucher profile: steps recorded in it.logUpload (see logUpload.mjs)
 //   faultActive   (on the profile, not the plan) (ctx, it) => boolean | Promise<boolean>: true while the
 //                 profile's Docker fault is in effect. The driver waits for it to end before it judges
 //                 a round, so rounds that fail inside the fault do not count as "no progress"
@@ -38,8 +41,10 @@ import path from 'node:path';
 import { DISK_FULL_TEXT, env, SERVICES, versionsFor } from './env.mjs';
 import { composeProblem } from './composeSampler.mjs';
 import { releaseDiskFault, startDiskFault } from './diskFault.mjs';
+import { DR_REFUSED_TEXT, enableDrByHand, guardOnSingleServices, guidedSetup } from './disasterRecovery.mjs';
+import { logUploadWithVoucher } from './logUpload.mjs';
 import { backofficeAdmin, kitCompose } from './setup.mjs';
-import { callConductor, containers, corehub, dockerProxy, waitConductor } from './stack.mjs';
+import { callConductor, containers, corehub, dockerProxy, health, waitConductor } from './stack.mjs';
 import { docker, now, sleep, waitFor } from './util.mjs';
 
 const ALL = Object.keys(SERVICES);
@@ -116,6 +121,77 @@ const FLAP_OPEN_KIB = 96; // above the 64 KiB minimum: pre-flights pass while th
 const FLAP_ROUNDS = 3; // bulk rounds under flapping before the filler stops and the update must converge
 
 const composeFile = () => path.join(env.kitDir, 'docker-compose.yml');
+
+// full-restart-drift (2026-11-07, HQ): CoreHub runs a newer tag than the compose file names (an update made outside
+// the conductor), then "restart all" is pressed twice, 28 s apart on HQ. The compose file and its last-good copy are
+// put back to CoreHub's tag from before the update, without touching the container; the restart must keep the running
+// tag, write it back into both files, and refuse the second request while the first runs.
+const CORE_HUB = 'gluesync-core-hub';
+const coreHubTagIn = text => new RegExp(String.raw`/${SERVICES[CORE_HUB].image}:([^\s"']+)`).exec(text)?.[1] ?? null;
+const withCoreHubTag = (text, tag) =>
+  text.replace(new RegExp(String.raw`(/${SERVICES[CORE_HUB].image}):[^\s"']+`), (_m, name) => `${name}:${tag}`);
+
+const restartWithDrift = async (ctx, it) => {
+  const drift = (it.restartDrift ||= {});
+  const running = await containerOf(CORE_HUB);
+  drift.runningTag = running?.tag ?? null;
+  await waitFor('last-good backup', async () => fs.existsSync(env.lastGoodFile), { timeoutMs: 30000, intervalMs: 1000 });
+  // What the compose file named before the update: the older tag
+  fs.writeFileSync(composeFile(), withCoreHubTag(fs.readFileSync(composeFile(), 'utf8'), drift.olderTag));
+  fs.writeFileSync(env.lastGoodFile, withCoreHubTag(fs.readFileSync(env.lastGoodFile, 'utf8'), drift.olderTag));
+  it.notes.push(`compose and last-good put back to ${CORE_HUB}:${drift.olderTag} while it runs ${drift.runningTag}`);
+
+  // On HQ the compose file had been behind for days. Here it was rewritten from the host a moment after the
+  // conductor's own write at the end of the update, at the same size: the Docker Desktop file share can serve the
+  // conductor its cached copy for a while. The restart goes out once the conductor reads the older tag itself.
+  const conductorBefore = await containerOf('gluesync-conductor');
+  const visible = await waitFor(
+    'conductor sees the older core-hub tag',
+    async () =>
+      (await docker(['exec', conductorBefore.id, 'grep', '-c', `${SERVICES[CORE_HUB].image}:${drift.olderTag}`, '/opt/gluesync-conductor/root-folder/docker-compose.yml'])).out.trim() === '1',
+    { timeoutMs: 10000, intervalMs: 100 },
+  );
+  it.metrics.composeVisibleInConductorMs = visible.ms;
+  const restart = label =>
+    callConductor(it, label, 'POST', '/containers', { token: ctx.adminToken, body: { action: 'restart', ids: [] }, timeoutMs: 60000 });
+  // On HQ both requests reached the same conductor process (req-au, req-b4): the second one goes out as soon as
+  // the first is answered, before the helper has recreated anything
+  const first = await restart('full restart 1');
+  const second = await restart('full restart 2 (while the first runs)');
+  drift.statuses = [first.status, second.status];
+  drift.firstItems = first.json?.data?.containers ?? [];
+  drift.secondError = second.json?.error ?? null;
+  it.notes.push(`full restarts answered ${drift.statuses.join(' then ')}`);
+
+  const back = await waitFor(
+    'conductor after full restart',
+    async () => {
+      const c = await containerOf('gluesync-conductor');
+      return c && c.id !== conductorBefore?.id;
+    },
+    { timeoutMs: 300000, intervalMs: 3000 },
+  );
+  it.metrics.fullRestartMs = back.ms;
+  if (!back.ok) it.notes.push('conductor container was not recreated by the full restart within 5 minutes');
+  await waitFor('core-hub running after full restart', async () => !!(await containerOf(CORE_HUB)), { timeoutMs: 120000, intervalMs: 2000 });
+  drift.afterContainerTag = (await containerOf(CORE_HUB))?.tag ?? null;
+  drift.afterComposeTag = coreHubTagIn(fs.readFileSync(composeFile(), 'utf8'));
+  drift.afterLastGoodTag = fs.existsSync(env.lastGoodFile) ? coreHubTagIn(fs.readFileSync(env.lastGoodFile, 'utf8')) : null;
+
+  // A conductor the restart recreated knows nothing of it: it finds a running helper by the helper's label
+  await waitFor('conductor answers after full restart', async () => (await health()).status === 200, { timeoutMs: 120000, intervalMs: 2000 });
+  const helper = await docker([
+    'run', '-d', '--rm', '--name', `${env.keepPrefix}fake-restart-helper`,
+    '--label', 'com.molo17.conductor.helper=full-stack-restart', '--entrypoint', 'sleep', env.fakeBase, '120',
+  ]);
+  try {
+    const third = await restart('full restart 3 (helper of another conductor running)');
+    drift.helperStatus = third.status;
+  } finally {
+    if (helper.code === 0) await docker(['rm', '-f', helper.out.trim()]);
+  }
+  it.notes.push(`with a labelled helper running, a full restart answered ${drift.helperStatus}`);
+};
 
 // compose-blanked: what the compose file looks like to a reader that polls it from the moment
 // the conductor starts: blank (empty, or only the newlines safeWriteFile pads with) until it is restored, and never anything else but the last-good bytes.
@@ -449,7 +525,7 @@ export const PROFILES = [
   },
   {
     name: 'full-restart',
-    description: 'After the update, the "restart all" action (pull, down, up through a helper container).',
+    description: 'After the update, the "restart all" action (down, up through a helper container; no pull).',
     plan: () => ({ expect: 'updated', extraCoreHubStarts: 1 }),
     after: async (ctx, it) => {
       const before = await containerOf('gluesync-conductor');
@@ -470,6 +546,16 @@ export const PROFILES = [
       it.metrics.fullRestartMs = back.ms;
       if (!back.ok) it.notes.push('conductor container was not recreated by the full restart within 5 minutes');
     },
+  },
+  {
+    name: 'full-restart-drift',
+    description:
+      'The 2026-11-07 HQ outage: after the update, the compose file and its last-good copy name the core-hub tag from before the update while the newer one runs (updated outside the conductor). "Restart all" is sent twice in a row. The restart must keep the running tag (no downgrade), write it into both files and say so, and refuse the second request with 409. Then a container with the restart helper label runs: the recreated conductor must refuse a restart with 409 too.',
+    plan: () => ({ expect: 'updated', extraCoreHubStarts: 1, restartDrift: true }),
+    before: async (ctx, it) => {
+      it.restartDrift = { olderTag: (await containerOf(CORE_HUB))?.tag ?? null };
+    },
+    after: restartWithDrift,
   },
   {
     name: 'compose-customization',
@@ -516,6 +602,35 @@ export const PROFILES = [
       'What the Core Hub UI does: one update request per service, in the UI order, through the reverse proxy, with the UI auto-retry policy. Updating reverse-proxy recreates the proxy the request travels through.',
     // The UI never updates agents from the platform updates modal.
     plan: () => ({ expect: 'updated', ui: true, lagging: ['gluesync-postgresql-cdc-source-agent'] }),
+  },
+  {
+    name: 'dr-update-guard',
+    description:
+      'Core Hub runs in a disaster-recovery pair (GS_DR_ENABLED=true set by hand in its environment). "Update all" must be refused with 409 and touch nothing, the version replies must mark Core Hub and Chronos updateBlocked, Chronos or Core Hub alone must be refused while grafana alone updates; once DR is off the update converges.',
+    plan: () => ({
+      expect: 'updated',
+      refusal: { phrase: DR_REFUSED_TEXT, status: 409, id: 'dr.update-all-refused' },
+      drGuard: true,
+      // GS_DR_ENABLED is in the compose file when the iteration starts and gone at its end
+      expectedDrift: [{ service: 'gluesync-core-hub', key: 'environment' }],
+    }),
+    before: enableDrByHand,
+    releaseRefusal: guardOnSingleServices,
+  },
+  {
+    name: 'dr-guided-setup',
+    description:
+      'After the update, the guided disaster-recovery setup of a single-host Compose kit: first site (env file, compose changes, Core Hub and Chronos recreated, pairing code), update refused through the env file, pairing code shown again, disable back to the original compose; then the same host joins with that code as the second site and is disabled again. No secret may reach a reply that is not meant for it, or the log.',
+    // Core Hub is recreated by every change: first, disable, join, disable
+    plan: () => ({ expect: 'updated', drSetup: true, extraCoreHubStarts: 4 }),
+    after: guidedSetup,
+  },
+  {
+    name: 'log-upload-voucher',
+    description:
+      'After the update, "collect logs" with a support voucher: the archive goes to the fake support portal in parts through the proxy, a dropped part and an expired link are recovered, the portal verifies every byte and the archive holds the logs; a malformed, revoked or expired voucher, a voucher with an e-mail and an archive above the portal limit are refused with their codes. The voucher never leaves its header or reaches the log.',
+    plan: () => ({ expect: 'updated', logUpload: true }),
+    after: logUploadWithVoucher,
   },
   {
     name: 'conductor-bad-release',

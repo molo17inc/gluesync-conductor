@@ -56,9 +56,11 @@ describe('restartLinux', () => {
     assert.equal(await restart({ hostProjectDir: '/srv/gs' }), true);
 
     const args = helperRun(spawned);
-    assert.deepEqual(args.slice(0, 9), [
+    assert.deepEqual(args.slice(0, 11), [
       'run',
       '--rm',
+      '--label',
+      'com.molo17.conductor.helper=full-stack-restart',
       '--security-opt',
       'label=disable',
       '-v',
@@ -67,9 +69,13 @@ describe('restartLinux', () => {
       '/srv/gs:/srv/gs',
       '-w',
     ]);
-    assert.equal(args[9], '/srv/gs');
-    assert.equal(args[10], 'docker.io/library/docker:28');
-    assert.match(args[args.length - 1], /docker compose pull/);
+    assert.equal(args[11], '/srv/gs');
+    assert.equal(args[12], 'docker.io/library/docker:28');
+    // A restart never updates: no pull, only down and up
+    assert.equal(
+      args[args.length - 1],
+      'docker compose down --remove-orphans && docker compose up -d',
+    );
   });
 
   it('mounts the host path of the socket this container runs on (Podman rootful)', async () => {

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 
 import loadWithStubs from '../../testing/loadWithStubs';
+import { servicesToStart } from './upAdoptedServices';
 
 const here = (p: string): string => path.resolve(__dirname, p);
 
@@ -50,6 +51,23 @@ describe('upAdoptedServices', () => {
     );
   });
 
+  it('starts a service reported by several adoption steps once', async () => {
+    const { upAdoptedServices, events } = load();
+
+    await upAdoptedServices({}, [
+      'gluesync-core-hub',
+      'gluesync-chronos',
+      'gluesync-core-hub',
+      'gluesync-conductor',
+      'gluesync-core-hub',
+    ]);
+
+    assert.deepEqual(
+      events.filter(event => event.startsWith('start ')).sort(),
+      ['start gluesync-chronos', 'start gluesync-core-hub'],
+    );
+  });
+
   it('leaves the conductor to the healer', async () => {
     const { upAdoptedServices, events } = load();
 
@@ -72,5 +90,33 @@ describe('upAdoptedServices', () => {
     await upAdoptedServices({}, []);
 
     assert.deepEqual(events, []);
+  });
+});
+
+describe('servicesToStart', () => {
+  it('keeps each service once, in the order first reported', () => {
+    assert.deepEqual(
+      servicesToStart(
+        [
+          'gluesync-core-hub',
+          'gluesync-chronos',
+          'reverse-proxy',
+          'gluesync-core-hub',
+          'gluesync-core-hub',
+        ],
+        'gluesync-conductor',
+      ),
+      ['gluesync-core-hub', 'gluesync-chronos', 'reverse-proxy'],
+    );
+  });
+
+  it('never starts the conductor itself', () => {
+    assert.deepEqual(
+      servicesToStart(
+        ['gluesync-conductor', 'gluesync-core-hub', 'gluesync-conductor'],
+        'gluesync-conductor',
+      ),
+      ['gluesync-core-hub'],
+    );
   });
 });

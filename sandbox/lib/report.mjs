@@ -2,10 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { writeJson } from './util.mjs';
 
-const AREAS = ['stack', 'compose', 'proxy', 'errors', 'resilience', 'session', 'logging'];
+const AREAS = ['stack', 'compose', 'proxy', 'dr', 'logs', 'errors', 'resilience', 'session', 'logging'];
 const AREA_TITLES = {
   compose: 'compose (docker-compose.yml rewrites, never-blank, last-good backup, disk faults)',
   proxy: 'proxy (MOLO17 error pages wiring in proxy/traefik.yml and the reverse-proxy labels, certs.yml untouched)',
+  dr: 'dr (disaster recovery: the update guard of a DR site, the guided setup, join and disable)',
+  logs: 'logs (collect logs with a support voucher, uploaded to the fake support portal)',
 };
 const SEVERITY_ORDER = { fail: 0, warn: 1, info: 2 };
 

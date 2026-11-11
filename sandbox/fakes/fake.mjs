@@ -4,7 +4,7 @@
 //   corehub      HTTPS :1717, WebSocket /ext-module handshake, /authentication/*
 //   chronos      HTTPS :1717, health and version only
 //   http         plain HTTP on FAKE_PORT (traefik, prometheus, grafana, portainer, agents)
-//   backoffice   fake api.backoffice.molo17.com behind an HTTP CONNECT proxy
+//   backoffice   fake api.backoffice.molo17.com behind an HTTP CONNECT proxy, with the fake support portal
 //   dockerproxy  unix-socket pass-through to the Docker daemon with fault injection
 //
 // Every role logs one JSON line per event to stdout. Runtime chaos switches live
@@ -359,6 +359,188 @@ const startHttp = () => {
     });
 };
 
+// ---------------------------------------------------------------- support portal
+
+// The support portal of the voucher log upload and the S3 it hands presigned URLs for, both on the
+// backoffice host (the conductor reaches them through the same CONNECT proxy): the API under
+// /support-api (the conductor's GLUESYNC_SUPPORT_API_URL), the uploads under /sbx-s3. Kept in memory.
+const PORTAL_PREFIX = '/support-api/support/log-uploads';
+const S3_PREFIX = '/sbx-s3/';
+const VOUCHER_HEADER = 'x-gluesync-voucher';
+// voucher -> what the portal answers for it
+const VOUCHERS = {
+  'GSV-SBX0-0000-0001': { ticketKey: 'GSSD-4242' },
+  'GSV-SBX0-0000-0002': { status: 401, code: 'voucher_invalid', message: 'unknown or revoked voucher' },
+  'GSV-SBX0-0000-0003': { status: 410, code: 'voucher_expired', message: 'the ticket was closed more than 30 days ago' },
+};
+const VOUCHER_TEXT = /GSV-?[0-9A-Z]{4}-?[0-9A-Z]{4}-?[0-9A-Z]{4}/i;
+
+const readRaw = req =>
+  new Promise(resolve => {
+    const chunks = [];
+    req.on('data', c => chunks.push(c));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+  });
+
+const createSupportPortal = () => {
+  const fresh = () => ({ partBytes: 16 * 1024 * 1024, maxBytes: 5 * 1024 ** 3, faults: [], requests: [], uploads: {}, seq: 0 });
+  let portal = fresh();
+
+  const link = (id, partNumber) => {
+    const tail = partNumber ? `part/${partNumber}` : 'single';
+    return {
+      ...(partNumber ? { partNumber } : {}),
+      url: `https://api.backoffice.molo17.com${S3_PREFIX}${id}/${tail}?X-Amz-Expires=3600&X-Amz-Signature=sbx`,
+    };
+  };
+
+  // faults: [{ op: check|start|links|complete|put, part?, action: destroy|status, status?, body?, times? }]
+  const faultFor = (op, part) => {
+    const f = portal.faults.find(x => x.op === op && (x.part === undefined || x.part === part) && (x.times ?? 1) > 0);
+    if (f) f.times = (f.times ?? 1) - 1;
+    return f;
+  };
+
+  const voucherReply = voucher => {
+    const known = VOUCHERS[voucher];
+    if (!known) return [401, { error: { code: 'voucher_invalid', message: 'unknown voucher' } }];
+    if (known.status) return [known.status, { error: { code: known.code, message: known.message } }];
+    return null;
+  };
+
+  // The reply of "start": one signed URL, or one per part above the part size
+  const startReply = (id, ticketKey, json, multipart, count) =>
+    multipart
+      ? { id, ticketKey, expiresIn: 3600, multipart: { partSize: portal.partBytes, parts: Array.from({ length: count }, (_, k) => link(id, k + 1)), headers: { 'Content-Type': 'application/octet-stream' } } }
+      : { id, ticketKey, expiresIn: 3600, single: { ...link(id), headers: { 'Content-Type': json.contentType } } };
+
+  const startUpload = (res, record, ticketKey, json) => {
+    if (json.size > portal.maxBytes) return send(res, 413, { error: { code: 'file_too_large', message: 'too large', maxBytes: portal.maxBytes } });
+    portal.seq += 1;
+    const id = `up-${portal.seq}`;
+    const multipart = json.size > portal.partBytes;
+    const count = multipart ? Math.ceil(json.size / portal.partBytes) : 1;
+    portal.uploads[id] = { id, ticketKey, declared: json.size, contentType: json.contentType, fileName: json.fileName, multipart, count, parts: {}, completed: false, aborted: false };
+    record.uploadId = id;
+    return send(res, 200, startReply(id, ticketKey, json, multipart, count));
+  };
+
+  const linksReply = (id, json) =>
+    json.partNumbers ? { expiresIn: 3600, parts: json.partNumbers.map(n => link(id, n)) } : { expiresIn: 3600, single: link(id) };
+
+  const completeUpload = (res, upload, ticketKey) => {
+    const keys = upload.multipart ? Array.from({ length: upload.count }, (_, k) => String(k + 1)) : ['single'];
+    const missing = keys.filter(k => !upload.parts[k]);
+    if (missing.length) return send(res, 409, { error: { code: 'upload_incomplete', message: 'parts missing', missingParts: missing.map(Number) } });
+    const size = keys.reduce((sum, k) => sum + upload.parts[k].length, 0);
+    Object.assign(upload, { completed: true, size, verified: size === upload.declared });
+    return send(res, 200, { id: upload.id, ticketKey, size, verified: upload.verified, attachmentId: `att-${upload.id}` });
+  };
+
+  const api = async (req, res, p, body, record) => {
+    const voucher = req.headers[VOUCHER_HEADER];
+    const op = p === PORTAL_PREFIX ? 'start' : p.split('/').pop();
+    record.op = op;
+    const fault = faultFor(op);
+    if (fault?.action === 'destroy') return req.socket.destroy();
+    if (fault?.action === 'status') return send(res, fault.status, fault.body ?? { error: { code: 'sandbox_fault', message: 'injected' } });
+    const refused = voucherReply(voucher);
+    if (refused) return send(res, ...refused);
+    const { ticketKey } = VOUCHERS[voucher];
+    const json = body.length ? JSON.parse(body.toString('utf8')) : {};
+    if (op === 'check') return send(res, 200, { ticketKey, voucherExpiresAt: null, maxBytes: portal.maxBytes, partBytes: portal.partBytes });
+    if (op === 'start') return startUpload(res, record, ticketKey, json);
+    const id = p.slice(PORTAL_PREFIX.length + 1).split('/')[0];
+    const upload = portal.uploads[id];
+    record.uploadId = id;
+    if (!upload) return send(res, 404, { error: { code: 'not_found', message: `no upload ${id}` } });
+    if (op === 'links') return send(res, 200, linksReply(id, json));
+    if (op === 'complete') return completeUpload(res, upload, ticketKey);
+    if (op === 'abort') {
+      upload.aborted = true;
+      res.writeHead(204);
+      return res.end();
+    }
+    return send(res, 404, { error: { code: 'not_found', message: p } });
+  };
+
+  const s3 = (req, res, p, body, record) => {
+    const [id, kind, n] = p.slice(S3_PREFIX.length).split('/');
+    const key = kind === 'part' ? n : 'single';
+    record.op = 'put';
+    record.uploadId = id;
+    record.part = key;
+    const upload = portal.uploads[id];
+    if (req.method !== 'PUT' || !upload) return send(res, 404, 'NoSuchUpload');
+    const fault = faultFor('put', kind === 'part' ? Number(n) : undefined);
+    if (fault?.action === 'destroy') return req.socket.destroy();
+    if (fault?.action === 'status') return send(res, fault.status, fault.body ?? 'injected');
+    upload.parts[key] = body;
+    return send(res, 200, '', { ETag: `"etag-${id}-${key}"` });
+  };
+
+  const route = async (req, res, url) => {
+    const p = url.pathname;
+    const body = await readRaw(req);
+    const record = {
+      ts: new Date().toISOString(),
+      method: req.method,
+      path: p,
+      bytes: body.length,
+      voucherHeader: req.headers[VOUCHER_HEADER] ?? null,
+      // The voucher may only travel in its header: never in the URL, never in a body
+      voucherInUrl: VOUCHER_TEXT.test(decodeURIComponent(req.url)),
+      voucherInBody: p.startsWith(PORTAL_PREFIX) && VOUCHER_TEXT.test(body.toString('utf8')),
+    };
+    portal.requests.push(record);
+    const done = res.end.bind(res);
+    res.end = (...args) => {
+      record.status = res.statusCode;
+      return done(...args);
+    };
+    try {
+      await (p.startsWith(S3_PREFIX) ? s3 : api)(req, res, p, body, record);
+    } catch (e) {
+      log('error', 'portal route failed', { error: e.message });
+      if (!res.headersSent) send(res, 500, { error: { code: 'sandbox', message: e.message } });
+    }
+    log('info', 'portal request', { method: record.method, path: p, op: record.op, status: record.status ?? 'dropped' });
+  };
+
+  const handles = url => url.pathname.startsWith(PORTAL_PREFIX) || url.pathname.startsWith(S3_PREFIX);
+
+  // /__sandbox/portal          POST { reset, partBytes, maxBytes, faults }
+  // /__sandbox/portal/state    GET  requests and uploads (part sizes, not bytes)
+  // /__sandbox/portal/file     GET  ?id= the upload as S3 would assemble it
+  // Resolves to false for any other path.
+  const admin = async (req, res, url) => {
+    const p = url.pathname;
+    if (p === '/__sandbox/portal' && req.method === 'POST') {
+      const body = await readBody(req);
+      if (body.reset) portal = fresh();
+      for (const k of ['partBytes', 'maxBytes', 'faults']) if (body[k] !== undefined) portal[k] = body[k];
+      return send(res, 200, { partBytes: portal.partBytes, maxBytes: portal.maxBytes, faults: portal.faults });
+    }
+    if (p === '/__sandbox/portal/state') {
+      const uploads = Object.values(portal.uploads).map(({ parts, ...u }) => ({
+        ...u,
+        parts: Object.fromEntries(Object.entries(parts).map(([k, b]) => [k, b.length])),
+      }));
+      return send(res, 200, { requests: portal.requests, uploads, faults: portal.faults });
+    }
+    if (p === '/__sandbox/portal/file') {
+      const upload = portal.uploads[url.searchParams.get('id')];
+      if (!upload) return send(res, 404, { error: 'no such upload' });
+      const keys = Object.keys(upload.parts).sort((a, b) => (a === 'single' ? 0 : Number(a)) - (b === 'single' ? 0 : Number(b)));
+      res.writeHead(200, { 'content-type': 'application/octet-stream' });
+      return res.end(Buffer.concat(keys.map(k => upload.parts[k])));
+    }
+    return false;
+  };
+
+  return { handles, route, admin };
+};
+
 // ---------------------------------------------------------------- backoffice
 
 const startBackoffice = () => {
@@ -371,6 +553,7 @@ const startBackoffice = () => {
   const proxyUser = process.env.PROXY_USER || '';
   const proxyPass = process.env.PROXY_PASS || '';
   const BACKOFFICE_HOST = 'api.backoffice.molo17.com';
+  const portal = createSupportPortal();
 
   const record = entry => {
     state.requests.push({ ts: new Date().toISOString(), ...entry });
@@ -395,7 +578,9 @@ const startBackoffice = () => {
   };
 
   const backoffice = https.createServer(tlsOptions(), async (req, res) => {
-    const parts = new URL(req.url, `https://${BACKOFFICE_HOST}`).pathname.split('/').filter(Boolean);
+    const url = new URL(req.url, `https://${BACKOFFICE_HOST}`);
+    if (portal.handles(url)) return portal.route(req, res, url);
+    const parts = url.pathname.split('/').filter(Boolean);
     const [kind, name, ver] = parts;
     const chaos = state.chaos[name];
     const reply = (status, body) => {
@@ -470,6 +655,7 @@ const startBackoffice = () => {
       const url = new URL(req.url, 'https://admin');
       const p = url.pathname;
       if (p === '/__sandbox/state') return send(res, 200, { catalog: state.catalog, chaos: state.chaos });
+      if (p.startsWith('/__sandbox/portal') && (await portal.admin(req, res, url)) !== false) return undefined;
       if (p === '/__sandbox/requests') {
         const since = url.searchParams.get('since');
         return send(res, 200, state.requests.filter(r => !since || r.ts >= since));

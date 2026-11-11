@@ -10,6 +10,7 @@ import fakeSwarmDocker, {
 } from '../../../testing/fakeSwarmDocker';
 import { labStack, labStackWithoutTypes } from '../../../testing/labStack';
 import loadWithStubs from '../../../testing/loadWithStubs';
+import { ImageNotPublishedError } from '../../../helpers/agentInfo/agentInfo.errors';
 import parseComposeFile from '../../../helpers/composeFile/parseComposeFile/parseComposeFile';
 import { RawComposeFile } from '../../../models/composeFile.model';
 import { resetOrchestratorCache } from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator';
@@ -29,6 +30,9 @@ const published: Readonly<Record<string, string>> = {
 // The stack file the handler reads; a spec swaps it
 let stack: RawComposeFile = labStack;
 
+// Short image names the backoffice was asked about, in order
+const asked: string[] = [];
+
 const handler = loadWithStubs<{ default: RouteHandlerMethod }>(
   path.resolve(__dirname, './getServiceVersion'),
   {
@@ -36,9 +40,13 @@ const handler = loadWithStubs<{ default: RouteHandlerMethod }>(
       readComposeFile: async () => parseComposeFile(stack),
     },
     [`${helpers}/agentInfo/agentInfo`]: {
-      default: async (imageName: string) => ({
-        latestVersionGA: published[imageName],
-      }),
+      default: async (imageName: string) => {
+        asked.push(imageName);
+        if (!(imageName in published)) {
+          throw new ImageNotPublishedError(imageName);
+        }
+        return { latestVersionGA: published[imageName] };
+      },
     },
     [`${helpers}/fetchChangelogInfo/fetchChangelogInfo`]: {
       default: async () => ({ id: 'x', notes: 'changes' }),
@@ -56,6 +64,7 @@ const saved = {
 
 beforeEach(() => {
   stack = labStack;
+  asked.length = 0;
   process.env.CONDUCTOR_ORCHESTRATOR = 'swarm';
   process.env.SWARM_STACK_NAMESPACE = 'gs';
   resetOrchestratorCache();
@@ -148,10 +157,132 @@ describe('GET /services/:id/version in swarm mode', () => {
     assert.deepEqual(res.json().data.servicesToUpdate, ['gluesync-conductor']);
   });
 
+  describe('on a Core Hub with disaster recovery enabled', () => {
+    const deployed = {
+      services: [
+        buildService('gluesync-core-hub', {
+          image: 'molo17/gluesync-core-hub:2.3.0',
+        }),
+        buildService('gluesync-chronos', {
+          image: 'molo17/gluesync-chronos:0.2.4',
+        }),
+        buildService('grafana', { image: 'molo17/grafana:13.0.2.dashboard3' }),
+      ],
+    };
+
+    const withDr = (value: string): RawComposeFile =>
+      ({
+        ...labStack,
+        services: {
+          ...labStack.services,
+          'gluesync-core-hub': {
+            ...labStack.services?.['gluesync-core-hub'],
+            environment: [`GS_DR_ENABLED=${value}`],
+          },
+        },
+      }) as RawComposeFile;
+
+    it('blocks the update of Core Hub and Chronos with the reason, still listing versions', async () => {
+      stack = withDr('true');
+
+      const hub = await versionOf(deployed, 'gluesync-core-hub');
+      const chronos = await versionOf(deployed, 'gluesync-chronos');
+
+      assert.equal(hub.statusCode, 200);
+      assert.equal(hub.json().data.updateBlocked, true);
+      assert.match(
+        hub.json().data.reason,
+        /^Disaster recovery is enabled on this Core Hub: update the sites one at a time with Gluesync Control/,
+      );
+      assert.match(hub.json().data.reason, /gluesync\/latest\//);
+      assert.equal(hub.json().data.latestVersionGA, '2.3.1');
+      assert.ok(hub.json().data.servicesToUpdate.includes('gluesync-chronos'));
+      assert.equal(chronos.json().data.updateBlocked, true);
+      assert.equal(chronos.json().data.latestVersionGA, '0.2.5');
+    });
+
+    it('leaves the other services unblocked', async () => {
+      stack = withDr('true');
+
+      const res = await versionOf(deployed, 'grafana');
+
+      assert.equal(res.json().data.updateBlocked, false);
+      assert.equal(res.json().data.reason, undefined);
+    });
+
+    it('blocks nothing when disaster recovery is off', async () => {
+      stack = withDr('false');
+
+      const res = await versionOf(deployed, 'gluesync-core-hub');
+
+      assert.equal(res.json().data.updateBlocked, false);
+      assert.equal(res.json().data.reason, undefined);
+    });
+  });
+
   it('answers 404 for a service that is not in the stack file', async () => {
     const res = await versionOf({}, 'ghost');
 
     assert.equal(res.statusCode, 404);
+    assert.deepEqual(asked, []);
+  });
+
+  it('answers 404 for an image the backoffice does not publish, asking nothing else', async () => {
+    stack = {
+      ...labStack,
+      services: {
+        ...labStack.services,
+        'gluesync-core-hub': {
+          ...labStack.services?.['gluesync-core-hub'],
+          image: 'molo17/gluesync-core-hub-internal:2.2.5.2.bdfda2213',
+        },
+      },
+    } as RawComposeFile;
+
+    const res = await versionOf({}, 'gluesync-core-hub');
+
+    assert.equal(res.statusCode, 404);
+    assert.deepEqual(res.json(), {
+      success: false,
+      error:
+        'Service gluesync-core-hub: Image "core-hub-internal" is not published by the MOLO17 update service',
+    });
+    // Neither the sweep of the other services nor the changelog
+    assert.deepEqual(asked, ['core-hub-internal']);
+  });
+
+  it('leaves a module the backoffice does not publish out of the mandatory updates', async () => {
+    stack = {
+      ...labStack,
+      services: {
+        ...labStack.services,
+        'gluesync-chronos': {
+          ...labStack.services?.['gluesync-chronos'],
+          image: 'molo17/chronos-internal:0.2.4',
+        },
+      },
+    } as RawComposeFile;
+
+    const res = await versionOf(
+      {
+        services: [
+          buildService('gluesync-core-hub', {
+            image: 'molo17/gluesync-core-hub:2.3.1',
+          }),
+          buildService('gluesync-conductor', {
+            image: 'molo17/gluesync-conductor:3.2.0',
+          }),
+          buildService('grafana', {
+            image: 'molo17/grafana:13.0.2.dashboard3',
+          }),
+        ],
+      },
+      'gluesync-core-hub',
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.json().data.mandatoryUpdate, false);
+    assert.deepEqual(res.json().data.servicesToUpdate, []);
   });
 
   it('finds the modules to update of a stack file with no type label', async () => {

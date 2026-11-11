@@ -83,6 +83,12 @@ describe('restartWindows', () => {
     assert.match(name, /^gluesync-restart-helper-\d+$/);
     assert.ok(args.indexOf('-d') < args.indexOf('helper:win'));
     assert.ok(args.indexOf('--name') < args.indexOf('helper:win'));
+    // A second restart request finds it by this label
+    assert.equal(
+      args[args.indexOf('--label') + 1],
+      'com.molo17.conductor.helper=full-stack-restart',
+    );
+    assert.ok(args.indexOf('--label') < args.indexOf('helper:win'));
     assert.ok(args.includes('E:/Gluesync:C:/update_context'));
   });
 
@@ -92,24 +98,38 @@ describe('restartWindows', () => {
     assert.deepEqual(spawned[0]?.opts, { keepUpdateMode: true });
   });
 
-  it('pulls, takes the stack down and brings it up, logging each step to the kit folder', async () => {
+  it('takes the stack down and brings it up without pulling, logging each step to the kit folder', async () => {
     const { spawned } = await run();
     const args = spawned[0]?.args ?? [];
     const name = args[args.indexOf('--name') + 1] as string;
     const script = args.at(-1) as string;
 
-    const pull = script.indexOf(
-      'docker-compose -f "C:/update_context/docker-compose.yml" pull',
-    );
     const down = script.indexOf('down --remove-orphans');
     const up = script.indexOf('--project-directory "E:/Gluesync" up -d');
-    assert.ok(pull > 0 && pull < down && down < up);
+    assert.ok(down > 0 && down < up);
+    // A restart never updates the images it brings back
+    assert.ok(!script.includes(' pull'));
     assert.ok(
       script.includes(
         `$log='C:/update_context/.conductor/helper-logs/${name}.log'`,
       ),
     );
     assert.ok(script.includes("Log ('up exit code ' + $LASTEXITCODE)"));
+  });
+
+  it('sets BASE_PATH to the host path, never to the helper mount point', async () => {
+    const { spawned } = await run();
+    const script = spawned[0]?.args.at(-1) as string;
+
+    // compose copies it into the recreated conductor, whose BASE_PATH must be
+    // the host project directory (normalised: forward slashes, no trailing one)
+    assert.ok(
+      script.startsWith(
+        "$env:DOCKER_HOST='npipe:////./pipe/docker_engine'; $env:BASE_PATH='E:/Gluesync'; ",
+      ),
+    );
+    assert.ok(!script.includes("$env:BASE_PATH='C:/update_context'"));
+    assert.equal(script.match(/\$env:BASE_PATH='[^']*'/g)?.length, 1);
   });
 
   it('rejects when the helper cannot be started', async () => {

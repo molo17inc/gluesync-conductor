@@ -49,12 +49,14 @@ import reconcileSelfImage from './helpers/swarm/reconcileSelfImage/reconcileSelf
 import { restoreSelfUpdateConfig } from './helpers/swarm/restoreUpdateConfig/restoreUpdateConfig';
 import migrateRoutes from './routes/migrate';
 import envRoutes from './routes/env';
+import disasterRecoveryRoutes from './routes/disasterRecovery';
 import updateModeEmitter from './plugins/updateModeEmitter';
 import { startUpdateWatchdog } from './helpers/updateWatchdog/updateWatchdog';
 import errorHandlerPlugin from './plugins/errorHandlerPlugin';
 import installShutdownHandlers from './helpers/installShutdownHandlers/installShutdownHandlers';
 import { getContainerEngine } from './helpers/containerRuntime/containerEngine';
 import { HELPER_IMAGE_CLI } from './helpers/containerRuntime/helperImages';
+import resolveHostBasePath from './helpers/resolveHostBasePath/resolveHostBasePath';
 
 type FastifyServices = {
   docker: Docker;
@@ -299,6 +301,10 @@ const startServer = async (): Promise<void> => {
   // Register Docker plugin
   await server.register(dockerPlugin);
 
+  // Before any route, healer or adoption reads BASE_PATH: a kit started by hand
+  // has `.`, which the daemon would resolve against this container's own cwd
+  await resolveHostBasePath(server.docker);
+
   // Register Gluesync plugin
   await server.register(gluesyncPlugin);
 
@@ -408,6 +414,7 @@ const startServer = async (): Promise<void> => {
   await server.register(supportRoutes);
   await server.register(migrateRoutes);
   await server.register(envRoutes);
+  await server.register(disasterRecoveryRoutes);
 
   await server.ready();
   await server.listen({ host, port });

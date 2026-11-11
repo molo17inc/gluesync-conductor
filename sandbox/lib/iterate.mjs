@@ -213,6 +213,8 @@ const endRefusal = async (ctx, it, plan, state, round, kept) => {
     servicesStatus: services.status,
   };
   await releaseDiskFault(it);
+  // A fault that is not a disk fault is the profile's to lift
+  await ctx.profile?.releaseRefusal?.(ctx, it);
   state.released = true;
   state.noProgress = 0;
   return it.refusal.refused;
