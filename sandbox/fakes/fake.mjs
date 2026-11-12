@@ -164,56 +164,69 @@ const startCoreHub = async () => {
   const coreHubError = (res, status, message) =>
     send(res, status, { notificationId: -1, message, exceptionMessage: 'chaos' });
 
+  const listPipelines = async (req, res, { caller, chaos }) => {
+    pipelineEvent('list', null, { by: caller.role });
+    if (chaos.listDelayMs) await sleep(chaos.listDelayMs);
+    if (chaos.listStatus) return coreHubError(res, chaos.listStatus, 'Something went wrong fetching pipelines.');
+    return send(res, 200, state.pipelines.map(pipelineDto));
+  };
+
+  const entitiesStatus = (req, res, { pipeline, chaos }) => {
+    if (chaos.statusStatus) return coreHubError(res, chaos.statusStatus, 'Something went wrong fetching entity status.');
+    return send(res, 200, [
+      { pipelineId: pipeline.id, entityId: `${pipeline.id}-e1`, isMigrationActive: false, isSyncActive: pipeline.running === true, isBusy: false, snapshotWriteMethod: 'DEFAULT' },
+    ]);
+  };
+
+  const enterMaintenance = async (req, res, { pipeline, caller, chaos }) => {
+    pipelineEvent('enter-requested', pipeline.id, { by: caller.role });
+    const failWith = chaos.enterFail?.[pipeline.id];
+    if (failWith) {
+      pipelineEvent('enter-failed', pipeline.id, { status: failWith });
+      return coreHubError(res, failWith, 'Failed to enter maintenance mode.');
+    }
+    // Draining: Core Hub answers once the entities are stopped
+    const drainMs = chaos.drainMs?.[pipeline.id];
+    if (drainMs) await sleep(drainMs);
+    pipeline.runningBeforeMaintenance = pipeline.running === true;
+    pipeline.running = false;
+    pipeline.isInMaintenanceMode = true;
+    pipelineEvent('entered', pipeline.id);
+    return send(res, 202, 'Pipeline entered maintenance mode successfully');
+  };
+
+  const exitMaintenance = (req, res, { pipeline, caller, chaos }) => {
+    pipelineEvent('exit-requested', pipeline.id, { by: caller.role });
+    if (chaos.exitStatus && (chaos.exitFailTimes ?? Infinity) > 0) {
+      if (chaos.exitFailTimes) chaos.exitFailTimes -= 1;
+      persist();
+      pipelineEvent('exit-failed', pipeline.id, { status: chaos.exitStatus });
+      return coreHubError(res, chaos.exitStatus, 'Failed to exit maintenance mode.');
+    }
+    pipeline.isInMaintenanceMode = false;
+    pipeline.running = pipeline.runningBeforeMaintenance !== false;
+    pipelineEvent('exited', pipeline.id);
+    return send(res, 202, 'Pipeline exited maintenance mode successfully');
+  };
+
+  // `${method} ${what follows /pipelines/{id}/}`
+  const pipelineRoutes = {
+    'GET entities-status': entitiesStatus,
+    'POST commands/maintenance/enter': enterMaintenance,
+    'POST commands/maintenance/exit': exitMaintenance,
+  };
+
   const pipelines = async (req, res, p) => {
     const caller = callerOf(req);
     if (!caller) return send(res, 401, { notificationId: -1, message: 'Invalid authorization token', exceptionMessage: null });
     const chaos = activeChaos('pipelines') || {};
-    if (p === '/pipelines' && req.method === 'GET') {
-      pipelineEvent('list', null, { by: caller.role });
-      if (chaos.listDelayMs) await sleep(chaos.listDelayMs);
-      if (chaos.listStatus) return coreHubError(res, chaos.listStatus, 'Something went wrong fetching pipelines.');
-      return send(res, 200, state.pipelines.map(pipelineDto));
-    }
-    const match = /^\/pipelines\/([^/]+)\/(entities-status|commands\/maintenance\/enter|commands\/maintenance\/exit)$/.exec(p);
-    const pipeline = match && state.pipelines.find(x => x.id === decodeURIComponent(match[1]));
-    if (!match) return noRoute(req, res, p);
+    if (p === '/pipelines' && req.method === 'GET') return listPipelines(req, res, { caller, chaos });
+    const match = /^\/pipelines\/([^/]+)\/(.+)$/.exec(p);
+    const handler = match && pipelineRoutes[`${req.method} ${match[2]}`];
+    if (!handler) return noRoute(req, res, p);
+    const pipeline = state.pipelines.find(x => x.id === decodeURIComponent(match[1]));
     if (!pipeline) return coreHubError(res, 404, `Pipeline with id ${match[1]} not found`);
-    if (match[2] === 'entities-status' && req.method === 'GET') {
-      if (chaos.statusStatus) return coreHubError(res, chaos.statusStatus, 'Something went wrong fetching entity status.');
-      return send(res, 200, [
-        { pipelineId: pipeline.id, entityId: `${pipeline.id}-e1`, isMigrationActive: false, isSyncActive: pipeline.running === true, isBusy: false, snapshotWriteMethod: 'DEFAULT' },
-      ]);
-    }
-    if (match[2] === 'commands/maintenance/enter' && req.method === 'POST') {
-      pipelineEvent('enter-requested', pipeline.id, { by: caller.role });
-      const failWith = chaos.enterFail?.[pipeline.id];
-      if (failWith) {
-        pipelineEvent('enter-failed', pipeline.id, { status: failWith });
-        return coreHubError(res, failWith, 'Failed to enter maintenance mode.');
-      }
-      // Draining: Core Hub answers once the entities are stopped
-      const drainMs = chaos.drainMs?.[pipeline.id];
-      if (drainMs) await sleep(drainMs);
-      pipeline.runningBeforeMaintenance = pipeline.running === true;
-      pipeline.running = false;
-      pipeline.isInMaintenanceMode = true;
-      pipelineEvent('entered', pipeline.id);
-      return send(res, 202, 'Pipeline entered maintenance mode successfully');
-    }
-    if (match[2] === 'commands/maintenance/exit' && req.method === 'POST') {
-      pipelineEvent('exit-requested', pipeline.id, { by: caller.role });
-      if (chaos.exitStatus && (chaos.exitFailTimes ?? Infinity) > 0) {
-        if (chaos.exitFailTimes) chaos.exitFailTimes -= 1;
-        persist();
-        pipelineEvent('exit-failed', pipeline.id, { status: chaos.exitStatus });
-        return coreHubError(res, chaos.exitStatus, 'Failed to exit maintenance mode.');
-      }
-      pipeline.isInMaintenanceMode = false;
-      pipeline.running = pipeline.runningBeforeMaintenance !== false;
-      pipelineEvent('exited', pipeline.id);
-      return send(res, 202, 'Pipeline exited maintenance mode successfully');
-    }
-    return noRoute(req, res, p);
+    return handler(req, res, { pipeline, caller, chaos });
   };
 
   const modules = new Map();

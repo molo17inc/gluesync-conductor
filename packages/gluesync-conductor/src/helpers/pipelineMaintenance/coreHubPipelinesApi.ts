@@ -47,8 +47,9 @@ const asApiError = (what: string, error: unknown): Error => {
   }
   if (axios.isAxiosError(error) && error.response) {
     const text = upstreamText(error.response.data);
+    const said = text ? ` (${text})` : '';
     return new CoreHubApiError(
-      `${what}: Core Hub answered ${error.response.status}${text ? ` (${text})` : ''}`,
+      `${what}: Core Hub answered ${error.response.status}${said}`,
       error.response.status,
     );
   }

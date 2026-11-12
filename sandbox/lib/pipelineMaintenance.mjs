@@ -42,7 +42,8 @@ export const seedPipelines = async (ctx, it, { mode, chaos = null }) => {
     pipelines: SEED.map(p => ({ configurationCompleted: true, isInMaintenanceMode: false, ...p })),
   });
   await corehub.chaos({ pipelines: chaos });
-  it.notes.push(`seeded pipelines ${SEED.map(p => p.id).join(', ')}${chaos ? ` with chaos ${JSON.stringify(chaos)}` : ''}`);
+  const withChaos = chaos ? ' with chaos ' + JSON.stringify(chaos) : '';
+  it.notes.push(`seeded pipelines ${SEED.map(p => p.id).join(', ')}${withChaos}`);
 };
 
 // The conductor and Chronos stay where they are, so the first round is the bulk update with Core Hub
@@ -146,7 +147,8 @@ export const collectPipelines = async (ctx, it) => {
 
 // ---------------------------------------------------------------- checks
 
-const sameSet = (a, b) => JSON.stringify([...(a || [])].sort()) === JSON.stringify([...(b || [])].sort());
+const sorted = list => [...(list || [])].sort((x, y) => x.localeCompare(y));
+const sameSet = (a, b) => JSON.stringify(sorted(a)) === JSON.stringify(sorted(b));
 const eventsOf = (pm, op, id) => pm.events.filter(e => e.op === op && (id === undefined || e.id === id));
 const step = (id, ok, detail) => ({ id, ok, detail });
 
@@ -161,7 +163,13 @@ const commonSteps = pm => {
     step('pipelines.only-running-paused', strangers.length === 0, strangers.length ? `commands sent for ${strangers.join(', ')}, which were not running` : `only ${touched.join(', ') || 'nothing'} got maintenance commands; idle, held and draft were left alone`),
     step('pipelines.held-left-alone', finalOf('held').isInMaintenanceMode === true, finalOf('held').isInMaintenanceMode ? 'the pipeline put in maintenance by hand is still in maintenance' : 'the pipeline put in maintenance by hand was taken out of it'),
     step('pipelines.all-resumed', notBack.length === 0 && finalOf('idle').running === false, notBack.length ? `still paused at the end: ${notBack.join(', ')}` : 'every pipeline that was running runs again, the stopped one is still stopped'),
-    step('pipelines.every-pause-resumed', unpaired.length === 0, unpaired.length ? `entered maintenance and never exited: ${unpaired.map(e => `${e.id}@${e.version}`).join(', ')}` : `${eventsOf(pm, 'entered').length} pause(s), each followed by a resume`),
+    step(
+      'pipelines.every-pause-resumed',
+      unpaired.length === 0,
+      unpaired.length
+        ? `entered maintenance and never exited: ${unpaired.map(e => e.id + '@' + e.version).join(', ')}`
+        : `${eventsOf(pm, 'entered').length} pause(s), each followed by a resume`,
+    ),
     step('pipelines.module-token', byWhom.every(r => r === 'EXTERNAL_MODULE'), `commands sent as ${byWhom.join(', ') || 'nobody'}`),
     step('pipelines.file-cleared', pm.fileAfter === null, pm.fileAfter === null ? 'no paused-pipelines file left in .conductor/' : `left behind: ${pm.fileAfter.slice(0, 200)}`),
   ];
@@ -173,7 +181,7 @@ const updatedSteps = pm => {
   // The first command Core Hub answered on its new version: by then every running pipeline must have
   // been in maintenance mode, entered on the old version
   const changedAt = pm.events.find(e => e.version === pm.coreHubAfter)?.ts ?? null;
-  const lastBefore = id => pm.events.filter(e => e.id === id && changedAt && e.ts < changedAt && /^(entered|exited)$/.test(e.op)).at(-1);
+  const lastBefore = id => pm.events.findLast(e => e.id === id && changedAt && e.ts < changedAt && /^(entered|exited)$/.test(e.op));
   const heldAtChange = RUNNING.filter(id => lastBefore(id)?.op === 'entered' && lastBefore(id)?.version === pm.coreHubBefore);
   const resumedOnNew = RUNNING.filter(id => eventsOf(pm, 'exited', id).some(e => e.version === pm.coreHubAfter));
   const reply = pm.replies.find(r => r.item?.pausedPipelines?.length);
@@ -199,13 +207,14 @@ const refusedSteps = pm => {
   const inRound = e => round && e.ts >= round.from && e.ts <= round.to;
   const entered = pm.events.filter(e => e.op === 'entered' && inRound(e));
   const notResumed = entered.filter(e => !pm.events.some(x => x.op === 'exited' && x.id === e.id && inRound(x) && x.ts >= e.ts && x.version === e.version));
+  if (!round) return [step('pipelines.refusal-resumed', false, 'no refused round recorded')];
+  const outcome = notResumed.length ? `, not resumed before the reply: ${notResumed.map(e => e.id).join(', ')}` : ', all resumed before the reply';
+  const enteredIds = entered.map(e => e.id).join(', ') || 'nothing';
   return [
     step(
       'pipelines.refusal-resumed',
-      !!round && entered.length > 0 && notResumed.length === 0 && entered.every(e => e.version === pm.coreHubBefore),
-      round
-        ? `refused round ${round.from}..${round.to}: entered ${entered.map(e => e.id).join(', ') || 'nothing'}${notResumed.length ? `, not resumed before the reply: ${notResumed.map(e => e.id).join(', ')}` : ', all resumed before the reply'} on ${pm.coreHubBefore}`
-        : 'no refused round recorded',
+      entered.length > 0 && notResumed.length === 0 && entered.every(e => e.version === pm.coreHubBefore),
+      `refused round ${round.from}..${round.to}: entered ${enteredIds}${outcome} on ${pm.coreHubBefore}`,
     ),
   ];
 };
