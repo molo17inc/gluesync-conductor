@@ -338,6 +338,13 @@ const healProxyErrorPagesAfterUpdate = async (
   ];
 };
 
+const COREHUB_RECREATE_MESSAGE: Readonly<Record<string, string>> = {
+  recreated: 'Core Hub recreated to apply the Courier route labels.',
+  failed: 'Recreating Core Hub to apply the Courier route labels failed.',
+  cooldown:
+    'Core Hub still lacks the Courier route labels after a recreate; not tried again yet.',
+};
+
 // The Courier inbound port 8090 of the kits (see healCourierInbound), added
 // when an install still lacks part of it. Compose only; it never fails the update.
 const healCourierInboundAfterUpdate = async (
@@ -349,24 +356,39 @@ const healCourierInboundAfterUpdate = async (
   }
 
   const outcome = await healCourierInbound({ reason: 'update' });
+  const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
+  const wired: ReadonlyArray<DoContainersActionItem> =
+    outcome.action === 'add'
+      ? [
+          {
+            id: outcome.recreated ?? coreHubName,
+            status: 'OK',
+            message: `Courier inbound port 8090 wired (${outcome.reason})${outcome.recreated ? '; reverse-proxy recreated' : ''}.`,
+          },
+        ]
+      : [];
+  const coreHub: ReadonlyArray<DoContainersActionItem> = outcome.coreHub
+    ? [
+        {
+          id: coreHubName,
+          status: outcome.coreHub === 'failed' ? 'ERROR' : 'OK',
+          message: COREHUB_RECREATE_MESSAGE[outcome.coreHub],
+        },
+      ]
+    : [];
 
-  if (outcome.action !== 'add') {
-    return [];
+  if (wired.length + coreHub.length > 0) {
+    req.log.info(
+      {
+        proxy: outcome.recreated,
+        missing: outcome.missing,
+        coreHub: outcome.coreHub,
+      },
+      '[update-handler] Courier inbound port wiring changed',
+    );
   }
 
-  req.log.info(
-    { service: outcome.recreated, missing: outcome.missing },
-    '[update-handler] Courier inbound port wired',
-  );
-
-  return [
-    {
-      id:
-        outcome.recreated ?? (process.env.CORE_HUB_NAME || 'gluesync-core-hub'),
-      status: 'OK',
-      message: `Courier inbound port 8090 wired (${outcome.reason})${outcome.recreated ? '; reverse-proxy recreated' : ''}.`,
-    },
-  ];
+  return [...wired, ...coreHub];
 };
 
 const migrationRefusedOnSwarm = (): Outcome => ({

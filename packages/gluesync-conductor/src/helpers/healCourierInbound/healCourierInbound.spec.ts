@@ -32,9 +32,14 @@ type Recorder = {
   writes: string[];
   logs: string[];
   mode: 'compose' | 'swarm' | undefined;
+  /** The proxy recreate fails (every attempt). */
   failRecreate: boolean;
+  /** The Core Hub recreate fails (every attempt). */
+  failCoreHubRecreate: boolean;
   failComposeWrite: boolean;
   recreateAttempts: number;
+  /** Labels of the running container of each service; none: not running. */
+  containers: Record<string, Record<string, string> | 'error'>;
 };
 
 const COREHUB = [
@@ -77,7 +82,10 @@ const proxyHeals = (recorder: Recorder): unknown =>
         extra: ReadonlyArray<string>,
       ) => {
         recorder.recreateAttempts += 1;
-        if (recorder.failRecreate) {
+        if (
+          (recorder.failRecreate && id === 'reverse-proxy') ||
+          (recorder.failCoreHubRecreate && id === 'gluesync-core-hub')
+        ) {
           throw new Error('compose exploded');
         }
         recorder.commands.push([command, id, file, ...extra]);
@@ -86,6 +94,20 @@ const proxyHeals = (recorder: Recorder): unknown =>
     },
     [here('../orchestrator/getOrchestrator/getOrchestrator')]:
       orchestrator(recorder),
+    [here('../../utils/docker/getDocker')]: {
+      getDocker: () => ({
+        listContainers: async ({
+          filters,
+        }: Readonly<{ filters: { label: string[] } }>) => {
+          const service = filters.label[0].split('=')[1];
+          const labels = recorder.containers[service];
+          if (labels === 'error') {
+            throw new Error('docker is gone');
+          }
+          return labels ? [{ Labels: labels }] : [];
+        },
+      }),
+    },
     ...(recorder.failComposeWrite
       ? {
           [here('../composeFile/writeComposeFile/writeComposeFile')]: {
@@ -161,8 +183,10 @@ describe('healCourierInbound', () => {
       logs: [],
       mode: 'compose',
       failRecreate: false,
+      failCoreHubRecreate: false,
       failComposeWrite: false,
       recreateAttempts: 0,
+      containers: {},
     };
     subject = load(recorder);
   });
@@ -222,13 +246,8 @@ describe('healCourierInbound', () => {
         '--force-recreate',
       ],
     ]);
-    assert.ok(
-      recorder.logs.some(l =>
-        l.endsWith(
-          '[courier-inbound] gluesync-core-hub serves the courier router once it is next recreated (its next update)',
-        ),
-      ),
-    );
+    // no running Core Hub container here: nothing to recreate
+    assert.equal(outcome.coreHub, undefined);
   });
 
   it('does nothing the second time: no backup, no write, no recreate', async () => {
@@ -437,6 +456,240 @@ describe('healCourierInbound', () => {
         l.startsWith('error [courier-inbound] failed, nothing more is changed'),
       ),
     );
+  });
+
+  describe('the running Core Hub', () => {
+    const CORE_HUB = 'gluesync-core-hub';
+    const OLD_CONTAINER = { 'traefik.enable': 'true' };
+    const WIRED_CONTAINER = Object.fromEntries(
+      COURIER_LABEL_LIST.map(l => [
+        l.slice(0, l.indexOf('=')),
+        l.slice(l.indexOf('=') + 1),
+      ]),
+    );
+    const WIRED_PORTS = ['80:80', '443:443', '8090:8090'];
+    const recreateOf = (service: string) => [
+      'upAll',
+      service,
+      sandbox.compose,
+      '--no-deps',
+      '--force-recreate',
+    ];
+
+    it('is recreated once, after the proxy, when the heal adds its labels', async () => {
+      setUp();
+      recorder.containers[CORE_HUB] = OLD_CONTAINER;
+
+      const outcome = await subject.default({ reason: 'startup' });
+
+      assert.equal(outcome.action, 'add');
+      assert.equal(outcome.recreated, 'reverse-proxy');
+      assert.equal(outcome.coreHub, 'recreated');
+      assert.deepEqual(recorder.commands, [
+        recreateOf('reverse-proxy'),
+        recreateOf(CORE_HUB),
+      ]);
+      const before = recorder.logs.findIndex(l =>
+        l.endsWith(
+          '[courier-inbound] recreating gluesync-core-hub to apply the courier route labels',
+        ),
+      );
+      const done = recorder.logs.findIndex(l =>
+        l.endsWith(
+          '[courier-inbound] gluesync-core-hub recreated, the courier route labels are applied',
+        ),
+      );
+      assert.ok(before >= 0 && done > before);
+
+      // the recreated container has the labels: nothing more, ever
+      recorder.containers[CORE_HUB] = WIRED_CONTAINER;
+      const again = await subject.default({ reason: 'update' });
+      assert.deepEqual(again, {
+        action: 'none',
+        reason: 'wiring already in place',
+      });
+      assert.equal(recorder.commands.length, 2);
+    });
+
+    it('is not touched on a wired install whose container has the labels', async () => {
+      setUp(COURIER_TRAEFIK, [...COREHUB, ...COURIER_LABEL_LIST], WIRED_PORTS);
+      recorder.containers[CORE_HUB] = {
+        ...WIRED_CONTAINER,
+        'com.docker.compose.service': CORE_HUB,
+      };
+
+      const outcome = await subject.default({ reason: 'startup' });
+
+      assert.equal(outcome.action, 'none');
+      assert.equal(outcome.coreHub, undefined);
+      assert.deepEqual(recorder.commands, []);
+    });
+
+    it('is not touched when only the proxy side changes and the container has the labels', async () => {
+      setUp(COURIER_TRAEFIK, [...COREHUB, ...COURIER_LABEL_LIST]);
+      recorder.containers[CORE_HUB] = WIRED_CONTAINER;
+
+      const outcome = await subject.default({ reason: 'update' });
+
+      assert.deepEqual(outcome.missing, ['proxy port']);
+      assert.equal(outcome.coreHub, undefined);
+      assert.deepEqual(recorder.commands, [recreateOf('reverse-proxy')]);
+    });
+
+    it('is recreated, nothing written, when the file has the labels and the running container does not', async () => {
+      setUp(COURIER_TRAEFIK, [...COREHUB, ...COURIER_LABEL_LIST], WIRED_PORTS);
+      recorder.containers[CORE_HUB] = OLD_CONTAINER;
+      const compose = sandbox.read(sandbox.compose);
+
+      const outcome = await subject.default({ reason: 'startup' });
+
+      assert.deepEqual(outcome, {
+        action: 'none',
+        reason: 'wiring already in place',
+        coreHub: 'recreated',
+      });
+      assert.deepEqual(recorder.commands, [recreateOf(CORE_HUB)]);
+      assert.deepEqual(recorder.writes, []);
+      assert.deepEqual(backups(), []);
+      assert.equal(sandbox.read(sandbox.compose), compose);
+    });
+
+    it('is not recreated again within the cooldown when the container still lacks the labels', async () => {
+      setUp(COURIER_TRAEFIK, [...COREHUB, ...COURIER_LABEL_LIST], WIRED_PORTS);
+      recorder.containers[CORE_HUB] = OLD_CONTAINER;
+
+      assert.equal(
+        (await subject.default({ reason: 'startup' })).coreHub,
+        'recreated',
+      );
+      assert.equal(
+        (await subject.default({ reason: 'update' })).coreHub,
+        'cooldown',
+      );
+      assert.equal(
+        (await subject.default({ reason: 'update' })).coreHub,
+        'cooldown',
+      );
+      assert.equal(recorder.commands.length, 1);
+      assert.ok(
+        recorder.logs.some(l =>
+          l.endsWith(
+            '[courier-inbound] running gluesync-core-hub still lacks the courier route labels after a recreate, not trying again yet',
+          ),
+        ),
+      );
+    });
+
+    it('is never recreated when opted out', async () => {
+      setUp(
+        COURIER_TRAEFIK,
+        [
+          ...COREHUB,
+          ...COURIER_LABEL_LIST,
+          'com.molo17.conductor.courier-inbound=false',
+        ],
+        WIRED_PORTS,
+      );
+      recorder.containers[CORE_HUB] = OLD_CONTAINER;
+
+      const outcome = await subject.default({ reason: 'startup' });
+
+      assert.equal(outcome.action, 'none');
+      assert.equal(outcome.coreHub, undefined);
+      assert.deepEqual(recorder.commands, []);
+    });
+
+    it('is left alone when it is not running or cannot be inspected', async () => {
+      setUp(COURIER_TRAEFIK, [...COREHUB, ...COURIER_LABEL_LIST], WIRED_PORTS);
+
+      assert.equal(
+        (await subject.default({ reason: 'startup' })).coreHub,
+        undefined,
+      );
+      recorder.containers[CORE_HUB] = 'error';
+      assert.equal(
+        (await subject.default({ reason: 'startup' })).coreHub,
+        undefined,
+      );
+      assert.deepEqual(recorder.commands, []);
+    });
+
+    it('is not recreated when the proxy recreate failed and the files were restored', async () => {
+      setUp();
+      recorder.containers[CORE_HUB] = OLD_CONTAINER;
+      recorder.failRecreate = true;
+
+      const outcome = await subject.default({ reason: 'startup' });
+
+      assert.equal(outcome.reason, 'recreate failed, files restored');
+      assert.equal(outcome.coreHub, undefined);
+      // the two proxy attempts only
+      assert.equal(recorder.recreateAttempts, 2);
+      assert.ok(
+        !recorder.logs.some(l => l.includes('recreating gluesync-core-hub')),
+      );
+    });
+
+    it('is not recreated when the compose file cannot be written', async () => {
+      setUp();
+      recorder.containers[CORE_HUB] = OLD_CONTAINER;
+      recorder.failComposeWrite = true;
+      subject = load(recorder);
+
+      const outcome = await subject.default({ reason: 'startup' });
+
+      assert.deepEqual(outcome, { action: 'skip', reason: 'failed' });
+      assert.equal(recorder.recreateAttempts, 0);
+    });
+
+    it('reports a failed recreate, tries once more, and keeps the files', async () => {
+      setUp(COURIER_TRAEFIK, [...COREHUB, ...COURIER_LABEL_LIST], WIRED_PORTS);
+      recorder.containers[CORE_HUB] = OLD_CONTAINER;
+      recorder.failCoreHubRecreate = true;
+      const compose = sandbox.read(sandbox.compose);
+
+      const outcome = await subject.default({ reason: 'startup' });
+
+      assert.equal(outcome.coreHub, 'failed');
+      assert.equal(recorder.recreateAttempts, 2);
+      assert.equal(sandbox.read(sandbox.compose), compose);
+      assert.ok(
+        recorder.logs.some(l =>
+          l.endsWith(
+            '[courier-inbound] recreating gluesync-core-hub failed again; start it with docker compose up -d gluesync-core-hub',
+          ),
+        ),
+      );
+
+      // the cooldown holds for a failed one too
+      assert.equal(
+        (await subject.default({ reason: 'update' })).coreHub,
+        'cooldown',
+      );
+      assert.equal(recorder.recreateAttempts, 2);
+    });
+
+    it('recovers when only the first recreate attempt fails', async () => {
+      setUp(COURIER_TRAEFIK, [...COREHUB, ...COURIER_LABEL_LIST], WIRED_PORTS);
+      recorder.containers[CORE_HUB] = OLD_CONTAINER;
+      recorder.failCoreHubRecreate = true;
+      const original = recorder.logs.push.bind(recorder.logs);
+      recorder.logs.push = (...lines: string[]) => {
+        // the first failure is logged: let the retry succeed
+        if (
+          lines.some(l => l.endsWith('recreating gluesync-core-hub failed'))
+        ) {
+          recorder.failCoreHubRecreate = false;
+        }
+        return original(...lines);
+      };
+
+      const outcome = await subject.default({ reason: 'startup' });
+
+      assert.equal(outcome.coreHub, 'recreated');
+      assert.deepEqual(recorder.commands, [recreateOf(CORE_HUB)]);
+      assert.ok(!recorder.logs.some(l => l.includes('failed again')));
+    });
   });
 
   it('runs one at a time: two triggers at once recreate the proxy once', async () => {

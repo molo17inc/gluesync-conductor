@@ -114,9 +114,18 @@ const writeBoth = async (
   }
 };
 
-const recreateProxy = async (proxy: string): Promise<void> => {
-  await runCmd(upAll, proxy, dkrComposeFile, ['--no-deps', '--force-recreate']);
+/**
+ * Recreates one service from the compose file as it is on disk (`up --no-deps
+ * --force-recreate`): no other service, no `down`, the volumes as they are.
+ */
+export const recreateService = async (service: string): Promise<void> => {
+  await runCmd(upAll, service, dkrComposeFile, [
+    '--no-deps',
+    '--force-recreate',
+  ]);
 };
+
+const recreateProxy = recreateService;
 
 // Writes the files back as they were before the heal: traefik.yml in place,
 // the compose file byte for byte from the backup (writeComposeFile merges into
@@ -171,8 +180,8 @@ const rollBack = async (
   }
 };
 
-/** Labels of the running reverse-proxy container; undefined when it cannot be read. */
-const runningLabels = async (
+/** Labels of the running container of a compose service; undefined when there is none or it cannot be read. */
+export const runningServiceLabels = async (
   proxy: string,
 ): Promise<Readonly<Record<string, string>> | undefined> => {
   try {
@@ -204,7 +213,7 @@ const healDrift = async (
   trigger: string,
 ): Promise<HealProxyErrorPagesOutcome> => {
   const logger = getLogger();
-  const labels = await runningLabels(proxy);
+  const labels = await runningServiceLabels(proxy);
   const lastAt = (state.get('lastDriftRecreate') as number) ?? 0;
 
   if (!labels || !lacksTargetLabels(labels, isWindows)) {
