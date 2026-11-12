@@ -131,8 +131,34 @@ const leftAlone = (
   return skipped(reason);
 };
 
+// Nothing to add to the files. Opted out: never recreate. Wired: the running
+// Core Hub may still be older than them.
+const nothingToAdd = async (
+  reason: string,
+  coreHub: string,
+  compose: Readonly<Record<string, any>>,
+  trigger: string,
+): Promise<HealCourierInboundOutcome> => {
+  const coreHubOutcome =
+    reason === WIRING_IN_PLACE
+      ? await syncCoreHub(coreHub, compose, trigger)
+      : undefined;
+
+  if (!coreHubOutcome) {
+    getLogger().info(
+      { reason, trigger },
+      `${LOG} nothing to change: ${reason}`,
+    );
+  }
+
+  return {
+    action: 'none',
+    reason,
+    ...(coreHubOutcome && { coreHub: coreHubOutcome }),
+  };
+};
+
 const run: HealCourierInbound = async ({ reason: trigger }) => {
-  const logger = getLogger();
   const orchestrator = await getDecidedOrchestrator(getDocker());
 
   if (orchestrator?.mode !== 'compose') {
@@ -170,24 +196,7 @@ const run: HealCourierInbound = async ({ reason: trigger }) => {
   }
 
   if (plan.action === 'none') {
-    // Opted out: never recreate. Wired: the running Core Hub may still be older.
-    const coreHubOutcome =
-      plan.reason === WIRING_IN_PLACE
-        ? await syncCoreHub(coreHub, compose, trigger)
-        : undefined;
-
-    if (!coreHubOutcome) {
-      logger.info(
-        { reason: plan.reason, trigger },
-        `${LOG} nothing to change: ${plan.reason}`,
-      );
-    }
-
-    return {
-      action: 'none',
-      reason: plan.reason,
-      ...(coreHubOutcome && { coreHub: coreHubOutcome }),
-    };
+    return nothingToAdd(plan.reason, coreHub, compose, trigger);
   }
 
   const applied = applyCourierInboundPlan(
