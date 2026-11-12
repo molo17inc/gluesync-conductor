@@ -430,8 +430,8 @@ const runUpdateBranch = async (
 };
 
 const pipelinesNote = (report: Readonly<UpdatePipelinesReport>): string => {
-  const unreachable = report.coreHubUnreachable
-    ? ` Core Hub did not answer before the update (${report.coreHubUnreachable}): no pipeline was put in maintenance mode.`
+  const unreachable = report.notPausedReason
+    ? ` No pipeline was put in maintenance mode: ${report.notPausedReason}.`
     : '';
   const notResumed =
     report.notResumed.length > 0

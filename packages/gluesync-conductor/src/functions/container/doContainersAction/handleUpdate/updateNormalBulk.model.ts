@@ -14,7 +14,7 @@ export type UpdatePipelinesReport = Readonly<{
   resumed: ReadonlyArray<string>;
   notResumed: ReadonlyArray<NotResumed>;
   alreadyInMaintenance: ReadonlyArray<string>;
-  coreHubUnreachable?: string;
+  notPausedReason?: string;
 }>;
 
 export interface UpdateNormalBulkResult {

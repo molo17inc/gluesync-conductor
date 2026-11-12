@@ -24,7 +24,6 @@ import {
 // UPDATE_MAINTENANCE_RESUME_TIMEOUT_SECONDS (see README "Updates")
 export const DEFAULT_DRAIN_TIMEOUT_SECONDS = 300;
 export const DEFAULT_RESUME_TIMEOUT_SECONDS = 300;
-const CONNECT_WAIT_MS = 20_000;
 const POLL_MS = 2000;
 
 const envSeconds = (name: string, fallbackSeconds: number): number => {
@@ -101,7 +100,6 @@ const createPipelineMaintenance = (
       'UPDATE_MAINTENANCE_RESUME_TIMEOUT_SECONDS',
       DEFAULT_RESUME_TIMEOUT_SECONDS,
     );
-  const connectWaitMs = options.connectWaitMs ?? CONNECT_WAIT_MS;
   const pollMs = options.pollMs ?? POLL_MS;
   const logger = getLogger();
 
@@ -241,31 +239,41 @@ const createPipelineMaintenance = (
 
   // -------------------------------------------------------------- pause
 
+  const nothingPaused = (error: unknown): UpdateRefusedByPipelinesError =>
+    error instanceof CoreHubUnreachableError
+      ? new UpdateRefusedByPipelinesError(
+          503,
+          'Update refused: Core Hub did not answer',
+          `${errorText(error)}. Within ${Math.round(drainTimeoutMs / 1000)}s (UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS) no pipeline could be put in maintenance mode, so none was paused and no image was changed. If Core Hub is down, update it with UPDATE_PIPELINE_MAINTENANCE=false set on the Conductor.`,
+          { resumed: [], notResumed: [] },
+        )
+      : new UpdateRefusedByPipelinesError(
+          502,
+          'Update refused: could not read the pipelines from Core Hub',
+          `${errorText(error)}. No pipeline was paused and no image was changed.`,
+          { resumed: [], notResumed: [] },
+        );
+
   // A Core Hub that does not answer (restarting, the SDK reconnecting) is
-  // waited for a little; one that answers with an error refuses the update
+  // waited for until the drain deadline, then the update is refused: Core
+  // Hub's image never changes while a pipeline may still be syncing. One
+  // that answers with an error refuses it at once.
   const listForPause = async (
     deadline: number,
-  ): Promise<ReadonlyArray<CoreHubPipeline> | CoreHubUnreachableError> => {
+  ): Promise<ReadonlyArray<CoreHubPipeline> | string> => {
     try {
       return await api.listPipelines();
     } catch (error) {
       // A Core Hub older than the pipeline API (it is in 2.2.9 and later):
       // there is nothing to pause through it, the update goes on as before
       if (error instanceof CoreHubApiError && error.status === 404) {
-        return new CoreHubUnreachableError(
-          `Core Hub has no pipeline API (${error.message})`,
-        );
+        return `Core Hub has no pipeline API (${error.message})`;
       }
       if (!(error instanceof CoreHubUnreachableError)) {
-        throw new UpdateRefusedByPipelinesError(
-          502,
-          'Update refused: could not read the pipelines from Core Hub',
-          `${errorText(error)}. No pipeline was paused and no image was changed.`,
-          { resumed: [], notResumed: [] },
-        );
+        throw nothingPaused(error);
       }
       if (clock.now() >= deadline) {
-        return error;
+        throw nothingPaused(error);
       }
       await nap(deadline);
       return listForPause(deadline);
@@ -284,12 +292,7 @@ const createPipelineMaintenance = (
       );
       return candidates.filter((_, i) => running[i]).map(p => p.id);
     } catch (error) {
-      throw new UpdateRefusedByPipelinesError(
-        502,
-        'Update refused: could not read the pipelines from Core Hub',
-        `${errorText(error)}. No pipeline was paused and no image was changed.`,
-        { resumed: [], notResumed: [] },
-      );
+      throw nothingPaused(error);
     }
   };
 
@@ -367,17 +370,19 @@ const createPipelineMaintenance = (
   const pause = async (): Promise<PauseOutcome> => {
     // Paused by an earlier update and never resumed: this update holds them too
     const carried = (await store.read())?.pipelineIds ?? [];
-    const pipelines = await listForPause(clock.now() + connectWaitMs);
+    // The whole pause, Core Hub's first answer included, has the drain timeout
+    const deadline = clock.now() + drainTimeoutMs;
+    const pipelines = await listForPause(deadline);
 
-    if (pipelines instanceof CoreHubUnreachableError) {
+    if (typeof pipelines === 'string') {
       logger.warn(
-        { error: pipelines.message },
-        '[pipeline-maintenance] Core Hub did not answer: updating without pausing the pipelines',
+        { reason: pipelines },
+        '[pipeline-maintenance] no pipeline API on this Core Hub: updating without pausing the pipelines',
       );
       return {
         paused: [],
         alreadyInMaintenance: [],
-        coreHubUnreachable: pipelines.message,
+        notPausedReason: pipelines,
       };
     }
 
@@ -413,7 +418,6 @@ const createPipelineMaintenance = (
       { pipelines: toPause, carried: carriedStill, alreadyInMaintenance },
       '[pipeline-maintenance] putting the running pipelines in maintenance mode',
     );
-    const deadline = clock.now() + drainTimeoutMs;
     const entering = new Map(
       toPause.map(id => [id, track(api.enterMaintenance(id))]),
     );

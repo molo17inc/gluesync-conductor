@@ -352,7 +352,7 @@ describe('updateNormalBulk: pipelines in maintenance mode', () => {
     pause: () => Promise<{
       paused: string[];
       alreadyInMaintenance: string[];
-      coreHubUnreachable?: string;
+      notPausedReason?: string;
     }> = async () => ({ paused: ['p1', 'p2'], alreadyInMaintenance: ['p9'] }),
   ) => ({
     pause: async () => {
@@ -512,7 +512,7 @@ describe('updateNormalBulk: pipelines in maintenance mode', () => {
     assert.deepEqual(events, ['pause']);
   });
 
-  it('reports a Core Hub that did not answer before the update', async () => {
+  it('reports why nothing was paused (a Core Hub without the pipeline API)', async () => {
     const events: Events = [];
     const bulk = loadWithHook(['gluesync-core-hub'], events);
 
@@ -521,11 +521,14 @@ describe('updateNormalBulk: pipelines in maintenance mode', () => {
       pipelineMaintenance: fakeMaintenance(events, async () => ({
         paused: [],
         alreadyInMaintenance: [],
-        coreHubUnreachable: 'ECONNREFUSED',
+        notPausedReason: 'Core Hub has no pipeline API',
       })),
     });
 
-    assert.equal(result.pipelines?.coreHubUnreachable, 'ECONNREFUSED');
+    assert.equal(
+      result.pipelines?.notPausedReason,
+      'Core Hub has no pipeline API',
+    );
   });
 
   it('without a pipelineMaintenance (Conductor self-update path) nothing is paused', async () => {

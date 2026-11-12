@@ -17,8 +17,9 @@ export type PauseOutcome = Readonly<{
   paused: ReadonlyArray<string>;
   // In maintenance mode before the update: left there
   alreadyInMaintenance: ReadonlyArray<string>;
-  // Set when Core Hub did not answer: nothing was paused, the update goes on
-  coreHubUnreachable?: string;
+  // Set when Core Hub has no pipeline API (older than 2.2.9): nothing was
+  // paused, the update goes on
+  notPausedReason?: string;
 }>;
 
 export type NotResumed = Readonly<{ id: string; error: string }>;
@@ -51,9 +52,6 @@ export type PipelineMaintenanceOptions = Readonly<{
   store?: PausedPipelinesStore;
   drainTimeoutMs?: number;
   resumeTimeoutMs?: number;
-  // How long a Core Hub that does not answer is waited for before the update
-  // goes on without pausing anything
-  connectWaitMs?: number;
   pollMs?: number;
   clock?: MaintenanceClock;
 }>;

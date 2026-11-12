@@ -27,6 +27,7 @@ export const RUNNING = ['orders', 'billing'];
 // The phrases of the conductor's refusals (pipelineMaintenance.ts)
 export const DRAIN_REFUSED_TEXT = 'did not enter maintenance mode in time';
 export const ENTER_REFUSED_TEXT = 'could not put every running pipeline in maintenance mode';
+export const UNREACHABLE_REFUSED_TEXT = 'Core Hub did not answer';
 
 // The list the conductor keeps while it holds pipelines (pausedPipelinesStore.ts)
 export const pausedFile = () => path.join(env.kitDir, '.conductor', 'update-paused-pipelines.json');
@@ -62,6 +63,7 @@ export const liftPipelineChaos = async (ctx, it) => {
 // After the refused round: the fault goes and the catalog offers the conductor and Chronos again, so
 // the next clicks converge as usual (self-update, Chronos, the rest)
 export const releasePipelineRefusal = async (ctx, it) => {
+  if (it.pipelines) it.pipelines.fileInRefusal = fs.existsSync(pausedFile());
   await liftPipelineChaos(ctx, it);
   const target = versionsFor(it.index);
   await backofficeAdmin(
@@ -219,6 +221,26 @@ const refusedSteps = pm => {
   ];
 };
 
+// Core Hub did not answer: the refused round sent no command, wrote no paused-pipelines file, and the
+// refusal points at the opt-out
+const unreachableSteps = (pm, it) => {
+  const round = pm.refusedRound;
+  const inRound = e => round && e.ts >= round.from && e.ts <= round.to;
+  const commands = pm.events.filter(e => inRound(e) && /^(enter|exit)/.test(e.op));
+  const dropped = pm.events.filter(e => inRound(e) && e.op === 'dropped').length;
+  const details = pm.replies.find(r => r.status === 503)?.details || '';
+  return [
+    step(
+      'pipelines.unreachable-nothing-paused',
+      !!round && commands.length === 0 && dropped > 0 && !it.pipelines.fileInRefusal,
+      round
+        ? `refused round: ${dropped} request(s) to Core Hub's pipeline API dropped, ${commands.length} maintenance command(s) sent, paused-pipelines file ${it.pipelines.fileInRefusal ? 'written' : 'never written'}`
+        : 'no refused round recorded',
+    ),
+    step('pipelines.unreachable-names-opt-out', details.includes('UPDATE_PIPELINE_MAINTENANCE=false'), details ? details.slice(0, 240) : 'no 503 details'),
+  ];
+};
+
 const rolledBackSteps = pm => {
   const exits = eventsOf(pm, 'exited');
   const reply = pm.replies.find(r => r.item?.status === 'ERROR' && r.item?.resumedPipelines?.length);
@@ -246,6 +268,7 @@ export const pipelineChecks = it => {
     ...commonSteps(pm),
     ...(mode === 'rollback' ? rolledBackSteps(pm) : updatedSteps(pm)),
     ...(mode === 'refused' ? refusedSteps(pm) : []),
+    ...(mode === 'unreachable' ? unreachableSteps(pm, it) : []),
     ...(mode === 'restart' ? restartSteps(pm) : []),
   ];
 };

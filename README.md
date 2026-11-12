@@ -318,18 +318,20 @@ archive was kept (local-only mode, or an upload the portal could not verify).
 When an update (`POST /containers {"action": "update"}`) changes Core Hub's image, on Compose or on Swarm, the Conductor first puts every **running** pipeline into Core Hub's maintenance mode, which drains and stops sync gracefully, and takes the same pipelines out of it afterwards:
 
 1. Once the services to update are known and before the compose/stack file is written, the Conductor lists the pipelines and pauses those that are configured, not already in maintenance mode, and have an entity syncing or migrating. Stopped pipelines, drafts and pipelines a user put in maintenance mode are left alone, and stay as they are after the update.
-2. It waits until every paused pipeline reports maintenance mode. If that takes longer than `UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS`, the update is refused with **409**, no image changes, and the pipelines paused so far are resumed (a pipeline still draining is resumed as soon as it gets there). If Core Hub refuses a command or cannot list the pipelines, the update is refused with **502**, with the same clean-up.
+2. It waits until every paused pipeline reports maintenance mode. If that takes longer than `UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS`, the update is refused with **409**, no image changes, and the pipelines paused so far are resumed (a pipeline still draining is resumed as soon as it gets there). If Core Hub refuses a command or cannot list the pipelines, the update is refused with **502**, with the same clean-up. If Core Hub does not answer at all (stopped, restarting, or the Conductor's module connection still reconnecting), the Conductor keeps trying until the same timeout, then refuses the update with **503** `Update refused: Core Hub did not answer`: nothing is paused and no image changes, so Core Hub's image never changes while a pipeline may still be syncing. The timeout bounds the whole pause, from the first request to Core Hub to the last pipeline in maintenance mode.
 3. The pipelines are resumed as soon as Core Hub passes the stability check of the update (`UPDATE_VERIFY_SECONDS`), without waiting for the modules (Chronos, Grafana, Prometheus, the proxy), which carry no sync. If Core Hub fails and is rolled back, they are resumed on the previous version after the rollback.
 
 The list of paused pipelines is written to `.conductor/update-paused-pipelines.json` next to the compose/stack file before the first pipeline is paused, and removed once all are resumed. A Conductor restarted in the middle of an update resumes them by itself once Core Hub answers (under the same lock as an update). Pipelines that could not be resumed stay in the file and are tried again at the next Conductor start or by the next update.
 
-A Conductor self-update and an update of the modules alone do not pause anything. When Core Hub does not answer at all before the update (or has no pipeline API, before 2.2.9), the update goes on as before, without pausing, and the reply says so.
+A Conductor self-update and an update of the modules alone do not pause anything. A Core Hub without the pipeline API (before 2.2.9) has nothing to pause: the update goes on as before and the reply says so.
+
+To update a Core Hub that is down (and so cannot pause anything), set `UPDATE_PIPELINE_MAINTENANCE=false` on the Conductor for that update; the 503 refusal says so too.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS` | `300` | How long the running pipelines have to report maintenance mode before the update is refused |
+| `UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS` | `300` | How long Core Hub has to answer and the running pipelines to report maintenance mode before the update is refused (503 when Core Hub never answered, 409 when a drain did not finish) |
 | `UPDATE_MAINTENANCE_RESUME_TIMEOUT_SECONDS` | `300` | How long the Conductor keeps trying to resume them (Core Hub restarting, the SDK reconnecting) before it leaves them in the file for later |
-| `UPDATE_PIPELINE_MAINTENANCE` | `true` | `false` turns the whole behaviour off |
+| `UPDATE_PIPELINE_MAINTENANCE` | `true` | `false` turns the whole behaviour off, for example to update a Core Hub that is down |
 
 Core Hub's item in the reply carries two more fields (nothing else changes):
 

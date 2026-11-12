@@ -154,7 +154,7 @@ describe('pipelineMaintenance', () => {
 
     assert.deepEqual(outcome.paused, ['p1', 'p4']);
     assert.deepEqual(outcome.alreadyInMaintenance, ['p3']);
-    assert.equal(outcome.coreHubUnreachable, undefined);
+    assert.equal(outcome.notPausedReason, undefined);
     // On disk before the first enter command
     assert.deepEqual(cell.writes, [['p1', 'p4']]);
     const firstEnter = hub.calls.indexOf('enter p1');
@@ -315,27 +315,59 @@ describe('pipelineMaintenance', () => {
     assert.deepEqual(cell.writes, []);
   });
 
-  it('goes on without pausing when Core Hub does not answer at all', async () => {
+  it('refuses with 503 when Core Hub does not answer within the drain timeout, nothing paused', async () => {
     const hub = fakeCoreHub([{ id: 'p1', running: true, maintenance: false }]);
     hub.faults.list.push(
       ...Array.from(
         { length: 50 },
-        () => new CoreHubUnreachableError('ECONNREFUSED'),
+        () =>
+          new CoreHubUnreachableError(
+            'listing the pipelines: Core Hub unreachable (ECONNREFUSED)',
+          ),
       ),
+    );
+    const { store, cell } = memoryStore();
+    const clock = fakeClock();
+    const m = createPipelineMaintenance({
+      api: hub.api,
+      store,
+      clock,
+      ...options,
+    });
+
+    const error = await m.pause().catch((e: unknown) => e);
+
+    assert.ok(error instanceof UpdateRefusedByPipelinesError);
+    assert.equal(error.statusCode, 503);
+    assert.equal(error.title, 'Update refused: Core Hub did not answer');
+    assert.match(error.message, /ECONNREFUSED/);
+    assert.match(error.message, /Within 10s/);
+    assert.match(error.message, /no image was changed/);
+    assert.match(error.message, /UPDATE_PIPELINE_MAINTENANCE=false/);
+    // Kept trying for the whole drain timeout, not less
+    assert.ok(clock.now() >= options.drainTimeoutMs);
+    assert.deepEqual(error.resumed, []);
+    assert.deepEqual(cell.writes, []);
+    assert.ok(!hub.calls.some(c => c.startsWith('enter')));
+  });
+
+  it('a Core Hub that does not answer the status of a pipeline refuses with 503 too', async () => {
+    const hub = fakeCoreHub([{ id: 'p1', running: true, maintenance: false }]);
+    hub.faults.status = new CoreHubUnreachableError(
+      'reading the status: Core Hub unreachable (socket hang up)',
     );
     const { store, cell } = memoryStore();
     const m = createPipelineMaintenance({
       api: hub.api,
       store,
       clock: fakeClock(),
-      connectWaitMs: 5000,
       ...options,
     });
 
-    const outcome = await m.pause();
+    const error = await m.pause().catch((e: unknown) => e);
 
-    assert.deepEqual(outcome.paused, []);
-    assert.match(outcome.coreHubUnreachable ?? '', /ECONNREFUSED/);
+    assert.ok(error instanceof UpdateRefusedByPipelinesError);
+    assert.equal(error.statusCode, 503);
     assert.deepEqual(cell.writes, []);
   });
 
@@ -355,7 +387,7 @@ describe('pipelineMaintenance', () => {
     const outcome = await m.pause();
 
     assert.deepEqual(outcome.paused, []);
-    assert.match(outcome.coreHubUnreachable ?? '', /no pipeline API/);
+    assert.match(outcome.notPausedReason ?? '', /no pipeline API/);
     assert.deepEqual(cell.writes, []);
   });
 

@@ -145,8 +145,8 @@ const startCoreHub = async () => {
   };
 
   // ---- pipelines (gluesync-kotlin PipelinesRoutes.kt and SyncCommandRoutes.kt)
-  // chaos.pipelines: { listStatus, listDelayMs, statusStatus, enterFail: { id: status }, drainMs: { id: ms },
-  //                   exitStatus, exitFailTimes, until }
+  // chaos.pipelines: { noAnswer, listStatus, listDelayMs, statusStatus, enterFail: { id: status },
+  //                   drainMs: { id: ms }, exitStatus, exitFailTimes, until }
   const pipelineEvent = (op, id, extra = {}) => {
     state.pipelineEvents.push({ ts: new Date().toISOString(), version: VERSION, op, id, ...extra });
     persist();
@@ -217,6 +217,11 @@ const startCoreHub = async () => {
   };
 
   const pipelines = async (req, res, p) => {
+    // A Core Hub that does not answer: the connection drops, no status at all
+    if (activeChaos('pipelines')?.noAnswer) {
+      pipelineEvent('dropped', null, { path: p });
+      return req.socket.destroy();
+    }
     const caller = callerOf(req);
     if (!caller) return send(res, 401, { notificationId: -1, message: 'Invalid authorization token', exceptionMessage: null });
     const chaos = activeChaos('pipelines') || {};

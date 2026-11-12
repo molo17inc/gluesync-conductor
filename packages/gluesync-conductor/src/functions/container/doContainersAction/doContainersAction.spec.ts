@@ -1802,7 +1802,7 @@ describe('doContainersAction update: pipelines in maintenance mode', () => {
     ]);
   });
 
-  it('says which pipelines could not be resumed, and when Core Hub did not answer', async () => {
+  it('says which pipelines could not be resumed, and why none was paused', async () => {
     const loaded = load({
       bulk: coreHubUpdate({
         service: 'gluesync-core-hub',
@@ -1810,7 +1810,7 @@ describe('doContainersAction update: pipelines in maintenance mode', () => {
         resumed: [],
         notResumed: [{ id: 'p1', error: 'Core Hub answered 500' }],
         alreadyInMaintenance: [],
-        coreHubUnreachable: 'ECONNREFUSED',
+        notPausedReason: 'Core Hub has no pipeline API (answered 404)',
       }),
     });
 
@@ -1821,7 +1821,7 @@ describe('doContainersAction update: pipelines in maintenance mode', () => {
     assert.match(coreHub.message, /^Core Hub updated\. /);
     assert.match(
       coreHub.message,
-      /Core Hub did not answer before the update \(ECONNREFUSED\)/,
+      /No pipeline was put in maintenance mode: Core Hub has no pipeline API/,
     );
     assert.match(coreHub.message, /p1 \(Core Hub answered 500\)/);
     assert.deepEqual(coreHub.resumedPipelines, []);
@@ -1853,6 +1853,23 @@ describe('doContainersAction update: pipelines in maintenance mode', () => {
         'Not drained within 300s: p2. No image was changed. Resumed: p1, p2.',
     });
     assert.deepEqual(pruned, []);
+  });
+
+  it('a Core Hub that does not answer refuses the update with 503', async () => {
+    const loaded = load({
+      bulkError: new UpdateRefusedByPipelinesError(
+        503,
+        'Update refused: Core Hub did not answer',
+        'listing the pipelines: Core Hub unreachable (ECONNREFUSED). Within 300s (UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS) no pipeline could be put in maintenance mode, so none was paused and no image was changed. If Core Hub is down, update it with UPDATE_PIPELINE_MAINTENANCE=false set on the Conductor.',
+        { resumed: [], notResumed: [] },
+      ),
+    });
+
+    const reply = await run(loaded, { action: 'update', ids: [] });
+
+    assert.equal(reply.statusCode, 503);
+    assert.equal(body(reply).error, 'Update refused: Core Hub did not answer');
+    assert.match(body(reply).details, /UPDATE_PIPELINE_MAINTENANCE=false/);
   });
 
   it('a Core Hub error while pausing answers 502', async () => {

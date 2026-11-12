@@ -410,7 +410,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
         },
         503: {
           description:
-            'The conductor is updating itself (only restart is accepted until it is back), or the MOLO17 update service is down. `diagnosis.owner` tells which.',
+            'An update including Core Hub, refused because Core Hub did not answer within UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS: no pipeline paused, no image changed (UPDATE_PIPELINE_MAINTENANCE=false updates a Core Hub that is down). Or: the conductor is updating itself (only restart is accepted until it is back), or the MOLO17 update service is down. `diagnosis.owner` tells which.',
           type: 'object',
           properties: {
             success: { type: 'boolean', const: false },

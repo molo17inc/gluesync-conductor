@@ -104,8 +104,8 @@ const holdPipelines = (
             resumed: resumed?.resumed ?? [],
             notResumed: resumed?.notResumed ?? [],
             alreadyInMaintenance: paused.alreadyInMaintenance,
-            ...(paused.coreHubUnreachable && {
-              coreHubUnreachable: paused.coreHubUnreachable,
+            ...(paused.notPausedReason && {
+              notPausedReason: paused.notPausedReason,
             }),
           }
         : undefined;

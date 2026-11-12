@@ -48,6 +48,7 @@ import {
   collectPipelines,
   DRAIN_REFUSED_TEXT,
   ENTER_REFUSED_TEXT,
+  UNREACHABLE_REFUSED_TEXT,
   killConductorWhilePaused,
   releasePipelineRefusal,
   pinConductorAndChronos,
@@ -420,7 +421,8 @@ export const PROFILES = [
   },
   {
     name: 'corehub-down',
-    description: 'CoreHub container is stopped for 40s as the update starts, including while the conductor restarts.',
+    description:
+      'CoreHub container is stopped for 40s as the update starts, including while the conductor restarts. A bulk round that runs while it is down is refused with 503 (its pipelines cannot be put in maintenance mode) and the user clicks again.',
     plan: () => ({ expect: 'updated', extraCoreHubStarts: 1 }),
     before: async (ctx, it) => {
       const c = await containerOf('gluesync-core-hub');
@@ -679,6 +681,22 @@ export const PROFILES = [
     before: async (ctx, it) => {
       await pinConductorAndChronos(ctx, it);
       await seedPipelines(ctx, it, { mode: 'refused', chaos: { enterFail: { billing: 500 } } });
+    },
+    releaseRefusal: releasePipelineRefusal,
+    after: collectPipelines,
+  },
+  {
+    name: 'pipelines-corehub-unreachable',
+    description:
+      "Core Hub's pipeline API drops every connection (Core Hub does not answer) during the update. The conductor keeps trying for the drain timeout (8s in the kit), then refuses with 503: no maintenance command sent, no paused-pipelines file, nothing changed, and the details name UPDATE_PIPELINE_MAINTENANCE=false. Once Core Hub answers, the next click updates with the usual pause and resume.",
+    plan: () => ({
+      expect: 'updated',
+      pipelines: true,
+      refusal: { phrase: UNREACHABLE_REFUSED_TEXT, status: 503, id: 'pipelines.unreachable-refused' },
+    }),
+    before: async (ctx, it) => {
+      await pinConductorAndChronos(ctx, it);
+      await seedPipelines(ctx, it, { mode: 'unreachable', chaos: { noAnswer: true } });
     },
     releaseRefusal: releasePipelineRefusal,
     after: collectPipelines,
