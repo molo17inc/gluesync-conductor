@@ -41,6 +41,7 @@ import syncCollectLogsScripts from './helpers/syncCollectLogsScripts/syncCollect
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
 import healProxyErrorPages from './helpers/healProxyErrorPages/healProxyErrorPages';
 import watchProxyStartEvents from './helpers/healProxyErrorPages/watchProxyStartEvents';
+import healCourierInbound from './helpers/healCourierInbound/healCourierInbound';
 import { findProxyServiceName } from './helpers/healTraefikConf/healTraefikConf';
 import { readComposeFile } from './helpers/composeFile/readComposeFile/readComposeFile';
 import { isContainerActionRunning } from './functions/container/doContainersAction/doContainersAction';
@@ -134,6 +135,14 @@ const healProxyErrorPagesAtStartup = async (
   await runStartupStep(
     'proxy error pages',
     () => healProxyErrorPages({ reason: 'startup' }),
+    undefined,
+  );
+
+  // The Courier inbound port 8090 the kits ship (traefik.yml, the proxy's
+  // ports, Core Hub's labels): only what is missing is added
+  await runStartupStep(
+    'courier inbound',
+    () => healCourierInbound({ reason: 'startup' }),
     undefined,
   );
 

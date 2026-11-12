@@ -34,6 +34,7 @@ import { migrationNeeded } from '../../../helpers/migrationNeeded/migrationNeede
 import handleGrafanaEmbeddedDashboard from '../../../helpers/handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard';
 import { HandleGrafanaEmbeddedDashboardResult } from '../../../helpers/handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard.model';
 import healProxyErrorPages from '../../../helpers/healProxyErrorPages/healProxyErrorPages';
+import healCourierInbound from '../../../helpers/healCourierInbound/healCourierInbound';
 import { getLogger } from '../../../utils/logger';
 import describeFailure from '../../../helpers/describeFailure/describeFailure';
 import buildDiagnosis from '../../../diagnosis/buildDiagnosis';
@@ -337,6 +338,37 @@ const healProxyErrorPagesAfterUpdate = async (
   ];
 };
 
+// The Courier inbound port 8090 of the kits (see healCourierInbound), added
+// when an install still lacks part of it. Compose only; it never fails the update.
+const healCourierInboundAfterUpdate = async (
+  req: Readonly<Request>,
+  orchestrator: Readonly<Orchestrator>,
+): Promise<ReadonlyArray<DoContainersActionItem>> => {
+  if (orchestrator.mode !== 'compose') {
+    return [];
+  }
+
+  const outcome = await healCourierInbound({ reason: 'update' });
+
+  if (outcome.action !== 'add') {
+    return [];
+  }
+
+  req.log.info(
+    { service: outcome.recreated, missing: outcome.missing },
+    '[update-handler] Courier inbound port wired',
+  );
+
+  return [
+    {
+      id:
+        outcome.recreated ?? (process.env.CORE_HUB_NAME || 'gluesync-core-hub'),
+      status: 'OK',
+      message: `Courier inbound port 8090 wired (${outcome.reason})${outcome.recreated ? '; reverse-proxy recreated' : ''}.`,
+    },
+  ];
+};
+
 const migrationRefusedOnSwarm = (): Outcome => ({
   statusCode: 501,
   body: buildMigrationRefusedOnSwarmReply(),
@@ -524,6 +556,7 @@ const performUpdate = async (
 
   const grafanaItems = await recreateGrafanaIfEmbedded(req, orchestrator);
   const proxyItems = await healProxyErrorPagesAfterUpdate(req, orchestrator);
+  const courierItems = await healCourierInboundAfterUpdate(req, orchestrator);
   const pruneOutcome = swarm
     ? skipPruneOnSwarm()
     : await pruneImages(req.server.docker);
@@ -537,6 +570,7 @@ const performUpdate = async (
         ...refusedItems,
         ...grafanaItems,
         ...proxyItems,
+        ...courierItems,
       ],
     },
   });
