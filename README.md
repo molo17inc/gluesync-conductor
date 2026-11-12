@@ -313,6 +313,44 @@ archive was kept (local-only mode, or an upload the portal could not verify).
 | 502 | `portal_unreachable` | The portal or its storage could not be reached; check the proxy and the firewall (the portal API and `*.s3.eu-central-1.amazonaws.com`) |
 | 500 | none | Collection or archive failure |
 
+## Updates: running pipelines go into maintenance mode
+
+When an update (`POST /containers {"action": "update"}`) changes Core Hub's image, on Compose or on Swarm, the Conductor first puts every **running** pipeline into Core Hub's maintenance mode, which drains and stops sync gracefully, and takes the same pipelines out of it afterwards:
+
+1. Once the services to update are known and before the compose/stack file is written, the Conductor lists the pipelines and pauses those that are configured, not already in maintenance mode, and have an entity syncing or migrating. Stopped pipelines, drafts and pipelines a user put in maintenance mode are left alone, and stay as they are after the update.
+2. It waits until every paused pipeline reports maintenance mode. If that takes longer than `UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS`, the update is refused with **409**, no image changes, and the pipelines paused so far are resumed (a pipeline still draining is resumed as soon as it gets there). If Core Hub refuses a command or cannot list the pipelines, the update is refused with **502**, with the same clean-up.
+3. The pipelines are resumed as soon as Core Hub passes the stability check of the update (`UPDATE_VERIFY_SECONDS`), without waiting for the modules (Chronos, Grafana, Prometheus, the proxy), which carry no sync. If Core Hub fails and is rolled back, they are resumed on the previous version after the rollback.
+
+The list of paused pipelines is written to `.conductor/update-paused-pipelines.json` next to the compose/stack file before the first pipeline is paused, and removed once all are resumed. A Conductor restarted in the middle of an update resumes them by itself once Core Hub answers (under the same lock as an update). Pipelines that could not be resumed stay in the file and are tried again at the next Conductor start or by the next update.
+
+A Conductor self-update and an update of the modules alone do not pause anything. When Core Hub does not answer at all before the update (or has no pipeline API, before 2.2.9), the update goes on as before, without pausing, and the reply says so.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS` | `300` | How long the running pipelines have to report maintenance mode before the update is refused |
+| `UPDATE_MAINTENANCE_RESUME_TIMEOUT_SECONDS` | `300` | How long the Conductor keeps trying to resume them (Core Hub restarting, the SDK reconnecting) before it leaves them in the file for later |
+| `UPDATE_PIPELINE_MAINTENANCE` | `true` | `false` turns the whole behaviour off |
+
+Core Hub's item in the reply carries two more fields (nothing else changes):
+
+```json
+{
+  "id": "gluesync-core-hub",
+  "status": "OK",
+  "message": "Agent gluesync-core-hub updated and restarted.",
+  "pausedPipelines": ["8a1f…", "c03e…"],
+  "resumedPipelines": ["8a1f…", "c03e…"]
+}
+```
+
+Core Hub endpoints used (gluesync-kotlin `corehub/src/main/kotlin/com/molo17/gluesync/corehub/server/route/rest/`), with the token Core Hub gives the Conductor in the module handshake (role `EXTERNAL_MODULE`, which may start and stop replication):
+
+| Call | Source |
+|---|---|
+| `GET /pipelines` (`isInMaintenanceMode`, `configurationCompleted`) | `PipelinesRoutes.kt` `basicPipelinesRoute`, `PipelineResponseDto` in commons-model |
+| `GET /pipelines/{id}/entities-status` (`isSyncActive`, `isMigrationActive`) | `PipelinesRoutes.kt`, `EntityStatus` in commons-model |
+| `POST /pipelines/{id}/commands/maintenance/enter` and `/exit` | `SyncCommandRoutes.kt` `maintenanceRoutes`, mounted by `RestRoutes.kt` `commandRoutes` |
+
 ## Docker Labels
 
 Gluesync Conductor uses Docker labels to identify and track containers. The following labels are used:

@@ -180,3 +180,45 @@ describe('prepareComposeUpdate', () => {
     });
   });
 });
+
+describe('prepareComposeUpdate: beforeImagesChange', () => {
+  const canUpdate = ok({
+    agentVersion: null,
+    modules: [
+      { id: 'gluesync-core-hub', version: '2' },
+      { id: 'grafana', version: '2' },
+      { id: 'broken', version: null },
+    ],
+    skipped: [],
+  });
+
+  it('runs with the services that will change, before the compose file is written', async () => {
+    const { prepare, edited } = load(canUpdate);
+    const seen: Array<{ ids: readonly string[]; editedBefore: number }> = [];
+
+    await prepare(compose, ['gluesync-core-hub', 'grafana', 'broken'], 'ga', {
+      beforeImagesChange: async ids => {
+        seen.push({ ids, editedBefore: edited.length });
+      },
+    });
+
+    assert.deepEqual(seen, [
+      { ids: ['gluesync-core-hub', 'grafana'], editedBefore: 0 },
+    ]);
+    assert.equal(edited.length, 1);
+  });
+
+  it('a throw stops it: the compose file is not written', async () => {
+    const { prepare, edited } = load(canUpdate);
+
+    await assert.rejects(
+      prepare(compose, ['gluesync-core-hub'], 'ga', {
+        beforeImagesChange: async () => {
+          throw new Error('pipelines did not drain');
+        },
+      }),
+      /pipelines did not drain/,
+    );
+    assert.equal(edited.length, 0);
+  });
+});

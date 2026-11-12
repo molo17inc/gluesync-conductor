@@ -24,6 +24,7 @@
 //   proxyPages    the proxy-error-pages profile: evidence is recorded in it.proxyPages and checked (see checks.mjs)
 //   drGuard, drSetup   the disaster recovery profiles: steps recorded in it.dr (see disasterRecovery.mjs)
 //   logUpload     the log-upload-voucher profile: steps recorded in it.logUpload (see logUpload.mjs)
+//   pipelines     the pipelines-* profiles: evidence recorded in it.pipelines (see pipelineMaintenance.mjs)
 //   faultActive   (on the profile, not the plan) (ctx, it) => boolean | Promise<boolean>: true while the
 //                 profile's Docker fault is in effect. The driver waits for it to end before it judges
 //                 a round, so rounds that fail inside the fault do not count as "no progress"
@@ -43,6 +44,16 @@ import { composeProblem } from './composeSampler.mjs';
 import { releaseDiskFault, startDiskFault } from './diskFault.mjs';
 import { DR_REFUSED_TEXT, enableDrByHand, guardOnSingleServices, guidedSetup } from './disasterRecovery.mjs';
 import { logUploadWithVoucher } from './logUpload.mjs';
+import {
+  collectPipelines,
+  DRAIN_REFUSED_TEXT,
+  ENTER_REFUSED_TEXT,
+  killConductorWhilePaused,
+  liftPipelineChaos,
+  pinConductorAndChronos,
+  seedPipelines,
+  waitResumedAfterRestart,
+} from './pipelineMaintenance.mjs';
 import { backofficeAdmin, kitCompose } from './setup.mjs';
 import { callConductor, containers, corehub, dockerProxy, health, waitConductor } from './stack.mjs';
 import { docker, now, sleep, waitFor } from './util.mjs';
@@ -633,6 +644,71 @@ export const PROFILES = [
     after: logUploadWithVoucher,
   },
   {
+    name: 'pipelines-maintenance',
+    description:
+      'Core Hub has two running pipelines, a stopped one, one a user put in maintenance by hand and a draft. Before Core Hub changes, the conductor puts the two running ones in maintenance mode (on the old Core Hub), and takes them out of it once the new Core Hub is stable; the others are never touched; the reply lists them on the Core Hub item; no paused-pipelines file is left.',
+    plan: () => ({ expect: 'updated', pipelines: true }),
+    before: (ctx, it) => seedPipelines(ctx, it, { mode: 'updated' }),
+    after: collectPipelines,
+  },
+  {
+    name: 'pipelines-drain-timeout',
+    description:
+      'One running pipeline takes 15s to drain, longer than the kit drain timeout (UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS=8). The update must be refused with 409 before any image or the compose file changes, the pipeline paused quickly resumed at once and the slow one as soon as its drain ends; then the next click updates with the usual pause and resume. Conductor and Chronos are pinned so the first round is the one with Core Hub.',
+    plan: () => ({
+      expect: 'updated',
+      pipelines: true,
+      lagging: ['gluesync-conductor', 'gluesync-chronos'],
+      refusal: { phrase: DRAIN_REFUSED_TEXT, status: 409, id: 'pipelines.drain-refused' },
+    }),
+    before: async (ctx, it) => {
+      await pinConductorAndChronos(ctx, it);
+      await seedPipelines(ctx, it, { mode: 'refused', chaos: { drainMs: { billing: 15000 } } });
+    },
+    releaseRefusal: liftPipelineChaos,
+    after: collectPipelines,
+  },
+  {
+    name: 'pipelines-enter-error',
+    description:
+      'Core Hub answers 500 when the conductor puts one running pipeline in maintenance mode. The update must be refused with 502 before anything changes, the other pipeline resumed; once Core Hub accepts the command the next click updates.',
+    plan: () => ({
+      expect: 'updated',
+      pipelines: true,
+      lagging: ['gluesync-conductor', 'gluesync-chronos'],
+      refusal: { phrase: ENTER_REFUSED_TEXT, status: 502, id: 'pipelines.enter-refused' },
+    }),
+    before: async (ctx, it) => {
+      await pinConductorAndChronos(ctx, it);
+      await seedPipelines(ctx, it, { mode: 'refused', chaos: { enterFail: { billing: 500 } } });
+    },
+    releaseRefusal: liftPipelineChaos,
+    after: collectPipelines,
+  },
+  {
+    name: 'pipelines-corehub-rollback',
+    description:
+      'The new Core Hub image crashes on start. The conductor rolls Core Hub back and only then resumes the paused pipelines, on the old Core Hub; the failed Core Hub item still lists them as resumed.',
+    plan: () => ({
+      expect: 'partial',
+      pipelines: true,
+      lagging: ['gluesync-core-hub', 'gluesync-postgresql-cdc-source-agent'],
+      crashImages: ['gluesync-core-hub'],
+    }),
+    before: (ctx, it) => seedPipelines(ctx, it, { mode: 'rollback' }),
+    after: collectPipelines,
+  },
+  {
+    name: 'pipelines-conductor-restart',
+    description:
+      'The conductor is SIGKILLed while the running pipelines are in maintenance mode and it waits for Core Hub to confirm (Core Hub lists pipelines 6s late), before any image changed. The restarted conductor must resume them from its paused-pipelines file by itself; the next click then updates normally.',
+    plan: () => ({ expect: 'updated', pipelines: true, expectConductorRestarts: 1 }),
+    before: (ctx, it) => seedPipelines(ctx, it, { mode: 'restart', chaos: { listDelayMs: 6000 } }),
+    during: killConductorWhilePaused,
+    beforeRound: waitResumedAfterRestart,
+    after: collectPipelines,
+  },
+  {
     name: 'conductor-bad-release',
     destructive: true,
     description: 'The new conductor image crashes on start. The self-update helper must roll the conductor back by itself.',
@@ -644,7 +720,7 @@ export const PROFILES = [
 // filler files in the conductor, and the compose file on the host as the conductor last had it.
 export const resetChaos = async () => {
   await releaseDiskFault().catch(() => {});
-  await corehub.chaos({ auth: null, ws: null });
+  await corehub.chaos({ auth: null, ws: null, pipelines: null });
   const state = (await backofficeAdmin('/__sandbox/state')).json;
   const clear = Object.fromEntries(Object.keys(state?.chaos || {}).map(k => [k, null]));
   if (Object.keys(clear).length) await backofficeAdmin('/__sandbox/chaos', clear);

@@ -118,6 +118,9 @@ services:
       # update, 1 MiB reserve per write) are scaled down to something that tmpfs can show.
       - CONDUCTOR_UPDATE_MIN_FREE_BYTES=65536
       - CONDUCTOR_WRITE_RESERVE_BYTES=4096
+      # The pipelines-drain-timeout profile drains one pipeline for 15 s: the default (300 s) is
+      # scaled down so that is a timeout.
+      - UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS=8
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./shared:/opt/gluesync/data

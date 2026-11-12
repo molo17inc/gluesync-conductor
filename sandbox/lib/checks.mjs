@@ -7,6 +7,7 @@ import { composeProblem } from './composeSampler.mjs';
 import { describeState } from './util.mjs';
 import { drChecks } from './disasterRecovery.mjs';
 import { logUploadChecks } from './logUpload.mjs';
+import { pipelineChecks } from './pipelineMaintenance.mjs';
 
 // severity is what a failure means; it defaults to 'fail'.
 const result = (area, id, ok, detail, severity, evidence) => ({
@@ -782,6 +783,7 @@ const proxyPagesChecks = it => {
 const featureChecks = ({ it, plan, conductorLogs }) => [
   ...(plan.drGuard || plan.drSetup ? drChecks(it, plan, conductorLogs).map(s => result('dr', s.id, s.ok, s.detail, s.severity)) : []),
   ...(plan.logUpload ? logUploadChecks(it, conductorLogs).map(s => result('logs', s.id, s.ok, s.detail, s.severity)) : []),
+  ...(plan.pipelines ? pipelineChecks(it).map(s => result('pipelines', s.id, s.ok, s.detail, s.severity)) : []),
 ];
 
 export const runChecks = x => [

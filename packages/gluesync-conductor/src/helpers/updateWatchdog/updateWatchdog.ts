@@ -17,6 +17,8 @@ import {
   StartUpdateWatchdog,
   PollState,
   RecoveryFunction,
+  ResumeAfterRestartDeps,
+  ResumeAfterRestartOutcome,
   WatchdogResult,
 } from './updateWatchdog.model';
 
@@ -676,3 +678,69 @@ export const startUpdateWatchdog: StartUpdateWatchdog = async (docker, opts) =>
     firstNotRunningAt: undefined,
     recoveryAttempts: 0,
   });
+
+// ------------------------------------------------ pipelines after restart
+
+const RESUME_WAIT_MS = 30 * 60 * 1000;
+const RESUME_POLL_MS = 10_000;
+
+/**
+ * A Conductor restarted in the middle of an update (killed, host rebooted)
+ * left the pipelines it paused in maintenance mode: their list is on disk.
+ * Once Core Hub answers again they are resumed, under the container-action
+ * lock so no update runs meanwhile. An update that starts first takes them
+ * over (it resumes them with its own). After `maxWaitMs` without Core Hub the
+ * list stays on disk for the next start.
+ */
+export const resumePipelinesAfterRestart = async (
+  deps: ResumeAfterRestartDeps,
+): Promise<ResumeAfterRestartOutcome> => {
+  const {
+    hasPausedPipelines,
+    coreHubAnswers,
+    isUpdateRunning,
+    resumeExclusively,
+    sleep: wait = sleep,
+    now = Date.now,
+    maxWaitMs = RESUME_WAIT_MS,
+    pollMs = RESUME_POLL_MS,
+  } = deps;
+
+  if (!(await hasPausedPipelines())) {
+    return { kind: 'nothing-paused' };
+  }
+  logger.warn(
+    '[watchdog] pipelines paused by an interrupted update: resuming them once Core Hub answers',
+  );
+
+  const deadline = now() + maxWaitMs;
+  const attempt = async (): Promise<ResumeAfterRestartOutcome> => {
+    if (isUpdateRunning() || !(await hasPausedPipelines())) {
+      return { kind: 'left-to-update' };
+    }
+    if (await coreHubAnswers()) {
+      const outcome = await resumeExclusively();
+      return outcome
+        ? { kind: 'resumed', ...outcome }
+        : { kind: 'left-to-update' };
+    }
+    if (now() >= deadline) {
+      logger.error(
+        { waitedMs: maxWaitMs },
+        '[watchdog] Core Hub did not answer: paused pipelines kept on disk for the next start',
+      );
+      return { kind: 'core-hub-unreachable' };
+    }
+    await wait(pollMs);
+    return attempt();
+  };
+
+  const outcome = await attempt();
+  if (outcome.kind === 'resumed') {
+    logger.info(
+      { resumed: outcome.resumed, notResumed: outcome.notResumed },
+      '[watchdog] pipelines paused by the interrupted update resumed',
+    );
+  }
+  return outcome;
+};

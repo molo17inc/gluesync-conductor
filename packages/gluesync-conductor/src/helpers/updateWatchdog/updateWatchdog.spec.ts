@@ -5,7 +5,11 @@ import { afterEach, describe, it, mock } from 'node:test';
 import type Docker from 'dockerode';
 
 import loadWithStubs from '../../testing/loadWithStubs';
-import { helperRunning, imageExists } from './updateWatchdog';
+import {
+  helperRunning,
+  imageExists,
+  resumePipelinesAfterRestart,
+} from './updateWatchdog';
 import {
   HealthStatus,
   StartUpdateWatchdog,
@@ -437,5 +441,97 @@ describe('the image names the watchdog looks for', () => {
     } as unknown as Docker;
 
     assert.equal(await helperRunning(docker, 'conductor-helper'), true);
+  });
+});
+
+describe('resumePipelinesAfterRestart', () => {
+  const clock = () => {
+    const t = { now: 0, sleeps: 0 };
+    return {
+      t,
+      now: () => t.now,
+      sleep: async (ms: number) => {
+        t.now += ms;
+        t.sleeps += 1;
+      },
+    };
+  };
+
+  it('does nothing when no update left pipelines paused', async () => {
+    const resumed: string[] = [];
+    const outcome = await resumePipelinesAfterRestart({
+      hasPausedPipelines: async () => false,
+      coreHubAnswers: async () => true,
+      isUpdateRunning: () => false,
+      resumeExclusively: async () => {
+        resumed.push('called');
+        return { resumed: [], notResumed: [] };
+      },
+    });
+    assert.deepEqual(outcome, { kind: 'nothing-paused' });
+    assert.deepEqual(resumed, []);
+  });
+
+  it('waits for Core Hub, then resumes under the lock', async () => {
+    const c = clock();
+    const answers = [false, false, true];
+    const outcome = await resumePipelinesAfterRestart({
+      hasPausedPipelines: async () => true,
+      coreHubAnswers: async () => answers.shift() ?? true,
+      isUpdateRunning: () => false,
+      resumeExclusively: async () => ({ resumed: ['p1'], notResumed: [] }),
+      now: c.now,
+      sleep: c.sleep,
+      pollMs: 10_000,
+    });
+    assert.deepEqual(outcome, {
+      kind: 'resumed',
+      resumed: ['p1'],
+      notResumed: [],
+    });
+    assert.equal(c.t.sleeps, 2);
+  });
+
+  it('leaves the pipelines to an update that started first', async () => {
+    const running = { update: false };
+    const c = clock();
+    const outcome = await resumePipelinesAfterRestart({
+      hasPausedPipelines: async () => true,
+      coreHubAnswers: async () => {
+        running.update = true;
+        return false;
+      },
+      isUpdateRunning: () => running.update,
+      resumeExclusively: async () => assert.fail('must not resume'),
+      now: c.now,
+      sleep: c.sleep,
+    });
+    assert.deepEqual(outcome, { kind: 'left-to-update' });
+  });
+
+  it('an action holding the lock takes the pipelines over', async () => {
+    const outcome = await resumePipelinesAfterRestart({
+      hasPausedPipelines: async () => true,
+      coreHubAnswers: async () => true,
+      isUpdateRunning: () => false,
+      resumeExclusively: async () => undefined,
+    });
+    assert.deepEqual(outcome, { kind: 'left-to-update' });
+  });
+
+  it('gives up after maxWaitMs and keeps the list for the next start', async () => {
+    const c = clock();
+    const outcome = await resumePipelinesAfterRestart({
+      hasPausedPipelines: async () => true,
+      coreHubAnswers: async () => false,
+      isUpdateRunning: () => false,
+      resumeExclusively: async () => assert.fail('must not resume'),
+      now: c.now,
+      sleep: c.sleep,
+      maxWaitMs: 60_000,
+      pollMs: 10_000,
+    });
+    assert.deepEqual(outcome, { kind: 'core-hub-unreachable' });
+    assert.equal(c.t.now, 60_000);
   });
 });

@@ -10,6 +10,10 @@ export type DoContainersActionItem = Readonly<{
   id: string;
   status: 'OK' | 'ERROR';
   message: string;
+  // Core Hub's item of an update: the pipelines put in maintenance mode
+  // before its image changed, and those taken out of it afterwards
+  pausedPipelines?: ReadonlyArray<string>;
+  resumedPipelines?: ReadonlyArray<string>;
 }>;
 
 export type DoContainersActionSuccessResponse = Readonly<{

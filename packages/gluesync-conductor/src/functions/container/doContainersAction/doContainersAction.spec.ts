@@ -6,6 +6,7 @@ import { AxiosError } from 'axios';
 import { ComposeFileCorruptError } from '../../../helpers/composeFile/ensureValidCompose/composeFile.errors';
 import { DiskFullError } from '../../../helpers/file/safeWriteFile/safeWriteFile.errors';
 import loadWithStubs from '../../../testing/loadWithStubs';
+import { UpdateRefusedByPipelinesError } from '../../../helpers/pipelineMaintenance/pipelineMaintenance.errors';
 import type { DoContainersActionHandler } from './doContainersAction.model';
 
 const root = path.resolve(__dirname, '../../..');
@@ -31,7 +32,15 @@ type Options = {
   migrationError?: unknown;
   grafana?: { applied: boolean; serviceId?: string };
   conductorOnly?: { id: string; results: PromiseSettledResult<unknown>[] };
-  bulk?: { orderedIds: string[]; results: PromiseSettledResult<unknown>[] };
+  bulk?: {
+    orderedIds: string[];
+    results: PromiseSettledResult<unknown>[];
+    pipelines?: unknown;
+  };
+  // updateNormalBulk throws (a refused pipeline drain)
+  bulkError?: unknown;
+  // UPDATE_PIPELINE_MAINTENANCE
+  pipelineMaintenance?: boolean;
   rebootError?: unknown;
   restartError?: unknown;
   // The full restart helper runs until this settles
@@ -157,6 +166,9 @@ const load = (options: Options = {}) => {
       [here('./handleUpdate/updateNormalBulk')]: {
         default: async (...args: unknown[]) => {
           calls.bulk.push(args);
+          if (options.bulkError) {
+            throw options.bulkError;
+          }
           return (
             options.bulk ?? {
               orderedIds: ['a'],
@@ -262,6 +274,10 @@ const load = (options: Options = {}) => {
           }
           return [];
         },
+      },
+      [helper('pipelineMaintenance/pipelineMaintenance')]: {
+        default: () => 'pipeline maintenance',
+        isPipelineMaintenanceEnabled: () => options.pipelineMaintenance ?? true,
       },
       [path.join(root, 'utils/logger')]: { getLogger: () => logger },
     },
@@ -1733,5 +1749,142 @@ describe('doContainersAction on Docker Swarm', () => {
       assert.equal(loaded.calls.migration.length, 0);
       assert.equal(loaded.calls.bulk.length, 0);
     });
+  });
+});
+
+describe('doContainersAction update: pipelines in maintenance mode', () => {
+  const coreHubUpdate = (pipelines: unknown) => ({
+    orderedIds: ['gluesync-core-hub', 'grafana'],
+    results: [
+      { status: 'fulfilled', value: 'Core Hub updated.' },
+      { status: 'fulfilled', value: 'grafana updated.' },
+    ] as PromiseSettledResult<unknown>[],
+    pipelines,
+  });
+
+  it('hands the pipeline maintenance to the bulk update', async () => {
+    const loaded = load();
+    await run(loaded, { action: 'update', ids: [] });
+    const options = loaded.calls.bulk[0][4] as Record<string, unknown>;
+    assert.equal(options.pipelineMaintenance, 'pipeline maintenance');
+  });
+
+  it('UPDATE_PIPELINE_MAINTENANCE=false leaves it out', async () => {
+    const loaded = load({ pipelineMaintenance: false });
+    await run(loaded, { action: 'update', ids: [] });
+    const options = loaded.calls.bulk[0][4] as Record<string, unknown>;
+    assert.equal('pipelineMaintenance' in options, false);
+  });
+
+  it("adds the paused and resumed pipelines to Core Hub's item, nothing else changes", async () => {
+    const loaded = load({
+      bulk: coreHubUpdate({
+        service: 'gluesync-core-hub',
+        paused: ['p1', 'p2'],
+        resumed: ['p1', 'p2'],
+        notResumed: [],
+        alreadyInMaintenance: ['p9'],
+      }),
+    });
+
+    const reply = await run(loaded, { action: 'update', ids: [] });
+
+    assert.equal(reply.statusCode, 200);
+    assert.deepEqual(body(reply).data.containers, [
+      {
+        id: 'gluesync-core-hub',
+        status: 'OK',
+        message: 'Core Hub updated.',
+        pausedPipelines: ['p1', 'p2'],
+        resumedPipelines: ['p1', 'p2'],
+      },
+      { id: 'grafana', status: 'OK', message: 'grafana updated.' },
+    ]);
+  });
+
+  it('says which pipelines could not be resumed, and when Core Hub did not answer', async () => {
+    const loaded = load({
+      bulk: coreHubUpdate({
+        service: 'gluesync-core-hub',
+        paused: ['p1'],
+        resumed: [],
+        notResumed: [{ id: 'p1', error: 'Core Hub answered 500' }],
+        alreadyInMaintenance: [],
+        coreHubUnreachable: 'ECONNREFUSED',
+      }),
+    });
+
+    const reply = await run(loaded, { action: 'update', ids: [] });
+    const [coreHub] = body(reply).data.containers;
+
+    assert.equal(coreHub.status, 'OK');
+    assert.match(coreHub.message, /^Core Hub updated\. /);
+    assert.match(
+      coreHub.message,
+      /Core Hub did not answer before the update \(ECONNREFUSED\)/,
+    );
+    assert.match(coreHub.message, /p1 \(Core Hub answered 500\)/);
+    assert.deepEqual(coreHub.resumedPipelines, []);
+  });
+
+  it('a refused drain answers with its status and details, and nothing is pruned', async () => {
+    const loaded = load({
+      bulkError: new UpdateRefusedByPipelinesError(
+        409,
+        'Update refused: the running pipelines did not enter maintenance mode in time',
+        'Not drained within 300s: p2. No image was changed. Resumed: p1, p2.',
+        { resumed: ['p1', 'p2'], notResumed: [] },
+      ),
+    });
+    const pruned: unknown[] = [];
+
+    const reply = await run(
+      loaded,
+      { action: 'update', ids: [] },
+      { pruneImages: async (o: unknown) => pruned.push(o) },
+    );
+
+    assert.equal(reply.statusCode, 409);
+    assert.deepEqual(body(reply), {
+      success: false,
+      error:
+        'Update refused: the running pipelines did not enter maintenance mode in time',
+      details:
+        'Not drained within 300s: p2. No image was changed. Resumed: p1, p2.',
+    });
+    assert.deepEqual(pruned, []);
+  });
+
+  it('a Core Hub error while pausing answers 502', async () => {
+    const loaded = load({
+      bulkError: new UpdateRefusedByPipelinesError(
+        502,
+        'Update refused: could not read the pipelines from Core Hub',
+        'listing the pipelines: Core Hub answered 401. No pipeline was paused and no image was changed.',
+        { resumed: [], notResumed: [] },
+      ),
+    });
+
+    const reply = await run(loaded, { action: 'update', ids: [] });
+
+    assert.equal(reply.statusCode, 502);
+    assert.match(body(reply).details, /answered 401/);
+  });
+
+  it('a Conductor self-update never pauses the pipelines', async () => {
+    const loaded = load({
+      modules: {
+        'gluesync-conductor': {
+          needsUpdate: true,
+          id: 'gluesync-conductor',
+          availableVersion: '9.9.9',
+        },
+      },
+    });
+
+    await run(loaded, { action: 'update', ids: [] });
+
+    assert.equal(loaded.calls.conductorOnly.length, 1);
+    assert.equal(loaded.calls.bulk.length, 0);
   });
 });

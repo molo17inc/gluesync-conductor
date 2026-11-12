@@ -1,7 +1,8 @@
 // Fake Gluesync services for the conductor sandbox.
 //
 // One image, several roles (FAKE_ROLE):
-//   corehub      HTTPS :1717, WebSocket /ext-module handshake, /authentication/*
+//   corehub      HTTPS :1717, WebSocket /ext-module handshake, /authentication/*,
+//                the pipeline list and maintenance mode commands
 //   chronos      HTTPS :1717, health and version only
 //   http         plain HTTP on FAKE_PORT (traefik, prometheus, grafana, portainer, agents)
 //   backoffice   fake api.backoffice.molo17.com behind an HTTP CONNECT proxy, with the fake support portal
@@ -102,6 +103,13 @@ const startCoreHub = async () => {
   state.stats.authMeCalls ??= 0;
   state.stats.wsHandshakes ??= 0;
   state.stats.wsRejected ??= 0;
+  // Pipelines and what was done to them, kept across Core Hub's recreation
+  // like the real one keeps them in its database: { id, name,
+  // configurationCompleted, isInMaintenanceMode, running, runningBeforeMaintenance }
+  state.pipelines ??= [];
+  state.pipelineEvents ??= [];
+  // Tokens handed out in the module handshake: the Conductor calls the REST API with them
+  state.moduleTokens ??= {};
   const persist = () => writeJson(stateFile, state);
   persist();
 
@@ -127,6 +135,85 @@ const startCoreHub = async () => {
     if (!s || s.revoked) return null;
     if (s.expiresAt && Date.now() > s.expiresAt) return null;
     return s;
+  };
+
+  // Who may call the pipeline API: a logged-in user or a module (role EXTERNAL_MODULE)
+  const callerOf = req => {
+    const token = tokenFrom(req);
+    if (token && state.moduleTokens[token]) return { username: state.moduleTokens[token], role: 'EXTERNAL_MODULE' };
+    return sessionFor(token);
+  };
+
+  // ---- pipelines (gluesync-kotlin PipelinesRoutes.kt and SyncCommandRoutes.kt)
+  // chaos.pipelines: { listStatus, listDelayMs, statusStatus, enterFail: { id: status }, drainMs: { id: ms },
+  //                   exitStatus, exitFailTimes, until }
+  const pipelineEvent = (op, id, extra = {}) => {
+    state.pipelineEvents.push({ ts: new Date().toISOString(), version: VERSION, op, id, ...extra });
+    persist();
+    log('info', `pipeline ${op}`, { id, ...extra });
+  };
+  const pipelineDto = p => ({
+    id: p.id,
+    name: p.name,
+    description: null,
+    sourceAgentsInfo: [],
+    targetAgentsInfo: [],
+    configurationCompleted: p.configurationCompleted !== false,
+    isInMaintenanceMode: p.isInMaintenanceMode === true,
+  });
+  const coreHubError = (res, status, message) =>
+    send(res, status, { notificationId: -1, message, exceptionMessage: 'chaos' });
+
+  const pipelines = async (req, res, p) => {
+    const caller = callerOf(req);
+    if (!caller) return send(res, 401, { notificationId: -1, message: 'Invalid authorization token', exceptionMessage: null });
+    const chaos = activeChaos('pipelines') || {};
+    if (p === '/pipelines' && req.method === 'GET') {
+      pipelineEvent('list', null, { by: caller.role });
+      if (chaos.listDelayMs) await sleep(chaos.listDelayMs);
+      if (chaos.listStatus) return coreHubError(res, chaos.listStatus, 'Something went wrong fetching pipelines.');
+      return send(res, 200, state.pipelines.map(pipelineDto));
+    }
+    const match = /^\/pipelines\/([^/]+)\/(entities-status|commands\/maintenance\/enter|commands\/maintenance\/exit)$/.exec(p);
+    const pipeline = match && state.pipelines.find(x => x.id === decodeURIComponent(match[1]));
+    if (!match) return noRoute(req, res, p);
+    if (!pipeline) return coreHubError(res, 404, `Pipeline with id ${match[1]} not found`);
+    if (match[2] === 'entities-status' && req.method === 'GET') {
+      if (chaos.statusStatus) return coreHubError(res, chaos.statusStatus, 'Something went wrong fetching entity status.');
+      return send(res, 200, [
+        { pipelineId: pipeline.id, entityId: `${pipeline.id}-e1`, isMigrationActive: false, isSyncActive: pipeline.running === true, isBusy: false, snapshotWriteMethod: 'DEFAULT' },
+      ]);
+    }
+    if (match[2] === 'commands/maintenance/enter' && req.method === 'POST') {
+      pipelineEvent('enter-requested', pipeline.id, { by: caller.role });
+      const failWith = chaos.enterFail?.[pipeline.id];
+      if (failWith) {
+        pipelineEvent('enter-failed', pipeline.id, { status: failWith });
+        return coreHubError(res, failWith, 'Failed to enter maintenance mode.');
+      }
+      // Draining: Core Hub answers once the entities are stopped
+      const drainMs = chaos.drainMs?.[pipeline.id];
+      if (drainMs) await sleep(drainMs);
+      pipeline.runningBeforeMaintenance = pipeline.running === true;
+      pipeline.running = false;
+      pipeline.isInMaintenanceMode = true;
+      pipelineEvent('entered', pipeline.id);
+      return send(res, 202, 'Pipeline entered maintenance mode successfully');
+    }
+    if (match[2] === 'commands/maintenance/exit' && req.method === 'POST') {
+      pipelineEvent('exit-requested', pipeline.id, { by: caller.role });
+      if (chaos.exitStatus && (chaos.exitFailTimes ?? Infinity) > 0) {
+        if (chaos.exitFailTimes) chaos.exitFailTimes -= 1;
+        persist();
+        pipelineEvent('exit-failed', pipeline.id, { status: chaos.exitStatus });
+        return coreHubError(res, chaos.exitStatus, 'Failed to exit maintenance mode.');
+      }
+      pipeline.isInMaintenanceMode = false;
+      pipeline.running = pipeline.runningBeforeMaintenance !== false;
+      pipelineEvent('exited', pipeline.id);
+      return send(res, 202, 'Pipeline exited maintenance mode successfully');
+    }
+    return noRoute(req, res, p);
   };
 
   const modules = new Map();
@@ -201,6 +288,8 @@ const startCoreHub = async () => {
         chaos: state.chaos,
         modules: [...modules.values()],
         sessions: Object.keys(state.sessions).length,
+        pipelines: state.pipelines,
+        pipelineEvents: state.pipelineEvents.length,
       });
     }
     if (p === '/__sandbox/chaos' && req.method === 'POST') {
@@ -219,6 +308,16 @@ const startCoreHub = async () => {
       return send(res, 200, { revoked: !!s });
     }
     if (p === '/__sandbox/ws-drop' && req.method === 'POST') return dropModuleSockets(req, res);
+    // { pipelines: [{ id, name, running, isInMaintenanceMode, configurationCompleted }] } replaces them
+    // and clears the events; { events: [] } only clears the events
+    if (p === '/__sandbox/pipelines' && req.method === 'POST') {
+      const body = await readBody(req);
+      if (Array.isArray(body.pipelines)) state.pipelines = body.pipelines;
+      state.pipelineEvents = [];
+      persist();
+      return send(res, 200, { pipelines: state.pipelines });
+    }
+    if (p === '/__sandbox/pipelines') return send(res, 200, { pipelines: state.pipelines, events: state.pipelineEvents });
     return noRoute(req, res, p);
   };
 
@@ -228,6 +327,7 @@ const startCoreHub = async () => {
     if (p === '/authentication/logout' && req.method === 'POST') return logout(req, res);
     if (p === '/authentication/me') return authMe(req, res);
     if (p.startsWith('/__sandbox/')) return sandboxAdmin(req, res, p);
+    if (p === '/pipelines' || p.startsWith('/pipelines/')) return pipelines(req, res, p);
     return noRoute(req, res, p);
   };
 
@@ -269,6 +369,8 @@ const startCoreHub = async () => {
           state.stats.wsHandshakes += 1;
           persist();
           const token = `mod-${tag}-${Date.now()}`;
+          state.moduleTokens[token] = tag;
+          persist();
           modules.set(id, { id, tag, connectedAt: new Date().toISOString(), pings: 0 });
           log('info', 'module handshake', { tag, id, first: msg });
           ws.send(token);
