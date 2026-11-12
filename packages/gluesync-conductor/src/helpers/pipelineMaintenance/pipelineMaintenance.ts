@@ -108,82 +108,67 @@ const createPipelineMaintenance = (
 
   // ------------------------------------------------------------- resume
 
+  // Each round lists the pipelines and takes out of maintenance the ones still
+  // in it; what failed, or is still entering, is tried again after a nap
+  /* eslint-disable functional/no-let, functional/no-loop-statements, no-await-in-loop, no-restricted-syntax -- a retry loop: each round waits for the last */
   const resumeLoop = async (
-    remaining: ReadonlyArray<string>,
+    ids: ReadonlyArray<string>,
     pending: (id: string) => boolean,
     deadline: number,
-    acc: Readonly<{
-      resumed: ReadonlyArray<string>;
-      errors: Readonly<Record<string, string>>;
-    }>,
   ): Promise<ResumeOutcome> => {
-    const finish = (
-      left: ReadonlyArray<string>,
-      errors = acc.errors,
-      resumed = acc.resumed,
-    ): ResumeOutcome => ({
+    const errors = new Map<string, string>();
+    let resumed: ReadonlyArray<string> = [];
+    let left = ids;
+
+    while (left.length > 0) {
+      try {
+        const byId = new Map(
+          (await api.listPipelines()).map(p => [p.id, p] as const),
+        );
+        // In maintenance: take it out. Gone, or out of maintenance (by hand,
+        // or it never got in) with no enter call still running: nothing to do
+        const toExit = left.filter(id => byId.get(id)?.isInMaintenanceMode);
+        const waiting = left.filter(
+          id =>
+            byId.has(id) && !byId.get(id)?.isInMaintenanceMode && pending(id),
+        );
+        const results = await Promise.allSettled(
+          toExit.map(id => api.exitMaintenance(id)),
+        );
+        results.forEach((result, i) => {
+          if (result.status === 'rejected') {
+            errors.set(toExit[i], errorText(result.reason));
+          }
+        });
+        const exited = toExit.filter(
+          (_, i) => results[i].status === 'fulfilled',
+        );
+        const failed = toExit.filter(
+          (_, i) => results[i].status === 'rejected',
+        );
+        resumed = [...resumed, ...exited];
+        left = [...failed, ...waiting];
+      } catch (error) {
+        left.forEach(id => errors.set(id, errorText(error)));
+      }
+
+      if (left.length === 0 || clock.now() >= deadline) {
+        break;
+      }
+      await nap(deadline);
+    }
+
+    return {
       resumed,
       notResumed: left.map(
         (id): NotResumed => ({
           id,
-          error: errors[id] ?? 'still entering maintenance mode',
+          error: errors.get(id) ?? 'still entering maintenance mode',
         }),
       ),
-    });
-
-    if (remaining.length === 0) {
-      return finish([]);
-    }
-
-    const pipelines = await api.listPipelines().catch((error: unknown) => {
-      const errors = Object.fromEntries(
-        remaining.map(id => [id, errorText(error)]),
-      );
-      return { failed: { ...acc.errors, ...errors } };
-    });
-
-    if ('failed' in pipelines) {
-      if (clock.now() >= deadline) {
-        return finish(remaining, pipelines.failed);
-      }
-      await nap(deadline);
-      return resumeLoop(remaining, pending, deadline, {
-        ...acc,
-        errors: pipelines.failed,
-      });
-    }
-
-    const byId = new Map(pipelines.map(p => [p.id, p]));
-    // In maintenance: take it out. Gone, or out of maintenance (by hand, or it
-    // never got in) with no enter call still running: nothing left to do.
-    const toExit = remaining.filter(id => byId.get(id)?.isInMaintenanceMode);
-    const waiting = remaining.filter(
-      id => !byId.get(id)?.isInMaintenanceMode && byId.has(id) && pending(id),
-    );
-    const results = await Promise.allSettled(
-      toExit.map(id => api.exitMaintenance(id)),
-    );
-    const exited = toExit.filter((_, i) => results[i].status === 'fulfilled');
-    const failed = toExit.filter((_, i) => results[i].status === 'rejected');
-    const errors = {
-      ...acc.errors,
-      ...Object.fromEntries(
-        results.flatMap((result, i) =>
-          result.status === 'rejected'
-            ? [[toExit[i], errorText(result.reason)]]
-            : [],
-        ),
-      ),
     };
-    const left = [...failed, ...waiting];
-    const next = { resumed: [...acc.resumed, ...exited], errors };
-
-    if (left.length === 0 || clock.now() >= deadline) {
-      return finish(left, errors, next.resumed);
-    }
-    await nap(deadline);
-    return resumeLoop(left, pending, deadline, next);
   };
+  /* eslint-enable functional/no-let, functional/no-loop-statements, no-await-in-loop, no-restricted-syntax */
 
   const resumeIds = async (
     ids: ReadonlyArray<string>,
@@ -193,7 +178,6 @@ const createPipelineMaintenance = (
       ids,
       pending,
       clock.now() + resumeTimeoutMs,
-      { resumed: [], errors: {} },
     );
     const left = outcome.notResumed.map(n => n.id);
 
@@ -280,8 +264,11 @@ const createPipelineMaintenance = (
     }
   };
 
+  // Same rule as listForPause: a Core Hub that does not answer is waited for
+  // until the drain deadline, one that answers with an error refuses at once
   const runningAmong = async (
     pipelines: ReadonlyArray<CoreHubPipeline>,
+    deadline: number,
   ): Promise<ReadonlyArray<string>> => {
     const candidates = pipelines.filter(
       p => p.configurationCompleted && !p.isInMaintenanceMode,
@@ -292,10 +279,20 @@ const createPipelineMaintenance = (
       );
       return candidates.filter((_, i) => running[i]).map(p => p.id);
     } catch (error) {
-      throw nothingPaused(error);
+      if (
+        !(error instanceof CoreHubUnreachableError) ||
+        clock.now() >= deadline
+      ) {
+        throw nothingPaused(error);
+      }
+      await nap(deadline);
+      return runningAmong(pipelines, deadline);
     }
   };
 
+  // Core Hub answers the enter call only once the pipeline is stopped and its
+  // maintenance flag saved (PipelineServicesManager.enterMaintenanceMode), so
+  // an answered call is a drained pipeline: no need to list them again
   const waitDrained = async (
     ids: ReadonlyArray<string>,
     entering: ReadonlyMap<string, Entering>,
@@ -312,14 +309,7 @@ const createPipelineMaintenance = (
       };
     }
 
-    const allAnswered = ids.every(id => entering.get(id)?.settled());
-    const pipelines = allAnswered
-      ? await api.listPipelines().catch(() => [])
-      : [];
-    const inMaintenance = new Set(
-      pipelines.filter(p => p.isInMaintenanceMode).map(p => p.id),
-    );
-    const notYet = ids.filter(id => !inMaintenance.has(id));
+    const notYet = ids.filter(id => !entering.get(id)?.settled());
 
     if (notYet.length === 0) {
       return { ok: true };
@@ -393,7 +383,7 @@ const createPipelineMaintenance = (
     const alreadyInMaintenance = pipelines
       .filter(p => p.isInMaintenanceMode && !carriedStill.includes(p.id))
       .map(p => p.id);
-    const toPause = await runningAmong(pipelines);
+    const toPause = await runningAmong(pipelines, deadline);
     const held = [...carriedStill, ...toPause];
 
     if (held.length === 0) {

@@ -162,8 +162,8 @@ describe('pipelineMaintenance', () => {
     assert.ok(!hub.calls.includes('enter p2'));
     assert.ok(!hub.calls.includes('enter p3'));
     assert.ok(!hub.calls.includes('enter draft'));
-    // A list after the enter calls confirmed the maintenance mode
-    assert.equal(hub.calls.at(-1), 'list');
+    // Core Hub answers enter once the pipeline is drained: no list after it
+    assert.deepEqual(hub.calls.slice(firstEnter), ['enter p1', 'enter p4']);
   });
 
   it('resumes only what it paused and leaves the pipelines already in maintenance there', async () => {
@@ -357,10 +357,11 @@ describe('pipelineMaintenance', () => {
       'reading the status: Core Hub unreachable (socket hang up)',
     );
     const { store, cell } = memoryStore();
+    const clock = fakeClock();
     const m = createPipelineMaintenance({
       api: hub.api,
       store,
-      clock: fakeClock(),
+      clock,
       ...options,
     });
 
@@ -369,6 +370,31 @@ describe('pipelineMaintenance', () => {
     assert.ok(error instanceof UpdateRefusedByPipelinesError);
     assert.equal(error.statusCode, 503);
     assert.deepEqual(cell.writes, []);
+    // Waited like for the list: the whole drain timeout
+    assert.ok(clock.now() >= options.drainTimeoutMs);
+  });
+
+  it('pauses once Core Hub answers the status again', async () => {
+    const hub = fakeCoreHub([{ id: 'p1', running: true, maintenance: false }]);
+    hub.faults.status = new CoreHubUnreachableError(
+      'reading the status: Core Hub unreachable (socket hang up)',
+    );
+    const { store } = memoryStore();
+    const m = createPipelineMaintenance({
+      api: hub.api,
+      store,
+      clock: fakeClock(now => {
+        if (now >= 3000) {
+          hub.faults.status = undefined;
+        }
+      }),
+      ...options,
+    });
+
+    const outcome = await m.pause();
+
+    assert.deepEqual(outcome.paused, ['p1']);
+    assert.ok(hub.calls.includes('enter p1'));
   });
 
   it('goes on without pausing on a Core Hub without the pipeline API (404)', async () => {
