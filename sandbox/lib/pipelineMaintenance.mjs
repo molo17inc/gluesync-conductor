@@ -6,7 +6,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { env } from './env.mjs';
+import { env, versionsFor } from './env.mjs';
 import { backofficeAdmin, catalogFor } from './setup.mjs';
 import { containers, corehub, waitConductor } from './stack.mjs';
 import { docker, now, sleep, waitFor } from './util.mjs';
@@ -56,6 +56,18 @@ export const pinConductorAndChronos = async (ctx, it) => {
 export const liftPipelineChaos = async (ctx, it) => {
   await corehub.chaos({ pipelines: null });
   it.notes.push(`pipeline chaos lifted at ${now()}`);
+};
+
+// After the refused round: the fault goes and the catalog offers the conductor and Chronos again, so
+// the next clicks converge as usual (self-update, Chronos, the rest)
+export const releasePipelineRefusal = async (ctx, it) => {
+  await liftPipelineChaos(ctx, it);
+  const target = versionsFor(it.index);
+  await backofficeAdmin(
+    '/__sandbox/catalog',
+    catalogFor({ 'gluesync-conductor': target['gluesync-conductor'], 'gluesync-chronos': target['gluesync-chronos'] }),
+  );
+  it.notes.push('catalog offers the conductor and chronos again');
 };
 
 // pipelines-conductor-restart: the conductor is SIGKILLed while it waits for the pipelines to report
@@ -122,6 +134,8 @@ export const collectPipelines = async (ctx, it) => {
   pm.events = state.events.filter(e => e.op !== 'list');
   pm.coreHubAfter = await tagOf(CORE_HUB);
   pm.fileAfter = fs.existsSync(pausedFile()) ? fs.readFileSync(pausedFile(), 'utf8') : null;
+  const refused = it.api.find(a => a.label === 'update round 1' && a.status >= 400);
+  pm.refusedRound = refused ? { from: refused.ts, to: new Date(Date.parse(refused.ts) + refused.ms + 1000).toISOString() } : null;
   pm.replies = it.api
     .filter(a => a.method === 'POST' && a.path === '/containers')
     .map(a => ({ status: a.status, item: a.json?.data?.containers?.find(c => c.id === CORE_HUB), error: a.json?.error, details: a.json?.details }));
@@ -156,15 +170,18 @@ const commonSteps = pm => {
 // Paused on the old Core Hub (once Core Hub is current no update pauses anything), resumed on the
 // new one, reported on Core Hub's reply item
 const updatedSteps = pm => {
-  const entered = eventsOf(pm, 'entered');
-  const versions = [...new Set(entered.map(e => e.version))];
+  // The first command Core Hub answered on its new version: by then every running pipeline must have
+  // been in maintenance mode, entered on the old version
+  const changedAt = pm.events.find(e => e.version === pm.coreHubAfter)?.ts ?? null;
+  const lastBefore = id => pm.events.filter(e => e.id === id && changedAt && e.ts < changedAt && /^(entered|exited)$/.test(e.op)).at(-1);
+  const heldAtChange = RUNNING.filter(id => lastBefore(id)?.op === 'entered' && lastBefore(id)?.version === pm.coreHubBefore);
   const resumedOnNew = RUNNING.filter(id => eventsOf(pm, 'exited', id).some(e => e.version === pm.coreHubAfter));
   const reply = pm.replies.find(r => r.item?.pausedPipelines?.length);
   return [
     step(
       'pipelines.paused-before-core-hub-changed',
-      pm.coreHubAfter !== pm.coreHubBefore && entered.length > 0 && versions.every(v => v === pm.coreHubBefore),
-      `core-hub ${pm.coreHubBefore} -> ${pm.coreHubAfter}; pipelines entered maintenance on ${versions.join(', ') || 'nothing'}`,
+      pm.coreHubAfter !== pm.coreHubBefore && heldAtChange.length === RUNNING.length,
+      `core-hub ${pm.coreHubBefore} -> ${pm.coreHubAfter} (first seen at ${changedAt}); in maintenance from the old Core Hub at that moment: ${heldAtChange.join(', ') || 'none'}`,
     ),
     step('pipelines.resumed-on-new-core-hub', resumedOnNew.length === RUNNING.length, `resumed on ${pm.coreHubAfter}: ${resumedOnNew.join(', ') || 'none'}`),
     step(
@@ -175,12 +192,21 @@ const updatedSteps = pm => {
   ];
 };
 
-// The refused round paused some pipelines and resumed them on the same, untouched Core Hub
+// The refused round paused some pipelines and resumed them, on the same untouched Core Hub, before
+// it answered
 const refusedSteps = pm => {
-  const onOld = eventsOf(pm, 'entered').filter(e => e.version === pm.coreHubBefore);
-  const notResumedOnOld = onOld.filter(e => !eventsOf(pm, 'exited', e.id).some(x => x.version === pm.coreHubBefore && x.ts >= e.ts));
+  const round = pm.refusedRound;
+  const inRound = e => round && e.ts >= round.from && e.ts <= round.to;
+  const entered = pm.events.filter(e => e.op === 'entered' && inRound(e));
+  const notResumed = entered.filter(e => !pm.events.some(x => x.op === 'exited' && x.id === e.id && inRound(x) && x.ts >= e.ts && x.version === e.version));
   return [
-    step('pipelines.refusal-resumed', onOld.length > 0 && notResumedOnOld.length === 0, notResumedOnOld.length ? `paused for the refused update and not resumed before Core Hub changed: ${notResumedOnOld.map(e => e.id).join(', ')}` : `${onOld.map(e => e.id).join(', ')} resumed on ${pm.coreHubBefore} after the refusal`),
+    step(
+      'pipelines.refusal-resumed',
+      !!round && entered.length > 0 && notResumed.length === 0 && entered.every(e => e.version === pm.coreHubBefore),
+      round
+        ? `refused round ${round.from}..${round.to}: entered ${entered.map(e => e.id).join(', ') || 'nothing'}${notResumed.length ? `, not resumed before the reply: ${notResumed.map(e => e.id).join(', ')}` : ', all resumed before the reply'} on ${pm.coreHubBefore}`
+        : 'no refused round recorded',
+    ),
   ];
 };
 

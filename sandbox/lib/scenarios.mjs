@@ -49,7 +49,7 @@ import {
   DRAIN_REFUSED_TEXT,
   ENTER_REFUSED_TEXT,
   killConductorWhilePaused,
-  liftPipelineChaos,
+  releasePipelineRefusal,
   pinConductorAndChronos,
   seedPipelines,
   waitResumedAfterRestart,
@@ -654,18 +654,17 @@ export const PROFILES = [
   {
     name: 'pipelines-drain-timeout',
     description:
-      'One running pipeline takes 15s to drain, longer than the kit drain timeout (UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS=8). The update must be refused with 409 before any image or the compose file changes, the pipeline paused quickly resumed at once and the slow one as soon as its drain ends; then the next click updates with the usual pause and resume. Conductor and Chronos are pinned so the first round is the one with Core Hub.',
+      'One running pipeline takes 15s to drain, longer than the kit drain timeout (UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS=8). The update must be refused with 409 before any image or the compose file changes, the pipeline paused quickly resumed at once and the slow one as soon as its drain ends; then the next click updates with the usual pause and resume. Conductor and Chronos are held back in the catalog until the refusal, so the first round is the one with Core Hub.',
     plan: () => ({
       expect: 'updated',
       pipelines: true,
-      lagging: ['gluesync-conductor', 'gluesync-chronos'],
       refusal: { phrase: DRAIN_REFUSED_TEXT, status: 409, id: 'pipelines.drain-refused' },
     }),
     before: async (ctx, it) => {
       await pinConductorAndChronos(ctx, it);
       await seedPipelines(ctx, it, { mode: 'refused', chaos: { drainMs: { billing: 15000 } } });
     },
-    releaseRefusal: liftPipelineChaos,
+    releaseRefusal: releasePipelineRefusal,
     after: collectPipelines,
   },
   {
@@ -675,14 +674,13 @@ export const PROFILES = [
     plan: () => ({
       expect: 'updated',
       pipelines: true,
-      lagging: ['gluesync-conductor', 'gluesync-chronos'],
       refusal: { phrase: ENTER_REFUSED_TEXT, status: 502, id: 'pipelines.enter-refused' },
     }),
     before: async (ctx, it) => {
       await pinConductorAndChronos(ctx, it);
       await seedPipelines(ctx, it, { mode: 'refused', chaos: { enterFail: { billing: 500 } } });
     },
-    releaseRefusal: liftPipelineChaos,
+    releaseRefusal: releasePipelineRefusal,
     after: collectPipelines,
   },
   {
