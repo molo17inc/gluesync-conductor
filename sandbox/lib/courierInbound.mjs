@@ -189,14 +189,14 @@ const missingLines = (original, now) => {
 const recordAdded = (it, base, added, events) => {
   const block = ENTRY_POINT_BLOCK.exec(added.traefik);
   const withoutBlock = block ? added.traefik.replace(block[0], '') : added.traefik;
-  const lost = missingLines(base.traefik, added.traefik);
+  const kept = withoutBlock === base.traefik;
+  const lost = missingLines(base.traefik, added.traefik).join(' | ') || 'none, but other bytes changed';
+  const customerFile = kept ? 'byte for byte the customer file' : `not the customer file (lines lost: ${lost})`;
   step(
     it,
     'courier.entry-point-added',
-    !!block && withoutBlock === base.traefik,
-    block
-      ? `entryPoints.courier on ":8090" added; without it traefik.yml is ${withoutBlock === base.traefik ? 'byte for byte the customer file' : `not the customer file (lines lost: ${lost.join(' | ') || 'none, but other bytes changed'})`}`
-      : 'traefik.yml has no courier entry point on :8090 written by the conductor',
+    !!block && kept,
+    block ? `entryPoints.courier on ":8090" added; without it traefik.yml is ${customerFile}` : 'traefik.yml has no courier entry point on :8090 written by the conductor',
   );
   step(it, 'courier.certs-untouched', added.certsSha === base.certsSha, added.certsSha === base.certsSha ? 'proxy/certs.yml has the same bytes' : 'proxy/certs.yml changed');
 
