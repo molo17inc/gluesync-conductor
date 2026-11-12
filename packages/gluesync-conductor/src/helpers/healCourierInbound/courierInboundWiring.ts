@@ -93,16 +93,17 @@ const parseShort = (spec: string): PortMapping => {
   };
 };
 
+// A field of the long form as text: a string or a number, anything else is no value
+const scalarText = (value: unknown): string =>
+  typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+
 const parseLong = (port: Readonly<Record<string, unknown>>): PortMapping => {
-  const { published, target, protocol } = port;
+  const published = scalarText(port.published);
 
   return {
-    host:
-      published === undefined || published === null || published === ''
-        ? undefined
-        : parseRange(String(published)),
-    container: parseRange(String(target ?? '')),
-    protocol: String(protocol ?? 'tcp').toLowerCase(),
+    host: published === '' ? undefined : parseRange(published),
+    container: parseRange(scalarText(port.target)),
+    protocol: (scalarText(port.protocol) || 'tcp').toLowerCase(),
   };
 };
 
