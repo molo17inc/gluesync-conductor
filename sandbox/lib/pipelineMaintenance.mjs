@@ -229,13 +229,13 @@ const unreachableSteps = (pm, it) => {
   const commands = pm.events.filter(e => inRound(e) && /^(enter|exit)/.test(e.op));
   const dropped = pm.events.filter(e => inRound(e) && e.op === 'dropped').length;
   const details = pm.replies.find(r => r.status === 503)?.details || '';
+  const file = it.pipelines.fileInRefusal ? 'written' : 'never written';
+  const seen = `refused round: ${dropped} request(s) to Core Hub's pipeline API dropped, ${commands.length} maintenance command(s) sent, paused-pipelines file ${file}`;
   return [
     step(
       'pipelines.unreachable-nothing-paused',
       !!round && commands.length === 0 && dropped > 0 && !it.pipelines.fileInRefusal,
-      round
-        ? `refused round: ${dropped} request(s) to Core Hub's pipeline API dropped, ${commands.length} maintenance command(s) sent, paused-pipelines file ${it.pipelines.fileInRefusal ? 'written' : 'never written'}`
-        : 'no refused round recorded',
+      round ? seen : 'no refused round recorded',
     ),
     step('pipelines.unreachable-names-opt-out', details.includes('UPDATE_PIPELINE_MAINTENANCE=false'), details ? details.slice(0, 240) : 'no 503 details'),
   ];
