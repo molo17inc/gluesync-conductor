@@ -25,6 +25,7 @@
 //   drGuard, drSetup   the disaster recovery profiles: steps recorded in it.dr (see disasterRecovery.mjs)
 //   logUpload     the log-upload-voucher profile: steps recorded in it.logUpload (see logUpload.mjs)
 //   pipelines     the pipelines-* profiles: evidence recorded in it.pipelines (see pipelineMaintenance.mjs)
+//   courierInbound  the courier-inbound profile: steps recorded in it.courier (see courierInbound.mjs)
 //   faultActive   (on the profile, not the plan) (ctx, it) => boolean | Promise<boolean>: true while the
 //                 profile's Docker fault is in effect. The driver waits for it to end before it judges
 //                 a round, so rounds that fail inside the fault do not count as "no progress"
@@ -43,6 +44,7 @@ import { DISK_FULL_TEXT, env, SERVICES, versionsFor } from './env.mjs';
 import { composeProblem } from './composeSampler.mjs';
 import { releaseDiskFault, startDiskFault } from './diskFault.mjs';
 import { DR_REFUSED_TEXT, enableDrByHand, guardOnSingleServices, guidedSetup } from './disasterRecovery.mjs';
+import { courierInbound } from './courierInbound.mjs';
 import { logUploadWithVoucher } from './logUpload.mjs';
 import {
   collectPipelines,
@@ -723,6 +725,14 @@ export const PROFILES = [
     during: killConductorWhilePaused,
     beforeRound: waitResumedAfterRestart,
     after: collectPipelines,
+  },
+  {
+    name: 'courier-inbound',
+    description:
+      'After the update, the kit loses its Courier wiring (the courier entry point in traefik.yml, 8090:8090 on reverse-proxy, the courier labels on Core Hub, and the running containers with them) and the conductor is restarted: its heal must put every piece back, keep the customer traefik.yml byte for byte and certs.yml untouched, back both files up, recreate the proxy and Core Hub exactly once each and log it. A second start must change nothing; with the opt-out label on the proxy a start must change nothing either. The kit is left wired.',
+    // Core Hub starts: put back without labels, the heal's recreate, the opt-out setup, the wired kit put back
+    plan: () => ({ expect: 'updated', courierInbound: true, extraCoreHubStarts: 4 }),
+    after: courierInbound,
   },
   {
     name: 'conductor-bad-release',

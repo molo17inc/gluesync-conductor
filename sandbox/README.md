@@ -1,6 +1,6 @@
 # Conductor sandbox
 
-Runs the **real conductor** (built from this repo) against fake versions of every service in the default Docker kit, then drives 10–20 update cycles through it while injecting faults. Each run writes a report covering five areas: resilience, docker-compose rewrites, session handling, error handling and logging, plus what the feature profiles check (the proxy error pages, disaster recovery, the voucher log upload).
+Runs the **real conductor** (built from this repo) against fake versions of every service in the default Docker kit, then drives 10–20 update cycles through it while injecting faults. Each run writes a report covering five areas: resilience, docker-compose rewrites, session handling, error handling and logging, plus what the feature profiles check (the proxy error pages, the Courier inbound port, disaster recovery, the voucher log upload).
 
 Nothing touches your own Docker. The whole sandbox runs inside one isolated Docker-in-Docker container. That matters, because after every update the conductor prunes **all** unused images on its host.
 
@@ -39,7 +39,9 @@ Reports are written to `sandbox/reports/<timestamp>-seed<N>/`:
 | Docker Hub | Local registry `localhost:5000` inside the sandbox daemon; one image per service per version |
 | Docker API | The conductor's `DOCKER_HOST` points at a pass-through socket proxy that can delay or refuse connections |
 
-The kit's `proxy/` folder comes from `kit/proxy/` (a customer's `traefik.yml` with a `websecure` entry point, their own middleware, ACME resolver, log level and comments, plus the shipped `certs.yml`), not from `debug-container`: the conductor edits `traefik.yml` for the error pages wiring and must never lose any of it.
+The kit's `proxy/` folder comes from `kit/proxy/` (a customer's `traefik.yml` with a `websecure` entry point, their own middleware, ACME resolver, log level and comments, plus the shipped `certs.yml`), not from `debug-container`: the conductor edits `traefik.yml` for the error pages wiring and the Courier entry point and must never lose any of it.
+
+Every conductor start runs the Courier heal (`healCourierInbound`), so the first start after `up` wires the kit: the `courier` entry point in `proxy/traefik.yml`, `8090:8090` on `reverse-proxy`, the courier labels on Core Hub, and one recreate each of the proxy and Core Hub. Every later start finds it wired and changes nothing.
 
 The kit (`kit/docker-compose.template.yml`) mirrors `debug-container/linux/docker-compose.yml`. It keeps the labels, the `$$` escapes, `sysctls`, `env_file` and the comment header, so that compose rewrite bugs show up.
 
@@ -88,6 +90,7 @@ The kit (`kit/docker-compose.template.yml`) mirrors `debug-container/linux/docke
 | pipelines-corehub-unreachable | the fake Core Hub drops every connection to its pipeline API (`noAnswer`): the conductor keeps trying for the kit's drain timeout (8 s), then refuses with 503 `Update refused: Core Hub did not answer` (`pipelines.unreachable-refused`: compose identical, no container touched); the refused round sent no maintenance command and wrote no paused-pipelines file, and the details name `UPDATE_PIPELINE_MAINTENANCE=false` (`pipelines.unreachable-*`); then the update converges with the usual pause and resume |
 | pipelines-corehub-rollback | the new Core Hub image crashes: Core Hub is rolled back and only then are the pipelines resumed, on the old Core Hub; the failed Core Hub item lists them as resumed |
 | pipelines-conductor-restart | the conductor is SIGKILLed while the running pipelines are in maintenance mode, before any image changed (the fake Core Hub answers the pipeline list 6 s late to hold that window). The restarted conductor must resume them from its file before the next click, which then updates normally |
+| courier-inbound | after the update, the runner takes the Courier wiring out of the kit while the conductor is stopped: the `courier` entry point from `proxy/traefik.yml`, `8090:8090` from `reverse-proxy`, and the courier labels from Core Hub, with both containers recreated without them. Then it starts the conductor. The heal must put every piece back. `traefik.yml` minus the entry point must be the customer file byte for byte, and `certs.yml` must be untouched. Both files must be backed up to `.conductor/proxy-backup/<stamp>/`. The proxy and Core Hub must each be recreated exactly once, counted from Docker `create` events. The running Core Hub must then carry the labels and the running proxy must bind 8090. The conductor must log the add and the Core Hub recreate before and after. A second conductor start must change nothing: no backup, no recreate, the files byte-identical, logged `wiring already in place`. With `com.molo17.conductor.courier-inbound=false` on the proxy a start must change nothing either. Finally the kit is put back as the conductor wired it. The fake traefik reads neither `traefik.yml` nor labels, so the routing on 8090 is not exercised here: the demo-kits kit with the real `molo17/traefik` covers it. Checks `courier.*` (`lib/courierInbound.mjs`) |
 | conductor-bad-release | *(only with `--destructive`)* the new conductor image crashes on start |
 
 Pick profiles with `--profiles a,b`. Replay a run with the same `--seed`.

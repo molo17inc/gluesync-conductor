@@ -34,6 +34,7 @@ import { migrationNeeded } from '../../../helpers/migrationNeeded/migrationNeede
 import handleGrafanaEmbeddedDashboard from '../../../helpers/handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard';
 import { HandleGrafanaEmbeddedDashboardResult } from '../../../helpers/handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard.model';
 import healProxyErrorPages from '../../../helpers/healProxyErrorPages/healProxyErrorPages';
+import healCourierInbound from '../../../helpers/healCourierInbound/healCourierInbound';
 import { getLogger } from '../../../utils/logger';
 import describeFailure from '../../../helpers/describeFailure/describeFailure';
 import buildDiagnosis from '../../../diagnosis/buildDiagnosis';
@@ -342,6 +343,59 @@ const healProxyErrorPagesAfterUpdate = async (
   ];
 };
 
+const COREHUB_RECREATE_MESSAGE: Readonly<Record<string, string>> = {
+  recreated: 'Core Hub recreated to apply the Courier route labels.',
+  failed: 'Recreating Core Hub to apply the Courier route labels failed.',
+  cooldown:
+    'Core Hub still lacks the Courier route labels after a recreate; not tried again yet.',
+};
+
+// The Courier inbound port 8090 of the kits (see healCourierInbound), added
+// when an install still lacks part of it. Compose only; it never fails the update.
+const healCourierInboundAfterUpdate = async (
+  req: Readonly<Request>,
+  orchestrator: Readonly<Orchestrator>,
+): Promise<ReadonlyArray<DoContainersActionItem>> => {
+  if (orchestrator.mode !== 'compose') {
+    return [];
+  }
+
+  const outcome = await healCourierInbound({ reason: 'update' });
+  const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
+  const wired: ReadonlyArray<DoContainersActionItem> =
+    outcome.action === 'add'
+      ? [
+          {
+            id: outcome.recreated ?? coreHubName,
+            status: 'OK',
+            message: `Courier inbound port 8090 wired (${outcome.reason})${outcome.recreated ? '; reverse-proxy recreated' : ''}.`,
+          },
+        ]
+      : [];
+  const coreHub: ReadonlyArray<DoContainersActionItem> = outcome.coreHub
+    ? [
+        {
+          id: coreHubName,
+          status: outcome.coreHub === 'failed' ? 'ERROR' : 'OK',
+          message: COREHUB_RECREATE_MESSAGE[outcome.coreHub],
+        },
+      ]
+    : [];
+
+  if (wired.length + coreHub.length > 0) {
+    req.log.info(
+      {
+        proxy: outcome.recreated,
+        missing: outcome.missing,
+        coreHub: outcome.coreHub,
+      },
+      '[update-handler] Courier inbound port wiring changed',
+    );
+  }
+
+  return [...wired, ...coreHub];
+};
+
 const migrationRefusedOnSwarm = (): Outcome => ({
   statusCode: 501,
   body: buildMigrationRefusedOnSwarmReply(),
@@ -569,6 +623,7 @@ const performUpdate = async (
 
   const grafanaItems = await recreateGrafanaIfEmbedded(req, orchestrator);
   const proxyItems = await healProxyErrorPagesAfterUpdate(req, orchestrator);
+  const courierItems = await healCourierInboundAfterUpdate(req, orchestrator);
   const pruneOutcome = swarm
     ? skipPruneOnSwarm()
     : await pruneImages(req.server.docker);
@@ -582,6 +637,7 @@ const performUpdate = async (
         ...refusedItems,
         ...grafanaItems,
         ...proxyItems,
+        ...courierItems,
       ],
     },
   });

@@ -44,7 +44,13 @@ const state = new Map<string, number | Promise<unknown>>([
   ['lastDriftRecreate', 0],
 ]);
 
-/** True while a run is waiting its turn or working. */
+/** The two files a heal of the reverse-proxy reads and writes. */
+export type ProxyHealFiles = Readonly<{
+  traefikYamlText: string;
+  composeJson: Record<string, any>;
+}>;
+
+/** True while a run (of any proxy heal) is waiting its turn or working. */
 export const isHealing = (): boolean =>
   ((state.get('running') as number | undefined) ?? 0) > 0;
 
@@ -83,14 +89,8 @@ const writeTraefik = (path: string, text: string): Promise<void> =>
 // back when the compose file then fails: never one ahead of the other.
 const writeBoth = async (
   traefikPath: string,
-  before: Readonly<{
-    traefikYamlText: string;
-    composeJson: Record<string, any>;
-  }>,
-  after: Readonly<{
-    traefikYamlText: string;
-    composeJson: Record<string, any>;
-  }>,
+  before: ProxyHealFiles,
+  after: ProxyHealFiles,
 ): Promise<void> => {
   const staticChanged = after.traefikYamlText !== before.traefikYamlText;
 
@@ -114,23 +114,26 @@ const writeBoth = async (
   }
 };
 
-const recreateProxy = async (proxy: string): Promise<void> => {
-  await runCmd(upAll, proxy, dkrComposeFile, ['--no-deps', '--force-recreate']);
+/**
+ * Recreates one service from the compose file as it is on disk (`up --no-deps
+ * --force-recreate`): no other service, no `down`, the volumes as they are.
+ */
+export const recreateService = async (service: string): Promise<void> => {
+  await runCmd(upAll, service, dkrComposeFile, [
+    '--no-deps',
+    '--force-recreate',
+  ]);
 };
+
+const recreateProxy = recreateService;
 
 // Writes the files back as they were before the heal: traefik.yml in place,
 // the compose file byte for byte from the backup (writeComposeFile merges into
 // the parsed document and may still reformat). The last-good copy follows.
 const restoreFiles = async (
   traefikPath: string,
-  before: Readonly<{
-    traefikYamlText: string;
-    composeJson: Record<string, any>;
-  }>,
-  after: Readonly<{
-    traefikYamlText: string;
-    composeJson: Record<string, any>;
-  }>,
+  before: ProxyHealFiles,
+  after: ProxyHealFiles,
   backupDir: string,
 ): Promise<void> => {
   if (after.traefikYamlText !== before.traefikYamlText) {
@@ -150,26 +153,21 @@ const restoreFiles = async (
 // container matches them: left with the new traefik.yml and an old container, a
 // plain restart would load a middleware that no container defines (404 on every route).
 const rollBack = async (
+  log: string,
   proxy: string,
   traefikPath: string,
-  before: Readonly<{
-    traefikYamlText: string;
-    composeJson: Record<string, any>;
-  }>,
-  after: Readonly<{
-    traefikYamlText: string;
-    composeJson: Record<string, any>;
-  }>,
+  before: ProxyHealFiles,
+  after: ProxyHealFiles,
   backupDir: string,
   error: unknown,
 ): Promise<void> => {
   const logger = getLogger();
 
-  logger.error({ error }, `${LOG} recreating ${proxy} failed`);
+  logger.error({ error }, `${log} recreating ${proxy} failed`);
   await restoreFiles(traefikPath, before, after, backupDir);
   logger.error(
     { backupDir, proxy },
-    `${LOG} recreate failed, files restored from ${backupDir}`,
+    `${log} recreate failed, files restored from ${backupDir}`,
   );
 
   try {
@@ -177,13 +175,13 @@ const rollBack = async (
   } catch (error_) {
     logger.error(
       { error: error_ },
-      `${LOG} recreating ${proxy} with the restored files failed too; the files are as before the heal, a plain restart is safe`,
+      `${log} recreating ${proxy} with the restored files failed too; the files are as before the heal, a plain restart is safe`,
     );
   }
 };
 
-/** Labels of the running reverse-proxy container; undefined when it cannot be read. */
-const runningLabels = async (
+/** Labels of the running container of a compose service; undefined when there is none or it cannot be read. */
+export const runningServiceLabels = async (
   proxy: string,
 ): Promise<Readonly<Record<string, string>> | undefined> => {
   try {
@@ -215,7 +213,7 @@ const healDrift = async (
   trigger: string,
 ): Promise<HealProxyErrorPagesOutcome> => {
   const logger = getLogger();
-  const labels = await runningLabels(proxy);
+  const labels = await runningServiceLabels(proxy);
   const lastAt = (state.get('lastDriftRecreate') as number) ?? 0;
 
   if (!labels || !lacksTargetLabels(labels, isWindows)) {
@@ -245,11 +243,6 @@ const healDrift = async (
   };
 };
 
-type Files = Readonly<{
-  traefikYamlText: string;
-  composeJson: Record<string, any>;
-}>;
-
 const logNothingToChange = (trigger: string, reason: string): void => {
   getLogger()[trigger === 'event' ? 'debug' : 'info'](
     { reason, trigger },
@@ -257,8 +250,69 @@ const logNothingToChange = (trigger: string, reason: string): void => {
   );
 };
 
-// Backs up, writes both files and recreates the proxy; a failed recreate puts
-// the files back (see rollBack).
+export type CommitProxyFilesOptions = Readonly<{
+  /** Log prefix of the heal, `[proxy-error-pages]`. */
+  log: string;
+  action: string;
+  reason: string;
+  trigger: string;
+  proxy: string;
+  traefikPath: string;
+  before: ProxyHealFiles;
+  next: ProxyHealFiles;
+  /** False when nothing the reverse-proxy reads changes: the files are written, no container is recreated. */
+  recreate: boolean;
+}>;
+
+export type CommitProxyFilesResult = Readonly<{
+  backupDir: string;
+  /** The recreate failed: the files were put back as they were (see rollBack). */
+  restored: boolean;
+}>;
+
+/**
+ * Backs up both files, writes the ones that change and recreates the proxy
+ * when asked; a failed recreate puts the files back (see rollBack). Shared by
+ * the heals of the reverse-proxy, which run one at a time (see oneAtATime).
+ */
+export const commitProxyFiles = async ({
+  log,
+  action,
+  reason,
+  trigger,
+  proxy,
+  traefikPath,
+  before,
+  next,
+  recreate,
+}: CommitProxyFilesOptions): Promise<CommitProxyFilesResult> => {
+  const logger = getLogger();
+  const backupDir = await backupFiles(traefikPath);
+
+  logger.info(
+    { action, reason, trigger, backupDir },
+    `${log} ${action}: ${reason}; backup in ${backupDir}`,
+  );
+
+  await writeBoth(traefikPath, before, next);
+
+  if (!recreate) {
+    logger.info({ action }, `${log} ${action} done, files written`);
+    return { backupDir, restored: false };
+  }
+
+  try {
+    await recreateProxy(proxy);
+  } catch (error) {
+    await rollBack(log, proxy, traefikPath, before, next, backupDir, error);
+    return { backupDir, restored: true };
+  }
+
+  logger.info({ action, proxy }, `${log} ${action} done, ${proxy} recreated`);
+
+  return { backupDir, restored: false };
+};
+
 const applyAndRecreate = async ({
   plan,
   proxy,
@@ -271,32 +325,24 @@ const applyAndRecreate = async ({
   proxy: string;
   traefikPath: string;
   trigger: string;
-  before: Files;
-  next: Files;
+  before: ProxyHealFiles;
+  next: ProxyHealFiles;
 }>): Promise<HealProxyErrorPagesOutcome> => {
-  const logger = getLogger();
-  const backupDir = await backupFiles(traefikPath);
+  const { backupDir, restored } = await commitProxyFiles({
+    log: LOG,
+    action: plan.action,
+    reason: plan.reason,
+    trigger,
+    proxy,
+    traefikPath,
+    before,
+    next,
+    recreate: true,
+  });
 
-  logger.info(
-    { action: plan.action, reason: plan.reason, trigger, backupDir },
-    `${LOG} ${plan.action}: ${plan.reason}; backup in ${backupDir}`,
-  );
-
-  await writeBoth(traefikPath, before, next);
-
-  try {
-    await recreateProxy(proxy);
-  } catch (error) {
-    await rollBack(proxy, traefikPath, before, next, backupDir, error);
-    return skipped('recreate failed, files restored');
-  }
-
-  logger.info(
-    { action: plan.action, proxy },
-    `${LOG} ${plan.action} done, ${proxy} recreated`,
-  );
-
-  return { ...plan, recreated: proxy, backupDir };
+  return restored
+    ? skipped('recreate failed, files restored')
+    : { ...plan, recreated: proxy, backupDir };
 };
 
 const run: HealProxyErrorPages = async ({ reason }) => {
@@ -376,24 +422,21 @@ const run: HealProxyErrorPages = async ({ reason }) => {
 };
 
 /**
- * Brings the MOLO17 error pages wiring of the kit in line with the
- * reverse-proxy image: added when the image can serve it, removed when it
- * cannot (or the customer opted out). v0.0.286 wiring stays while the image
- * still serves it. Compose mode only.
- * Runs one at a time and never throws: a failure is logged and the caller goes on.
+ * Runs `task` after every proxy heal queued before it (the error pages, the
+ * Courier inbound port): they read and write the same two files. Never throws:
+ * a failure goes to `onError`, whose answer is returned.
  */
-const healProxyErrorPages: HealProxyErrorPages = options => {
+export const oneAtATime = <T>(
+  task: () => Promise<T>,
+  onError: (error: unknown) => T,
+): Promise<T> => {
   state.set('running', ((state.get('running') as number) ?? 0) + 1);
 
   const queued = (state.get('queue') as Promise<unknown>).then(async () => {
     try {
-      return await run(options);
+      return await task();
     } catch (error) {
-      getLogger().error(
-        { error, trigger: options.reason },
-        `${LOG} failed, nothing more is changed`,
-      );
-      return skipped('failed');
+      return onError(error);
     } finally {
       state.set('running', (state.get('running') as number) - 1);
     }
@@ -403,5 +446,24 @@ const healProxyErrorPages: HealProxyErrorPages = options => {
 
   return queued;
 };
+
+/**
+ * Brings the MOLO17 error pages wiring of the kit in line with the
+ * reverse-proxy image: added when the image can serve it, removed when it
+ * cannot (or the customer opted out). v0.0.286 wiring stays while the image
+ * still serves it. Compose mode only.
+ * Runs one at a time and never throws: a failure is logged and the caller goes on.
+ */
+const healProxyErrorPages: HealProxyErrorPages = options =>
+  oneAtATime(
+    () => run(options),
+    error => {
+      getLogger().error(
+        { error, trigger: options.reason },
+        `${LOG} failed, nothing more is changed`,
+      );
+      return skipped('failed');
+    },
+  );
 
 export default healProxyErrorPages;

@@ -112,7 +112,7 @@ const isEmptyLabels = (labels: LabelContainer | undefined): boolean =>
   labels === undefined ||
   (isList(labels) ? labels.length === 0 : Object.keys(labels).length === 0);
 
-const withServiceLabels = (
+export const withServiceLabels = (
   composeJson: ComposeJson,
   name: string,
   labels: LabelContainer | undefined,
