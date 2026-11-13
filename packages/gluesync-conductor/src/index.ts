@@ -42,6 +42,7 @@ import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
 import healProxyErrorPages from './helpers/healProxyErrorPages/healProxyErrorPages';
 import watchProxyStartEvents from './helpers/healProxyErrorPages/watchProxyStartEvents';
 import healCourierInbound from './helpers/healCourierInbound/healCourierInbound';
+import { takeConductorRestart } from './helpers/conductorRestartAfterUpdate/conductorRestartAfterUpdate';
 import { findProxyServiceName } from './helpers/healTraefikConf/healTraefikConf';
 import { readComposeFile } from './helpers/composeFile/readComposeFile/readComposeFile';
 import {
@@ -232,9 +233,19 @@ const healConductorAtStartup = async (
 
   logger.info(`[conductor-healer] ${verdict}`);
 
+  // Windows: the Courier heal recreated Core Hub, which this Conductor reaches
+  // only once restarted (Windows NAT keeps the old DNS answer)
+  const reachRecreatedCoreHub = takeConductorRestart();
+
+  if (reachRecreatedCoreHub) {
+    logger.info(
+      '[courier-inbound] restarting the Conductor to reach the recreated Core Hub',
+    );
+  }
+
   const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
 
-  if (rebootNeeded) {
+  if (rebootNeeded || reachRecreatedCoreHub) {
     const shouldUseWindows =
       process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
