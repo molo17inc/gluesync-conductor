@@ -66,6 +66,10 @@ import createPipelineMaintenance, {
   isPipelineMaintenanceEnabled,
 } from '../../../helpers/pipelineMaintenance/pipelineMaintenance';
 import { UpdateRefusedByPipelinesError } from '../../../helpers/pipelineMaintenance/pipelineMaintenance.errors';
+import {
+  conductorRestartRequested,
+  takeConductorRestart,
+} from '../../../helpers/conductorRestartAfterUpdate/conductorRestartAfterUpdate';
 import { UpdatePipelinesReport } from './handleUpdate/updateNormalBulk.model';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
@@ -480,6 +484,7 @@ const runUpdateBranch = async (
     ...(isPipelineMaintenanceEnabled() && {
       pipelineMaintenance: createPipelineMaintenance(),
     }),
+    conductorRestarts: conductorRestartRequested,
   });
 };
 
@@ -487,13 +492,17 @@ const pipelinesNote = (report: Readonly<UpdatePipelinesReport>): string => {
   const unreachable = report.notPausedReason
     ? ` No pipeline was put in maintenance mode: ${report.notPausedReason}.`
     : '';
+  const afterRestart =
+    report.resumeAfterRestart && report.paused.length > 0
+      ? ` Resumed once the Conductor has restarted: ${report.paused.join(', ')}.`
+      : '';
   const notResumed =
     report.notResumed.length > 0
       ? ` Still in maintenance mode, retried at the next Conductor start: ${report.notResumed
           .map(n => `${n.id} (${n.error})`)
           .join(', ')}.`
       : '';
-  return `${unreachable}${notResumed}`;
+  return `${unreachable}${afterRestart}${notResumed}`;
 };
 
 // The pipelines held for the update go on Core Hub's item: added fields only,
@@ -986,7 +995,24 @@ const perform = async (req: Readonly<Request>): Promise<Outcome> => {
     }
 
     if (containerAction === 'update') {
-      return await performUpdate(req, requestIds, releaseChannel, orchestrator);
+      // Core Hub on Windows: this Conductor restarts to reach the new Core
+      // Hub, once the update is done and has replied, whatever its outcome
+      try {
+        return await performUpdate(
+          req,
+          requestIds,
+          releaseChannel,
+          orchestrator,
+        );
+      } finally {
+        if (takeConductorRestart()) {
+          rebootConductorAfterReply(
+            req,
+            process.env.CONDUCTOR_NAME || CONDUCTOR_NAME,
+            orchestrator,
+          );
+        }
+      }
     }
 
     if (containerAction === 'restart') {

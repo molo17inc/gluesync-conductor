@@ -15,6 +15,9 @@ export type UpdatePipelinesReport = Readonly<{
   notResumed: ReadonlyArray<NotResumed>;
   alreadyInMaintenance: ReadonlyArray<string>;
   notPausedReason?: string;
+  // Left on disk for the restarted Conductor (Core Hub on Windows): this one
+  // cannot reach the new Core Hub
+  resumeAfterRestart?: boolean;
 }>;
 
 export interface UpdateNormalBulkResult {
@@ -23,6 +26,7 @@ export interface UpdateNormalBulkResult {
   pipelines?: UpdatePipelinesReport;
 }
 
+// eslint-disable-next-line functional/no-mixed-types -- options: values and the restart check
 export type UpdateNormalBulkOptions = Readonly<{
   // The update action already put a failed service back on Swarm: only the
   // stack file has to follow
@@ -37,6 +41,10 @@ export type UpdateNormalBulkOptions = Readonly<{
   // maintenance mode before any image changes and come back once Core Hub is
   // stable again (or rolled back)
   pipelineMaintenance?: PipelineMaintenance;
+  // True once the update asked for this Conductor to restart after the reply
+  // (Core Hub on Windows): the paused pipelines are then resumed by the
+  // restarted Conductor, which reads them from disk
+  conductorRestarts?: () => boolean;
 }>;
 
 export type UpdateNormalBulk = (

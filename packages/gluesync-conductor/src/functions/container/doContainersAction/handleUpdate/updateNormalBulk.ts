@@ -68,7 +68,7 @@ type PipelineHold = Readonly<{
   pauseIfCoreHub: (effectiveIds: readonly string[]) => Promise<void>;
   isHolding: () => boolean;
   // Once, however often it is called: when Core Hub is stable, or after its
-  // rollback
+  // rollback. Not at all when this Conductor restarts after the reply.
   resume: () => Promise<ResumeOutcome | undefined>;
   report: (resumed?: ResumeOutcome) => UpdatePipelinesReport | undefined;
 }>;
@@ -76,9 +76,14 @@ type PipelineHold = Readonly<{
 const holdPipelines = (
   coreHubName: string,
   maintenance: PipelineMaintenance | undefined,
+  conductorRestarts: () => boolean,
 ): PipelineHold => {
   const state = new Map<'pause', PauseOutcome>();
   const resuming = new Map<'resume', Promise<ResumeOutcome>>();
+  // A Conductor that restarts after the reply cannot reach the new Core Hub:
+  // the pipelines stay on disk for the restarted one
+  const leftToRestart = (): boolean =>
+    state.has('pause') && conductorRestarts();
 
   return {
     pauseIfCoreHub: async effectiveIds => {
@@ -88,7 +93,7 @@ const holdPipelines = (
     },
     isHolding: () => state.has('pause'),
     resume: async () => {
-      if (!maintenance || !state.has('pause')) {
+      if (!maintenance || !state.has('pause') || leftToRestart()) {
         return undefined;
       }
       const running = resuming.get('resume') ?? maintenance.resume();
@@ -107,6 +112,7 @@ const holdPipelines = (
             ...(paused.notPausedReason && {
               notPausedReason: paused.notPausedReason,
             }),
+            ...(leftToRestart() && { resumeAfterRestart: true }),
           }
         : undefined;
     },
@@ -217,10 +223,20 @@ const updateNormalBulk: UpdateNormalBulk = async (
   composeJson,
   requestIds,
   releaseChannel,
-  { swarm = false, namespace, docker, pipelineMaintenance } = {},
+  {
+    swarm = false,
+    namespace,
+    docker,
+    pipelineMaintenance,
+    conductorRestarts = () => false,
+  } = {},
 ) => {
   const coreHubName = process.env.CORE_HUB_NAME || 'gluesync-core-hub';
-  const hold = holdPipelines(coreHubName, pipelineMaintenance);
+  const hold = holdPipelines(
+    coreHubName,
+    pipelineMaintenance,
+    conductorRestarts,
+  );
 
   // Refused here (drain timeout, Core Hub error): nothing written, no image
   // changed, the pipelines paused so far already resumed

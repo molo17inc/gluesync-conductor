@@ -472,6 +472,41 @@ describe('updateNormalBulk: pipelines in maintenance mode', () => {
     assert.deepEqual(result.pipelines?.resumed, ['p1', 'p2']);
   });
 
+  it('leaves the pipelines on disk for the restarted Conductor when it restarts after the reply (Core Hub on Windows)', async () => {
+    const events: Events = [];
+    const bulk = loadWithHook(['gluesync-core-hub'], events);
+
+    const result = await bulk(
+      async id => {
+        events.push(`update ${id}`);
+        return `${id} done`;
+      },
+      compose,
+      [],
+      'ga',
+      {
+        docker,
+        pipelineMaintenance: fakeMaintenance(events),
+        conductorRestarts: () => true,
+      },
+    );
+
+    assert.deepEqual(events, [
+      'pause',
+      'compose written',
+      'update gluesync-core-hub',
+      'rollback ',
+    ]);
+    assert.deepEqual(result.pipelines, {
+      service: 'gluesync-core-hub',
+      paused: ['p1', 'p2'],
+      resumed: [],
+      notResumed: [],
+      alreadyInMaintenance: ['p9'],
+      resumeAfterRestart: true,
+    });
+  });
+
   it('a modules-only update does not pause the pipelines', async () => {
     const events: Events = [];
     const bulk = loadWithHook(['grafana', 'prometheus'], events);

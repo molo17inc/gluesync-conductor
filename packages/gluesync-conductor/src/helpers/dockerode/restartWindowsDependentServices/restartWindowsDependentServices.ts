@@ -1,16 +1,14 @@
 import { restartAll } from 'docker-compose';
 import { getLogger } from '../../../utils/logger';
-import getRootPath from '../../getRootPath/getRootPath';
 import waitForContainerReady from '../../waitForContainerReady/waitForContainerReady';
-import { enableUpdateMode } from '../../../plugins/apiBlockerAsUpdating';
-import { autoReboot } from '../../autoReboot/autoReboot';
 import { RestartWindowsDependentServices } from './restartWindowsDependentServices.models';
-
-const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
 
 /**
  * Special handling for core-hub on Windows only.
  * Windows NAT DNS cache requires dependent services to restart for reconnection.
+ * Chronos restarts here; the Conductor itself restarts once the update has
+ * replied (see conductorRestartAfterUpdate): restarting it now would cut the
+ * update short, its rollback and the reply included.
  */
 const restartWindowsDependentServices: RestartWindowsDependentServices = async (
   docker,
@@ -63,30 +61,8 @@ const restartWindowsDependentServices: RestartWindowsDependentServices = async (
       return 'restart failed';
     });
 
-  // Prepare response message
-  const restartSummary = `${chronosService} ${chronosRestartResult}, ${conductorService} restarting`;
+  const restartSummary = `${chronosService} ${chronosRestartResult}, ${conductorService} restarts after this reply`;
   const responseMessage = `Core-hub ${coreHubServiceId} updated and restarted. Dependent services: ${restartSummary}.`;
-
-  // Enable update mode to block incoming requests during conductor restart
-  enableUpdateMode();
-
-  logger.info(
-    { service: conductorService },
-    `[core-hub-updater] triggering ${conductorService} restart`,
-  );
-
-  // Wrap in setImmediate to send response before conductor dies
-  setImmediate(() => {
-    autoReboot({
-      hostProjectDir: getRootPath({ basePath: process.env.BASE_PATH }),
-      serviceName: conductorService,
-      helperImage: helperImageWindows,
-      log: msg =>
-        logger.info({ msg }, '[core-hub-updater] conductor restart log'),
-    }).catch(error => {
-      logger.error({ error }, '[core-hub-updater] autoReboot failed');
-    });
-  });
 
   return responseMessage;
 };

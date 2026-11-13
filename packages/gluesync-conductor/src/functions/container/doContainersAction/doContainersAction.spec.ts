@@ -41,6 +41,8 @@ type Options = {
   bulkError?: unknown;
   // UPDATE_PIPELINE_MAINTENANCE
   pipelineMaintenance?: boolean;
+  // The update asked for this Conductor to restart after the reply
+  conductorRestart?: boolean;
   rebootError?: unknown;
   restartError?: unknown;
   // The full restart helper runs until this settles
@@ -190,6 +192,10 @@ const load = (options: Options = {}) => {
           calls.updateMode += 1;
         },
         isUpdateMode: () => options.updateMode ?? false,
+      },
+      [helper('conductorRestartAfterUpdate/conductorRestartAfterUpdate')]: {
+        conductorRestartRequested: () => options.conductorRestart ?? false,
+        takeConductorRestart: () => options.conductorRestart ?? false,
       },
       [helper('autoReboot/autoReboot')]: {
         autoReboot: async (...args: unknown[]) => {
@@ -845,6 +851,47 @@ describe('doContainersAction update', () => {
       odd: undefined,
     });
     assert.equal(loaded.calls.conductorOnly.length, 0);
+  });
+
+  it('restarts the Conductor once the update has replied, when the update asked for it (Core Hub on Windows)', async () => {
+    const loaded = load({
+      conductorRestart: true,
+      env: { IS_WINDOWS: 'true', HELPER_IMAGE_BASE: 'helper:win' },
+    });
+    const reply = await run(loaded, { action: 'update', ids: [] });
+
+    assert.equal(reply.statusCode, 200);
+    // The whole update ran first: the bulk update, then the reply
+    assert.equal(loaded.calls.bulk.length, 1);
+    assert.equal(loaded.calls.updateMode, 1);
+    assert.equal(loaded.calls.reboot.length, 0);
+    await pending();
+    assert.equal(loaded.calls.reboot.length, 1);
+    const [params] = loaded.calls.reboot[0] as [Record<string, unknown>];
+    assert.equal(params.serviceName, 'gluesync-conductor');
+    assert.equal(params.helperImage, 'helper:win');
+    const options = loaded.calls.bulk[0][4] as Record<string, unknown>;
+    assert.equal(typeof options.conductorRestarts, 'function');
+  });
+
+  it('restarts the Conductor after a failed update too, when the update asked for it', async () => {
+    const loaded = load({
+      conductorRestart: true,
+      bulkError: new Error('compose file unreadable'),
+    });
+    const reply = await run(loaded, { action: 'update', ids: [] });
+
+    assert.equal(reply.statusCode, 500);
+    await pending();
+    assert.equal(loaded.calls.reboot.length, 1);
+  });
+
+  it('does not restart the Conductor after an update that did not ask for it', async () => {
+    const loaded = load();
+    await run(loaded, { action: 'update', ids: [] });
+    await pending();
+    assert.equal(loaded.calls.reboot.length, 0);
+    assert.equal(loaded.calls.updateMode, 0);
   });
 
   it('defaults to the ga channel and copes with a compose file without services', async () => {
@@ -1824,6 +1871,29 @@ describe('doContainersAction update: pipelines in maintenance mode', () => {
       /No pipeline was put in maintenance mode: Core Hub has no pipeline API/,
     );
     assert.match(coreHub.message, /p1 \(Core Hub answered 500\)/);
+    assert.deepEqual(coreHub.resumedPipelines, []);
+  });
+
+  it('says the pipelines resume once the Conductor has restarted (Core Hub on Windows)', async () => {
+    const loaded = load({
+      bulk: coreHubUpdate({
+        service: 'gluesync-core-hub',
+        paused: ['p1', 'p2'],
+        resumed: [],
+        notResumed: [],
+        alreadyInMaintenance: [],
+        resumeAfterRestart: true,
+      }),
+    });
+
+    const reply = await run(loaded, { action: 'update', ids: [] });
+    const [coreHub] = body(reply).data.containers;
+
+    assert.equal(
+      coreHub.message,
+      'Core Hub updated. Resumed once the Conductor has restarted: p1, p2.',
+    );
+    assert.deepEqual(coreHub.pausedPipelines, ['p1', 'p2']);
     assert.deepEqual(coreHub.resumedPipelines, []);
   });
 
