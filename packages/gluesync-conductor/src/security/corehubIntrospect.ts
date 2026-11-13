@@ -38,7 +38,7 @@ const envInt = (name: string, defaultValue: number): number => {
   return Number.isNaN(parsed) ? defaultValue : parsed;
 };
 
-const shouldVerifySsl = (): boolean => {
+export const shouldVerifySsl = (): boolean => {
   const skip =
     process.env.SSL_SKIP_VERIFY?.toLowerCase() === 'true' ||
     process.env.SKIP_TLS_VERIFICATION?.toLowerCase() === 'true';
@@ -220,40 +220,44 @@ export const createIntrospector = (config: Readonly<IntrospectorConfig>) => {
 
 export type Introspector = ReturnType<typeof createIntrospector>;
 
-const buildDefaultIntrospector = (): Introspector => {
-  const urlProvider = (): string | null => {
-    const override = process.env.CONDUCTOR_COREHUB_URL_OVERRIDE;
-    if (override) {
-      return override;
+/**
+ * Where Core Hub's REST API answers: the override, else the address the SDK
+ * discovered, else the configured host. Also used by the update to reach the
+ * pipeline endpoints.
+ */
+export const resolveCoreHubUrl = (): string | null => {
+  const override = process.env.CONDUCTOR_COREHUB_URL_OVERRIDE;
+  if (override) {
+    return override;
+  }
+  try {
+    const discovered = getGluesyncSdkClient(getLogger()).coreHubUrl;
+    if (discovered) {
+      return discovered;
     }
-    try {
-      const discovered = getGluesyncSdkClient(getLogger()).coreHubUrl;
-      if (discovered) {
-        return discovered;
-      }
-    } catch {
-      /* fall through to the configured address */
-    }
-    // While the SDK is (re)connecting, the configured address is still where
-    // CoreHub lives; without it every request failed during a reconnect.
-    const configured =
-      process.env.GLUESYNC_HOST?.trim() || process.env.CORE_HUB_ADDRESS?.trim();
-    if (!configured) {
-      return null;
-    }
-    if (/^https?:\/\//.test(configured)) {
-      return configured;
-    }
-    const scheme =
-      process.env.SSL_ENABLED?.toLowerCase() === 'true' ? 'https' : 'http';
-    return `${scheme}://${configured}:1717`;
-  };
+  } catch {
+    /* fall through to the configured address */
+  }
+  // While the SDK is (re)connecting, the configured address is still where
+  // CoreHub lives; without it every request failed during a reconnect.
+  const configured =
+    process.env.GLUESYNC_HOST?.trim() || process.env.CORE_HUB_ADDRESS?.trim();
+  if (!configured) {
+    return null;
+  }
+  if (/^https?:\/\//.test(configured)) {
+    return configured;
+  }
+  const scheme =
+    process.env.SSL_ENABLED?.toLowerCase() === 'true' ? 'https' : 'http';
+  return `${scheme}://${configured}:1717`;
+};
 
-  return createIntrospector({
-    corehubUrlProvider: urlProvider,
+const buildDefaultIntrospector = (): Introspector =>
+  createIntrospector({
+    corehubUrlProvider: resolveCoreHubUrl,
     verifySsl: shouldVerifySsl(),
   });
-};
 
 const SINGLETON_KEY = 'default';
 const singletonMap = new Map<string, Introspector>();

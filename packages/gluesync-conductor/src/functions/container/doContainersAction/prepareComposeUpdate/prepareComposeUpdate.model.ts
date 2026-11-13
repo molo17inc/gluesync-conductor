@@ -5,7 +5,12 @@ export type PrepareComposeUpdate = (
   composeJson: RawComposeFile,
   requestIds: readonly string[],
   releaseChannel: ReleaseChannelTypes,
-  options?: Readonly<{ swarm?: boolean }>,
+  options?: Readonly<{
+    swarm?: boolean;
+    // Runs once the services to update are known, before the compose/stack
+    // file is written: the update stops here, nothing changed, if it throws
+    beforeImagesChange?: (effectiveIds: readonly string[]) => Promise<void>;
+  }>,
 ) => Promise<
   Readonly<{
     effectiveIds: readonly string[];

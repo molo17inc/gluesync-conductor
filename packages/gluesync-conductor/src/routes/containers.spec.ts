@@ -74,6 +74,47 @@ describe('POST /containers', () => {
     await app.close();
   });
 
+  it("keeps the pipelines of Core Hub's update item through the response schema", async () => {
+    const { app } = await buildApp(async () => ({
+      success: true,
+      data: {
+        containers: [
+          {
+            id: 'gluesync-core-hub',
+            status: 'OK',
+            message: 'updated',
+            pausedPipelines: ['p1'],
+            resumedPipelines: ['p1'],
+          },
+        ],
+      },
+    }));
+    const res = await post(app, { action: 'update', ids: [] });
+    assert.deepEqual(res.json().data.containers[0], {
+      id: 'gluesync-core-hub',
+      status: 'OK',
+      message: 'updated',
+      pausedPipelines: ['p1'],
+      resumedPipelines: ['p1'],
+    });
+    await app.close();
+  });
+
+  it('answers a refused pipeline drain with 409 and its details', async () => {
+    const { app } = await buildApp(async (_req, reply) => {
+      reply.code(409).send({
+        success: false,
+        error:
+          'Update refused: the running pipelines did not enter maintenance mode in time',
+        details: 'Not drained within 300s: p2. No image was changed.',
+      });
+    });
+    const res = await post(app, { action: 'update', ids: [] });
+    assert.equal(res.statusCode, 409);
+    assert.match(res.json().details, /No image was changed/);
+    await app.close();
+  });
+
   it('refuses an unknown release channel with 500 before running anything', async () => {
     const { app, seen } = await buildApp(async () => ({ success: true }));
     const res = await post(app, {

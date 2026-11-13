@@ -62,6 +62,15 @@ import {
   HELPER_IMAGE_28,
   HELPER_IMAGE_CLI,
 } from '../../../helpers/containerRuntime/helperImages';
+import createPipelineMaintenance, {
+  isPipelineMaintenanceEnabled,
+} from '../../../helpers/pipelineMaintenance/pipelineMaintenance';
+import { UpdateRefusedByPipelinesError } from '../../../helpers/pipelineMaintenance/pipelineMaintenance.errors';
+import {
+  conductorRestartRequested,
+  takeConductorRestart,
+} from '../../../helpers/conductorRestartAfterUpdate/conductorRestartAfterUpdate';
+import { UpdatePipelinesReport } from './handleUpdate/updateNormalBulk.model';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
@@ -465,12 +474,55 @@ const runUpdateBranch = async (
     });
   }
 
+  // Only this branch can include Core Hub: a Conductor self-update never
+  // pauses the pipelines, a modules-only update does not either (see
+  // updateNormalBulk)
   return updateNormalBulk(updateAction, composeJson, bulkIds, releaseChannel, {
     swarm,
     namespace,
     docker,
+    ...(isPipelineMaintenanceEnabled() && {
+      pipelineMaintenance: createPipelineMaintenance(),
+    }),
+    conductorRestarts: conductorRestartRequested,
   });
 };
+
+const pipelinesNote = (report: Readonly<UpdatePipelinesReport>): string => {
+  const unreachable = report.notPausedReason
+    ? ` No pipeline was put in maintenance mode: ${report.notPausedReason}.`
+    : '';
+  const afterRestart =
+    report.resumeAfterRestart && report.paused.length > 0
+      ? ` Resumed once the Conductor has restarted: ${report.paused.join(', ')}.`
+      : '';
+  const notResumed =
+    report.notResumed.length > 0
+      ? ` Still in maintenance mode, retried at the next Conductor start: ${report.notResumed
+          .map(n => `${n.id} (${n.error})`)
+          .join(', ')}.`
+      : '';
+  return `${unreachable}${afterRestart}${notResumed}`;
+};
+
+// The pipelines held for the update go on Core Hub's item: added fields only,
+// the item keeps its id, status and message
+const withPipelines = (
+  items: ReadonlyArray<DoContainersActionItem>,
+  report: Readonly<UpdatePipelinesReport> | undefined,
+): ReadonlyArray<DoContainersActionItem> =>
+  report
+    ? items.map(item =>
+        item.id === report.service
+          ? {
+              ...item,
+              message: `${item.message}${pipelinesNote(report)}`,
+              pausedPipelines: report.paused,
+              resumedPipelines: report.resumed,
+            }
+          : item,
+      )
+    : items;
 
 const performUpdate = async (
   req: Readonly<Request>,
@@ -573,6 +625,8 @@ const performUpdate = async (
   const ids =
     'id' in branchResult ? [branchResult.id] : branchResult.orderedIds;
   const { results } = branchResult;
+  const pipelines =
+    'pipelines' in branchResult ? branchResult.pipelines : undefined;
 
   req.log.debug(`Container action update: ${JSON.stringify(results)}`);
 
@@ -588,7 +642,7 @@ const performUpdate = async (
     data: {
       ...pruneOutcome,
       containers: [
-        ...toItems(ids, results),
+        ...withPipelines(toItems(ids, results), pipelines),
         ...refusedItems,
         ...grafanaItems,
         ...proxyItems,
@@ -857,6 +911,12 @@ const axiosDetails = (axiosError: Readonly<AxiosError>): string => {
 };
 
 const failureOutcome = async (error: unknown): Promise<Outcome> => {
+  // The running pipelines could not be put in maintenance mode: refused
+  // before any image changed, the ones paused already resumed
+  if (error instanceof UpdateRefusedByPipelinesError) {
+    return failed(error.statusCode, error.title, error.message);
+  }
+
   // A full disk or a corrupt compose file is this install's own problem.
   const local = buildLocalErrorReply(error, ACTION_FAILED);
 
@@ -935,7 +995,24 @@ const perform = async (req: Readonly<Request>): Promise<Outcome> => {
     }
 
     if (containerAction === 'update') {
-      return await performUpdate(req, requestIds, releaseChannel, orchestrator);
+      // Core Hub on Windows: this Conductor restarts to reach the new Core
+      // Hub, once the update is done and has replied, whatever its outcome
+      try {
+        return await performUpdate(
+          req,
+          requestIds,
+          releaseChannel,
+          orchestrator,
+        );
+      } finally {
+        if (takeConductorRestart()) {
+          rebootConductorAfterReply(
+            req,
+            process.env.CONDUCTOR_NAME || CONDUCTOR_NAME,
+            orchestrator,
+          );
+        }
+      }
     }
 
     if (containerAction === 'restart') {
