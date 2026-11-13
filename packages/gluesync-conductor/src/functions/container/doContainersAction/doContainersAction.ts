@@ -35,6 +35,7 @@ import handleGrafanaEmbeddedDashboard from '../../../helpers/handleGrafanaEmbedd
 import { HandleGrafanaEmbeddedDashboardResult } from '../../../helpers/handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard.model';
 import healProxyErrorPages from '../../../helpers/healProxyErrorPages/healProxyErrorPages';
 import healCourierInbound from '../../../helpers/healCourierInbound/healCourierInbound';
+import { takeConductorRestart } from '../../../helpers/conductorRestartAfterUpdate/conductorRestartAfterUpdate';
 import { getLogger } from '../../../utils/logger';
 import describeFailure from '../../../helpers/describeFailure/describeFailure';
 import buildDiagnosis from '../../../diagnosis/buildDiagnosis';
@@ -935,7 +936,24 @@ const perform = async (req: Readonly<Request>): Promise<Outcome> => {
     }
 
     if (containerAction === 'update') {
-      return await performUpdate(req, requestIds, releaseChannel, orchestrator);
+      // Core Hub on Windows: this Conductor restarts to reach the new Core
+      // Hub, once the update is done and has replied, whatever its outcome
+      try {
+        return await performUpdate(
+          req,
+          requestIds,
+          releaseChannel,
+          orchestrator,
+        );
+      } finally {
+        if (takeConductorRestart()) {
+          rebootConductorAfterReply(
+            req,
+            process.env.CONDUCTOR_NAME || CONDUCTOR_NAME,
+            orchestrator,
+          );
+        }
+      }
     }
 
     if (containerAction === 'restart') {

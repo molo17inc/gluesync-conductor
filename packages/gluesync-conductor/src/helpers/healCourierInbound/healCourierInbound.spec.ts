@@ -40,6 +40,12 @@ type Recorder = {
   recreateAttempts: number;
   /** Labels of the running container of each service; none: not running. */
   containers: Record<string, Record<string, string> | 'error'>;
+  /** What the Core Hub container shows once it has been recreated. */
+  coreHubAfterRecreate?: Record<string, string>;
+  /** Restarts of the Conductor the heal asked for (Windows). */
+  conductorRestarts: number;
+  /** The Chronos restart fails. */
+  failChronosRestart: boolean;
 };
 
 const COREHUB = [
@@ -89,6 +95,9 @@ const proxyHeals = (recorder: Recorder): unknown =>
           throw new Error('compose exploded');
         }
         recorder.commands.push([command, id, file, ...extra]);
+        if (id === 'gluesync-core-hub' && recorder.coreHubAfterRecreate) {
+          recorder.containers[id] = recorder.coreHubAfterRecreate;
+        }
         return '';
       },
     },
@@ -133,6 +142,26 @@ const proxyHeals = (recorder: Recorder): unknown =>
 const load = (recorder: Recorder): Subject =>
   loadWithStubs<Subject>(here('./healCourierInbound'), {
     [here('../healProxyErrorPages/healProxyErrorPages')]: proxyHeals(recorder),
+    'docker-compose': { restartAll: 'restartAll' },
+    [here('../dockerode/createActions/createActions')]: {
+      runCmd: async (
+        command: string,
+        id: string,
+        file: string,
+        extra: ReadonlyArray<string>,
+      ) => {
+        if (recorder.failChronosRestart) {
+          throw new Error('chronos would not restart');
+        }
+        recorder.commands.push([command, id, file, ...extra]);
+        return '';
+      },
+    },
+    [here('../conductorRestartAfterUpdate/conductorRestartAfterUpdate')]: {
+      requestConductorRestart: () => {
+        recorder.conductorRestarts += 1;
+      },
+    },
     [here('../orchestrator/getOrchestrator/getOrchestrator')]:
       orchestrator(recorder),
     [here('../../utils/docker/getDocker')]: { getDocker: () => ({}) },
@@ -177,6 +206,7 @@ describe('healCourierInbound', () => {
     const proxyDir = path.join(sandbox.dir, 'proxy');
     mkdirSync(proxyDir, { recursive: true });
     traefik = path.join(proxyDir, 'traefik.yml');
+    delete process.env.IS_WINDOWS;
     recorder = {
       commands: [],
       writes: [],
@@ -187,11 +217,21 @@ describe('healCourierInbound', () => {
       failComposeWrite: false,
       recreateAttempts: 0,
       containers: {},
+      conductorRestarts: 0,
+      failChronosRestart: false,
     };
     subject = load(recorder);
   });
 
-  after(() => sandbox.restore());
+  const originalWindows = process.env.IS_WINDOWS;
+  after(() => {
+    sandbox.restore();
+    if (originalWindows === undefined) {
+      delete process.env.IS_WINDOWS;
+    } else {
+      process.env.IS_WINDOWS = originalWindows;
+    }
+  });
 
   it('wires a kit made before Courier: backup first, every piece added, the proxy recreated once', async () => {
     setUp();
@@ -509,6 +549,113 @@ describe('healCourierInbound', () => {
         reason: 'wiring already in place',
       });
       assert.equal(recorder.commands.length, 2);
+    });
+
+    describe('on Windows', () => {
+      const restartOf = (service: string) => [
+        'restartAll',
+        service,
+        sandbox.compose,
+        '--no-deps',
+      ];
+
+      it('restarts Chronos and asks for the Conductor restart once the recreated Core Hub has the labels', async () => {
+        process.env.IS_WINDOWS = 'true';
+        setUp(
+          COURIER_TRAEFIK,
+          [...COREHUB, ...COURIER_LABEL_LIST],
+          WIRED_PORTS,
+        );
+        recorder.containers[CORE_HUB] = OLD_CONTAINER;
+        recorder.coreHubAfterRecreate = WIRED_CONTAINER;
+
+        const outcome = await subject.default({ reason: 'startup' });
+
+        assert.equal(outcome.coreHub, 'recreated');
+        assert.deepEqual(recorder.commands, [
+          recreateOf(CORE_HUB),
+          restartOf('gluesync-chronos'),
+        ]);
+        assert.equal(recorder.conductorRestarts, 1);
+        assert.ok(
+          recorder.logs.includes(
+            'info [courier-inbound] restarted gluesync-chronos to reach the recreated gluesync-core-hub',
+          ),
+        );
+
+        // Restarted, it finds the container wired: no recreate, no restart
+        const again = await subject.default({ reason: 'startup' });
+        assert.equal(again.coreHub, undefined);
+        assert.equal(recorder.conductorRestarts, 1);
+      });
+
+      it('asks for no restart when the recreated Core Hub still lacks the labels, so a restart cannot loop', async () => {
+        process.env.IS_WINDOWS = 'true';
+        setUp(
+          COURIER_TRAEFIK,
+          [...COREHUB, ...COURIER_LABEL_LIST],
+          WIRED_PORTS,
+        );
+        recorder.containers[CORE_HUB] = OLD_CONTAINER;
+
+        const outcome = await subject.default({ reason: 'startup' });
+
+        assert.equal(outcome.coreHub, 'recreated');
+        assert.deepEqual(recorder.commands, [recreateOf(CORE_HUB)]);
+        assert.equal(recorder.conductorRestarts, 0);
+        assert.ok(
+          recorder.logs.includes(
+            'warn [courier-inbound] gluesync-core-hub was recreated but does not show the courier route labels: the Conductor is not restarted for it',
+          ),
+        );
+      });
+
+      it('still asks for the Conductor restart when Chronos does not restart', async () => {
+        process.env.IS_WINDOWS = 'true';
+        setUp(
+          COURIER_TRAEFIK,
+          [...COREHUB, ...COURIER_LABEL_LIST],
+          WIRED_PORTS,
+        );
+        recorder.containers[CORE_HUB] = OLD_CONTAINER;
+        recorder.coreHubAfterRecreate = WIRED_CONTAINER;
+        recorder.failChronosRestart = true;
+
+        await subject.default({ reason: 'update' });
+
+        assert.equal(recorder.conductorRestarts, 1);
+        assert.ok(
+          recorder.logs.includes(
+            'warn [courier-inbound] could not restart gluesync-chronos',
+          ),
+        );
+      });
+
+      it('asks for nothing when Core Hub was not recreated', async () => {
+        process.env.IS_WINDOWS = 'true';
+        setUp(
+          COURIER_TRAEFIK,
+          [...COREHUB, ...COURIER_LABEL_LIST],
+          WIRED_PORTS,
+        );
+        recorder.containers[CORE_HUB] = WIRED_CONTAINER;
+
+        await subject.default({ reason: 'startup' });
+
+        assert.deepEqual(recorder.commands, []);
+        assert.equal(recorder.conductorRestarts, 0);
+      });
+    });
+
+    it('restarts nothing else on Linux', async () => {
+      setUp(COURIER_TRAEFIK, [...COREHUB, ...COURIER_LABEL_LIST], WIRED_PORTS);
+      recorder.containers[CORE_HUB] = OLD_CONTAINER;
+      recorder.coreHubAfterRecreate = WIRED_CONTAINER;
+
+      await subject.default({ reason: 'startup' });
+
+      assert.deepEqual(recorder.commands, [recreateOf(CORE_HUB)]);
+      assert.equal(recorder.conductorRestarts, 0);
     });
 
     it('is not touched on a wired install whose container has the labels', async () => {

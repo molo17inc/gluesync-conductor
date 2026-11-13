@@ -33,6 +33,8 @@ type Options = {
   conductorOnly?: { id: string; results: PromiseSettledResult<unknown>[] };
   bulk?: { orderedIds: string[]; results: PromiseSettledResult<unknown>[] };
   rebootError?: unknown;
+  // The update asked for this Conductor to restart after the reply
+  conductorRestart?: boolean;
   restartError?: unknown;
   // The full restart helper runs until this settles
   restartRuns?: Promise<void>;
@@ -178,6 +180,9 @@ const load = (options: Options = {}) => {
           calls.updateMode += 1;
         },
         isUpdateMode: () => options.updateMode ?? false,
+      },
+      [helper('conductorRestartAfterUpdate/conductorRestartAfterUpdate')]: {
+        takeConductorRestart: () => options.conductorRestart ?? false,
       },
       [helper('autoReboot/autoReboot')]: {
         autoReboot: async (...args: unknown[]) => {
@@ -829,6 +834,44 @@ describe('doContainersAction update', () => {
       odd: undefined,
     });
     assert.equal(loaded.calls.conductorOnly.length, 0);
+  });
+
+  it('restarts the Conductor once the update has replied, when the update asked for it (Core Hub recreated on Windows)', async () => {
+    const loaded = load({
+      conductorRestart: true,
+      env: { IS_WINDOWS: 'true', HELPER_IMAGE_BASE: 'helper:win' },
+    });
+    const reply = await run(loaded, { action: 'update', ids: [] });
+
+    assert.equal(reply.statusCode, 200);
+    assert.equal(loaded.calls.bulk.length, 1);
+    assert.equal(loaded.calls.updateMode, 1);
+    assert.equal(loaded.calls.reboot.length, 0);
+    await pending();
+    assert.equal(loaded.calls.reboot.length, 1);
+    const [params] = loaded.calls.reboot[0] as [Record<string, unknown>];
+    assert.equal(params.serviceName, 'gluesync-conductor');
+    assert.equal(params.helperImage, 'helper:win');
+  });
+
+  it('restarts the Conductor after a failed update too, when the update asked for it', async () => {
+    const loaded = load({
+      conductorRestart: true,
+      composeError: new Error('compose file unreadable'),
+    });
+    const reply = await run(loaded, { action: 'update', ids: [] });
+
+    assert.notEqual(reply.statusCode, 200);
+    await pending();
+    assert.equal(loaded.calls.reboot.length, 1);
+  });
+
+  it('does not restart the Conductor after an update that did not ask for it', async () => {
+    const loaded = load();
+    await run(loaded, { action: 'update', ids: [] });
+    await pending();
+    assert.equal(loaded.calls.reboot.length, 0);
+    assert.equal(loaded.calls.updateMode, 0);
   });
 
   it('defaults to the ga channel and copes with a compose file without services', async () => {

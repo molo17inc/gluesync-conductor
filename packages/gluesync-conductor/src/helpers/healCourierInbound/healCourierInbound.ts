@@ -1,3 +1,4 @@
+import { restartAll } from 'docker-compose';
 import { readFile } from 'node:fs/promises';
 import { isDeepStrictEqual } from 'node:util';
 
@@ -19,6 +20,8 @@ import {
   resolveTraefikConfPath,
 } from '../healTraefikConf/healTraefikConf';
 import { getDecidedOrchestrator } from '../orchestrator/getOrchestrator/getOrchestrator';
+import { runCmd } from '../dockerode/createActions/createActions';
+import { requestConductorRestart } from '../conductorRestartAfterUpdate/conductorRestartAfterUpdate';
 import applyCourierInboundPlan from './applyCourierInboundPlan';
 import { COURIER_LABELS } from './courierInboundWiring';
 import type {
@@ -38,6 +41,54 @@ const state = new Map<string, number>([['lastCoreHubRecreate', 0]]);
 
 const hasCourierLabels = (labels: Readonly<Record<string, string>>): boolean =>
   Object.entries(COURIER_LABELS).every(([key, value]) => labels[key] === value);
+
+// Windows NAT keeps the old DNS answer for a recreated container: Chronos and
+// this Conductor do not reach the new Core Hub until they restart, as after a
+// Core Hub update (restartWindowsDependentServices). Chronos restarts now, this
+// Conductor once its caller is done (index.ts at startup, the update handler
+// after its reply). Only when the new container has the labels: one that still
+// lacks them is recreated again at the next start, and restarting the
+// Conductor for it would never end.
+const reconnectOnWindows = async (coreHub: string): Promise<void> => {
+  if (process.env.IS_WINDOWS?.toLowerCase() !== 'true') {
+    return;
+  }
+
+  const logger = getLogger();
+  const running = await runningServiceLabels(coreHub);
+
+  if (!running || !hasCourierLabels(running)) {
+    logger.warn(
+      { service: coreHub },
+      `${LOG} ${coreHub} was recreated but does not show the courier route labels: the Conductor is not restarted for it`,
+    );
+    return;
+  }
+
+  const chronos = process.env.CHRONOS_NAME || 'gluesync-chronos';
+
+  await runCmd(
+    restartAll,
+    chronos,
+    process.env.DKR_COMPOSE_FILE || 'docker-compose.yml',
+    ['--no-deps'],
+  ).then(
+    () => {
+      logger.info(
+        { service: chronos },
+        `${LOG} restarted ${chronos} to reach the recreated ${coreHub}`,
+      );
+    },
+    (error: unknown) => {
+      logger.warn(
+        { service: chronos, error },
+        `${LOG} could not restart ${chronos}`,
+      );
+    },
+  );
+
+  requestConductorRestart();
+};
 
 const recreateCoreHub = async (
   coreHub: string,
@@ -77,6 +128,8 @@ const recreateCoreHub = async (
     { service: coreHub },
     `${LOG} ${coreHub} recreated, the courier route labels are applied`,
   );
+
+  await reconnectOnWindows(coreHub);
 
   return 'recreated';
 };
