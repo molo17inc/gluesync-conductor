@@ -338,7 +338,241 @@ describe('updateNormalBulk', () => {
     await swarm.bulk(async id => id, compose, [], 'ga', { swarm: true });
     await onCompose.bulk(async id => id, compose, [], 'ga', { docker });
 
-    assert.deepEqual(swarm.prepareCalls[0][3], { swarm: true });
-    assert.deepEqual(onCompose.prepareCalls[0][3], { swarm: false });
+    const optionsOf = (call: unknown[]) => call[3] as { swarm: boolean };
+    assert.equal(optionsOf(swarm.prepareCalls[0]).swarm, true);
+    assert.equal(optionsOf(onCompose.prepareCalls[0]).swarm, false);
+  });
+});
+
+describe('updateNormalBulk: pipelines in maintenance mode', () => {
+  type Events = string[];
+
+  const fakeMaintenance = (
+    events: Events,
+    pause: () => Promise<{
+      paused: string[];
+      alreadyInMaintenance: string[];
+      notPausedReason?: string;
+    }> = async () => ({ paused: ['p1', 'p2'], alreadyInMaintenance: ['p9'] }),
+  ) => ({
+    pause: async () => {
+      events.push('pause');
+      return pause();
+    },
+    resume: async () => {
+      events.push('resume');
+      return { resumed: ['p1', 'p2'], notResumed: [] };
+    },
+  });
+
+  // prepareComposeUpdate as it really behaves: the hook runs before the
+  // compose file is written, and a throw stops it there
+  const loadWithHook = (
+    effectiveIds: readonly string[],
+    events: Events,
+    outcomes: ReadonlyArray<RollbackOutcome> = [],
+  ) =>
+    loadWithStubs<{ default: UpdateNormalBulk }>(here('./updateNormalBulk'), {
+      [here('../prepareComposeUpdate/prepareComposeUpdate')]: {
+        default: async (
+          _compose: unknown,
+          _ids: unknown,
+          _channel: unknown,
+          options: {
+            beforeImagesChange?: (ids: readonly string[]) => Promise<void>;
+          },
+        ) => {
+          await options.beforeImagesChange?.(effectiveIds);
+          events.push('compose written');
+          return { effectiveIds, skipped: [] };
+        },
+      },
+      [here('../../../../helpers/serviceContainers/serviceContainers')]: {
+        fingerprintServices: async () => ({}),
+      },
+      [here('../../../../helpers/rollbackServiceImages/rollbackServiceImages')]:
+        {
+          default: async (rollbacks: ReadonlyArray<{ id: string }>) => {
+            events.push(`rollback ${rollbacks.map(r => r.id).join(',')}`);
+            return outcomes;
+          },
+        },
+    }).default;
+
+  it('pauses before the compose file changes and resumes as soon as Core Hub is stable, before the modules finish', async () => {
+    const events: Events = [];
+    const bulk = loadWithHook(['grafana', 'gluesync-core-hub'], events);
+    const grafanaDone = { release: () => {} };
+
+    const update = bulk(
+      async id => {
+        events.push(`update ${id}`);
+        if (id === 'grafana') {
+          await new Promise<void>(resolve => {
+            grafanaDone.release = resolve;
+          });
+        }
+        events.push(`stable ${id}`);
+        return `${id} done`;
+      },
+      compose,
+      [],
+      'ga',
+      { docker, pipelineMaintenance: fakeMaintenance(events) },
+    );
+    // Core Hub's pipelines come back while grafana is still updating
+    await new Promise(resolve => {
+      setImmediate(resolve);
+    });
+    assert.ok(events.includes('resume'));
+    assert.ok(!events.includes('stable grafana'));
+    grafanaDone.release();
+    const result = await update;
+
+    assert.deepEqual(events.slice(0, 2), ['pause', 'compose written']);
+    assert.ok(
+      events.indexOf('resume') > events.indexOf('stable gluesync-core-hub'),
+    );
+    // Resumed once
+    assert.equal(events.filter(e => e === 'resume').length, 1);
+    assert.deepEqual(result.pipelines, {
+      service: 'gluesync-core-hub',
+      paused: ['p1', 'p2'],
+      resumed: ['p1', 'p2'],
+      notResumed: [],
+      alreadyInMaintenance: ['p9'],
+    });
+  });
+
+  it('a failed Core Hub resumes its pipelines only after its rollback', async () => {
+    const events: Events = [];
+    const bulk = loadWithHook(['gluesync-core-hub'], events, [
+      { id: 'gluesync-core-hub', ok: true, image: 'hub:1' },
+    ]);
+
+    const result = await bulk(
+      async id => {
+        events.push(`update ${id}`);
+        throw new Error('gluesync-core-hub is not staying up after the update');
+      },
+      compose,
+      [],
+      'ga',
+      { docker, pipelineMaintenance: fakeMaintenance(events) },
+    );
+
+    assert.deepEqual(events, [
+      'pause',
+      'compose written',
+      'update gluesync-core-hub',
+      'rollback gluesync-core-hub',
+      'resume',
+    ]);
+    assert.equal(result.results[0].status, 'rejected');
+    assert.deepEqual(result.pipelines?.resumed, ['p1', 'p2']);
+  });
+
+  it('leaves the pipelines on disk for the restarted Conductor when it restarts after the reply (Core Hub on Windows)', async () => {
+    const events: Events = [];
+    const bulk = loadWithHook(['gluesync-core-hub'], events);
+
+    const result = await bulk(
+      async id => {
+        events.push(`update ${id}`);
+        return `${id} done`;
+      },
+      compose,
+      [],
+      'ga',
+      {
+        docker,
+        pipelineMaintenance: fakeMaintenance(events),
+        conductorRestarts: () => true,
+      },
+    );
+
+    assert.deepEqual(events, [
+      'pause',
+      'compose written',
+      'update gluesync-core-hub',
+      'rollback ',
+    ]);
+    assert.deepEqual(result.pipelines, {
+      service: 'gluesync-core-hub',
+      paused: ['p1', 'p2'],
+      resumed: [],
+      notResumed: [],
+      alreadyInMaintenance: ['p9'],
+      resumeAfterRestart: true,
+    });
+  });
+
+  it('a modules-only update does not pause the pipelines', async () => {
+    const events: Events = [];
+    const bulk = loadWithHook(['grafana', 'prometheus'], events);
+
+    const result = await bulk(async id => id, compose, [], 'ga', {
+      docker,
+      pipelineMaintenance: fakeMaintenance(events),
+    });
+
+    assert.ok(!events.includes('pause'));
+    assert.ok(!events.includes('resume'));
+    assert.equal(result.pipelines, undefined);
+  });
+
+  it('a refused pause stops the update before the compose file is written or any service touched', async () => {
+    const events: Events = [];
+    const bulk = loadWithHook(['gluesync-core-hub', 'grafana'], events);
+    const refusal = new Error('Update refused: drain timeout');
+
+    await assert.rejects(
+      bulk(
+        async id => {
+          events.push(`update ${id}`);
+          return id;
+        },
+        compose,
+        [],
+        'ga',
+        {
+          docker,
+          pipelineMaintenance: fakeMaintenance(events, async () => {
+            throw refusal;
+          }),
+        },
+      ),
+      refusal,
+    );
+    assert.deepEqual(events, ['pause']);
+  });
+
+  it('reports why nothing was paused (a Core Hub without the pipeline API)', async () => {
+    const events: Events = [];
+    const bulk = loadWithHook(['gluesync-core-hub'], events);
+
+    const result = await bulk(async id => id, compose, [], 'ga', {
+      docker,
+      pipelineMaintenance: fakeMaintenance(events, async () => ({
+        paused: [],
+        alreadyInMaintenance: [],
+        notPausedReason: 'Core Hub has no pipeline API',
+      })),
+    });
+
+    assert.equal(
+      result.pipelines?.notPausedReason,
+      'Core Hub has no pipeline API',
+    );
+  });
+
+  it('without a pipelineMaintenance (Conductor self-update path) nothing is paused', async () => {
+    const events: Events = [];
+    const bulk = loadWithHook(['gluesync-core-hub'], events);
+
+    const result = await bulk(async id => id, compose, [], 'ga', { docker });
+
+    assert.equal(result.pipelines, undefined);
+    assert.deepEqual(events, ['compose written', 'rollback ']);
   });
 });

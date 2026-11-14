@@ -34,6 +34,7 @@ import {
   composeEnvFileOptions,
 } from '../../containerRuntime/composeEnv';
 import { HELPER_IMAGE_CLI } from '../../containerRuntime/helperImages';
+import { requestConductorRestart } from '../../conductorRestartAfterUpdate/conductorRestartAfterUpdate';
 
 const dkrComposeFile = process.env.DKR_COMPOSE_FILE || 'docker-compose.yml';
 const CONDUCTOR_SERVICE = process.env.CONDUCTOR_NAME || 'gluesync-conductor';
@@ -198,27 +199,31 @@ const composeActions = ({
         return `Conductor ${id} updated and restarted.`;
       }
 
-      await runCmd(upAll, id, filename, ['--remove-orphans']);
+      // Core Hub on Windows: Windows NAT keeps the old DNS answer, so the
+      // dependent services restart to reach the new container. This
+      // Conductor restarts after the reply: asked for before `up`, because a
+      // rolled-back Core Hub is a new container too.
+      const windowsCoreHub = id === CORE_HUB_SERVICE && isWindows;
+      if (windowsCoreHub) {
+        requestConductorRestart();
+      }
 
-      // Special handling for core-hub on Windows only
-      // Windows NAT DNS cache requires dependent services to restart for reconnection
-      const restarted =
-        id === CORE_HUB_SERVICE && isWindows
-          ? await restartWindowsDependentServices(
-              docker,
-              runCmd,
-              filename,
-              id,
-              CHRONOS_SERVICE,
-              CONDUCTOR_SERVICE,
-            )
-          : `Agent ${id} updated and restarted.`;
+      await runCmd(upAll, id, filename, ['--remove-orphans']);
 
       // "up" succeeds even when the new image crashes right away: only report
       // success once the container has stayed up.
       await verifyServiceStable(docker, id);
 
-      return restarted;
+      return windowsCoreHub
+        ? restartWindowsDependentServices(
+            docker,
+            runCmd,
+            filename,
+            id,
+            CHRONOS_SERVICE,
+            CONDUCTOR_SERVICE,
+          )
+        : `Agent ${id} updated and restarted.`;
     },
   };
 };

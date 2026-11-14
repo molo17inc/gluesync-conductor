@@ -41,9 +41,14 @@ import syncCollectLogsScripts from './helpers/syncCollectLogsScripts/syncCollect
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
 import healProxyErrorPages from './helpers/healProxyErrorPages/healProxyErrorPages';
 import watchProxyStartEvents from './helpers/healProxyErrorPages/watchProxyStartEvents';
+import healCourierInbound from './helpers/healCourierInbound/healCourierInbound';
+import { takeConductorRestart } from './helpers/conductorRestartAfterUpdate/conductorRestartAfterUpdate';
 import { findProxyServiceName } from './helpers/healTraefikConf/healTraefikConf';
 import { readComposeFile } from './helpers/composeFile/readComposeFile/readComposeFile';
-import { isContainerActionRunning } from './functions/container/doContainersAction/doContainersAction';
+import {
+  enterContainerAction,
+  isContainerActionRunning,
+} from './functions/container/doContainersAction/doContainersAction';
 import awaitDecidedOrchestrator from './helpers/orchestrator/awaitDecidedOrchestrator/awaitDecidedOrchestrator';
 import reconcileSelfImage from './helpers/swarm/reconcileSelfImage/reconcileSelfImage';
 import { restoreSelfUpdateConfig } from './helpers/swarm/restoreUpdateConfig/restoreUpdateConfig';
@@ -51,7 +56,16 @@ import migrateRoutes from './routes/migrate';
 import envRoutes from './routes/env';
 import disasterRecoveryRoutes from './routes/disasterRecovery';
 import updateModeEmitter from './plugins/updateModeEmitter';
-import { startUpdateWatchdog } from './helpers/updateWatchdog/updateWatchdog';
+import {
+  resumePipelinesAfterRestart,
+  startUpdateWatchdog,
+} from './helpers/updateWatchdog/updateWatchdog';
+import createPipelineMaintenance, {
+  isPipelineMaintenanceEnabled,
+} from './helpers/pipelineMaintenance/pipelineMaintenance';
+import createCoreHubPipelinesApi from './helpers/pipelineMaintenance/coreHubPipelinesApi';
+import createPausedPipelinesStore from './helpers/pipelineMaintenance/pausedPipelinesStore';
+import { ResumeOutcome } from './helpers/pipelineMaintenance/pipelineMaintenance.model';
 import errorHandlerPlugin from './plugins/errorHandlerPlugin';
 import installShutdownHandlers from './helpers/installShutdownHandlers/installShutdownHandlers';
 import { getContainerEngine } from './helpers/containerRuntime/containerEngine';
@@ -137,6 +151,14 @@ const healProxyErrorPagesAtStartup = async (
     undefined,
   );
 
+  // The Courier inbound port 8090 the kits ship (traefik.yml, the proxy's
+  // ports, Core Hub's labels): only what is missing is added
+  await runStartupStep(
+    'courier inbound',
+    () => healCourierInbound({ reason: 'startup' }),
+    undefined,
+  );
+
   const proxyServiceName = await runStartupStep(
     'proxy error pages events',
     async () => findProxyServiceName(await readComposeFile({ raw: true })),
@@ -211,9 +233,19 @@ const healConductorAtStartup = async (
 
   logger.info(`[conductor-healer] ${verdict}`);
 
+  // Windows: the Courier heal recreated Core Hub, which this Conductor reaches
+  // only once restarted (Windows NAT keeps the old DNS answer)
+  const reachRecreatedCoreHub = takeConductorRestart();
+
+  if (reachRecreatedCoreHub) {
+    logger.info(
+      '[courier-inbound] restarting the Conductor to reach the recreated Core Hub',
+    );
+  }
+
   const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
 
-  if (rebootNeeded) {
+  if (rebootNeeded || reachRecreatedCoreHub) {
     const shouldUseWindows =
       process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 
@@ -228,6 +260,69 @@ const healConductorAtStartup = async (
       logger.error({ error }, '[conductor-healer] self-heal reboot failed');
     });
   }
+};
+
+// Pipelines an interrupted update left in maintenance mode (their list is on
+// disk) are resumed once Core Hub answers, in the background, under the same
+// lock as an update. Not on a Swarm worker: only the manager updates.
+const resumePipelinesAtStartup = (
+  orchestrator: DecidedOrchestrator,
+  logger: Readonly<ReturnType<typeof getLogger>>,
+): void => {
+  const updates =
+    orchestrator?.mode === 'compose' ||
+    (orchestrator?.mode === 'swarm' && orchestrator.isManager);
+
+  if (!updates || !isPipelineMaintenanceEnabled()) {
+    return;
+  }
+
+  const store = createPausedPipelinesStore();
+  const api = createCoreHubPipelinesApi();
+  const maintenance = createPipelineMaintenance({ api, store });
+
+  const resumeExclusively = async () => {
+    const result = new Map<'outcome', ResumeOutcome>();
+    const entry = enterContainerAction(
+      { action: 'resume-pipelines', ids: [] },
+      async () => {
+        const outcome = await maintenance.resume();
+        result.set('outcome', outcome);
+        return {
+          statusCode: 200,
+          body: { success: true, data: { containers: [] } },
+        };
+      },
+    );
+    if (entry.kind === 'busy') {
+      return undefined;
+    }
+    await entry.outcome;
+    const outcome = result.get('outcome');
+    return outcome
+      ? {
+          resumed: outcome.resumed,
+          notResumed: outcome.notResumed.map(n => n.id),
+        }
+      : undefined;
+  };
+
+  resumePipelinesAfterRestart({
+    hasPausedPipelines: async () =>
+      ((await store.read())?.pipelineIds.length ?? 0) > 0,
+    coreHubAnswers: () =>
+      api.listPipelines().then(
+        () => true,
+        () => false,
+      ),
+    isUpdateRunning: isContainerActionRunning,
+    resumeExclusively,
+  }).catch((error: unknown) => {
+    logger.error(
+      { error },
+      '[watchdog] resuming the pipelines of an interrupted update failed',
+    );
+  });
 };
 
 // What runs once the server listens: adoption and healing depend on the mode
@@ -253,6 +348,7 @@ const runPostListenStartup = async (
   const orchestrator = await awaitDecidedOrchestrator(docker);
 
   await prepareForOrchestrator(docker, orchestrator, logger);
+  resumePipelinesAtStartup(orchestrator, logger);
   await syncCollectLogsAtStartup(logger);
 
   if (orchestrator?.mode === 'compose') {

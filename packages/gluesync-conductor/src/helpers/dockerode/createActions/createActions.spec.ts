@@ -43,6 +43,7 @@ const load = ({
   const reboots: unknown[] = [];
   const logs: Array<{ level: string; args: unknown[] }> = [];
   const windowsRestarts: unknown[][] = [];
+  const restartRequests: number[] = [];
   let updateModes = 0;
 
   const compose =
@@ -111,6 +112,12 @@ const load = ({
           return 'windows restarted';
         },
       },
+      [here('../../conductorRestartAfterUpdate/conductorRestartAfterUpdate')]: {
+        // compose calls made before the restart was asked for
+        requestConductorRestart: () => {
+          restartRequests.push(calls.length);
+        },
+      },
       [here('../../orchestrator/getOrchestrator/getOrchestrator')]: {
         getDecidedOrchestrator: async () => orchestrator ?? undefined,
       },
@@ -167,6 +174,7 @@ const load = ({
     reboots,
     logs,
     windowsRestarts,
+    restartRequests,
     updateModes: () => updateModes,
   };
 };
@@ -355,6 +363,49 @@ describe('createActions', () => {
       ],
     );
     assert.deepEqual(stable, ['gluesync-core-hub']);
+  });
+
+  it('on Windows, asks for the Conductor restart before Core Hub is recreated, and never restarts it during the update', async () => {
+    process.env.IS_WINDOWS = 'true';
+    const { createActions, calls, restartRequests, reboots, updateModes } =
+      load();
+    await createActions({ docker }).update('gluesync-core-hub');
+    await flush();
+    await flush();
+    assert.deepEqual(calls, [
+      'pullAll --include-deps gluesync-core-hub',
+      'upAll --remove-orphans gluesync-core-hub',
+    ]);
+    // Asked for after the pull, before `up`
+    assert.deepEqual(restartRequests, [1]);
+    assert.deepEqual(reboots, []);
+    assert.equal(updateModes(), 0);
+  });
+
+  it('on Windows, a Core Hub that does not stay up fails the update before the dependent services restart', async () => {
+    process.env.IS_WINDOWS = 'true';
+    const stableError = new Error('core hub keeps crashing');
+    const { createActions, windowsRestarts, restartRequests, reboots } = load({
+      stableError,
+    });
+    await assert.rejects(
+      createActions({ docker }).update('gluesync-core-hub'),
+      stableError,
+    );
+    assert.deepEqual(windowsRestarts, []);
+    // The rollback recreates it too: the Conductor still restarts after the reply
+    assert.equal(restartRequests.length, 1);
+    assert.deepEqual(reboots, []);
+  });
+
+  it('asks for no Conductor restart for Core Hub on Linux, nor for another service on Windows', async () => {
+    const { createActions, restartRequests } = load();
+    await createActions({ docker }).update('gluesync-core-hub');
+    process.env.IS_WINDOWS = 'true';
+    const windows = load();
+    await windows.createActions({ docker }).update('grafana');
+    assert.deepEqual(restartRequests, []);
+    assert.deepEqual(windows.restartRequests, []);
   });
 
   it('ensures volume directories before starting a service on Windows', async () => {

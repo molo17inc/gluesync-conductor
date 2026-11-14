@@ -360,6 +360,18 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                         type: 'string',
                         description: 'Result message or error description',
                       },
+                      pausedPipelines: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description:
+                          "Core Hub's item of an update: the pipelines put in maintenance mode before its image changed (only those that were running)",
+                      },
+                      resumedPipelines: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description:
+                          "Core Hub's item of an update: the pipelines taken out of maintenance mode once Core Hub was stable again, or rolled back",
+                      },
                     },
                   },
                 },
@@ -369,7 +381,7 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
         },
         409: {
           description:
-            'A different container action is already running (one at a time). A retry of the same action on the same ids joins the running one instead. The Retry-After header says when to ask again. Also the answer to an update of Core Hub or Chronos (or "update all") on a host whose Core Hub runs in a disaster-recovery pair: nothing is pulled or written, `details` points to the upgrade procedure.',
+            'A different container action is already running (one at a time). A retry of the same action on the same ids joins the running one instead. The Retry-After header says when to ask again. Also the answer to an update of Core Hub or Chronos (or "update all") on a host whose Core Hub runs in a disaster-recovery pair: nothing is pulled or written, `details` points to the upgrade procedure. Also an update including Core Hub whose running pipelines did not enter maintenance mode within UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS: no image changed, the pipelines paused for it resumed, `details` names them.',
           type: 'object',
           properties: {
             success: { type: 'boolean', const: false },
@@ -382,9 +394,23 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
           },
           additionalProperties: false,
         },
+        502: {
+          description:
+            'An update including Core Hub, refused because Core Hub could not list its pipelines or put a running one in maintenance mode: no image changed, the pipelines paused for it resumed.',
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', const: false },
+            error: { type: 'string', description: 'Error message' },
+            details: {
+              type: 'string',
+              description: "Core Hub's answer, and what was resumed",
+            },
+          },
+          additionalProperties: true,
+        },
         503: {
           description:
-            'The conductor is updating itself (only restart is accepted until it is back), or the MOLO17 update service is down. `diagnosis.owner` tells which.',
+            'An update including Core Hub, refused because Core Hub did not answer within UPDATE_MAINTENANCE_DRAIN_TIMEOUT_SECONDS: no pipeline paused, no image changed (UPDATE_PIPELINE_MAINTENANCE=false updates a Core Hub that is down). Or: the conductor is updating itself (only restart is accepted until it is back), or the MOLO17 update service is down. `diagnosis.owner` tells which.',
           type: 'object',
           properties: {
             success: { type: 'boolean', const: false },

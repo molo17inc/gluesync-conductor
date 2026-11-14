@@ -9,7 +9,7 @@ const prepareComposeUpdate: PrepareComposeUpdate = async (
   composeJson,
   requestIds,
   releaseChannel,
-  { swarm = false } = {},
+  { swarm = false, beforeImagesChange } = {},
 ) => {
   const initialEffectiveIds: ReadonlyArray<string> =
     requestIds.length === 0
@@ -56,6 +56,8 @@ const prepareComposeUpdate: PrepareComposeUpdate = async (
   const effectiveIds = initialEffectiveIds.filter(
     id => !invalidModuleIds.includes(id) && !skipped.some(s => s.id === id),
   );
+
+  await beforeImagesChange?.(effectiveIds);
 
   await editUpdateImagesInComposeFile(
     effectiveIds,
