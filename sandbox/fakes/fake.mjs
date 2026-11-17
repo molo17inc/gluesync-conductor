@@ -370,6 +370,8 @@ const startCoreHub = async () => {
     wss.handleUpgrade(req, socket, head, ws => {
       const license = req.headers['module-license'];
       const tag = req.headers['module-tag'] || 'unknown';
+      // Which environment manages the installation (Conductor: docker, podman or swarm)
+      const environment = req.headers['module-environment'] || null;
       const id = randomUUID().slice(0, 8);
       const chaos = activeChaos('ws');
       if (!license || chaos?.reject) {
@@ -389,8 +391,8 @@ const startCoreHub = async () => {
           const token = `mod-${tag}-${Date.now()}`;
           state.moduleTokens[token] = tag;
           persist();
-          modules.set(id, { id, tag, connectedAt: new Date().toISOString(), pings: 0 });
-          log('info', 'module handshake', { tag, id, first: msg });
+          modules.set(id, { id, tag, environment, connectedAt: new Date().toISOString(), pings: 0 });
+          log('info', 'module handshake', { tag, id, environment, first: msg });
           ws.send(token);
           return;
         }
