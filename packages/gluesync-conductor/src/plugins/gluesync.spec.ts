@@ -27,9 +27,17 @@ const flush = (): Promise<void> =>
     setImmediate(resolve);
   });
 
-const load = (sdk: Sdk, sdkClientFails = false) => {
+const load = (
+  sdk: Sdk,
+  sdkClientFails = false,
+  environmentKnown: Promise<void> = Promise.resolve(),
+) => {
   const settings: Record<string, unknown> = {};
-  const state = { initializeCalls: 0, shutdownCalls: 0 };
+  const state = {
+    initializeCalls: 0,
+    shutdownCalls: 0,
+    reportedFor: [] as unknown[],
+  };
   const warns: { data: any; msg: string }[] = [];
   const client = {
     coreHubUrl: 'https://hub:1717',
@@ -60,6 +68,18 @@ const load = (sdk: Sdk, sdkClientFails = false) => {
           }
           return client;
         },
+      },
+      [path.resolve(
+        __dirname,
+        '../helpers/containerRuntime/managedEnvironment',
+      )]: {
+        reportManagedEnvironment: (target: unknown) => {
+          state.reportedFor.push(target);
+          return environmentKnown;
+        },
+      },
+      [path.resolve(__dirname, '../utils/docker/getDocker')]: {
+        getDocker: () => ({}),
       },
       [path.resolve(__dirname, '../utils/logger')]: {
         getLogger: () => ({
@@ -121,6 +141,26 @@ describe('gluesync plugin', () => {
     assert.ok(
       messages().includes('Gluesync SDK client connection closed successfully'),
     );
+  });
+
+  it('reports the managed environment and connects only once it is known', async () => {
+    const gate: { open?: () => void } = {};
+    const environmentKnown = new Promise<void>(resolve => {
+      gate.open = resolve;
+    });
+    const { app, subject, state, client } = load(
+      { initialize: [true] },
+      false,
+      environmentKnown,
+    );
+    const ready = app.register(fp(subject.default)).ready();
+    await flush();
+    assert.deepEqual(state.reportedFor, [client]);
+    assert.equal(state.initializeCalls, 0);
+    gate.open?.();
+    await ready;
+    assert.equal(state.initializeCalls, 1);
+    await app.close();
   });
 
   it('uses the default module tag', async () => {
