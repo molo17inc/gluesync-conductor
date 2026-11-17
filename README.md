@@ -283,8 +283,9 @@ The portal address defaults to `https://api.support.molo17.com` and can be
 overridden with `GLUESYNC_SUPPORT_API_URL` (a trailing slash is ignored).
 Requests (the API and the storage uploads) go through `PROXY_HTTPS` /
 `PROXY_HTTP` when they are set. The `User-Agent` and the upload's
-`source.version` carry `CONDUCTOR_VERSION`, which CI bakes into the image
-(`--build-arg CONDUCTOR_VERSION`); a build without it reports `unknown`.
+`source.version` carry `CONDUCTOR_VERSION` (CI bakes it into the image),
+otherwise the tag of the image the Conductor container runs, and `unknown`
+only outside a container with no `CONDUCTOR_VERSION`.
 
 **Response Format:**
 ```json
