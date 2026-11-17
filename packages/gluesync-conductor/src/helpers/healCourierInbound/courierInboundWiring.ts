@@ -1,22 +1,13 @@
 /**
  * The Courier inbound wiring of the kit: Core Hub serves the Courier pipeline
- * endpoints on a listener of its own, port 8090. Traefik ends TLS on an entry
- * point of the same port and forwards to it: over HTTPS from Core Hub 2.3.2.2,
- * where 8090 is Core Hub's own inbound server and serves HTTPS whenever Core
- * Hub has TLS (the kits always enable it); over plain HTTP before, where 8090
- * was the HTTP Source agent. No error-page middleware on it: the API answers
- * JSON, its errors included.
+ * endpoints on its own inbound server, port 8090, over HTTPS (Core Hub always
+ * has TLS in the kits). Traefik ends TLS on an entry point of the same port and
+ * forwards over HTTPS to Core Hub; the kits' global `serversTransport:
+ * insecureSkipVerify` covers its certificate, as for the route on 1717. No
+ * error-page middleware on it: the API answers JSON, its errors included.
  */
 
-import {
-  compareVersions,
-  imageTag,
-  parseTagVersion,
-} from '../healProxyErrorPages/errorPagesWiring';
-import type {
-  LabelSet,
-  TagVersion,
-} from '../healProxyErrorPages/errorPagesWiring';
+import type { LabelSet } from '../healProxyErrorPages/errorPagesWiring';
 
 /** `com.molo17.conductor.courier-inbound=false` on the reverse-proxy or Core Hub: leave the install alone. */
 export const OPT_OUT_LABEL = 'com.molo17.conductor.courier-inbound';
@@ -26,72 +17,35 @@ export const COURIER_ENTRYPOINT = 'courier';
 export const COURIER_ADDRESS = `:${COURIER_PORT}`;
 export const COURIER_PORT_MAPPING = `${COURIER_PORT}:${COURIER_PORT}`;
 
-// `${VAR:-8090}` and `${VAR-8090}` read as their default; any other `$` is unknown
-const withDefaults = (text: string): string =>
-  text.replaceAll(/\$\{[^}:-]*:?-([^}]*)\}/g, '$1');
-
-/**
- * The comment put above the entry point in traefik.yml. Not the kit's own
- * (which says plain HTTP): the scheme is up to Core Hub's labels, and changes
- * with its version.
- */
+/** The comment put above the entry point in traefik.yml (the kits' own still says plain HTTP). */
 export const COURIER_COMMENT: ReadonlyArray<string> = [
-  '# Courier inbound (Core Hub port 8090): HTTPS here; to Core Hub as its courier labels say',
-  '# (HTTPS from 2.3.2.2). No error-page middleware: the API answers JSON, its errors included.',
+  '# Courier inbound (Core Hub port 8090): HTTPS here and to Core Hub on the internal',
+  '# network. No error-page middleware: the API answers JSON, its errors included.',
 ];
 
 const ROUTER = `traefik.http.routers.${COURIER_ENTRYPOINT}`;
 const SERVICE = `traefik.http.services.${COURIER_ENTRYPOINT}`;
 
-/** How Traefik reaches Core Hub's port 8090. */
-export type CourierScheme = 'http' | 'https';
-
-/** The label that carries the scheme; the one label whose kit value changes with Core Hub. */
+/** The label that carries the scheme Traefik reaches Core Hub's port 8090 with. */
 export const COURIER_SCHEME_LABEL = `${SERVICE}.loadbalancer.server.scheme`;
 
-/** Values of the scheme label this code may have written: the others are the customer's. */
-export const KIT_SCHEMES: ReadonlyArray<string> = ['http', 'https'];
-
-/** Core Hub from this version serves port 8090 itself, over HTTPS. */
-export const HTTPS_INBOUND_FROM: TagVersion = [2, 3, 2, 2];
-
 /**
- * The scheme Core Hub of this image needs: `https` for 2.3.2.2 or later, and
- * for a tag that does not start with a dotted number (`latest`, `develop`,
- * none), `http` for an older version. `${VAR:-x}` reads as its default.
+ * The scheme the kits and this heal wrote before Core Hub served 8090 itself
+ * (the HTTP Source agent, plain HTTP): an install that has it is moved to
+ * https, not left alone as customised.
  */
-export const courierScheme = (coreHubImage: unknown): CourierScheme => {
-  const version =
-    typeof coreHubImage === 'string'
-      ? parseTagVersion(imageTag(withDefaults(coreHubImage)))
-      : undefined;
+export const OLD_KIT_SCHEME = 'http';
 
-  return version !== undefined &&
-    compareVersions(version, HTTPS_INBOUND_FROM) < 0
-    ? 'http'
-    : 'https';
-};
-
-/** Labels of the Core Hub service, for the scheme its version needs. */
-export const courierLabels = (scheme: CourierScheme): LabelSet => ({
+/** Labels of the Core Hub service. */
+export const COURIER_LABELS: LabelSet = {
   [`${ROUTER}.entrypoints`]: COURIER_ENTRYPOINT,
   [`${ROUTER}.rule`]: 'PathPrefix(`/api-inbound/`)',
   [`${ROUTER}.tls`]: 'true',
   [`${ROUTER}.service`]: COURIER_ENTRYPOINT,
   [`${SERVICE}.loadbalancer.server.port`]: String(COURIER_PORT),
-  [COURIER_SCHEME_LABEL]: scheme,
+  [COURIER_SCHEME_LABEL]: 'https',
   [`${SERVICE}.loadbalancer.passhostheader`]: 'true',
-});
-
-/** The courier labels a Core Hub service of the compose file needs, from its image. */
-export const courierLabelsFor = (coreHub: unknown): LabelSet =>
-  courierLabels(
-    courierScheme(
-      typeof coreHub === 'object' && coreHub !== null
-        ? (coreHub as Readonly<Record<string, unknown>>).image
-        : undefined,
-    ),
-  );
+};
 
 /** A label of the courier router or service, ours or not. */
 export const isCourierRouterLabel = (key: string): boolean =>
@@ -108,6 +62,10 @@ export type PortMapping = Readonly<{
   container: Range | 'unknown';
   protocol: string;
 }>;
+
+// `${VAR:-8090}` and `${VAR-8090}` read as their default; any other `$` is unknown
+const withDefaults = (text: string): string =>
+  text.replaceAll(/\$\{[^}:-]*:?-([^}]*)\}/g, '$1');
 
 const parseRange = (text: string): Range | 'unknown' => {
   const match = /^(\d+)(?:-(\d+))?$/.exec(withDefaults(text).trim());

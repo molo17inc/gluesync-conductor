@@ -23,8 +23,7 @@ import { getDecidedOrchestrator } from '../orchestrator/getOrchestrator/getOrche
 import { runCmd } from '../dockerode/createActions/createActions';
 import { requestConductorRestart } from '../conductorRestartAfterUpdate/conductorRestartAfterUpdate';
 import applyCourierInboundPlan from './applyCourierInboundPlan';
-import { courierLabelsFor } from './courierInboundWiring';
-import type { LabelSet } from '../healProxyErrorPages/errorPagesWiring';
+import { COURIER_LABELS } from './courierInboundWiring';
 import type {
   CoreHubRecreate,
   HealCourierInbound,
@@ -40,11 +39,8 @@ const COREHUB_COOLDOWN_MS = 5 * 60_000;
 
 const state = new Map<string, number>([['lastCoreHubRecreate', 0]]);
 
-const hasCourierLabels = (
-  labels: Readonly<Record<string, string>>,
-  wanted: LabelSet,
-): boolean =>
-  Object.entries(wanted).every(([key, value]) => labels[key] === value);
+const hasCourierLabels = (labels: Readonly<Record<string, string>>): boolean =>
+  Object.entries(COURIER_LABELS).every(([key, value]) => labels[key] === value);
 
 // Windows NAT keeps the old DNS answer for a recreated container: Chronos and
 // this Conductor do not reach the new Core Hub until they restart, as after a
@@ -53,10 +49,7 @@ const hasCourierLabels = (
 // after its reply). Only when the new container has the labels: one that still
 // lacks them is recreated again at the next start, and restarting the
 // Conductor for it would never end.
-const reconnectOnWindows = async (
-  coreHub: string,
-  wanted: LabelSet,
-): Promise<void> => {
+const reconnectOnWindows = async (coreHub: string): Promise<void> => {
   if (process.env.IS_WINDOWS?.toLowerCase() !== 'true') {
     return;
   }
@@ -64,7 +57,7 @@ const reconnectOnWindows = async (
   const logger = getLogger();
   const running = await runningServiceLabels(coreHub);
 
-  if (!running || !hasCourierLabels(running, wanted)) {
+  if (!running || !hasCourierLabels(running)) {
     logger.warn(
       { service: coreHub },
       `${LOG} ${coreHub} was recreated but does not show the courier route labels: the Conductor is not restarted for it`,
@@ -99,7 +92,6 @@ const reconnectOnWindows = async (
 
 const recreateCoreHub = async (
   coreHub: string,
-  wanted: LabelSet,
   trigger: string,
 ): Promise<CoreHubRecreate> => {
   const logger = getLogger();
@@ -137,7 +129,7 @@ const recreateCoreHub = async (
     `${LOG} ${coreHub} recreated, the courier route labels are applied`,
   );
 
-  await reconnectOnWindows(coreHub, wanted);
+  await reconnectOnWindows(coreHub);
 
   return 'recreated';
 };
@@ -153,17 +145,13 @@ const syncCoreHub = async (
   composeJson: Readonly<Record<string, any>>,
   trigger: string,
 ): Promise<CoreHubRecreate | undefined> => {
-  const service = composeJson.services?.[coreHub];
-  // The labels for the Core Hub version of the compose file: the update target
-  const wanted = courierLabelsFor(service);
-
-  if (!hasCourierLabels(labelMap(labelsOf(service)), wanted)) {
+  if (!hasCourierLabels(labelMap(labelsOf(composeJson.services?.[coreHub])))) {
     return undefined;
   }
 
   const running = await runningServiceLabels(coreHub);
 
-  if (!running || hasCourierLabels(running, wanted)) {
+  if (!running || hasCourierLabels(running)) {
     return undefined;
   }
 
@@ -177,7 +165,7 @@ const syncCoreHub = async (
     return 'cooldown';
   }
 
-  return recreateCoreHub(coreHub, wanted, trigger);
+  return recreateCoreHub(coreHub, trigger);
 };
 
 const skipped = (reason: string): HealCourierInboundOutcome => ({

@@ -25,9 +25,9 @@ import {
   COURIER_ADDRESS,
   COURIER_COMMENT,
   COURIER_ENTRYPOINT,
+  COURIER_LABELS,
   COURIER_PORT_MAPPING,
   COURIER_SCHEME_LABEL,
-  courierLabelsFor,
 } from './courierInboundWiring';
 import type { CourierInboundPlan } from './healCourierInbound.model';
 
@@ -102,38 +102,29 @@ export const addProxyPort = (
     ports: [...(service.ports ?? []), COURIER_PORT_MAPPING],
   }));
 
-/**
- * The courier labels Core Hub does not have yet, for the scheme its image
- * needs, appended in the form the file uses.
- */
+/** The courier labels Core Hub does not have yet, appended in the form the file uses. */
 export const addCoreHubLabels = (
   composeJson: ComposeJson,
   coreHub: string,
-): ComposeJson => {
-  const service = composeJson.services?.[coreHub];
-
-  return withServiceLabels(
+): ComposeJson =>
+  withServiceLabels(
     composeJson,
     coreHub,
-    appendLabels(labelsOf(service), courierLabelsFor(service)),
+    appendLabels(labelsOf(composeJson.services?.[coreHub]), COURIER_LABELS),
   );
-};
 
-/** The scheme label of Core Hub set, where it is, to the one its image needs. */
+/** The scheme label of Core Hub set to https where it is, in the form the file uses. */
 export const setCoreHubScheme = (
   composeJson: ComposeJson,
   coreHub: string,
-): ComposeJson => {
-  const service = composeJson.services?.[coreHub];
-
-  return withServiceLabels(
+): ComposeJson =>
+  withServiceLabels(
     composeJson,
     coreHub,
-    replaceLabelValues(labelsOf(service), {
-      [COURIER_SCHEME_LABEL]: courierLabelsFor(service)[COURIER_SCHEME_LABEL],
+    replaceLabelValues(labelsOf(composeJson.services?.[coreHub]), {
+      [COURIER_SCHEME_LABEL]: COURIER_LABELS[COURIER_SCHEME_LABEL],
     }),
   );
-};
 
 export type CourierFiles = Readonly<{
   composeJson: ComposeJson;

@@ -3,8 +3,8 @@ import type { HealReason } from '../healProxyErrorPages/healProxyErrorPages.mode
 
 /**
  * A piece of the wiring, each added on its own when it is missing. `Core Hub
- * scheme`: the scheme label is the kit value for another Core Hub version
- * (`http` on 2.3.2.2 or later, `https` before) and is set to the right one.
+ * scheme`: the scheme label still has the old kit value `http` and is set to
+ * `https` (Core Hub serves 8090 over HTTPS since 2.3.2.2).
  */
 export type CourierInboundPart =
   | 'entry point'

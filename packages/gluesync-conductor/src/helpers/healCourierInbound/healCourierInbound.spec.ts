@@ -15,11 +15,9 @@ import { after, beforeEach, describe, it } from 'node:test';
 import { makeComposeSandbox } from '../../testing/composeSandbox';
 import {
   COURIER_LABEL_LIST,
-  COURIER_LABEL_LIST_HTTPS,
   COURIER_TRAEFIK,
-  HTTPS_COREHUB_IMAGE,
+  OLD_COURIER_LABEL_LIST,
   PRE_COURIER_TRAEFIK,
-  PRE_HTTPS_COREHUB_IMAGE,
   courierKitComposeText,
 } from '../../testing/courierInboundFixtures';
 import loadWithStubs from '../../testing/loadWithStubs';
@@ -181,9 +179,8 @@ describe('healCourierInbound', () => {
   const composeText = (
     coreHubLabels: ReadonlyArray<string> = COREHUB,
     proxyPorts: ReadonlyArray<string> = ['80:80', '443:443'],
-    coreHubImage: string = PRE_HTTPS_COREHUB_IMAGE,
   ) =>
-    courierKitComposeText(coreHubLabels, proxyPorts, coreHubImage).replaceAll(
+    courierKitComposeText(coreHubLabels, proxyPorts).replaceAll(
       '/PROXY_DIR',
       path.dirname(traefik),
     );
@@ -192,10 +189,9 @@ describe('healCourierInbound', () => {
     traefikText = PRE_COURIER_TRAEFIK,
     coreHubLabels: ReadonlyArray<string> = COREHUB,
     proxyPorts: ReadonlyArray<string> = ['80:80', '443:443'],
-    coreHubImage: string = PRE_HTTPS_COREHUB_IMAGE,
   ) => {
     writeFileSync(traefik, traefikText);
-    sandbox.setCompose(composeText(coreHubLabels, proxyPorts, coreHubImage));
+    sandbox.setCompose(composeText(coreHubLabels, proxyPorts));
   };
 
   const backups = (): string[] => {
@@ -521,116 +517,44 @@ describe('healCourierInbound', () => {
       '--force-recreate',
     ];
 
-    describe('on Core Hub 2.3.2.2, which serves 8090 over HTTPS', () => {
-      const HTTPS_CONTAINER = Object.fromEntries(
-        COURIER_LABEL_LIST_HTTPS.map(l => [
+    it('moves an install wired with http to https: the label rewritten in place, Core Hub recreated, the proxy not', async () => {
+      setUp(
+        COURIER_TRAEFIK,
+        [...COREHUB, ...OLD_COURIER_LABEL_LIST],
+        WIRED_PORTS,
+      );
+      recorder.containers[CORE_HUB] = Object.fromEntries(
+        OLD_COURIER_LABEL_LIST.map(l => [
           l.slice(0, l.indexOf('=')),
           l.slice(l.indexOf('=') + 1),
         ]),
       );
+      recorder.coreHubAfterRecreate = WIRED_CONTAINER;
 
-      it('moves an http install to https: the label rewritten in place, Core Hub recreated, the proxy not', async () => {
-        // an install wired for 2.3.0.0, its compose file just updated to 2.3.2.2
-        setUp(
-          COURIER_TRAEFIK,
-          [...COREHUB, ...COURIER_LABEL_LIST],
-          WIRED_PORTS,
-          HTTPS_COREHUB_IMAGE,
-        );
-        recorder.containers[CORE_HUB] = WIRED_CONTAINER;
-        recorder.coreHubAfterRecreate = HTTPS_CONTAINER;
+      const outcome = await subject.default({ reason: 'update' });
 
-        const outcome = await subject.default({ reason: 'update' });
+      assert.equal(outcome.action, 'add');
+      assert.equal(outcome.reason, 'courier scheme http, Core Hub needs https');
+      assert.deepEqual(outcome.missing, ['Core Hub scheme']);
+      assert.equal(outcome.recreated, undefined);
+      assert.equal(outcome.coreHub, 'recreated');
+      assert.ok(outcome.backupDir);
+      assert.deepEqual(recorder.commands, [recreateOf(CORE_HUB)]);
 
-        assert.equal(outcome.action, 'add');
-        assert.equal(
-          outcome.reason,
-          'courier scheme http, Core Hub 2.3.2.2 needs https',
-        );
-        assert.deepEqual(outcome.missing, ['Core Hub scheme']);
-        assert.equal(outcome.recreated, undefined);
-        assert.equal(outcome.coreHub, 'recreated');
-        assert.ok(outcome.backupDir);
-        assert.deepEqual(recorder.commands, [recreateOf(CORE_HUB)]);
+      // only the scheme line changed, the comments of the file kept
+      assert.equal(
+        sandbox.read(sandbox.compose),
+        composeText([...COREHUB, ...COURIER_LABEL_LIST], WIRED_PORTS),
+      );
+      assert.equal(sandbox.read(traefik), COURIER_TRAEFIK);
 
-        // only the scheme line changed, the comments of the file kept
-        assert.equal(
-          sandbox.read(sandbox.compose),
-          composeText(
-            [...COREHUB, ...COURIER_LABEL_LIST_HTTPS],
-            WIRED_PORTS,
-            HTTPS_COREHUB_IMAGE,
-          ),
-        );
-        assert.equal(sandbox.read(traefik), COURIER_TRAEFIK);
-
-        // the recreated container has the https labels: nothing more
-        const again = await subject.default({ reason: 'startup' });
-        assert.deepEqual(again, {
-          action: 'none',
-          reason: 'wiring already in place',
-        });
-        assert.equal(recorder.commands.length, 1);
+      // the recreated container has the https labels: nothing more
+      const again = await subject.default({ reason: 'startup' });
+      assert.deepEqual(again, {
+        action: 'none',
+        reason: 'wiring already in place',
       });
-
-      it('wires a kit made before Courier with https from the start', async () => {
-        setUp(PRE_COURIER_TRAEFIK, COREHUB, undefined, HTTPS_COREHUB_IMAGE);
-        recorder.containers[CORE_HUB] = OLD_CONTAINER;
-        recorder.coreHubAfterRecreate = HTTPS_CONTAINER;
-
-        const outcome = await subject.default({ reason: 'startup' });
-
-        assert.deepEqual(outcome.missing, [
-          'entry point',
-          'proxy port',
-          'Core Hub labels',
-        ]);
-        assert.equal(outcome.coreHub, 'recreated');
-        COURIER_LABEL_LIST_HTTPS.forEach(label =>
-          assert.ok(
-            sandbox.read(sandbox.compose).includes(`      - ${label}\n`),
-            label,
-          ),
-        );
-        assert.ok(!sandbox.read(sandbox.compose).includes('scheme=http\n'));
-      });
-
-      it('recreates a running Core Hub that still has http when the file already says https', async () => {
-        setUp(
-          COURIER_TRAEFIK,
-          [...COREHUB, ...COURIER_LABEL_LIST_HTTPS],
-          WIRED_PORTS,
-          HTTPS_COREHUB_IMAGE,
-        );
-        recorder.containers[CORE_HUB] = WIRED_CONTAINER;
-
-        const outcome = await subject.default({ reason: 'startup' });
-
-        assert.deepEqual(outcome, {
-          action: 'none',
-          reason: 'wiring already in place',
-          coreHub: 'recreated',
-        });
-        assert.deepEqual(recorder.writes, []);
-      });
-
-      it('leaves a 2.3.0.0 install with http as it is', async () => {
-        setUp(
-          COURIER_TRAEFIK,
-          [...COREHUB, ...COURIER_LABEL_LIST],
-          WIRED_PORTS,
-        );
-        recorder.containers[CORE_HUB] = WIRED_CONTAINER;
-
-        const outcome = await subject.default({ reason: 'update' });
-
-        assert.deepEqual(outcome, {
-          action: 'none',
-          reason: 'wiring already in place',
-        });
-        assert.deepEqual(recorder.commands, []);
-        assert.deepEqual(recorder.writes, []);
-      });
+      assert.equal(recorder.commands.length, 1);
     });
 
     it('is recreated once, after the proxy, when the heal adds its labels', async () => {

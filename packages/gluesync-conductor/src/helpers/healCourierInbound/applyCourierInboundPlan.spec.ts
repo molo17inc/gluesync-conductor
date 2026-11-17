@@ -5,9 +5,8 @@ import { parse } from 'yaml';
 import { USER_TRAEFIK } from '../../testing/proxyErrorPagesFixtures';
 import {
   COURIER_LABEL_LIST,
-  COURIER_LABEL_LIST_HTTPS,
   COURIER_TRAEFIK,
-  HTTPS_COREHUB_IMAGE,
+  OLD_COURIER_LABEL_LIST,
   PRE_COURIER_TRAEFIK,
   courierKitCompose,
 } from '../../testing/courierInboundFixtures';
@@ -40,8 +39,8 @@ describe('addCourierEntryPoint', () => {
   it('adds it after the last entry point of a customer file, only those lines', () => {
     const next = addCourierEntryPoint(USER_TRAEFIK);
     const added = `        - ratelimit@file
-  # Courier inbound (Core Hub port 8090): HTTPS here; to Core Hub as its courier labels say
-  # (HTTPS from 2.3.2.2). No error-page middleware: the API answers JSON, its errors included.
+  # Courier inbound (Core Hub port 8090): HTTPS here and to Core Hub on the internal
+  # network. No error-page middleware: the API answers JSON, its errors included.
   courier:
     address: ":8090"
 `;
@@ -59,8 +58,8 @@ describe('addCourierEntryPoint', () => {
 
     assert.equal(
       addCourierEntryPoint(four),
-      `${four}    # Courier inbound (Core Hub port 8090): HTTPS here; to Core Hub as its courier labels say
-    # (HTTPS from 2.3.2.2). No error-page middleware: the API answers JSON, its errors included.
+      `${four}    # Courier inbound (Core Hub port 8090): HTTPS here and to Core Hub on the internal
+    # network. No error-page middleware: the API answers JSON, its errors included.
     courier:
         address: ":8090"
 `,
@@ -164,39 +163,26 @@ describe('compose transforms', () => {
       ),
     });
   });
-
-  it('appends the https labels to Core Hub 2.3.2.2', () => {
-    const added = addCoreHubLabels(
-      courierKitCompose({
-        coreHubImage: HTTPS_COREHUB_IMAGE,
-        coreHubLabels: ['traefik.enable=true'],
-      }),
-      'gluesync-core-hub',
-    );
-
-    assert.deepEqual(added.services?.['gluesync-core-hub']?.labels, [
-      'traefik.enable=true',
-      ...COURIER_LABEL_LIST_HTTPS,
-    ]);
-  });
 });
 
 describe('setCoreHubScheme', () => {
   const SCHEME = 'traefik.http.services.courier.loadbalancer.server.scheme';
 
-  it('sets the scheme where it is, in a list, and changes nothing else', () => {
-    const labels = ['traefik.enable=true', ...COURIER_LABEL_LIST, 'x=y'];
+  it('sets https where http is, in a list, and changes nothing else', () => {
     const set = setCoreHubScheme(
       courierKitCompose({
-        coreHubImage: HTTPS_COREHUB_IMAGE,
-        coreHubLabels: labels,
+        coreHubLabels: [
+          'traefik.enable=true',
+          ...OLD_COURIER_LABEL_LIST,
+          'x=y',
+        ],
       }),
       'gluesync-core-hub',
     );
 
     assert.deepEqual(set.services?.['gluesync-core-hub']?.labels, [
       'traefik.enable=true',
-      ...COURIER_LABEL_LIST_HTTPS,
+      ...COURIER_LABEL_LIST,
       'x=y',
     ]);
   });
@@ -204,7 +190,6 @@ describe('setCoreHubScheme', () => {
   it('sets it in the map form too', () => {
     const set = setCoreHubScheme(
       courierKitCompose({
-        coreHubImage: HTTPS_COREHUB_IMAGE,
         coreHubLabels: { 'traefik.enable': 'true', [SCHEME]: 'http' },
       }),
       'gluesync-core-hub',
@@ -216,30 +201,12 @@ describe('setCoreHubScheme', () => {
     });
   });
 
-  it('sets http back for a Core Hub before 2.3.2.2', () => {
-    const set = setCoreHubScheme(
-      courierKitCompose({
-        coreHubLabels: [...COURIER_LABEL_LIST_HTTPS],
-      }),
-      'gluesync-core-hub',
-    );
-
-    assert.deepEqual(
-      set.services?.['gluesync-core-hub']?.labels,
-      COURIER_LABEL_LIST,
-    );
-  });
-
   it('adds no scheme label that is not there', () => {
-    const compose = courierKitCompose({
-      coreHubImage: HTTPS_COREHUB_IMAGE,
-      coreHubLabels: ['traefik.enable=true'],
-    });
-
     assert.deepEqual(
-      setCoreHubScheme(compose, 'gluesync-core-hub').services?.[
-        'gluesync-core-hub'
-      ]?.labels,
+      setCoreHubScheme(
+        courierKitCompose({ coreHubLabels: ['traefik.enable=true'] }),
+        'gluesync-core-hub',
+      ).services?.['gluesync-core-hub']?.labels,
       ['traefik.enable=true'],
     );
   });
@@ -288,11 +255,10 @@ describe('applyCourierInboundPlan', () => {
     );
   });
 
-  it('moves an http install to https once its Core Hub is 2.3.2.2, and the result plans nothing more', () => {
+  it('moves an http install to https, and the result plans nothing more', () => {
     const before = {
       composeJson: courierKitCompose({
-        coreHubImage: HTTPS_COREHUB_IMAGE,
-        coreHubLabels: ['traefik.enable=true', ...COURIER_LABEL_LIST],
+        coreHubLabels: ['traefik.enable=true', ...OLD_COURIER_LABEL_LIST],
         proxyPorts: ['80:80', '443:443', '8090:8090'],
       }),
       traefikYamlText: COURIER_TRAEFIK,
@@ -308,9 +274,9 @@ describe('applyCourierInboundPlan', () => {
     assert.equal(applied.files.traefikYamlText, COURIER_TRAEFIK);
     assert.deepEqual(
       applied.files.composeJson.services?.['gluesync-core-hub']?.labels,
-      ['traefik.enable=true', ...COURIER_LABEL_LIST_HTTPS],
+      ['traefik.enable=true', ...COURIER_LABEL_LIST],
     );
-    assert.deepEqual(
+    assert.equal(
       planCourierInbound({
         composeJson: applied.files.composeJson,
         proxyServiceName: 'reverse-proxy',
