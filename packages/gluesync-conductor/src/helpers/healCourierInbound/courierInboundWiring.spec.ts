@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { COURIER_LABEL_LIST } from '../../testing/courierInboundFixtures';
 import {
-  COURIER_LABELS,
+  COURIER_LABEL_LIST,
+  COURIER_LABEL_LIST_HTTPS,
+} from '../../testing/courierInboundFixtures';
+import {
   bindsHostPort,
   containerPortFor,
+  courierLabels,
+  courierLabelsFor,
+  courierScheme,
   isCourierRouterLabel,
   portMappings,
   publishesContainerPort,
@@ -17,11 +22,30 @@ const one = (port: unknown) => {
   return mapping;
 };
 
+const asList = (labels: Readonly<Record<string, string>>) =>
+  Object.entries(labels).map(([key, value]) => `${key}=${value}`);
+
 describe('the courier labels', () => {
-  it('are exactly the ones the kit puts on Core Hub', () => {
+  it('are exactly the ones the kit puts on Core Hub, with http', () => {
+    assert.deepEqual(asList(courierLabels('http')), COURIER_LABEL_LIST);
+  });
+
+  it('differ only in the scheme for https', () => {
+    assert.deepEqual(asList(courierLabels('https')), COURIER_LABEL_LIST_HTTPS);
+  });
+
+  it('follow the Core Hub image of the service', () => {
     assert.deepEqual(
-      Object.entries(COURIER_LABELS).map(([key, value]) => `${key}=${value}`),
+      asList(courierLabelsFor({ image: 'molo17/gluesync-core-hub:2.3.2.2' })),
+      COURIER_LABEL_LIST_HTTPS,
+    );
+    assert.deepEqual(
+      asList(courierLabelsFor({ image: 'molo17/gluesync-core-hub:2.3.2.1' })),
       COURIER_LABEL_LIST,
+    );
+    assert.deepEqual(
+      asList(courierLabelsFor(undefined)),
+      COURIER_LABEL_LIST_HTTPS,
     );
   });
 
@@ -32,6 +56,44 @@ describe('the courier labels', () => {
     );
     assert.ok(!isCourierRouterLabel('traefik.http.routers.courierx.rule'));
     assert.ok(!isCourierRouterLabel('traefik.http.routers.corehub.rule'));
+  });
+});
+
+describe('courierScheme', () => {
+  it('is https from Core Hub 2.3.2.2', () => {
+    [
+      'molo17/gluesync-core-hub:2.3.2.2',
+      'molo17/gluesync-core-hub:2.3.2.10',
+      'molo17/gluesync-core-hub:2.3.3.0',
+      'molo17/gluesync-core-hub:2.4',
+      'molo17/gluesync-core-hub:3.0.0.0-debian',
+      'molo17/gluesync-core-hub:2.3.2.2.develop',
+      'registry.example.com:5000/molo17/gluesync-core-hub:2.3.2.2',
+      'molo17/gluesync-core-hub:2.3.2.2@sha256:abc',
+    ].forEach(image => assert.equal(courierScheme(image), 'https', image));
+  });
+
+  it('is http before 2.3.2.2', () => {
+    [
+      'molo17/gluesync-core-hub:2.3.2.1',
+      'molo17/gluesync-core-hub:2.3.2',
+      'molo17/gluesync-core-hub:2.3.0.0',
+      'molo17/gluesync-core-hub:2.2.11.6-debian',
+      'molo17/gluesync-core-hub:2.3.1.0-win-ltsc2022',
+      `molo17/gluesync-core-hub:\${COREHUB_TAG:-2.3.0.0}`,
+    ].forEach(image => assert.equal(courierScheme(image), 'http', image));
+  });
+
+  it('is https for a tag that is not a dotted number, or no tag at all', () => {
+    [
+      'molo17/gluesync-core-hub:latest',
+      'molo17/gluesync-core-hub:develop',
+      'molo17/gluesync-core-hub:v2.3.0.0',
+      'molo17/gluesync-core-hub',
+      `molo17/gluesync-core-hub:\${COREHUB_TAG}`,
+      undefined,
+      42,
+    ].forEach(image => assert.equal(courierScheme(image), 'https', `${image}`));
   });
 });
 

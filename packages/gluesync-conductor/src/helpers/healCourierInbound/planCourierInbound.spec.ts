@@ -3,7 +3,9 @@ import { describe, it } from 'node:test';
 
 import {
   COURIER_LABEL_LIST,
+  COURIER_LABEL_LIST_HTTPS,
   COURIER_TRAEFIK,
+  HTTPS_COREHUB_IMAGE,
   PRE_COURIER_TRAEFIK,
   courierKitCompose,
 } from '../../testing/courierInboundFixtures';
@@ -72,6 +74,105 @@ describe('planCourierInbound', () => {
         .missing,
       ['Core Hub labels'],
     );
+  });
+
+  describe('the courier scheme, by Core Hub version', () => {
+    const SCHEME_LABEL =
+      'traefik.http.services.courier.loadbalancer.server.scheme';
+
+    it('is http before 2.3.2.2: the kit wiring is in place', () => {
+      assert.deepEqual(wired().action, 'none');
+    });
+
+    it('is https from 2.3.2.2: a kit made for it is in place', () => {
+      assert.deepEqual(
+        wired({
+          coreHubImage: HTTPS_COREHUB_IMAGE,
+          coreHubLabels: [...COREHUB, ...COURIER_LABEL_LIST_HTTPS],
+        }),
+        { action: 'none', reason: WIRING_IN_PLACE, missing: [] },
+      );
+    });
+
+    it('moves an http install to https once Core Hub is 2.3.2.2 (not customised)', () => {
+      assert.deepEqual(wired({ coreHubImage: HTTPS_COREHUB_IMAGE }), {
+        action: 'add',
+        reason: 'courier scheme http, Core Hub 2.3.2.2 needs https',
+        missing: ['Core Hub scheme'],
+      });
+    });
+
+    it('moves it for a tag that is not a dotted number too', () => {
+      assert.deepEqual(
+        wired({ coreHubImage: 'molo17/gluesync-core-hub:latest' }).missing,
+        ['Core Hub scheme'],
+      );
+    });
+
+    it('moves https back to http for a Core Hub before 2.3.2.2 (a rollback)', () => {
+      assert.deepEqual(
+        wired({ coreHubLabels: [...COREHUB, ...COURIER_LABEL_LIST_HTTPS] }),
+        {
+          action: 'add',
+          reason: 'courier scheme https, Core Hub 2.3.0.0 needs http',
+          missing: ['Core Hub scheme'],
+        },
+      );
+    });
+
+    it('adds the https labels to Core Hub 2.3.2.2 that has none', () => {
+      assert.deepEqual(plan({ coreHubImage: HTTPS_COREHUB_IMAGE }).missing, [
+        'entry point',
+        'proxy port',
+        'Core Hub labels',
+      ]);
+    });
+
+    it('sets the scheme and adds the labels that are missing, in one plan', () => {
+      const someLabels = [
+        ...COREHUB,
+        ...COURIER_LABEL_LIST.filter(l => l.includes('.services.')),
+      ];
+
+      assert.deepEqual(
+        wired({ coreHubImage: HTTPS_COREHUB_IMAGE, coreHubLabels: someLabels }),
+        {
+          action: 'add',
+          reason:
+            'missing: Core Hub labels; courier scheme http, Core Hub 2.3.2.2 needs https',
+          missing: ['Core Hub labels', 'Core Hub scheme'],
+        },
+      );
+    });
+
+    it('reads the scheme in the map form too', () => {
+      const asMap = Object.fromEntries(
+        WIRED_COREHUB.map(l => [
+          l.slice(0, l.indexOf('=')),
+          l.slice(l.indexOf('=') + 1),
+        ]),
+      );
+
+      assert.equal(asMap[SCHEME_LABEL], 'http');
+      assert.deepEqual(
+        wired({ coreHubImage: HTTPS_COREHUB_IMAGE, coreHubLabels: asMap })
+          .missing,
+        ['Core Hub scheme'],
+      );
+    });
+
+    it('leaves an opted-out install alone whatever its scheme', () => {
+      assert.equal(
+        wired({
+          coreHubImage: HTTPS_COREHUB_IMAGE,
+          coreHubLabels: [
+            ...WIRED_COREHUB,
+            'com.molo17.conductor.courier-inbound=false',
+          ],
+        }).action,
+        'none',
+      );
+    });
   });
 
   it('takes the labels in the map form too', () => {
@@ -378,6 +479,21 @@ describe('planCourierInbound', () => {
           ],
         }),
         /^label customised: traefik\.http\.routers\.courier\.rule$/,
+      );
+    });
+
+    it('when the courier scheme is not one of the kit values', () => {
+      skipped(
+        wired({
+          coreHubImage: HTTPS_COREHUB_IMAGE,
+          coreHubLabels: [
+            ...COREHUB,
+            ...COURIER_LABEL_LIST.map(l =>
+              l.replace(/scheme=http$/, 'scheme=h2c'),
+            ),
+          ],
+        }),
+        /^label customised: traefik\.http\.services\.courier\.loadbalancer\.server\.scheme$/,
       );
     });
 

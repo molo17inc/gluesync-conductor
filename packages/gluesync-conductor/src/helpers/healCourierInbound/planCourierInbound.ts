@@ -3,7 +3,10 @@ import { isMap, isScalar } from 'yaml';
 import type { RawComposeService } from '../../models/composeFile.model';
 import { parseYamlMapping } from '../healTraefikConf/yamlLikeSource';
 import type { ParsedYaml } from '../healTraefikConf/yamlLikeSource';
-import { TRAEFIK_ENABLE } from '../healProxyErrorPages/errorPagesWiring';
+import {
+  TRAEFIK_ENABLE,
+  imageTag,
+} from '../healProxyErrorPages/errorPagesWiring';
 import {
   labelEntries,
   labelMap,
@@ -11,11 +14,13 @@ import {
 } from '../healProxyErrorPages/composeLabelTransforms';
 import {
   COURIER_ENTRYPOINT,
-  COURIER_LABELS,
   COURIER_PORT,
+  COURIER_SCHEME_LABEL,
+  KIT_SCHEMES,
   OPT_OUT_LABEL,
   bindsHostPort,
   containerPortFor,
+  courierLabelsFor,
   isCourierRouterLabel,
   portMappings,
   publishesContainerPort,
@@ -183,7 +188,17 @@ const proxyPortFacts = (
   };
 };
 
-type LabelFacts = Readonly<{ missing: boolean; problem?: string }>;
+type LabelFacts = Readonly<{
+  missing: boolean;
+  /** The scheme label is the kit value for another Core Hub version. */
+  scheme?: Readonly<{ from: string; to: string }>;
+  problem?: string;
+}>;
+
+// The kit value of the scheme for another Core Hub version is ours to change:
+// http written for Core Hub before 2.3.2.2, https after an update to it
+const isOtherKitScheme = (key: string, value: string): boolean =>
+  key === COURIER_SCHEME_LABEL && KIT_SCHEMES.includes(value);
 
 const coreHubLabelFacts = (
   input: PlanCourierInboundInput,
@@ -199,8 +214,14 @@ const coreHubLabelFacts = (
     };
   }
 
-  const customised = Object.entries(COURIER_LABELS)
-    .filter(([key, value]) => key in labels && labels[key] !== value)
+  const expected = courierLabelsFor(coreHub);
+  const customised = Object.entries(expected)
+    .filter(
+      ([key, value]) =>
+        key in labels &&
+        labels[key] !== value &&
+        !isOtherKitScheme(key, labels[key]),
+    )
     .map(([key]) => key);
 
   if (customised.length > 0) {
@@ -225,7 +246,34 @@ const coreHubLabelFacts = (
     };
   }
 
-  return { missing: Object.keys(COURIER_LABELS).some(key => !(key in labels)) };
+  const scheme = labels[COURIER_SCHEME_LABEL];
+  const wanted = expected[COURIER_SCHEME_LABEL];
+
+  return {
+    missing: Object.keys(expected).some(key => !(key in labels)),
+    ...(scheme !== undefined &&
+      scheme !== wanted && { scheme: { from: scheme, to: wanted } }),
+  };
+};
+
+// `missing: a, b` and/or `courier scheme http, Core Hub 2.3.2.2 needs https`
+const planReason = (
+  missing: ReadonlyArray<CourierInboundPart>,
+  coreHub: RawComposeService,
+  scheme: LabelFacts['scheme'],
+): string => {
+  const added = missing.filter(part => part !== 'Core Hub scheme');
+  const tag =
+    typeof coreHub.image === 'string' ? imageTag(coreHub.image) : undefined;
+
+  return [
+    ...(added.length > 0 ? [`missing: ${added.join(', ')}`] : []),
+    ...(scheme
+      ? [
+          `courier scheme ${scheme.from}, Core Hub ${tag ?? 'latest'} needs ${scheme.to}`,
+        ]
+      : []),
+  ].join('; ');
 };
 
 // ------------------------------------------------------------------- plan
@@ -293,11 +341,16 @@ const planCourierInbound: PlanCourierInbound = input => {
     ...(entryPoint.present ? [] : ['entry point' as const]),
     ...(port.present ? [] : ['proxy port' as const]),
     ...(labels.missing ? ['Core Hub labels' as const] : []),
+    ...(labels.scheme ? ['Core Hub scheme' as const] : []),
   ];
 
   return missing.length === 0
     ? none(WIRING_IN_PLACE)
-    : { action: 'add', reason: `missing: ${missing.join(', ')}`, missing };
+    : {
+        action: 'add',
+        reason: planReason(missing, coreHub, labels.scheme),
+        missing,
+      };
 };
 
 export default planCourierInbound;

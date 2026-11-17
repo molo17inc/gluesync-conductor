@@ -372,7 +372,7 @@ const healCourierInboundAfterUpdate = async (
           {
             id: outcome.recreated ?? coreHubName,
             status: 'OK',
-            message: `Courier inbound port 8090 wired (${outcome.reason})${outcome.recreated ? '; reverse-proxy recreated' : ''}.`,
+            message: `Courier inbound port 8090 ${outcome.missing?.every(part => part === 'Core Hub scheme') ? 'route updated' : 'wired'} (${outcome.reason})${outcome.recreated ? '; reverse-proxy recreated' : ''}.`,
           },
         ]
       : [];

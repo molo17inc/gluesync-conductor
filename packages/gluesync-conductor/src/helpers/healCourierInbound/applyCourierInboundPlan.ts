@@ -5,6 +5,7 @@ import type {
 import {
   appendLabels,
   labelsOf,
+  replaceLabelValues,
   withServiceLabels,
 } from '../healProxyErrorPages/composeLabelTransforms';
 import { parseYamlMapping } from '../healTraefikConf/yamlLikeSource';
@@ -24,8 +25,9 @@ import {
   COURIER_ADDRESS,
   COURIER_COMMENT,
   COURIER_ENTRYPOINT,
-  COURIER_LABELS,
   COURIER_PORT_MAPPING,
+  COURIER_SCHEME_LABEL,
+  courierLabelsFor,
 } from './courierInboundWiring';
 import type { CourierInboundPlan } from './healCourierInbound.model';
 
@@ -100,16 +102,38 @@ export const addProxyPort = (
     ports: [...(service.ports ?? []), COURIER_PORT_MAPPING],
   }));
 
-/** The courier labels Core Hub does not have yet, appended in the form the file uses. */
+/**
+ * The courier labels Core Hub does not have yet, for the scheme its image
+ * needs, appended in the form the file uses.
+ */
 export const addCoreHubLabels = (
   composeJson: ComposeJson,
   coreHub: string,
-): ComposeJson =>
-  withServiceLabels(
+): ComposeJson => {
+  const service = composeJson.services?.[coreHub];
+
+  return withServiceLabels(
     composeJson,
     coreHub,
-    appendLabels(labelsOf(composeJson.services?.[coreHub]), COURIER_LABELS),
+    appendLabels(labelsOf(service), courierLabelsFor(service)),
   );
+};
+
+/** The scheme label of Core Hub set, where it is, to the one its image needs. */
+export const setCoreHubScheme = (
+  composeJson: ComposeJson,
+  coreHub: string,
+): ComposeJson => {
+  const service = composeJson.services?.[coreHub];
+
+  return withServiceLabels(
+    composeJson,
+    coreHub,
+    replaceLabelValues(labelsOf(service), {
+      [COURIER_SCHEME_LABEL]: courierLabelsFor(service)[COURIER_SCHEME_LABEL],
+    }),
+  );
+};
 
 export type CourierFiles = Readonly<{
   composeJson: ComposeJson;
@@ -144,14 +168,17 @@ const applyCourierInboundPlan = (
   const withPort = has('proxy port')
     ? addProxyPort(files.composeJson, proxy)
     : files.composeJson;
+  const withScheme = has('Core Hub scheme')
+    ? setCoreHubScheme(withPort, coreHub)
+    : withPort;
 
   return {
     ok: true,
     files: {
       traefikYamlText: traefik.text,
       composeJson: has('Core Hub labels')
-        ? addCoreHubLabels(withPort, coreHub)
-        : withPort,
+        ? addCoreHubLabels(withScheme, coreHub)
+        : withScheme,
     },
   };
 };
