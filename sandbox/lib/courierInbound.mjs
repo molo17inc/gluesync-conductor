@@ -30,13 +30,13 @@ export const COURIER_LABELS = {
   'traefik.http.routers.courier.tls': 'true',
   'traefik.http.routers.courier.service': 'courier',
   'traefik.http.services.courier.loadbalancer.server.port': '8090',
-  'traefik.http.services.courier.loadbalancer.server.scheme': 'http',
+  'traefik.http.services.courier.loadbalancer.server.scheme': 'https',
   'traefik.http.services.courier.loadbalancer.passhostheader': 'true',
 };
 
-// What the conductor adds to traefik.yml: the kit's two comment lines and the entry point
+// What the conductor adds to traefik.yml: its two comment lines and the entry point
 const ENTRY_POINT_BLOCK =
-  /^( *)# Courier inbound \(HTTP Source agent in Core Hub\).*\n\1# internal network\..*\n\1courier:\n\1 +address: ":8090"\n/m;
+  /^( *)# Courier inbound \(Core Hub port 8090\).*\n\1# network\..*\n\1courier:\n\1 +address: ":8090"\n/m;
 const PORT_LINE = /^ +- "?8090:8090"?\n/m;
 const COURIER_LABEL_LINE = /^ +- "?traefik\.http\.(routers|services)\.courier\..*\n/gm;
 

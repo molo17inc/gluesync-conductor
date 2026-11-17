@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   COURIER_LABEL_LIST,
   COURIER_TRAEFIK,
+  OLD_COURIER_LABEL_LIST,
   PRE_COURIER_TRAEFIK,
   courierKitCompose,
 } from '../../testing/courierInboundFixtures';
@@ -72,6 +73,62 @@ describe('planCourierInbound', () => {
         .missing,
       ['Core Hub labels'],
     );
+  });
+
+  describe('the old kit scheme, http', () => {
+    it('is moved to https, not left alone as customised', () => {
+      assert.deepEqual(
+        wired({ coreHubLabels: [...COREHUB, ...OLD_COURIER_LABEL_LIST] }),
+        {
+          action: 'add',
+          reason: 'courier scheme http, Core Hub needs https',
+          missing: ['Core Hub scheme'],
+        },
+      );
+    });
+
+    it('is moved with the labels that are missing, in one plan', () => {
+      assert.deepEqual(
+        wired({
+          coreHubLabels: [
+            ...COREHUB,
+            ...OLD_COURIER_LABEL_LIST.filter(l => l.includes('.services.')),
+          ],
+        }),
+        {
+          action: 'add',
+          reason:
+            'missing: Core Hub labels; courier scheme http, Core Hub needs https',
+          missing: ['Core Hub labels', 'Core Hub scheme'],
+        },
+      );
+    });
+
+    it('is read in the map form too', () => {
+      const asMap = Object.fromEntries(
+        [...COREHUB, ...OLD_COURIER_LABEL_LIST].map(l => [
+          l.slice(0, l.indexOf('=')),
+          l.slice(l.indexOf('=') + 1),
+        ]),
+      );
+
+      assert.deepEqual(wired({ coreHubLabels: asMap }).missing, [
+        'Core Hub scheme',
+      ]);
+    });
+
+    it('is left alone on an opted-out install', () => {
+      assert.equal(
+        wired({
+          coreHubLabels: [
+            ...COREHUB,
+            ...OLD_COURIER_LABEL_LIST,
+            'com.molo17.conductor.courier-inbound=false',
+          ],
+        }).action,
+        'none',
+      );
+    });
   });
 
   it('takes the labels in the map form too', () => {
@@ -378,6 +435,20 @@ describe('planCourierInbound', () => {
           ],
         }),
         /^label customised: traefik\.http\.routers\.courier\.rule$/,
+      );
+    });
+
+    it('when the courier scheme is neither https nor the old http', () => {
+      skipped(
+        wired({
+          coreHubLabels: [
+            ...COREHUB,
+            ...COURIER_LABEL_LIST.map(l =>
+              l.replace(/scheme=https$/, 'scheme=h2c'),
+            ),
+          ],
+        }),
+        /^label customised: traefik\.http\.services\.courier\.loadbalancer\.server\.scheme$/,
       );
     });
 

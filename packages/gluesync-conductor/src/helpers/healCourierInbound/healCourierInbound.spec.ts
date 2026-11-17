@@ -16,6 +16,7 @@ import { makeComposeSandbox } from '../../testing/composeSandbox';
 import {
   COURIER_LABEL_LIST,
   COURIER_TRAEFIK,
+  OLD_COURIER_LABEL_LIST,
   PRE_COURIER_TRAEFIK,
   courierKitComposeText,
 } from '../../testing/courierInboundFixtures';
@@ -515,6 +516,46 @@ describe('healCourierInbound', () => {
       '--no-deps',
       '--force-recreate',
     ];
+
+    it('moves an install wired with http to https: the label rewritten in place, Core Hub recreated, the proxy not', async () => {
+      setUp(
+        COURIER_TRAEFIK,
+        [...COREHUB, ...OLD_COURIER_LABEL_LIST],
+        WIRED_PORTS,
+      );
+      recorder.containers[CORE_HUB] = Object.fromEntries(
+        OLD_COURIER_LABEL_LIST.map(l => [
+          l.slice(0, l.indexOf('=')),
+          l.slice(l.indexOf('=') + 1),
+        ]),
+      );
+      recorder.coreHubAfterRecreate = WIRED_CONTAINER;
+
+      const outcome = await subject.default({ reason: 'update' });
+
+      assert.equal(outcome.action, 'add');
+      assert.equal(outcome.reason, 'courier scheme http, Core Hub needs https');
+      assert.deepEqual(outcome.missing, ['Core Hub scheme']);
+      assert.equal(outcome.recreated, undefined);
+      assert.equal(outcome.coreHub, 'recreated');
+      assert.ok(outcome.backupDir);
+      assert.deepEqual(recorder.commands, [recreateOf(CORE_HUB)]);
+
+      // only the scheme line changed, the comments of the file kept
+      assert.equal(
+        sandbox.read(sandbox.compose),
+        composeText([...COREHUB, ...COURIER_LABEL_LIST], WIRED_PORTS),
+      );
+      assert.equal(sandbox.read(traefik), COURIER_TRAEFIK);
+
+      // the recreated container has the https labels: nothing more
+      const again = await subject.default({ reason: 'startup' });
+      assert.deepEqual(again, {
+        action: 'none',
+        reason: 'wiring already in place',
+      });
+      assert.equal(recorder.commands.length, 1);
+    });
 
     it('is recreated once, after the proxy, when the heal adds its labels', async () => {
       setUp();

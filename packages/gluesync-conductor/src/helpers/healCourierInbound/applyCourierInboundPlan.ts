@@ -5,6 +5,7 @@ import type {
 import {
   appendLabels,
   labelsOf,
+  replaceLabelValues,
   withServiceLabels,
 } from '../healProxyErrorPages/composeLabelTransforms';
 import { parseYamlMapping } from '../healTraefikConf/yamlLikeSource';
@@ -26,6 +27,7 @@ import {
   COURIER_ENTRYPOINT,
   COURIER_LABELS,
   COURIER_PORT_MAPPING,
+  COURIER_SCHEME_LABEL,
 } from './courierInboundWiring';
 import type { CourierInboundPlan } from './healCourierInbound.model';
 
@@ -111,6 +113,19 @@ export const addCoreHubLabels = (
     appendLabels(labelsOf(composeJson.services?.[coreHub]), COURIER_LABELS),
   );
 
+/** The scheme label of Core Hub set to https where it is, in the form the file uses. */
+export const setCoreHubScheme = (
+  composeJson: ComposeJson,
+  coreHub: string,
+): ComposeJson =>
+  withServiceLabels(
+    composeJson,
+    coreHub,
+    replaceLabelValues(labelsOf(composeJson.services?.[coreHub]), {
+      [COURIER_SCHEME_LABEL]: COURIER_LABELS[COURIER_SCHEME_LABEL],
+    }),
+  );
+
 export type CourierFiles = Readonly<{
   composeJson: ComposeJson;
   traefikYamlText: string;
@@ -144,14 +159,17 @@ const applyCourierInboundPlan = (
   const withPort = has('proxy port')
     ? addProxyPort(files.composeJson, proxy)
     : files.composeJson;
+  const withScheme = has('Core Hub scheme')
+    ? setCoreHubScheme(withPort, coreHub)
+    : withPort;
 
   return {
     ok: true,
     files: {
       traefikYamlText: traefik.text,
       composeJson: has('Core Hub labels')
-        ? addCoreHubLabels(withPort, coreHub)
-        : withPort,
+        ? addCoreHubLabels(withScheme, coreHub)
+        : withScheme,
     },
   };
 };
