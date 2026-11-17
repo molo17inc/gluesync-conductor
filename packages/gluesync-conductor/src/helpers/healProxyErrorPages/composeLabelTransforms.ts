@@ -82,6 +82,35 @@ export const appendLabels = (
 };
 
 /**
+ * Sets the value of the labels of `values` that are there, in the form the
+ * file uses and where they are; a label that is not there is not added.
+ */
+export const replaceLabelValues = (
+  labels: LabelsInput,
+  values: LabelSet,
+): LabelContainer | undefined => {
+  if (!labels) {
+    return undefined;
+  }
+
+  const valueOf = (key: string): string | undefined =>
+    Object.hasOwn(values, key) ? values[key] : undefined;
+
+  if (isList(labels)) {
+    return labels.map(entry => {
+      const split = splitEntry(entry);
+      const value = split ? valueOf(split[0]) : undefined;
+
+      return split && value !== undefined ? joinEntry(split[0], value) : entry;
+    });
+  }
+
+  return Object.fromEntries(
+    Object.entries(labels).map(([key, value]) => [key, valueOf(key) ?? value]),
+  );
+};
+
+/**
  * Keeps the labels `keep` says yes to, in the form the file uses. A label this
  * code cannot read (a list entry that is not a string) is always kept.
  */

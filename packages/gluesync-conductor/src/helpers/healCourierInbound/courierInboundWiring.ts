@@ -1,9 +1,10 @@
 /**
- * The Courier inbound wiring of the kit, exactly as the install kits ship it:
- * Core Hub's HTTP Source agent serves the Courier pipeline endpoints on a
- * listener of its own (inboundPort 8090). Traefik ends TLS on an entry point
- * of the same port and forwards plain HTTP to the agent. No error-page
- * middleware on it: the API answers JSON, its errors included.
+ * The Courier inbound wiring of the kit: Core Hub serves the Courier pipeline
+ * endpoints on its own inbound server, port 8090, over HTTPS (Core Hub always
+ * has TLS in the kits). Traefik ends TLS on an entry point of the same port and
+ * forwards over HTTPS to Core Hub; the kits' global `serversTransport:
+ * insecureSkipVerify` covers its certificate, as for the route on 1717. No
+ * error-page middleware on it: the API answers JSON, its errors included.
  */
 
 import type { LabelSet } from '../healProxyErrorPages/errorPagesWiring';
@@ -16,14 +17,24 @@ export const COURIER_ENTRYPOINT = 'courier';
 export const COURIER_ADDRESS = `:${COURIER_PORT}`;
 export const COURIER_PORT_MAPPING = `${COURIER_PORT}:${COURIER_PORT}`;
 
-/** The comment the kit puts above the entry point in traefik.yml. */
+/** The comment put above the entry point in traefik.yml (the kits' own still says plain HTTP). */
 export const COURIER_COMMENT: ReadonlyArray<string> = [
-  '# Courier inbound (HTTP Source agent in Core Hub): HTTPS here, plain HTTP to the agent on the',
-  '# internal network. No error-page middleware: the API answers JSON, its errors included.',
+  '# Courier inbound (Core Hub port 8090): HTTPS here and to Core Hub on the internal',
+  '# network. No error-page middleware: the API answers JSON, its errors included.',
 ];
 
 const ROUTER = `traefik.http.routers.${COURIER_ENTRYPOINT}`;
 const SERVICE = `traefik.http.services.${COURIER_ENTRYPOINT}`;
+
+/** The label that carries the scheme Traefik reaches Core Hub's port 8090 with. */
+export const COURIER_SCHEME_LABEL = `${SERVICE}.loadbalancer.server.scheme`;
+
+/**
+ * The scheme the kits and this heal wrote before Core Hub served 8090 itself
+ * (the HTTP Source agent, plain HTTP): an install that has it is moved to
+ * https, not left alone as customised.
+ */
+export const OLD_KIT_SCHEME = 'http';
 
 /** Labels of the Core Hub service. */
 export const COURIER_LABELS: LabelSet = {
@@ -32,7 +43,7 @@ export const COURIER_LABELS: LabelSet = {
   [`${ROUTER}.tls`]: 'true',
   [`${ROUTER}.service`]: COURIER_ENTRYPOINT,
   [`${SERVICE}.loadbalancer.server.port`]: String(COURIER_PORT),
-  [`${SERVICE}.loadbalancer.server.scheme`]: 'http',
+  [COURIER_SCHEME_LABEL]: 'https',
   [`${SERVICE}.loadbalancer.passhostheader`]: 'true',
 };
 

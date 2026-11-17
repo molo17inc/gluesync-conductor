@@ -1,11 +1,16 @@
 import type { RawComposeFile } from '../../models/composeFile.model';
 import type { HealReason } from '../healProxyErrorPages/healProxyErrorPages.model';
 
-/** A piece of the wiring, each added on its own when it is missing. */
+/**
+ * A piece of the wiring, each added on its own when it is missing. `Core Hub
+ * scheme`: the scheme label still has the old kit value `http` and is set to
+ * `https` (Core Hub serves 8090 over HTTPS since 2.3.2.2).
+ */
 export type CourierInboundPart =
   | 'entry point'
   | 'proxy port'
-  | 'Core Hub labels';
+  | 'Core Hub labels'
+  | 'Core Hub scheme';
 
 export type CourierInboundAction = 'add' | 'none' | 'skip';
 

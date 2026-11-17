@@ -1,15 +1,21 @@
 import type { RawComposeFile } from '../models/composeFile.model';
 
-/** The courier labels of Core Hub, as the kit writes them. */
+/** The courier labels of Core Hub, as the heal writes them: HTTPS to Core Hub's port 8090. */
 export const COURIER_LABEL_LIST: ReadonlyArray<string> = [
   'traefik.http.routers.courier.entrypoints=courier',
   'traefik.http.routers.courier.rule=PathPrefix(`/api-inbound/`)',
   'traefik.http.routers.courier.tls=true',
   'traefik.http.routers.courier.service=courier',
   'traefik.http.services.courier.loadbalancer.server.port=8090',
-  'traefik.http.services.courier.loadbalancer.server.scheme=http',
+  'traefik.http.services.courier.loadbalancer.server.scheme=https',
   'traefik.http.services.courier.loadbalancer.passhostheader=true',
 ];
+
+/** The same labels with the old kit scheme, plain HTTP (the kits and the heal before 2.3.2.2). */
+export const OLD_COURIER_LABEL_LIST: ReadonlyArray<string> =
+  COURIER_LABEL_LIST.map(label =>
+    label.replace(/\.scheme=https$/, '.scheme=http'),
+  );
 
 const COREHUB_LABELS: ReadonlyArray<string> = [
   'traefik.enable=true',
@@ -44,7 +50,7 @@ providers:
     watch: true
 `;
 
-/** The same file as a kit with the Courier wiring ships it. */
+/** The same file with the Courier wiring, as the heal adds it (the kits' comment still says plain HTTP). */
 export const COURIER_TRAEFIK = `entryPoints:
   web:
     address: ":80"
@@ -56,8 +62,8 @@ export const COURIER_TRAEFIK = `entryPoints:
           permanent: true
   websecure:
     address: ":443"
-  # Courier inbound (HTTP Source agent in Core Hub): HTTPS here, plain HTTP to the agent on the
-  # internal network. No error-page middleware: the API answers JSON, its errors included.
+  # Courier inbound (Core Hub port 8090): HTTPS here and to Core Hub on the internal
+  # network. No error-page middleware: the API answers JSON, its errors included.
   courier:
     address: ":8090"
 

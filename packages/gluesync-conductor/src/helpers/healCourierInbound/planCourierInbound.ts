@@ -13,6 +13,8 @@ import {
   COURIER_ENTRYPOINT,
   COURIER_LABELS,
   COURIER_PORT,
+  COURIER_SCHEME_LABEL,
+  OLD_KIT_SCHEME,
   OPT_OUT_LABEL,
   bindsHostPort,
   containerPortFor,
@@ -183,7 +185,16 @@ const proxyPortFacts = (
   };
 };
 
-type LabelFacts = Readonly<{ missing: boolean; problem?: string }>;
+type LabelFacts = Readonly<{
+  missing: boolean;
+  /** The scheme label still has the old kit value, http. */
+  oldScheme?: boolean;
+  problem?: string;
+}>;
+
+// The scheme the kits wrote before Core Hub 2.3.2.2 is ours to change
+const isOldKitScheme = (key: string, value: string): boolean =>
+  key === COURIER_SCHEME_LABEL && value === OLD_KIT_SCHEME;
 
 const coreHubLabelFacts = (
   input: PlanCourierInboundInput,
@@ -200,7 +211,12 @@ const coreHubLabelFacts = (
   }
 
   const customised = Object.entries(COURIER_LABELS)
-    .filter(([key, value]) => key in labels && labels[key] !== value)
+    .filter(
+      ([key, value]) =>
+        key in labels &&
+        labels[key] !== value &&
+        !isOldKitScheme(key, labels[key]),
+    )
     .map(([key]) => key);
 
   if (customised.length > 0) {
@@ -225,7 +241,22 @@ const coreHubLabelFacts = (
     };
   }
 
-  return { missing: Object.keys(COURIER_LABELS).some(key => !(key in labels)) };
+  return {
+    missing: Object.keys(COURIER_LABELS).some(key => !(key in labels)),
+    oldScheme: labels[COURIER_SCHEME_LABEL] === OLD_KIT_SCHEME,
+  };
+};
+
+// `missing: a, b` and/or `courier scheme http, Core Hub needs https`
+const planReason = (missing: ReadonlyArray<CourierInboundPart>): string => {
+  const added = missing.filter(part => part !== 'Core Hub scheme');
+
+  return [
+    ...(added.length > 0 ? [`missing: ${added.join(', ')}`] : []),
+    ...(missing.includes('Core Hub scheme')
+      ? [`courier scheme ${OLD_KIT_SCHEME}, Core Hub needs https`]
+      : []),
+  ].join('; ');
 };
 
 // ------------------------------------------------------------------- plan
@@ -293,11 +324,16 @@ const planCourierInbound: PlanCourierInbound = input => {
     ...(entryPoint.present ? [] : ['entry point' as const]),
     ...(port.present ? [] : ['proxy port' as const]),
     ...(labels.missing ? ['Core Hub labels' as const] : []),
+    ...(labels.oldScheme ? ['Core Hub scheme' as const] : []),
   ];
 
   return missing.length === 0
     ? none(WIRING_IN_PLACE)
-    : { action: 'add', reason: `missing: ${missing.join(', ')}`, missing };
+    : {
+        action: 'add',
+        reason: planReason(missing),
+        missing,
+      };
 };
 
 export default planCourierInbound;

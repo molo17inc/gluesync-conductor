@@ -18,7 +18,7 @@ const one = (port: unknown) => {
 };
 
 describe('the courier labels', () => {
-  it('are exactly the ones the kit puts on Core Hub', () => {
+  it('are the kit ones, with https to Core Hub', () => {
     assert.deepEqual(
       Object.entries(COURIER_LABELS).map(([key, value]) => `${key}=${value}`),
       COURIER_LABEL_LIST,
