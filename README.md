@@ -282,8 +282,9 @@ WebDAV, then FTP, then the legacy script.
 The portal address defaults to `https://api.support.molo17.com` and can be
 overridden with `GLUESYNC_SUPPORT_API_URL` (a trailing slash is ignored).
 Requests (the API and the storage uploads) go through `PROXY_HTTPS` /
-`PROXY_HTTP` when they are set. The `User-Agent` carries `CONDUCTOR_VERSION`
-when it is set.
+`PROXY_HTTP` when they are set. The `User-Agent` and the upload's
+`source.version` carry `CONDUCTOR_VERSION`, which CI bakes into the image
+(`--build-arg CONDUCTOR_VERSION`); a build without it reports `unknown`.
 
 **Response Format:**
 ```json

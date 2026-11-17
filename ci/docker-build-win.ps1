@@ -294,6 +294,12 @@ $VERSION_TAG_WINDOWS = "${IMAGE_NAME}:${TAG_PART}-win-${WindowsVersion}-${Window
 Write-Host "Image name: $IMAGE_NAME"
 Write-Host "Version tag: $VERSION_TAG_WINDOWS"
 
+# The version Conductor reports to the support portal (CONDUCTOR_VERSION):
+# the release version for a tag (alpha already carries the commit), or the
+# branch plus the commit for develop.
+$ConductorVersion = if ($CI_COMMIT_TAG) { $TAG_PART } else { "$TAG_PART.$CI_COMMIT_SHORT_SHA" }
+Write-Host "CONDUCTOR_VERSION: $ConductorVersion"
+
 # --- Create VERSION file ---
 Set-Content -Path "VERSION" -Value $TAG_PART
 Write-Host "✅ VERSION file created with content: $(Get-Content VERSION)"
@@ -310,6 +316,7 @@ docker build --file ${DOCKER_FILE} `
   --build-arg WINDOWS_TAG="$($WindowsTag)" `
   --build-arg WINDOWS_VERSION="$($WindowsVersion)" `
   --build-arg WINDOWS_YEAR="$($WindowsYear)" `
+  --build-arg CONDUCTOR_VERSION="$($ConductorVersion)" `
   --tag "$VERSION_TAG_WINDOWS" .
 
 if ($LASTEXITCODE -ne 0) { throw "❌ Docker build failed" }

@@ -177,6 +177,7 @@ docker_images:
           echo "[INFO] Develop branch detected → multi-arch build with tag 'develop'"
           RELEASE_TYPE="INTERNAL_TEST"
           export RELEASE_TYPE
+          export CONDUCTOR_VERSION="develop.$CI_COMMIT_SHORT_SHA"
           /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "develop"
 
       elif [[ -n "$TAG_PART" ]]; then
@@ -186,18 +187,21 @@ docker_images:
               echo "[INFO] Release tag detected → using TAG_PART=\"$TAG_PART\""
               RELEASE_TYPE="GA"
               export RELEASE_TYPE
+              export CONDUCTOR_VERSION="$TAG_PART"
               /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "$TAG_PART,latest"
 
           elif [[ "$CI_COMMIT_TAG" == beta-* ]]; then
               echo "[INFO] Regular tag detected → using TAG_PART=\"$TAG_PART\""
               RELEASE_TYPE="BETA"
               export RELEASE_TYPE
+              export CONDUCTOR_VERSION="$TAG_PART"
               /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "$TAG_PART"
 
           elif [[ "$CI_COMMIT_TAG" == alpha-* ]]; then
               echo "[INFO] Regular tag detected → using TAG_PART=\"$TAG_PART\" and CI_COMMIT_SHORT_SHA=\"$CI_COMMIT_SHORT_SHA\""
               RELEASE_TYPE="ALPHA"
               export RELEASE_TYPE
+              export CONDUCTOR_VERSION="$TAG_PART.$CI_COMMIT_SHORT_SHA"
               /bin/bash ./packages/scripts/docker_images.sh packages/gluesync-conductor gluesync-conductor "$TAG_PART.$CI_COMMIT_SHORT_SHA"
 
           else

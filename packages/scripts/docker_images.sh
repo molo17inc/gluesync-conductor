@@ -193,6 +193,11 @@ while [ "$#" -gt 0 ]; do
 
     # Build docker buildx command with multiple tags
     DOCKER_CMD="docker buildx build --platform $PLATFORM --progress=plain --no-cache"
+    # A bare --build-arg takes its value from this environment, so no quoting is needed
+    if [ -n "${CONDUCTOR_VERSION:-}" ]; then
+      DOCKER_CMD="$DOCKER_CMD --build-arg CONDUCTOR_VERSION"
+      echo " -> CONDUCTOR_VERSION=$CONDUCTOR_VERSION"
+    fi
     for TAG in "${TAGS[@]}"; do
       FULL_IMAGE="$CI_REGISTRY_IMAGE/$IMAGE_NAME:$TAG"
       DOCKER_CMD="$DOCKER_CMD -t $FULL_IMAGE"

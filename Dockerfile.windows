@@ -21,6 +21,8 @@ FROM molo17/node:24.22.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}
 
 ARG WINDOWS_TAG
 ARG WINDOWS_YEAR
+# The version this image was released as (set by CI), reported to the support portal
+ARG CONDUCTOR_VERSION=
 
 WORKDIR C:\opt\gluesync-conductor
 
@@ -82,6 +84,7 @@ ENV SSL_KEY_FILE=C:\opt\gluesync\data\gluesync-key.pem
 ENV MOUNT_LEGACY_FILE_CONFIG=false
 ENV GLUESYNC_CONFIG_DIR=.\shared
 ENV IS_WINDOWS=true
+ENV CONDUCTOR_VERSION=${CONDUCTOR_VERSION}
 ENV WINDOWS_YEAR=${WINDOWS_YEAR}
 ENV HELPER_IMAGE_BASE=molo17/docker:29.9.2-win-nanoserver-${WINDOWS_TAG}
 

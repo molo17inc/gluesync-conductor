@@ -12,6 +12,12 @@ RUN apk upgrade --no-cache \
   && mkdir -p /opt/gluesync/data /opt/gluesync/logs \
   && chown -R node:node /opt/gluesync
 
+# The version this image was released as (set by CI). Conductor reports it to
+# the support portal with log bundles and in its User-Agent; without it the
+# portal shows the version as "unknown".
+ARG CONDUCTOR_VERSION=
+ENV CONDUCTOR_VERSION=${CONDUCTOR_VERSION}
+
 # Set environment variables
 ENV NODE_ENV=production
 ENV DKR_COMPOSE_FILE=docker-compose.yml
