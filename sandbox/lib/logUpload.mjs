@@ -140,6 +140,19 @@ const uploadWithVoucher = async (ctx, it) => {
     ? `${kind} archive of ${bytes.length} bytes, ${entries?.length ?? 'unreadable:'} entries${contents}`
     : `the bytes the portal joined are not an archive (${bytes?.subarray(0, 8).toString('hex') ?? 'nothing'})`;
   step(it, 'logs.archive-readable', !!kind && !!entries && missing.length === 0, archiveDetail);
+
+  // The portal names the sender from `source` ("Log bundle received from Gluesync Conductor <version>"):
+  // the version must be the one the conductor runs, never "unknown": the tag of its image, or the
+  // CONDUCTOR_VERSION the base was built with (SANDBOX_CONDUCTOR_BUILD_VERSION, as CI builds a release)
+  const running = (await containers()).find(c => c.service === 'gluesync-conductor' && c.state === 'running');
+  const source = upload.source ?? {};
+  const expected = process.env.SANDBOX_CONDUCTOR_BUILD_VERSION?.trim() || running?.tag;
+  step(
+    it,
+    'logs.source-version',
+    !!expected && source.client === 'conductor' && source.version === expected && upload.userAgent === `GluesyncConductor/${expected}` && !!source.hostname && !!source.os,
+    `source ${JSON.stringify(source)}, User-Agent ${upload.userAgent ?? 'none'}; the conductor runs ${running?.image ?? 'nothing'}, expected ${expected ?? 'none'}`,
+  );
 };
 
 // Every refusal of the contract, each with what it may and may not have done at the portal
