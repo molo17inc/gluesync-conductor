@@ -1,5 +1,6 @@
 import { RouteHandlerMethod } from 'fastify';
 import { getContainerEngine } from '../../helpers/containerRuntime/containerEngine';
+import { getManagedEnvironment } from '../../helpers/containerRuntime/managedEnvironment';
 
 const handler: RouteHandlerMethod = async (req, reply) => {
   try {
@@ -7,10 +8,17 @@ const handler: RouteHandlerMethod = async (req, reply) => {
     // Additive: which engine this is (Docker or Podman) and whether it is rootless
     const containerEngine = await getContainerEngine(req.server.docker);
 
+    // Additive: the environment CoreHub is told manages it (Module-Environment)
+    const managedEnvironment = await getManagedEnvironment(req.server.docker);
+
     reply.code(200);
     reply.send({
       success: true,
-      data: containerEngine ? { ...info, containerEngine } : info,
+      data: {
+        ...info,
+        ...(containerEngine && { containerEngine }),
+        ...(managedEnvironment && { managedEnvironment }),
+      },
     });
   } catch (error) {
     // A Docker daemon that is restarting or overloaded is not a reason to kill

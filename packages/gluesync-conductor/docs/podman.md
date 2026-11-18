@@ -116,6 +116,15 @@ changes their owner.
   Conductor works out `{ engine: "docker" | "podman", rootless, version }`,
   once per process. The Conductor's own `GET /version` and `GET /info` answer
   with it in an additional `data.containerEngine` field.
+- **Telling CoreHub.** Conductor sends the environment it manages in the
+  `Module-Environment` header of its `/ext-module` handshake with CoreHub:
+  `conductor-podman` on Podman, `conductor-swarm` when Conductor runs as a
+  Docker stack service, `conductor-docker` for Compose on Docker (the Gluesync
+  Kubernetes Operator sends `gko`). The value comes from the engine
+  (`/version`, `/info`) and Conductor's own container labels, never from an
+  environment variable alone; when the engine has not answered, nothing is
+  sent and the next connection tries again. `GET /info` repeats it in
+  `data.managedEnvironment`.
 - **Image names.** Podman reports `docker.io/molo17/x:1` and
   `docker.io/library/busybox:1.36` where Docker reports what was written
   (`molo17/x:1`, `busybox:1.36`). Conductor compares and reports images by their

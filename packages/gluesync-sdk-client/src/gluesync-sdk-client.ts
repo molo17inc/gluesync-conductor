@@ -36,6 +36,8 @@ export class GluesyncSDKClient {
 
   private _logger: Logger = logger;
 
+  private _extraHeaders: () => Readonly<Record<string, string>> = () => ({});
+
   /**
    * Constructor - private to enforce singleton pattern
    * @param logger Optional logger instance (defaults to console)
@@ -85,6 +87,17 @@ export class GluesyncSDKClient {
       GluesyncSDKClient._instance._logger = logger;
     }
     return GluesyncSDKClient._instance;
+  }
+
+  /**
+   * More handshake headers for CoreHub (for example Module-Environment),
+   * asked again on every (re)connection, so a value found after the first
+   * connection is sent on the next one.
+   */
+  public setExtraHeaders(
+    provider: () => Readonly<Record<string, string>>,
+  ): void {
+    this._extraHeaders = provider;
   }
 
   /**
@@ -243,6 +256,7 @@ export class GluesyncSDKClient {
         port: port || 1717, // Use default port 1717 if null
         licenseFilePath,
         moduleTag: settings.moduleTag,
+        extraHeaders: () => this._extraHeaders(),
         ssl: useSSL, // Property name is 'ssl' in the actual implementation
         securityConfig: securityConfig || undefined,
         verifySsl: process.env.SSL_SKIP_VERIFY?.toLowerCase() !== 'true', // Skip SSL verification if requested
@@ -347,6 +361,7 @@ export class GluesyncSDKClient {
                 // Create new client with different discovery port
                 this._client = new GluesyncClient({
                   moduleTag: settings.moduleTag,
+                  extraHeaders: () => this._extraHeaders(),
                   licenseFilePath:
                     settings.licenseFile || '/opt/gluesync/data/gs-license.dat',
                   securityConfig: securityConfig || undefined,
