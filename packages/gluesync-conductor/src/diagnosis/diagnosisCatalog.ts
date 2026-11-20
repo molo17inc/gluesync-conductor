@@ -249,6 +249,16 @@ export const DIAGNOSIS_CATALOG: Readonly<Record<DiagnosisCode, CatalogEntry>> =
       summary: () =>
         'CONDUCTOR_ORCHESTRATOR is set to swarm, but this engine is Podman, which has no Swarm mode. Run Gluesync with Compose instead.',
     },
+    KUBERNETES_UNSUPPORTED: {
+      owner: 'local',
+      httpStatus: 501,
+      resolutionCodes: [],
+      paramKeys: ['feature'],
+      exampleParams: { feature: 'POST /containers (update)' },
+      title: 'Not available on Kubernetes yet',
+      summary: params =>
+        `${text(params, 'feature')} is not supported yet when Gluesync runs on Kubernetes.`,
+    },
     UNKNOWN: {
       owner: 'unknown',
       httpStatus: 502,

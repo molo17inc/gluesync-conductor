@@ -819,5 +819,38 @@
       "service": "gluesync-conductor"
     },
     "at": "2026-01-01T00:00:00.000Z"
+  },
+  "KUBERNETES_UNSUPPORTED": {
+    "schemaVersion": 1,
+    "code": "KUBERNETES_UNSUPPORTED",
+    "owner": "local",
+    "confidence": "high",
+    "params": {
+      "feature": "POST /containers (update)"
+    },
+    "resolutionCodes": [],
+    "fallback": {
+      "title": "Not available on Kubernetes yet",
+      "summary": "POST /containers (update) is not supported yet when Gluesync runs on Kubernetes.",
+      "steps": []
+    },
+    "checks": [
+      {
+        "id": "internet-ip",
+        "ok": true,
+        "ms": 80,
+        "detail": "HTTP 200"
+      },
+      {
+        "id": "backoffice",
+        "ok": false,
+        "ms": 120,
+        "detail": "HTTP 200"
+      }
+    ],
+    "source": {
+      "service": "gluesync-conductor"
+    },
+    "at": "2026-01-01T00:00:00.000Z"
   }
 }

@@ -45,7 +45,8 @@
         "COMPOSE_FILE_CORRUPT",
         "SWARM_NOT_MANAGER",
         "SWARM_UNSUPPORTED",
-        "SWARM_UNSUPPORTED_ON_PODMAN"
+        "SWARM_UNSUPPORTED_ON_PODMAN",
+        "KUBERNETES_UNSUPPORTED"
       ]
     },
     "owner": {
@@ -380,6 +381,13 @@
       "owner": "local",
       "resolutionCodes": [],
       "params": []
+    },
+    "KUBERNETES_UNSUPPORTED": {
+      "owner": "local",
+      "resolutionCodes": [],
+      "params": [
+        "feature"
+      ]
     }
   }
 }
