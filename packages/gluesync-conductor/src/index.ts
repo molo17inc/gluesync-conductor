@@ -50,6 +50,8 @@ import {
   isContainerActionRunning,
 } from './functions/container/doContainersAction/doContainersAction';
 import awaitDecidedOrchestrator from './helpers/orchestrator/awaitDecidedOrchestrator/awaitDecidedOrchestrator';
+import getKubernetesOrchestrator from './helpers/orchestrator/getKubernetesOrchestrator/getKubernetesOrchestrator';
+import kubernetesGuardPlugin from './plugins/kubernetesGuard';
 import reconcileSelfImage from './helpers/swarm/reconcileSelfImage/reconcileSelfImage';
 import { restoreSelfUpdateConfig } from './helpers/swarm/restoreUpdateConfig/restoreUpdateConfig';
 import migrateRoutes from './routes/migrate';
@@ -330,6 +332,18 @@ const runPostListenStartup = async (
   docker: Readonly<Docker>,
   logger: Readonly<ReturnType<typeof getLogger>>,
 ): Promise<void> => {
+  // Kubernetes: no container engine, compose file, kit folder or host path to
+  // look at, and nothing to adopt or heal (the manifests are the source of truth)
+  const kubernetes = getKubernetesOrchestrator();
+
+  if (kubernetes) {
+    logger.info(
+      { namespace: kubernetes.namespace },
+      '[kubernetes] kubernetes mode: not using a container engine, not adopting services nor healing the Conductor configuration',
+    );
+    return;
+  }
+
   // Docker or Podman, rootful or rootless: asked once here, so it is in the log
   // of every report
   const engine = await getContainerEngine(docker);
@@ -399,7 +413,10 @@ const startServer = async (): Promise<void> => {
 
   // Before any route, healer or adoption reads BASE_PATH: a kit started by hand
   // has `.`, which the daemon would resolve against this container's own cwd
-  await resolveHostBasePath(server.docker);
+  // (not on Kubernetes: there is no host path, and no engine to ask)
+  if (!getKubernetesOrchestrator()) {
+    await resolveHostBasePath(server.docker);
+  }
 
   // Register Gluesync plugin
   await server.register(gluesyncPlugin);
@@ -409,6 +426,9 @@ const startServer = async (): Promise<void> => {
 
   // On a swarm worker every route but /health and the docs answers 503
   await server.register(swarmManagerGuardPlugin);
+
+  // On Kubernetes every route that is not served yet answers 501
+  await server.register(kubernetesGuardPlugin);
 
   // Register api blocker when updating plugin, routes after this will be blocked when updating
   await server.register(apiBlockerAsUpdatingPlugin, {

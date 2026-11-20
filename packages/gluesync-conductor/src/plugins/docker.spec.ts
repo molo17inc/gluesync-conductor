@@ -8,7 +8,7 @@ import loadWithStubs from '../testing/loadWithStubs';
 
 type Subject = Readonly<{ default: FastifyPluginAsync }>;
 
-const load = (waitFails?: Error) => {
+const load = (waitFails?: Error, kubernetes = false) => {
   const docker = { id: 'docker-client' };
   const waits: unknown[][] = [];
   const subject = loadWithStubs<Subject>(path.resolve(__dirname, './docker'), {
@@ -31,6 +31,13 @@ const load = (waitFails?: Error) => {
     },
     [path.resolve(__dirname, '../utils/logger')]: {
       getLogger: () => ({ id: 'logger' }),
+    },
+    [path.resolve(
+      __dirname,
+      '../helpers/orchestrator/getKubernetesOrchestrator/getKubernetesOrchestrator',
+    )]: {
+      default: () =>
+        kubernetes ? { mode: 'kubernetes', namespace: 'kit' } : undefined,
     },
   });
   const lines: Record<string, unknown>[] = [];
@@ -74,6 +81,27 @@ describe('docker plugin', () => {
     assert.equal((warning?.error as { message: string }).message, 'not ready');
     assert.equal(
       lines.some(l => l.msg === 'Docker plugin registered successfully'),
+      false,
+    );
+    await app.close();
+  });
+
+  it('does not wait for a daemon on Kubernetes, where there is none', async () => {
+    // A wait that never returns: startup must not depend on it
+    const { app, subject, docker, waits, lines } = load(
+      new Error('must not wait'),
+      true,
+    );
+    await app.register(subject.default);
+    await app.ready();
+    assert.deepEqual(waits, []);
+    assert.equal((app as any).docker, docker);
+    assert.equal(typeof (app as any).dockerSafeCall, 'function');
+    assert.ok(
+      lines.some(l => /Kubernetes mode: not waiting/.test(String(l.msg))),
+    );
+    assert.equal(
+      lines.some(l => /Docker daemon not ready/.test(String(l.msg))),
       false,
     );
     await app.close();

@@ -4,10 +4,11 @@ import { getDocker } from '../utils/docker/getDocker';
 import dockerSafeCall from '../utils/docker/dockerSafeCall';
 import waitForDockerDaemon from '../helpers/dockerode/waitForDockerDaemon/waitForDockerDaemon';
 import { getLogger } from '../utils/logger';
+import getKubernetesOrchestrator from '../helpers/orchestrator/getKubernetesOrchestrator/getKubernetesOrchestrator';
 
-const dockerPlugin = async (fastify: Readonly<FastifyInstance>) => {
-  // Always use the unified resilient singleton
-  const docker = getDocker();
+const waitForDaemonAtStartup = async (
+  fastify: Readonly<FastifyInstance>,
+): Promise<void> => {
   const logger = getLogger();
 
   try {
@@ -26,6 +27,21 @@ const dockerPlugin = async (fastify: Readonly<FastifyInstance>) => {
       { error },
       'Docker daemon not ready at startup; starting anyway, Docker calls will fail until it answers',
     );
+  }
+};
+
+const dockerPlugin = async (fastify: Readonly<FastifyInstance>) => {
+  // Always use the unified resilient singleton
+  const docker = getDocker();
+
+  if (getKubernetesOrchestrator()) {
+    // No container engine in a pod: waiting for one would only delay the
+    // start (and used to outlast Fastify's plugin timeout)
+    fastify.log.info(
+      'Kubernetes mode: not waiting for a Docker daemon, the container engine is not used',
+    );
+  } else {
+    await waitForDaemonAtStartup(fastify);
   }
 
   // Expose Docker + safe wrapper to Fastify
