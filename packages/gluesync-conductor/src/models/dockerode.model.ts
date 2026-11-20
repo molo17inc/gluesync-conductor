@@ -69,6 +69,25 @@ export type SwarmContainerInfo = Readonly<{
   updateState?: string;
 }>;
 
+// What only Kubernetes knows about a workload (GET /containers in kubernetes mode)
+export type KubernetesContainerInfo = Readonly<{
+  kind: 'StatefulSet' | 'Deployment';
+  // Name of the workload in the cluster (`<release>-gluesync-core-hub`)
+  name: string;
+  namespace: string;
+  // `app.kubernetes.io/instance` of the workload
+  release?: string;
+  // The pod shown, and the node it runs on
+  pod: string;
+  node?: string;
+  // Pods ready now / wanted / already on the current template
+  replicas: number;
+  desiredReplicas: number;
+  updatedReplicas: number;
+  // Restarts of the container shown
+  restarts: number;
+}>;
+
 export type ContainerInfo = Readonly<{
   id: string;
   name: string;
@@ -88,6 +107,7 @@ export type ContainerInfo = Readonly<{
   mounts: ReadonlyArray<VolumeMount>;
   parsedImage: ParseImageResult;
   swarm?: SwarmContainerInfo;
+  kubernetes?: KubernetesContainerInfo;
 }>;
 
 // export type ContainerListItem = Readonly<{
