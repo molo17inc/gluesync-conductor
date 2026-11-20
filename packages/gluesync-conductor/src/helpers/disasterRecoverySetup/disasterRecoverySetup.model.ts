@@ -24,7 +24,7 @@ export type DisasterRecoveryInspection = Readonly<{
   state: DisasterRecoveryState;
   /** Docker did not answer, so compose could not be told from swarm. */
   dockerUnknown: boolean;
-  mode: 'compose' | 'swarm' | undefined;
+  mode: 'compose' | 'swarm' | 'kubernetes' | undefined;
   targets: DisasterRecoveryTargets;
   compose: Partial<RawComposeFile> | undefined;
 }>;

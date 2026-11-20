@@ -13,6 +13,9 @@ import {
   GetServicesQuerystring,
 } from './getServices.model';
 import buildLocalErrorReply from '../../../diagnosis/buildLocalErrorReply';
+import getKubernetesOrchestrator from '../../../helpers/orchestrator/getKubernetesOrchestrator/getKubernetesOrchestrator';
+import { readKubernetesServices } from '../../../helpers/kubernetes/listKubernetesContainers/listKubernetesContainers';
+import { isKubernetesApiError } from '../../../helpers/kubernetes/kubernetesClient/kubernetesClient';
 
 const handler: GetServicesHandler = async (req, reply) => {
   try {
@@ -22,14 +25,21 @@ const handler: GetServicesHandler = async (req, reply) => {
 
     req.log.debug(`Current query: raw:${raw}, ${typeof raw} format: ${format}`);
 
-    const composeJson = await readComposeFile({ raw });
+    // Kubernetes has no compose file: the workloads of the namespace are the
+    // service definitions, in the same shape
+    const kubernetes = getKubernetesOrchestrator();
+    const composeJson = kubernetes
+      ? await readKubernetesServices({ raw })
+      : await readComposeFile({ raw });
 
     if (id?.trim()) {
       const composeService = composeJson.services?.[id];
       if (!composeService) {
         return reply.code(404).send({
           success: false,
-          error: `Service ${id} not found in docker file`,
+          error: kubernetes
+            ? `Service ${id} not found in namespace ${kubernetes.namespace}`
+            : `Service ${id} not found in docker file`,
         });
       }
 
@@ -77,6 +87,14 @@ const handler: GetServicesHandler = async (req, reply) => {
 
     if (local) {
       return reply.code(local.statusCode).send(local.body);
+    }
+
+    if (isKubernetesApiError(error)) {
+      return reply.code(503).send({
+        success: false,
+        error: 'Kubernetes API unavailable',
+        details: message,
+      });
     }
 
     return reply.code(500).send({

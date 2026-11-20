@@ -50,6 +50,9 @@ const BACKUP_SUBFOLDER = 'dr-backup';
 const SWARM_REASON =
   'Docker Swarm: the Conductor does not edit the stack file. Set the GS_DR_* variables on the Core Hub service of the stack by hand';
 
+const KUBERNETES_REASON =
+  'Kubernetes: the Conductor does not change the workloads. Set disaster recovery up with the values of the Gluesync Helm chart';
+
 const NOT_DECIDED_REASON =
   'Cannot tell whether Gluesync runs on Docker Compose or Docker Swarm: the Docker daemon is not answering';
 
@@ -121,9 +124,12 @@ const readDetails = async (
 export const inspectDisasterRecovery: InspectDisasterRecovery =
   async docker => {
     const orchestrator = await getDecidedOrchestrator(docker);
-    const compose = orchestrator
-      ? await readComposeFile({ raw: true })
-      : undefined;
+    // Kubernetes has no compose file to read
+    const kubernetes = orchestrator?.mode === 'kubernetes';
+    const compose =
+      orchestrator && !kubernetes
+        ? await readComposeFile({ raw: true })
+        : undefined;
     const targets = await getDisasterRecoveryTargets(compose ?? {});
     const unsupported = (
       reason: string,
@@ -142,6 +148,10 @@ export const inspectDisasterRecovery: InspectDisasterRecovery =
       targets,
       compose,
     });
+
+    if (kubernetes) {
+      return unsupported(KUBERNETES_REASON);
+    }
 
     if (!orchestrator || !compose) {
       return unsupported(NOT_DECIDED_REASON);

@@ -275,6 +275,27 @@ const containerRoutes = async (fastify: Readonly<FastifyInstance>) => {
                               updateState: { type: 'string' },
                             },
                           },
+                          kubernetes: {
+                            type: 'object',
+                            description:
+                              'Kubernetes mode only: the workload behind this container and the pod shown',
+                            additionalProperties: true,
+                            properties: {
+                              kind: { type: 'string' },
+                              name: { type: 'string' },
+                              namespace: { type: 'string' },
+                              release: { type: 'string' },
+                              pod: { type: 'string' },
+                              node: { type: 'string' },
+                              replicas: {
+                                type: 'number',
+                                description: 'Pods ready now',
+                              },
+                              desiredReplicas: { type: 'number' },
+                              updatedReplicas: { type: 'number' },
+                              restarts: { type: 'number' },
+                            },
+                          },
                         },
                         additionalProperties: true,
                       },

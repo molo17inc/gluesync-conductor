@@ -11,6 +11,9 @@ import { ReleaseChannelTypes } from '../../../models/conductor.model';
 import getVersionByChannel from '../../../helpers/releaseChannel/getVersionByChannel';
 import { ComposeService, LabelPrefix } from '../../../models/composeFile.model';
 import getOrchestrator from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator';
+import getKubernetesOrchestrator from '../../../helpers/orchestrator/getKubernetesOrchestrator/getKubernetesOrchestrator';
+import { readKubernetesServices } from '../../../helpers/kubernetes/listKubernetesContainers/listKubernetesContainers';
+import { isKubernetesApiError } from '../../../helpers/kubernetes/kubernetesClient/kubernetesClient';
 import conductorUpdateRefusal from '../../../helpers/swarm/conductorUpdateRefusal/conductorUpdateRefusal';
 import stackServiceType from '../../../helpers/swarm/stackServiceType/stackServiceType';
 import { THIRD_PARTY_SERVICES } from '../../../helpers/fetchAllServicesInCompose/fetchAllServicesInCompose.model';
@@ -42,19 +45,32 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
     const channel: ReleaseChannelTypes =
       (releaseChannel as ReleaseChannelTypes) || 'ga';
 
-    const composeJson = await readComposeFile();
+    // Kubernetes has no compose file and no container engine: the workloads
+    // of the namespace are the definitions, and the tag of a workload's image
+    // is its current version (what `getCurrentVersion` answers without Docker)
+    const kubernetes = getKubernetesOrchestrator();
+
+    const composeJson = kubernetes
+      ? await readKubernetesServices()
+      : await readComposeFile();
     const service = composeJson.services?.[id];
 
     if (!service) {
       logger.warn({ id }, '[get-service-version] service not found');
       return reply.code(404).send({
         success: false,
-        error: `Service ${id} not found in docker compose file`,
+        error: kubernetes
+          ? `Service ${id} not found in namespace ${kubernetes.namespace}`
+          : `Service ${id} not found in docker compose file`,
       });
     }
 
     // Ensure docker ready (Windows pipe cold boot fix)
     const dockerReady = await (async () => {
+      if (kubernetes) {
+        return false;
+      }
+
       try {
         await waitForDockerDaemon(req.server.docker, logger, {
           totalTimeoutMs: 5000,
@@ -72,7 +88,9 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
       }
     })();
 
-    const swarm = (await getOrchestrator(req.server.docker)).mode === 'swarm';
+    const swarm =
+      !kubernetes &&
+      (await getOrchestrator(req.server.docker)).mode === 'swarm';
 
     // Compose reads the label the Conductor wrote at startup. Swarm never
     // writes it, so a stack service without one is typed from its image.
@@ -331,6 +349,14 @@ const handler: GetServiceVersionHandler = async (req, reply) => {
 
     if (local) {
       return reply.code(local.statusCode).send(local.body);
+    }
+
+    if (isKubernetesApiError(error)) {
+      return reply.code(503).send({
+        success: false,
+        error: 'Kubernetes API unavailable',
+        details: error.message,
+      });
     }
 
     // The backoffice's own answer for an image it does not publish.

@@ -26,6 +26,10 @@ import {
 } from '../../../security';
 import { redactService } from '../../../helpers/redactedServices/redactedServices';
 import getOrchestrator from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator';
+import getKubernetesOrchestrator from '../../../helpers/orchestrator/getKubernetesOrchestrator/getKubernetesOrchestrator';
+import getKubernetesSystemInfo from '../../../helpers/kubernetes/getKubernetesSystemInfo/getKubernetesSystemInfo';
+import listKubernetesContainers from '../../../helpers/kubernetes/listKubernetesContainers/listKubernetesContainers';
+import { isKubernetesApiError } from '../../../helpers/kubernetes/kubernetesClient/kubernetesClient';
 import listSwarmContainers from '../../../helpers/swarm/listSwarmContainers/listSwarmContainers';
 
 const handler: ListContainersHandler = async (req, reply) => {
@@ -33,13 +37,19 @@ const handler: ListContainersHandler = async (req, reply) => {
     const { type } = castObject<ListContainersParams>(req.query);
     const logger = getLogger();
 
-    const composeJson = (await readComposeFile()) ?? {};
+    // Kubernetes: no compose file and no container engine, the workloads of
+    // the namespace are both the definitions and what runs
+    const kubernetes = getKubernetesOrchestrator();
+
+    const composeJson = kubernetes ? {} : ((await readComposeFile()) ?? {});
     const dockerComposeServicesNames = Object.keys(composeJson.services || {});
 
-    await waitForDockerDaemon(req.server.docker, logger, {
-      totalTimeoutMs: 5000,
-      perAttemptTimeoutMs: 800,
-    });
+    if (!kubernetes) {
+      await waitForDockerDaemon(req.server.docker, logger, {
+        totalTimeoutMs: 5000,
+        perAttemptTimeoutMs: 800,
+      });
+    }
 
     const composeContainers = (
       containerList: ReadonlyArray<ContainerInfo>,
@@ -88,7 +98,8 @@ const handler: ListContainersHandler = async (req, reply) => {
       });
     };
 
-    const orchestrator = await getOrchestrator(req.server.docker);
+    const orchestrator =
+      kubernetes ?? (await getOrchestrator(req.server.docker));
 
     // One attempt, and a second one after a busy pipe (Windows cold boot)
     const withRetry = async <T>(fetch: () => Promise<T>): Promise<T> => {
@@ -115,6 +126,13 @@ const handler: ListContainersHandler = async (req, reply) => {
         ListContainersSuccessResponse['containers'],
       ]
     > => {
+      if (orchestrator.mode === 'kubernetes') {
+        return Promise.all([
+          getKubernetesSystemInfo(),
+          listKubernetesContainers(),
+        ]);
+      }
+
       if (orchestrator.mode === 'swarm') {
         // The containers of this node say nothing about the stack: the
         // services and their tasks do
@@ -186,6 +204,15 @@ const handler: ListContainersHandler = async (req, reply) => {
 
     if (local) {
       reply.code(local.statusCode).send(local.body);
+      return;
+    }
+
+    if (isKubernetesApiError(error)) {
+      reply.code(503).send({
+        success: false,
+        error: 'Kubernetes API unavailable',
+        details: error.message,
+      });
       return;
     }
 

@@ -75,7 +75,7 @@ type Recorder = {
   commands: string[][];
   verified: string[];
   logs: string[];
-  mode: 'compose' | 'swarm' | undefined;
+  mode: 'compose' | 'swarm' | 'kubernetes' | undefined;
   /** 1-based numbers of the recreate commands that fail */
   failRecreates: number[];
   failVerify: boolean;
@@ -324,6 +324,20 @@ describe('disasterRecoverySetup', () => {
 
       assert.equal(state.supported, false);
       assert.match(state.reason ?? '', /Docker Swarm/);
+    });
+
+    it('is not supported on Kubernetes, says why, and never reads a compose file', async () => {
+      recorder.mode = 'kubernetes';
+      // A compose file that cannot be parsed would fail the read
+      writeFileSync(composePath(), 'services: [');
+      const result = await inspect();
+
+      assert.equal(result.state.supported, false);
+      assert.equal(result.state.enabled, false);
+      assert.match(result.state.reason ?? '', /Kubernetes/);
+      assert.equal(result.mode, 'kubernetes');
+      assert.equal(result.dockerUnknown, false);
+      assert.equal(result.compose, undefined);
     });
 
     it('does not guess while Docker is not answering', async () => {
