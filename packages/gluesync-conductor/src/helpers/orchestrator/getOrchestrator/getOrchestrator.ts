@@ -3,6 +3,9 @@ import type Docker from 'dockerode';
 
 import { getLogger } from '../../../utils/logger';
 import { getContainerEngine } from '../../containerRuntime/containerEngine';
+import getKubernetesOrchestrator, {
+  resetKubernetesOrchestratorCache,
+} from '../getKubernetesOrchestrator/getKubernetesOrchestrator';
 import {
   GetDecidedOrchestrator,
   GetOrchestrator,
@@ -20,6 +23,7 @@ const cache = new Map<string, Orchestrator>();
 
 export const resetOrchestratorCache = (): void => {
   cache.clear();
+  resetKubernetesOrchestratorCache();
 };
 
 type SelfLabels = Readonly<Record<string, string>>;
@@ -94,6 +98,12 @@ const toSwarm = async (
 };
 
 const detect = async (docker: Readonly<Docker>): Promise<Orchestrator> => {
+  const kubernetes = getKubernetesOrchestrator();
+
+  if (kubernetes) {
+    return kubernetes;
+  }
+
   const forced = process.env.CONDUCTOR_ORCHESTRATOR?.trim().toLowerCase();
 
   if (forced === 'compose') {
@@ -163,7 +173,8 @@ export const getDecidedOrchestrator: GetDecidedOrchestrator = async docker => {
 };
 
 /**
- * Compose or Swarm, decided once per process (see docs/swarm-mode.md).
+ * Compose, Swarm or Kubernetes, decided once per process (see
+ * docs/swarm-mode.md and docs/kubernetes-mode.md).
  * Any failure to find out answers compose, which is the safe default for
  * read-only callers, and is not cached so the next call tries again.
  */

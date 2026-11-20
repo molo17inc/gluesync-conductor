@@ -12,7 +12,18 @@ export type SwarmOrchestrator = Readonly<{
   isManager: boolean;
 }>;
 
-export type Orchestrator = ComposeOrchestrator | SwarmOrchestrator;
+// No container engine: the workloads of the pod's own namespace are read from
+// the Kubernetes API (docs/kubernetes-mode.md)
+export type KubernetesOrchestrator = Readonly<{
+  mode: 'kubernetes';
+  // Namespace the Conductor runs in, the only one it reads
+  namespace: string;
+}>;
+
+export type Orchestrator =
+  | ComposeOrchestrator
+  | SwarmOrchestrator
+  | KubernetesOrchestrator;
 
 export type GetOrchestrator = (
   docker: Readonly<Docker>,
