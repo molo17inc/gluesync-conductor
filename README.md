@@ -472,6 +472,10 @@ for the socket matrix, the kit `.env` keys, SELinux options and what is not
 supported (Swarm). Docker Swarm stacks are described in
 [Conductor on Docker Swarm](./packages/gluesync-conductor/docs/swarm-mode.md).
 
+Conductor can also run as a pod, without a container engine: the read-only
+routes are served from the Kubernetes API and the rest answers 501 for now. See
+[Conductor on Kubernetes](./packages/gluesync-conductor/docs/kubernetes-mode.md).
+
 ## Development
 
 ```bash
