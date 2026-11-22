@@ -173,6 +173,27 @@ const prepareKitFiles = async () => {
   }
 };
 
+
+// Builds the conductor base image; a second attempt covers a download that fails once (the
+// Dockerfile's `apk add`). A failure shows the last lines of the build's own step output: the
+// tail of stderr alone is the Dockerfile excerpt BuildKit prints, not what went wrong.
+const buildConductorBase = async buildArgs => {
+  const args = ['build', '--progress=plain', ...buildArgs, '-t', env.conductorBase, env.conductorPkgDir];
+  let r;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    r = await docker(args, { timeoutMs: 300000 });
+    if (!r.timedOut && r.code === 0) return;
+    if (attempt === 1) say('conductor image build failed: trying once more');
+  }
+  const steps = (r.err || r.out)
+    .split('\n')
+    .filter(line => /^#\d+ \d+\.\d+ /.test(line))
+    .slice(-40)
+    .join('\n');
+  const why = r.timedOut ? 'timed out' : `exit ${r.code}`;
+  throw new Error(`conductor image build failed (${why}). Last build output:\n${steps}`);
+};
+
 export const renderKitCompose = versions => {
   const template = fs.readFileSync(path.join(env.sandboxDir, 'kit', 'docker-compose.template.yml'), 'utf8');
   const values = {
@@ -243,7 +264,7 @@ const buildBases = async () => {
   // Nexus proxy). Plain progress, not -q, so that a failed step shows its own output in the error.
   const alpineMirror = process.env.ALPINE_MIRROR?.trim();
   if (alpineMirror) buildArgs.push('--build-arg', `ALPINE_MIRROR=${alpineMirror}`);
-  await mustDocker(['build', '--progress=plain', ...buildArgs, '-t', env.conductorBase, env.conductorPkgDir], { timeoutMs: 300000 });
+  await buildConductorBase(buildArgs);
   // Keeper containers stop the conductor's post-update image prune from deleting the bases and the
   // seeded images (the conductor pulls its helper images itself, so they must be there when it needs them).
   const keepers = [
