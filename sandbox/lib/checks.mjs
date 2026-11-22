@@ -510,6 +510,17 @@ const resilienceChecks = x => {
     ),
   );
 
+  // The sandbox is Compose on Docker: Core Hub must be told so (Module-Environment)
+  const environments = [...new Set(sockets.map(m => m.environment ?? '(none)'))];
+  out.push(
+    result(
+      'resilience',
+      'resilience.corehub-environment',
+      sockets.length > 0 && environments.length === 1 && environments[0] === 'conductor-docker',
+      `conductor reports Module-Environment: ${environments.join(', ') || '(no connection)'}`,
+    ),
+  );
+
   const cPre = pre.byService['gluesync-conductor'];
   const cPost = post.byService['gluesync-conductor'];
   const restarts = conductorRestarts(cPre, cPost);

@@ -19,6 +19,8 @@
 import { settings } from 'gluesync-sdk-client';
 
 import { getGluesyncSdkClient } from '../gluesyncSdkClient';
+import { reportManagedEnvironment } from '../helpers/containerRuntime/managedEnvironment';
+import { getDocker } from '../utils/docker/getDocker';
 import { getLogger } from '../utils/logger';
 
 // Define Node.js process variable
@@ -110,6 +112,11 @@ async function gluesyncPlugin(
     fastify.log.info(`SDK token present: ${sdkClient.token ? 'yes' : 'no'}`);
   };
 
+  // CoreHub learns which environment manages it (Docker, Podman or Swarm)
+  // from the Module-Environment handshake header. The first connection waits
+  // briefly for the engine to answer; it is never held up longer.
+  const environmentKnown = reportManagedEnvironment(sdkClient, getDocker);
+
   const retryCell = new Map<string, NodeJS.Timeout | boolean>([
     ['stopped', false],
   ]);
@@ -125,7 +132,7 @@ async function gluesyncPlugin(
     }
     // Promise.resolve().then(...) turns a synchronous throw from initialize()
     // into a rejected promise, like an async function would.
-    const attempt: Promise<void> = Promise.resolve()
+    const attempt: Promise<void> = environmentKnown
       .then(() => sdkClient.initialize())
       .finally(() => {
         if (inFlightCell.get('current') === attempt) {
