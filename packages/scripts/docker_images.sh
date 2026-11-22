@@ -198,6 +198,10 @@ while [ "$#" -gt 0 ]; do
       DOCKER_CMD="$DOCKER_CMD --build-arg CONDUCTOR_VERSION"
       echo " -> CONDUCTOR_VERSION=$CONDUCTOR_VERSION"
     fi
+    if [ -n "${ALPINE_MIRROR:-}" ]; then
+      DOCKER_CMD="$DOCKER_CMD --build-arg ALPINE_MIRROR"
+      echo " -> ALPINE_MIRROR=$ALPINE_MIRROR"
+    fi
     for TAG in "${TAGS[@]}"; do
       FULL_IMAGE="$CI_REGISTRY_IMAGE/$IMAGE_NAME:$TAG"
       DOCKER_CMD="$DOCKER_CMD -t $FULL_IMAGE"
