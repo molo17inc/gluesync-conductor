@@ -239,7 +239,11 @@ const buildBases = async () => {
   const buildNote = buildVersion ? ` (CONDUCTOR_VERSION=${buildVersion})` : '';
   say(`building conductor image from packages/gluesync-conductor/build${buildNote}`);
   const buildArgs = buildVersion ? ['--build-arg', `CONDUCTOR_VERSION=${buildVersion}`] : [];
-  await mustDocker(['build', '-q', ...buildArgs, '-t', env.conductorBase, env.conductorPkgDir], { timeoutMs: 300000 });
+  // ALPINE_MIRROR: the Alpine package mirror the Dockerfile's `apk add` downloads from (CI sets a
+  // Nexus proxy). Plain progress, not -q, so that a failed step shows its own output in the error.
+  const alpineMirror = process.env.ALPINE_MIRROR?.trim();
+  if (alpineMirror) buildArgs.push('--build-arg', `ALPINE_MIRROR=${alpineMirror}`);
+  await mustDocker(['build', '--progress=plain', ...buildArgs, '-t', env.conductorBase, env.conductorPkgDir], { timeoutMs: 300000 });
   // Keeper containers stop the conductor's post-update image prune from deleting the bases and the
   // seeded images (the conductor pulls its helper images itself, so they must be there when it needs them).
   const keepers = [

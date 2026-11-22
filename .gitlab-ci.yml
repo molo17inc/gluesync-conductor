@@ -91,8 +91,10 @@ quality:
 # which is also how to reproduce a shard locally; the profile exclusions live there.
 # Nothing comes from Docker Hub or the npm registry: the job image (ci/sandbox-ci.Dockerfile) has
 # node, yarn and the sandbox's npm dependencies, and SANDBOX_IMAGE_MIRROR makes the sandbox pull
-# every image it runs from Nexus. The only download left is the conductor image's own `apk add`
-# (Alpine CDN, packages/gluesync-conductor/Dockerfile).
+# every image it runs from Nexus. The conductor image's own `apk add` (packages/gluesync-conductor/
+# Dockerfile) downloads through ALPINE_MIRROR, the Nexus proxy of the Alpine CDN: a fresh dockerd per
+# job has no layer cache, so without it every shard of every pipeline downloads from the CDN. When
+# the mirror fails the Dockerfile falls back to the CDN.
 sandbox:
   stage: sandbox
   image:
@@ -108,6 +110,7 @@ sandbox:
   variables:
     DOCKER_HOST: unix:///var/run/docker.sock
     SANDBOX_IMAGE_MIRROR: nexus.hq.molo17.com/molo17-local
+    ALPINE_MIRROR: https://nexus.hq.molo17.com/repository/alpine-proxy
   script:
     # parallel: 4 sets CI_NODE_INDEX (1-based) and CI_NODE_TOTAL; the script reads them.
     - sh ci/sandbox-job.sh
@@ -124,6 +127,9 @@ sandbox:
 docker_images:
   stage: deploy
   image: docker:28.3.3
+  variables:
+    # The Alpine package mirror the Linux image's `apk add` downloads from (see the sandbox job)
+    ALPINE_MIRROR: https://nexus.hq.molo17.com/repository/alpine-proxy
   services:
     - name: docker:dind
   needs:
