@@ -38,6 +38,7 @@ import {
 import {
   contentTypeForArchive,
   createSupportPortalClient,
+  resolveRunningConductorVersion,
   createSupportPortalError,
   isSupportPortalError,
   PortalCheck,
@@ -108,6 +109,8 @@ type CollectLogsOptions = Readonly<{
   portal?: SupportPortalClient;
   // The engine behind the socket: the reports name it (Docker, Podman)
   engine?: ContainerEngine;
+  /** What the portal is told this Conductor runs as; defaults to resolveConductorVersion. */
+  conductorVersion?: string;
 }>;
 
 type CollectLogsError = Error &
@@ -1993,7 +1996,9 @@ const validateCollectLogsInput = async (
   if (voucher) {
     // The portal vouches for the voucher before anything is collected: this
     // replaces the WebDAV pre-check, behind a proxy too.
-    const portal = options.portal ?? createSupportPortalClient({ logger });
+    const portal =
+      options.portal ??
+      createSupportPortalClient({ logger, version: options.conductorVersion });
     return portal.check(voucher);
   }
 
@@ -2392,7 +2397,11 @@ const collectLogsInternally = async (
         archivePath,
         voucher,
         portalCheck,
-        options.portal ?? createSupportPortalClient({ logger }),
+        options.portal ??
+          createSupportPortalClient({
+            logger,
+            version: options.conductorVersion,
+          }),
         collectionSummaryLines,
       );
     }
@@ -2585,6 +2594,7 @@ const handler: CollectLogsHandler = async (req, reply) => {
       logger: req.log as unknown as Logger,
       swarm: swarmLogsSourceOf(orchestrator, req.server.docker),
       engine: await getContainerEngine(req.server.docker),
+      conductorVersion: await resolveRunningConductorVersion(req.server.docker),
     });
 
     return reply.code(200).send(successBody(result));
