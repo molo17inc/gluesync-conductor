@@ -234,8 +234,12 @@ const buildBases = async () => {
   if (!fs.existsSync(path.join(env.conductorPkgDir, 'build', 'index.js'))) {
     throw new Error('conductor build missing: run "yarn install && yarn build" in the repo root first');
   }
-  say('building conductor image from packages/gluesync-conductor/build');
-  await mustDocker(['build', '-q', '-t', env.conductorBase, env.conductorPkgDir], { timeoutMs: 300000 });
+  // SANDBOX_CONDUCTOR_BUILD_VERSION: build the base as CI builds a release, with --build-arg CONDUCTOR_VERSION
+  const buildVersion = process.env.SANDBOX_CONDUCTOR_BUILD_VERSION?.trim();
+  const buildNote = buildVersion ? ` (CONDUCTOR_VERSION=${buildVersion})` : '';
+  say(`building conductor image from packages/gluesync-conductor/build${buildNote}`);
+  const buildArgs = buildVersion ? ['--build-arg', `CONDUCTOR_VERSION=${buildVersion}`] : [];
+  await mustDocker(['build', '-q', ...buildArgs, '-t', env.conductorBase, env.conductorPkgDir], { timeoutMs: 300000 });
   // Keeper containers stop the conductor's post-update image prune from deleting the bases and the
   // seeded images (the conductor pulls its helper images itself, so they must be there when it needs them).
   const keepers = [

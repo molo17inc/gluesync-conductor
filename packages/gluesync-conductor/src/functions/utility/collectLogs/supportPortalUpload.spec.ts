@@ -16,6 +16,7 @@ import {
   createSupportPortalError,
   isSupportPortalError,
   resolveConductorVersion,
+  resolveRunningConductorVersion,
   resolveSupportApiUrl,
   SUPPORT_API_DEFAULT_URL,
 } from './supportPortalUpload';
@@ -228,6 +229,67 @@ describe('configuration', () => {
       '0.14.0',
     );
     assert.ok(resolveConductorVersion({}).length > 0);
+  });
+
+  describe('resolveRunningConductorVersion', () => {
+    type Docker = Parameters<typeof resolveRunningConductorVersion>[0];
+    const dockerAnswering = (inspect: () => Promise<unknown>): Docker =>
+      ({ getContainer: () => ({ inspect }) }) as unknown as Docker;
+    const runningImage = (image: string): Docker =>
+      dockerAnswering(async () => ({ Config: { Image: image } }));
+
+    it('prefers CONDUCTOR_VERSION over the image tag', async () => {
+      assert.equal(
+        await resolveRunningConductorVersion(
+          runningImage('molo17/gluesync-conductor:2.2.11.6'),
+          { CONDUCTOR_VERSION: '2.2.12' },
+        ),
+        '2.2.12',
+      );
+    });
+
+    it('takes the tag of the image of its own container', async () => {
+      assert.equal(
+        await resolveRunningConductorVersion(
+          runningImage('docker.io/molo17/gluesync-conductor:2.2.11.6'),
+          {},
+        ),
+        '2.2.11.6',
+      );
+      assert.equal(
+        await resolveRunningConductorVersion(
+          runningImage(
+            'registry.gitlab.com/g/c:2.3.0.0.abc1234@sha256:0123456789abcdef',
+          ),
+          {},
+        ),
+        '2.3.0.0.abc1234',
+      );
+    });
+
+    it('falls back when not in a container, untagged, or Docker is down', async () => {
+      const fallback = resolveConductorVersion({});
+      const notFound = Object.assign(new Error('no such container'), {
+        statusCode: 404,
+      });
+      const cases: ReadonlyArray<Docker> = [
+        dockerAnswering(async () => {
+          throw notFound;
+        }),
+        dockerAnswering(async () => {
+          throw new Error('connect ENOENT /var/run/docker.sock');
+        }),
+        runningImage('sha256:0123456789abcdef'),
+        dockerAnswering(async () => ({ Config: {} })),
+      ];
+      const versions = await Promise.all(
+        cases.map(docker => resolveRunningConductorVersion(docker, {})),
+      );
+      assert.deepEqual(
+        versions,
+        cases.map(() => fallback),
+      );
+    });
   });
 
   it('names the content type after the extension of the archive', () => {

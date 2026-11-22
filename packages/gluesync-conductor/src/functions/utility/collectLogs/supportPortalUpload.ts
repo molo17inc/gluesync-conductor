@@ -14,7 +14,11 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { hostname as osHostname, release as osRelease, type } from 'node:os';
 import axios, { AxiosRequestConfig } from 'axios';
+import type Docker from 'dockerode';
 import packageJson from '../../../../package.json';
+import { canonicalImageName } from '../../../helpers/containerRuntime/canonicalImage';
+import { inspectSelf } from '../../../helpers/orchestrator/getOrchestrator/getOrchestrator';
+import parseImage from '../../../helpers/parseImage/parseImage';
 import { getHttpsAgentFor } from '../../../utils/axiosWithRetry';
 import { redactSecrets } from '../../../utils/redact';
 import { redactVouchers } from './supportVoucher';
@@ -151,6 +155,38 @@ export const resolveConductorVersion = (
   env.CONDUCTOR_VERSION?.trim() ||
   (packageJson as Readonly<{ version?: string }>).version ||
   'unknown';
+
+/**
+ * The version this Conductor runs as: CONDUCTOR_VERSION when the image sets
+ * it, otherwise the tag of the image of its own container (what the update
+ * flow reads for the Conductor too), otherwise resolveConductorVersion's
+ * fallback. Never throws: a Docker that cannot be asked only loses the tag.
+ */
+export const resolveRunningConductorVersion = async (
+  docker: Readonly<Docker>,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Promise<string> => {
+  const fromEnv = env.CONDUCTOR_VERSION?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+
+  try {
+    const image = (await inspectSelf(docker))?.Config?.Image;
+    // A container started from an image id (`sha256:…`) has no tag to read
+    const tag =
+      image && !image.startsWith('sha256:')
+        ? parseImage(canonicalImageName(image)).tag.trim()
+        : '';
+    if (tag) {
+      return tag.slice(0, MAX_SOURCE_FIELD);
+    }
+  } catch {
+    // The engine is down or refuses: fall back like a dev run on a host
+  }
+
+  return resolveConductorVersion(env);
+};
 
 const CONTENT_TYPES: ReadonlyArray<readonly [string, string]> = [
   ['.tar.gz', 'application/gzip'],

@@ -4,6 +4,7 @@ import type Docker from 'dockerode';
 import fastify from 'fastify';
 
 import { resetContainerEngineCache } from '../../helpers/containerRuntime/containerEngine';
+import { resetOrchestratorCache } from '../../helpers/orchestrator/getOrchestrator/getOrchestrator';
 import handler from './info';
 
 const appWith = (
@@ -17,7 +18,10 @@ const appWith = (
 };
 
 describe('info handler', () => {
-  beforeEach(resetContainerEngineCache);
+  beforeEach(() => {
+    resetContainerEngineCache();
+    resetOrchestratorCache();
+  });
 
   it('returns what the Docker daemon reports', async () => {
     const app = appWith(async () => ({ ApiVersion: '1.45' }));
@@ -48,6 +52,7 @@ describe('info handler', () => {
       version: '5.8.2',
     });
     assert.equal(res.json().data.ServerVersion, '5.8.2');
+    assert.equal(res.json().data.managedEnvironment, 'conductor-podman');
     await app.close();
   });
 

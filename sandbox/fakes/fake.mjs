@@ -370,6 +370,8 @@ const startCoreHub = async () => {
     wss.handleUpgrade(req, socket, head, ws => {
       const license = req.headers['module-license'];
       const tag = req.headers['module-tag'] || 'unknown';
+      // Which environment manages the installation (Conductor: docker, podman or swarm)
+      const environment = req.headers['module-environment'] || null;
       const id = randomUUID().slice(0, 8);
       const chaos = activeChaos('ws');
       if (!license || chaos?.reject) {
@@ -389,8 +391,8 @@ const startCoreHub = async () => {
           const token = `mod-${tag}-${Date.now()}`;
           state.moduleTokens[token] = tag;
           persist();
-          modules.set(id, { id, tag, connectedAt: new Date().toISOString(), pings: 0 });
-          log('info', 'module handshake', { tag, id, first: msg });
+          modules.set(id, { id, tag, environment, connectedAt: new Date().toISOString(), pings: 0 });
+          log('info', 'module handshake', { tag, id, environment, first: msg });
           ws.send(token);
           return;
         }
@@ -540,7 +542,12 @@ const createSupportPortal = () => {
     const id = `up-${portal.seq}`;
     const multipart = json.size > portal.partBytes;
     const count = multipart ? Math.ceil(json.size / portal.partBytes) : 1;
-    portal.uploads[id] = { id, ticketKey, declared: json.size, contentType: json.contentType, fileName: json.fileName, multipart, count, parts: {}, completed: false, aborted: false };
+    portal.uploads[id] = {
+      id, ticketKey, declared: json.size, contentType: json.contentType, fileName: json.fileName, multipart, count, parts: {}, completed: false, aborted: false,
+      // Who sent it, as the portal's "Log bundle received from …" comment names it
+      source: json.source ?? null,
+      userAgent: record.userAgent,
+    };
     record.uploadId = id;
     return send(res, 200, startReply(id, ticketKey, json, multipart, count));
   };
@@ -608,6 +615,7 @@ const createSupportPortal = () => {
       path: p,
       bytes: body.length,
       voucherHeader: req.headers[VOUCHER_HEADER] ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
       // The voucher may only travel in its header: never in the URL, never in a body
       voucherInUrl: VOUCHER_TEXT.test(decodeURIComponent(req.url)),
       voucherInBody: p.startsWith(PORTAL_PREFIX) && VOUCHER_TEXT.test(body.toString('utf8')),
