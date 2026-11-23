@@ -3,10 +3,12 @@ import fp from 'fastify-plugin';
 
 import getKubernetesOrchestrator from '../helpers/orchestrator/getKubernetesOrchestrator/getKubernetesOrchestrator';
 import buildUnsupportedOnKubernetesReply from '../helpers/orchestrator/buildUnsupportedOnKubernetesReply/buildUnsupportedOnKubernetesReply';
+import KUBERNETES_CONTAINER_ACTIONS from '../helpers/kubernetes/kubernetesContainerActions';
 
-// The read-only routes the Kubernetes mode serves, by route pattern. Anything
-// else that is a route of this API is refused, so a route added later is
-// refused too until it is listed here.
+// The routes the Kubernetes mode serves, by route pattern. Anything else that
+// is a route of this API is refused, so a route added later is refused too
+// until it is listed here. `POST /containers` is served for the actions of
+// KUBERNETES_CONTAINER_ACTIONS only.
 export const KUBERNETES_SUPPORTED_ROUTES: ReadonlySet<string> = new Set([
   'GET /health',
   'GET /connectivity',
@@ -53,8 +55,16 @@ export const describeRequest = (req: Readonly<FastifyRequest>): string => {
   return action ? `${route} (${action})` : route;
 };
 
+const CONTAINER_ACTION_ROUTE = 'POST /containers';
+
+// `POST /containers` with an action the Kubernetes mode runs
+const isServedAction = (req: Readonly<FastifyRequest>): boolean =>
+  `${methodOf(req)} ${req.routeOptions.url}` === CONTAINER_ACTION_ROUTE &&
+  KUBERNETES_CONTAINER_ACTIONS.has(actionOf(req) ?? '');
+
 /**
- * Kubernetes mode serves the read-only routes. Every other route of the API
+ * Kubernetes mode serves the read-only routes, and the update and restart
+ * actions of `POST /containers`. Every other route of the API
  * answers 501 here, before its handler could reach for the container engine or
  * the compose file, neither of which a pod has. It runs after the body is
  * parsed (so the action can be named) and before validation and the handler.
@@ -74,7 +84,8 @@ const kubernetesGuardPlugin = (
       isDocs(req.url) ||
       KUBERNETES_SUPPORTED_ROUTES.has(
         `${methodOf(req)} ${req.routeOptions.url}`,
-      );
+      ) ||
+      isServedAction(req);
 
     return served
       ? undefined

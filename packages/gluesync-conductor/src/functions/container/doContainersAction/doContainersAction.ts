@@ -71,6 +71,9 @@ import {
   takeConductorRestart,
 } from '../../../helpers/conductorRestartAfterUpdate/conductorRestartAfterUpdate';
 import { UpdatePipelinesReport } from './handleUpdate/updateNormalBulk.model';
+import getKubernetesOrchestrator from '../../../helpers/orchestrator/getKubernetesOrchestrator/getKubernetesOrchestrator';
+import { isKubernetesApiError } from '../../../helpers/kubernetes/kubernetesClient/kubernetesClient';
+import performKubernetesAction from './kubernetesActions/kubernetesActions';
 
 const isWindows = process.env.IS_WINDOWS?.toLowerCase() === 'true' || false;
 const helperImageWindows = process.env.HELPER_IMAGE_BASE || '';
@@ -978,6 +981,16 @@ const perform = async (req: Readonly<Request>): Promise<Outcome> => {
       };
     }
 
+    // Kubernetes: no container engine and no compose file, the workloads are
+    // changed through the Kubernetes API
+    if (getKubernetesOrchestrator()) {
+      return await performKubernetesAction({
+        action: containerAction,
+        ids: requestIds,
+        releaseChannel,
+      });
+    }
+
     // Docker not answering is not "compose": the healing a compose Conductor
     // does would recreate containers inside a swarm
     const orchestrator = await getDecidedOrchestrator(req.server.docker);
@@ -1038,6 +1051,10 @@ const perform = async (req: Readonly<Request>): Promise<Outcome> => {
         error instanceof Error ? error.message : JSON.stringify(error)
       }`,
     );
+
+    if (isKubernetesApiError(error)) {
+      return failed(503, 'Kubernetes API unavailable', error.message);
+    }
 
     await logDockerReachable(req);
 

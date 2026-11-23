@@ -7,6 +7,9 @@ export type KubernetesMeta = Readonly<{
   namespace?: string;
   uid?: string;
   labels?: KubernetesLabels;
+  annotations?: KubernetesLabels;
+  // Goes up with every change of the spec
+  generation?: number;
   creationTimestamp?: string;
   deletionTimestamp?: string;
 }>;
@@ -88,6 +91,11 @@ export type KubernetesWorkloadObject = Readonly<{
     replicas?: number;
     readyReplicas?: number;
     updatedReplicas?: number;
+    // The generation the controller has acted on
+    observedGeneration?: number;
+    // StatefulSet: equal once every pod runs the new template
+    currentRevision?: string;
+    updateRevision?: string;
   }>;
 }>;
 
@@ -139,6 +147,10 @@ export type KubernetesWorkload = Readonly<{
   desiredReplicas: number;
   readyReplicas: number;
   updatedReplicas: number;
+  // Every pod the controller counts, the old ones of a rollout included
+  replicas: number;
+  // False while the controller has not acted on the last change of the spec
+  observed: boolean;
   // Running first, then newest first
   pods: ReadonlyArray<KubernetesPod>;
 }>;
@@ -148,4 +160,8 @@ export type KubernetesClient = Readonly<{
   namespace: string;
   /** GET `path` on the API server; rejects with a `KubernetesApiError`. */
   get: <T>(path: string) => Promise<T>;
+  /** Strategic merge PATCH of the object at `path`; answers the object. */
+  patch: <T>(path: string, patch: unknown) => Promise<T>;
+  /** DELETE the object at `path`. */
+  delete: (path: string) => Promise<void>;
 }>;

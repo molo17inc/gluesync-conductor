@@ -5,10 +5,12 @@ Conductor has a third orchestrator backend next to **compose** and **swarm**
 a pod, uses no container engine and no compose file, and reads the workloads of
 its own namespace from the Kubernetes API.
 
-This is the first slice: **read-only**. Conductor starts, connects to Core Hub
-and answers the routes that list services and versions, in the response shapes
-of compose mode. Everything that changes something answers 501 (see
-[What answers 501](#what-answers-501)). Compose and swarm are unchanged.
+Conductor starts, connects to Core Hub and answers the routes that list services
+and versions, in the response shapes of compose mode. It **updates** and
+**restarts** the services through the Kubernetes API (see
+[Update and restart](#update-and-restart)). Everything else that changes
+something answers 501 (see [What answers 501](#what-answers-501)). Compose and
+swarm are unchanged.
 
 ## Detecting the mode
 
@@ -37,8 +39,8 @@ The namespace is `POD_NAMESPACE` when set, else the service account's
 
 ## Startup
 
-Kubernetes mode skips everything that needs the engine socket, the compose
-file, the kit folder or a host path:
+Kubernetes mode skips everything that needs the engine socket, the compose file,
+the kit folder or a host path:
 
 - the Docker plugin does not wait for a daemon;
 - `BASE_PATH` is not resolved against the host;
@@ -55,49 +57,47 @@ that UDP discovery is not needed.
 Each StatefulSet and Deployment of the namespace is one Conductor service. Its
 `id` is the Docker-style id callers already use, not the name of the object:
 
-| Workload | `app.kubernetes.io/instance` | Conductor `id` |
-|---|---|---|
-| `gluesync-gluesync-core-hub` | `gluesync` | `gluesync-core-hub` |
-| `prod-gluesync-chronos` | `prod` | `gluesync-chronos` |
-| `prod-gluesync-conductor` | `prod` | `gluesync-conductor` |
-| `prod-gluesync-grafana` | `prod` | `grafana` |
-| `prod-gluesync-prometheus` | `prod` | `prometheus` |
-| `my-tool` | (none) | `my-tool` |
+| Workload                     | `app.kubernetes.io/instance` | Conductor `id`       |
+| ---------------------------- | ---------------------------- | -------------------- |
+| `gluesync-gluesync-core-hub` | `gluesync`                   | `gluesync-core-hub`  |
+| `prod-gluesync-chronos`      | `prod`                       | `gluesync-chronos`   |
+| `prod-gluesync-conductor`    | `prod`                       | `gluesync-conductor` |
+| `prod-gluesync-grafana`      | `prod`                       | `grafana`            |
+| `prod-gluesync-prometheus`   | `prod`                       | `prometheus`         |
+| `my-tool`                    | (none)                       | `my-tool`            |
 
 The rule: the release name, read from the workload's
 `app.kubernetes.io/instance` label, is taken off the front of the name
 (`<release>-<id>`). The release is never assumed to be `gluesync`. The
 third-party services the chart names `gluesync-grafana` and
 `gluesync-prometheus` get the id they have in a Docker kit (`grafana`,
-`prometheus`), which is what the version route of Core Hub looks for. A
-workload without the label, or whose name does not start with the release,
-keeps its name. If two workloads would get the same id (two releases in one
-namespace), the first by kind and name keeps it and the others keep their full
-name.
+`prometheus`), which is what the version route of Core Hub looks for. A workload
+without the label, or whose name does not start with the release, keeps its
+name. If two workloads would get the same id (two releases in one namespace),
+the first by kind and name keeps it and the others keep their full name.
 
 The `info.kubernetes` object of `GET /containers` carries the real names:
-`{ kind, name, namespace, release, pod, node, replicas, desiredReplicas,
-updatedReplicas, restarts }`.
+`{ kind, name, namespace, release, pod, node, replicas, desiredReplicas, updatedReplicas, restarts }`.
 
 The Conductor type follows the rules of a Docker kit: a third-party id
 (`grafana`, `prometheus`, `reverse-proxy`, `portainer`) is `third-party`; then
 the `com.molo17.conductor.type` label of the workload when it is a Conductor
-type (`core-hub`, `module`, `agent`, `third-party`); then the image looked up
-in `agents.json`; otherwise `unknown`. The chart labels Grafana and Prometheus
+type (`core-hub`, `module`, `agent`, `third-party`); then the image looked up in
+`agents.json`; otherwise `unknown`. The chart labels Grafana and Prometheus
 `module`: they are reported `third-party`, as in a Docker kit.
 
 ## What works
 
-| Route | Kubernetes |
-|---|---|
-| `GET /health` | unchanged |
-| `GET /connectivity` | unchanged (the registry probed is Docker Hub) |
-| `GET /info` | `{ orchestrator: 'kubernetes', namespace, ServerVersion }` plus, when the node can be read, `Name`, `NCPU`, `MemTotal`, `OSType`, `Architecture`, `OperatingSystem`, `KernelVersion`, `ContainerRuntime` (the keys of Docker's `info`) |
-| `GET /version` | the API server version under Docker's keys (`Version`, `GitCommit`, `GoVersion`, `Os`, `Arch`, `BuildTime`, `Platform.Name: Kubernetes`) plus `orchestrator` |
-| `GET /containers` (and `type`) | one entry per workload: `service` is the workload (image, labels with the Conductor type, the environment values written in the manifest, `deploy.replicas`), `info` the pod shown (running first, then newest) with `info.kubernetes`; no `info` when the workload has no pod. `persisted` is always true |
-| `GET /services`, `GET /services/:id` | the same `service` objects, with the filters of compose mode (`raw`, `format=string`) |
-| `GET /services/:id/version/:releaseChannel?` | current version from the tag of the workload's image; latest versions, changelog and Core Hub's `servicesToUpdate` from the same catalog code as compose |
-| `GET /disaster-recovery/setup` | `supported: false` with the reason, as on Swarm |
+| Route                                        | Kubernetes                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /health`                                | unchanged                                                                                                                                                                                                                                                                                                  |
+| `GET /connectivity`                          | unchanged (the registry probed is Docker Hub)                                                                                                                                                                                                                                                              |
+| `GET /info`                                  | `{ orchestrator: 'kubernetes', namespace, ServerVersion }` plus, when the node can be read, `Name`, `NCPU`, `MemTotal`, `OSType`, `Architecture`, `OperatingSystem`, `KernelVersion`, `ContainerRuntime` (the keys of Docker's `info`)                                                                     |
+| `GET /version`                               | the API server version under Docker's keys (`Version`, `GitCommit`, `GoVersion`, `Os`, `Arch`, `BuildTime`, `Platform.Name: Kubernetes`) plus `orchestrator`                                                                                                                                               |
+| `GET /containers` (and `type`)               | one entry per workload: `service` is the workload (image, labels with the Conductor type, the environment values written in the manifest, `deploy.replicas`), `info` the pod shown (running first, then newest) with `info.kubernetes`; no `info` when the workload has no pod. `persisted` is always true |
+| `GET /services`, `GET /services/:id`         | the same `service` objects, with the filters of compose mode (`raw`, `format=string`)                                                                                                                                                                                                                      |
+| `GET /services/:id/version/:releaseChannel?` | current version from the tag of the workload's image; latest versions, changelog and Core Hub's `servicesToUpdate` from the same catalog code as compose                                                                                                                                                   |
+| `GET /disaster-recovery/setup`               | `supported: false` with the reason, as on Swarm                                                                                                                                                                                                                                                            |
 
 Notes:
 
@@ -113,6 +113,75 @@ Notes:
 - A Kubernetes API error (a missing Role, say) answers 503
   `Kubernetes API unavailable` with the API's message in `details`.
 
+## Update and restart
+
+`POST /containers` with `action: update` or `action: restart` changes the
+workloads of the namespace through the Kubernetes API. No image is pulled by
+Conductor and no file is written: Kubernetes replaces the pods.
+
+**Update.** For each id:
+
+1. The version on offer for the release channel is read from the same catalog as
+   in compose mode. A service already on it answers `Already on <version>`. An
+   image the catalog does not publish, or an id that is not in the namespace, is
+   an `ERROR` item and nothing is changed for it.
+2. The image of the workload's container is set to `<same repository>:<version>`
+   with a strategic merge patch (the container is matched by name; the registry
+   of the image is kept).
+3. Conductor waits until every pod runs the new template and is ready, and stays
+   so for the stability window.
+4. When that does not happen, the previous image is put back and the item is an
+   `ERROR` that says so. A pod that cannot pull its image or crash-loops ends
+   the wait after 30 s; otherwise the timeout does. A StatefulSet does not
+   replace a pod that never became ready, so Conductor deletes it after putting
+   the image back.
+
+Order: Core Hub first and alone, with its pipelines in maintenance mode (the
+same `UPDATE_PIPELINE_MAINTENANCE` settings as compose); they resume as soon as
+Core Hub is stable or rolled back. Then the other services, together. The
+Conductor's own Deployment last: it is patched and not waited for, because this
+process is the one replaced. Kubernetes keeps the old Conductor pod until the
+new one is ready, so a Conductor image that does not start leaves the old one
+running.
+
+**Restart.** A rollout restart of each id (the
+`kubectl.kubernetes.io/restartedAt` annotation `kubectl rollout restart`
+writes), waited for. Without ids, every workload of the namespace, the
+Conductor's own last.
+
+| Variable                             | Default | Meaning                                                |
+| ------------------------------------ | ------- | ------------------------------------------------------ |
+| `KUBERNETES_ROLLOUT_TIMEOUT_SECONDS` | `600`   | How long a rollout may take before it counts as failed |
+| `KUBERNETES_STABILITY_SECONDS`       | `20`    | How long a service must stay ready after its rollout   |
+
+The reply has the items of compose mode (`id`, `status`, `message`, and
+`pausedPipelines` / `resumedPipelines` on Core Hub's item). A Kubernetes API
+error answers 503 `Kubernetes API unavailable`.
+
+### With the Gluesync operator
+
+The Gluesync Kubernetes Operator sets the images of the namespace from its
+`GluesyncPlatform` and would put back what Conductor changed. When a workload
+labelled `com.molo17.conductor.type: operator` is in the namespace, `update`
+answers **409** `Updates are applied by the Gluesync operator` and changes
+nothing. Run one or the other in a namespace, not both. `restart` is allowed.
+
+### With Helm
+
+Conductor changes the live workload, not the Helm release. A later
+`helm upgrade` renders the image tag of `values.yaml` again and would move the
+service back to it, unless the chart reads the tag of the live workload (the
+Gluesync chart does this with `lookup` when it is told that something else
+applies the updates). Without that, change the tag in `values.yaml` too.
+
+### Limits
+
+- The pipelines an update holds in maintenance mode are remembered by the
+  Conductor process only. If the Conductor pod is replaced in the middle of a
+  Core Hub update, they stay in maintenance mode until resumed by hand.
+- The update mode of compose (`Conductor is updating`, the watchdog) does not
+  exist here: Kubernetes' own rolling update covers the Conductor.
+
 ## What answers 501
 
 Every other route answers **501** before its handler runs, with the same body
@@ -121,16 +190,19 @@ everywhere:
 ```json
 {
   "success": false,
-  "error": "POST /containers (update) is not supported on Kubernetes yet",
-  "details": "Conductor runs in Kubernetes mode, which serves the read-only routes only: nothing was changed",
-  "diagnosis": { "code": "KUBERNETES_UNSUPPORTED", "params": { "feature": "POST /containers (update)" } }
+  "error": "POST /containers (stop) is not supported on Kubernetes yet",
+  "details": "Conductor runs in Kubernetes mode, which does not serve this yet: nothing was changed",
+  "diagnosis": {
+    "code": "KUBERNETES_UNSUPPORTED",
+    "params": { "feature": "POST /containers (stop)" }
+  }
 }
 ```
 
 `error` names the route as registered and, for `POST /containers`, the action.
 
-- `POST /containers`, every action (`start`, `stop`, `restart`, `kill`, `pull`,
-  `update`, `remove`, `undeploy`, `removeNetwork`)
+- `POST /containers`, every action but `update` and `restart` (`start`, `stop`,
+  `kill`, `pull`, `remove`, `undeploy`, `removeNetwork`)
 - `POST /services`, `PUT /services`
 - `POST /collect-logs`
 - `POST /migrate-to-two`
@@ -150,8 +222,9 @@ still a 404.
 
 Conductor uses the service account of its pod: the token and the CA from
 `/var/run/secrets/kubernetes.io/serviceaccount`, the API server from
-`KUBERNETES_SERVICE_HOST` and `KUBERNETES_SERVICE_PORT`. This slice only reads,
-so a namespaced Role is enough:
+`KUBERNETES_SERVICE_HOST` and `KUBERNETES_SERVICE_PORT`. A namespaced Role is
+enough: it reads the workloads and pods, patches a workload (update, restart)
+and deletes a pod (the stuck pod of a StatefulSet after a rollback):
 
 ```yaml
 apiVersion: v1
@@ -166,10 +239,10 @@ metadata:
 rules:
   - apiGroups: ['apps']
     resources: ['statefulsets', 'deployments']
-    verbs: ['get', 'list', 'watch']
+    verbs: ['get', 'list', 'watch', 'patch']
   - apiGroups: ['']
     resources: ['pods']
-    verbs: ['get', 'list', 'watch']
+    verbs: ['get', 'list', 'watch', 'delete']
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -229,8 +302,9 @@ spec:
 
 No Docker socket, no hostPath, no privileged container.
 
-`watch` is not used yet (every request lists); it is in the Role so that the
-next slices, which wait for rollouts, need no RBAC change for reading.
+`watch` is not used yet (every request lists, a rollout is polled). A Role
+without `patch` and `delete` still serves the read-only routes; an update then
+answers with the API's 403 in the item.
 
 ### What node access would add
 
@@ -267,27 +341,18 @@ minutes before asking again.
 
 ## Kubernetes client
 
-`helpers/kubernetes/kubernetesClient` is a small read-only client on Node's
-`https`: no dependency was added. It reads the token on every call (the kubelet
-rotates it), verifies the API server against the mounted CA, and times out
-after 10 s. Three list calls (StatefulSets, Deployments, Pods) serve a request,
-whatever the number of workloads; pods are matched to a workload by its
-`spec.selector.matchLabels`.
+`helpers/kubernetes/kubernetesClient` is a small client on Node's `https` (GET,
+strategic merge PATCH, DELETE): no dependency was added. It reads the token on
+every call (the kubelet rotates it), verifies the API server against the mounted
+CA, and times out after 10 s. Three list calls (StatefulSets, Deployments, Pods)
+serve a request, whatever the number of workloads; pods are matched to a
+workload by its `spec.selector.matchLabels`.
 
 ## Next slices
 
-1. **Update**: set the image of a workload, wait for the rollout
-   (`updatedReplicas`, `readyReplicas`, the rollout status), roll back to the
-   previous image when it does not converge; Core Hub's pipeline maintenance
-   around it, as in compose and swarm. Needs `patch` on StatefulSets and
-   Deployments.
-2. **Restart**: a rollout restart (the `kubectl.kubernetes.io/restartedAt`
-   annotation), Conductor last.
-3. **Stop and start** by scaling to 0 and back to the previous replica count.
-4. **Self-update**: Conductor changes its own Deployment after replying, with
-   the downgrade guard of swarm mode.
-5. **Pod logs** for `POST /collect-logs` (`pods/log`).
-6. **State storage**: what the compose kit keeps in the root folder (paused
+1. **Stop and start** by scaling to 0 and back to the previous replica count.
+2. **Pod logs** for `POST /collect-logs` (`pods/log`).
+3. **State storage**: what the compose kit keeps in the root folder (paused
    pipelines of an interrupted update, backups), in a ConfigMap or a volume.
 
 Still open after those: adding and editing services (`POST`/`PUT /services`),

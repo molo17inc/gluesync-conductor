@@ -144,7 +144,51 @@ type Cluster = Readonly<{
   pods?: ReadonlyArray<KubernetesPod>;
   // Any other path: its answer, or the error to reject with
   paths?: Readonly<Record<string, unknown>>;
+  // Images whose pods never start (`ImagePullBackOff`) when a PATCH sets them
+  brokenImages?: ReadonlyArray<string>;
 }>;
+
+type Patch = Readonly<{
+  spec?: Readonly<{
+    template?: Readonly<{
+      spec?: Readonly<{
+        containers?: ReadonlyArray<Readonly<{ name?: string; image?: string }>>;
+      }>;
+    }>;
+  }>;
+}>;
+
+// What the cluster does with a new image at once: every pod runs it and is
+// ready, or none is when the image cannot be pulled
+const rolled = (
+  workload: KubernetesWorkloadObject,
+  image: string,
+  broken: boolean,
+): KubernetesWorkloadObject => {
+  const replicas = workload.spec?.replicas ?? 1;
+
+  return {
+    ...workload,
+    spec: {
+      ...workload.spec,
+      template: {
+        ...workload.spec?.template,
+        spec: {
+          ...workload.spec?.template?.spec,
+          containers: (workload.spec?.template?.spec?.containers ?? []).map(
+            (container, index) =>
+              index === 0 ? { ...container, image } : container,
+          ),
+        },
+      },
+    },
+    status: {
+      replicas,
+      readyReplicas: broken ? 0 : replicas,
+      updatedReplicas: replicas,
+    },
+  };
+};
 
 /**
  * A Kubernetes client that answers from memory and records the paths it was
@@ -156,8 +200,19 @@ const fakeKubernetesClient = ({
   deployments = [],
   pods = [],
   paths = {},
-}: Cluster = {}): KubernetesClient & Readonly<{ calls: string[] }> => {
+  brokenImages = [],
+}: Cluster = {}): KubernetesClient &
+  Readonly<{
+    calls: string[];
+    // Every PATCH, in order
+    patches: Array<Readonly<{ path: string; patch: unknown }>>;
+    deleted: string[];
+    // The answer of a path from now on (a workload list after a rollout)
+    set: (path: string, answer: unknown) => void;
+  }> => {
   const calls: string[] = [];
+  const patches: Array<Readonly<{ path: string; patch: unknown }>> = [];
+  const deleted: string[] = [];
   const answers: Record<string, unknown> = {
     [`/apis/apps/v1/namespaces/${namespace}/statefulsets`]: {
       items: statefulSets,
@@ -172,6 +227,65 @@ const fakeKubernetesClient = ({
   return {
     namespace,
     calls,
+    patches,
+    deleted,
+    set: (path, answer) => {
+      answers[path] = answer;
+    },
+    patch: async <T>(path: string, patch: unknown): Promise<T> => {
+      patches.push({ path, patch });
+
+      const image = (patch as Patch).spec?.template?.spec?.containers?.[0]
+        ?.image;
+      const name = path.split('/').pop() ?? '';
+      const listPath = path.slice(0, path.lastIndexOf('/'));
+      const podsPath = `/api/v1/namespaces/${namespace}/pods`;
+      const list = answers[listPath] as
+        | { items: ReadonlyArray<KubernetesWorkloadObject> }
+        | undefined;
+      const current = list?.items.find(w => w.metadata.name === name);
+
+      if (!image || !list || !current) {
+        return (current ?? {}) as T;
+      }
+
+      const broken = brokenImages.includes(image);
+      const next = rolled(current, image, broken);
+      const allPods = (answers[podsPath] as { items: KubernetesPod[] }).items;
+      const selector = current.spec?.selector?.matchLabels ?? {};
+      const mine = (pod: KubernetesPod): boolean =>
+        Object.entries(selector).every(
+          ([key, value]) => pod.metadata.labels?.[key] === value,
+        );
+
+      answers[listPath] = {
+        items: list.items.map(w => (w === current ? next : w)),
+      };
+      answers[podsPath] = {
+        items: allPods.map(pod =>
+          mine(pod)
+            ? buildPod(next, {
+                name: pod.metadata.name,
+                ...(broken && {
+                  phase: 'Pending',
+                  ready: false,
+                  state: {
+                    waiting: {
+                      reason: 'ImagePullBackOff',
+                      message: `Back-off pulling image "${image}"`,
+                    },
+                  },
+                }),
+              })
+            : pod,
+        ),
+      };
+
+      return next as T;
+    },
+    delete: async (path: string): Promise<void> => {
+      deleted.push(path);
+    },
     get: async <T>(path: string): Promise<T> => {
       calls.push(path);
 

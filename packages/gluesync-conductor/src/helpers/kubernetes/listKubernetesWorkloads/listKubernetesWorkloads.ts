@@ -113,6 +113,12 @@ const listKubernetesWorkloads = async (
       desiredReplicas: object.spec?.replicas ?? 1,
       readyReplicas: object.status?.readyReplicas ?? 0,
       updatedReplicas: object.status?.updatedReplicas ?? 0,
+      replicas: object.status?.replicas ?? 0,
+      observed:
+        (object.status?.observedGeneration ?? 0) >=
+          (object.metadata.generation ?? 0) &&
+        (object.status?.currentRevision ?? '') ===
+          (object.status?.updateRevision ?? ''),
       pods: (pods.items ?? [])
         .filter(pod =>
           selects(object.spec?.selector?.matchLabels, pod.metadata.labels),

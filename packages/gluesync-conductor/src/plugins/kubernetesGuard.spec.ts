@@ -55,7 +55,9 @@ const buildPlain = async (kubernetes: boolean) => {
         body: {
           type: 'object',
           required: ['action', 'ids'],
-          properties: { action: { type: 'string', enum: ['update'] } },
+          properties: {
+            action: { type: 'string', enum: ['update', 'restart', 'stop'] },
+          },
         },
       },
     },
@@ -159,7 +161,7 @@ describe('kubernetesGuard', () => {
     const update = await app.inject({
       method: 'POST',
       url: '/containers?x=1',
-      payload: { action: 'update', ids: ['gluesync-core-hub'] },
+      payload: { action: 'stop', ids: ['gluesync-core-hub'] },
     });
     const agent = await app.inject({
       method: 'GET',
@@ -169,12 +171,35 @@ describe('kubernetesGuard', () => {
     assert.equal(update.statusCode, 501);
     assert.equal(
       update.json().error,
-      'POST /containers (update) is not supported on Kubernetes yet',
+      'POST /containers (stop) is not supported on Kubernetes yet',
     );
     assert.equal(agent.statusCode, 501);
     assert.equal(
       agent.json().error,
       'GET /agents/:id/version/:releaseChannel? is not supported on Kubernetes yet',
+    );
+    await app.close();
+  });
+
+  it('lets the update and restart actions through to their handler', async () => {
+    const app = await buildPlain(true);
+
+    const responses = await Promise.all(
+      ['update', 'restart'].map(action =>
+        app.inject({
+          method: 'POST',
+          url: '/containers',
+          payload: { action, ids: ['gluesync-core-hub'] },
+        }),
+      ),
+    );
+
+    assert.deepEqual(
+      responses.map(r => [r.statusCode, r.json()]),
+      [
+        [200, { ok: true }],
+        [200, { ok: true }],
+      ],
     );
     await app.close();
   });
@@ -324,17 +349,15 @@ describe('kubernetesGuard', () => {
       await app.close();
     });
 
-    it('answers 501 for every container action', async () => {
+    it('answers 501 for every container action but update and restart', async () => {
       const { app } = await buildReal();
       const actions = [
         'kill',
         'pull',
         'remove',
         'removeNetwork',
-        'restart',
         'start',
         'stop',
-        'update',
         'undeploy',
       ];
 

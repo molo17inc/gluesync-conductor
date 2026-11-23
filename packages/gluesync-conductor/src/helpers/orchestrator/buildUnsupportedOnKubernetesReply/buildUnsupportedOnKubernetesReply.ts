@@ -10,7 +10,7 @@ const buildUnsupportedOnKubernetesReply = (feature: string): ErrorResponse => ({
   success: false,
   error: `${feature} is not supported on Kubernetes yet`,
   details:
-    'Conductor runs in Kubernetes mode, which serves the read-only routes only: nothing was changed',
+    'Conductor runs in Kubernetes mode, which does not serve this yet: nothing was changed',
   diagnosis: buildDiagnosis({
     code: 'KUBERNETES_UNSUPPORTED',
     params: { feature },

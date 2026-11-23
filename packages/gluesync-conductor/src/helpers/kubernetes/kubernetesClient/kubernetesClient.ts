@@ -39,6 +39,8 @@ export type KubernetesHttpResponse = Readonly<{
   body: string;
 }>;
 
+export type KubernetesHttpMethod = 'GET' | 'PATCH' | 'DELETE';
+
 export type KubernetesHttpGet = (
   request: Readonly<{
     url: string;
@@ -46,20 +48,37 @@ export type KubernetesHttpGet = (
     // PEM of the cluster CA; the system CAs are used without it
     ca?: string;
     timeoutMs: number;
+    // GET when absent
+    method?: KubernetesHttpMethod;
+    // JSON text sent with a PATCH, with its patch content type
+    body?: string;
+    contentType?: string;
   }>,
 ) => Promise<KubernetesHttpResponse>;
 
-const httpsGet: KubernetesHttpGet = ({ url, token, ca, timeoutMs }) =>
+const httpsGet: KubernetesHttpGet = ({
+  url,
+  token,
+  ca,
+  timeoutMs,
+  method = 'GET',
+  body,
+  contentType,
+}) =>
   new Promise((resolve, reject) => {
     const request = https.request(
       url,
       {
-        method: 'GET',
+        method,
         ca,
         timeout: timeoutMs,
         headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${token}`,
+          ...(body !== undefined && {
+            'Content-Type': contentType ?? 'application/json',
+            'Content-Length': Buffer.byteLength(body),
+          }),
         },
       },
       response => {
@@ -85,7 +104,7 @@ const httpsGet: KubernetesHttpGet = ({ url, token, ca, timeoutMs }) =>
       );
     });
     request.on('error', reject);
-    request.end();
+    request.end(body);
   });
 
 // eslint-disable-next-line functional/no-mixed-types -- injected dependencies: values and functions together
@@ -130,11 +149,14 @@ const forbiddenHint = (statusCode: number): string =>
     ? ' (check the Role bound to the service account of the Conductor, see docs/kubernetes-mode.md)'
     : '';
 
+// Strategic merge: a container of the pod template is matched by its name
+export const STRATEGIC_MERGE_PATCH = 'application/strategic-merge-patch+json';
+
 /**
- * Read-only client of the Kubernetes API for a process in a pod: the service
- * account token (read on every call, the kubelet rotates it) and the cluster
- * CA come from the mounted service account. No dependency: the Conductor only
- * lists and gets a few objects.
+ * Client of the Kubernetes API for a process in a pod: the service account
+ * token (read on every call, the kubelet rotates it) and the cluster CA come
+ * from the mounted service account. No dependency: the Conductor lists and
+ * gets a few objects, patches a workload and deletes a pod.
  */
 export const createKubernetesClient = (
   overrides: Partial<KubernetesClientDeps> = {},
@@ -151,7 +173,11 @@ export const createKubernetesClient = (
     }),
   } = overrides;
 
-  const get = async <T>(path: string): Promise<T> => {
+  const send = async <T>(
+    method: KubernetesHttpMethod,
+    path: string,
+    patch?: unknown,
+  ): Promise<T> => {
     const response = await (async (): Promise<KubernetesHttpResponse> => {
       try {
         const [token, ca] = await Promise.all([
@@ -165,10 +191,15 @@ export const createKubernetesClient = (
           token: token.trim(),
           ca,
           timeoutMs,
+          method,
+          ...(patch !== undefined && {
+            body: JSON.stringify(patch),
+            contentType: STRATEGIC_MERGE_PATCH,
+          }),
         });
       } catch (error) {
         throw apiError(
-          `Kubernetes API request GET ${path} failed: ${error instanceof Error ? error.message : String(error)}`,
+          `Kubernetes API request ${method} ${path} failed: ${error instanceof Error ? error.message : String(error)}`,
           path,
         );
       }
@@ -176,7 +207,7 @@ export const createKubernetesClient = (
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw apiError(
-        `Kubernetes API answered ${response.statusCode} to GET ${path}: ${messageOf(response.body)}${forbiddenHint(response.statusCode)}`,
+        `Kubernetes API answered ${response.statusCode} to ${method} ${path}: ${messageOf(response.body)}${forbiddenHint(response.statusCode)}`,
         path,
         response.statusCode,
       );
@@ -186,14 +217,21 @@ export const createKubernetesClient = (
       return JSON.parse(response.body) as T;
     } catch {
       throw apiError(
-        `Kubernetes API answered GET ${path} with a body that is not JSON`,
+        `Kubernetes API answered ${method} ${path} with a body that is not JSON`,
         path,
         response.statusCode,
       );
     }
   };
 
-  return { namespace, get };
+  return {
+    namespace,
+    get: path => send('GET', path),
+    patch: (path, patch) => send('PATCH', path, patch),
+    delete: async path => {
+      await send('DELETE', path);
+    },
+  };
 };
 
 const clientCache = new Map<'value', KubernetesClient>();

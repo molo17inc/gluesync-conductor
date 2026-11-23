@@ -75,9 +75,45 @@ describe('kubernetesClient', () => {
         token: 'the-token',
         ca: 'PEM',
         timeoutMs: 10_000,
+        method: 'GET',
       },
     ]);
     assert.equal(client.namespace, 'kit');
+  });
+
+  it('PATCHes with a strategic merge patch and DELETEs', async () => {
+    const { client, requests } = build({ statusCode: 200, body: '{"a":1}' });
+
+    assert.deepEqual(
+      await client.patch('/apis/apps/v1/namespaces/kit/deployments/x', {
+        spec: { replicas: 2 },
+      }),
+      { a: 1 },
+    );
+    await client.delete('/api/v1/namespaces/kit/pods/x-0');
+
+    assert.deepEqual(
+      requests.map(({ method, url, body, contentType }) => ({
+        method,
+        url,
+        body,
+        contentType,
+      })),
+      [
+        {
+          method: 'PATCH',
+          url: 'https://10.96.0.1:6443/apis/apps/v1/namespaces/kit/deployments/x',
+          body: '{"spec":{"replicas":2}}',
+          contentType: 'application/strategic-merge-patch+json',
+        },
+        {
+          method: 'DELETE',
+          url: 'https://10.96.0.1:6443/api/v1/namespaces/kit/pods/x-0',
+          body: undefined,
+          contentType: undefined,
+        },
+      ],
+    );
   });
 
   it('reads the token on every call, as the kubelet rotates it', async () => {
