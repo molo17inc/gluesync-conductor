@@ -26,6 +26,8 @@ import {
   beginFullRestart,
   fullRestartRunningSince,
 } from '../../../helpers/restartAllServices/fullRestartInProgress';
+import reconcileRunningImages from '../../../helpers/composeFile/reconcileRunningImages/reconcileRunningImages';
+import { STARTUP_HEAL_ACTION } from '../../../helpers/startupHeals/runStartupHeals';
 import pinRunningImages from '../../../helpers/pinRunningImages/pinRunningImages';
 import { PinnedImage } from '../../../helpers/pinRunningImages/pinRunningImages.model';
 import migrationWithUpdate from './migrationWithUpdate/migrationWithUpdate';
@@ -536,6 +538,19 @@ const performUpdate = async (
   // Before anything is pulled or written: a disk that fills up halfway is what
   // used to leave the compose file empty.
   await ensureFreeSpace([composeFilePath()], getUpdateMinFreeBytes());
+
+  // A compose file naming an older tag than the one running would make the
+  // rollbacks below downgrade the service (GS-1485): the running tags go in
+  // first, so the snapshot taken next is of what really runs. It must not stop
+  // the update.
+  if (!swarm) {
+    await reconcileRunningImages(req.server.docker).catch(error => {
+      req.log.error(
+        { error: errorMessage(error) },
+        '[compose-reconcile] could not reconcile the compose file with the running images: updating anyway',
+      );
+    });
+  }
 
   const composeJson = await readComposeFile({ raw: true });
 
@@ -1062,7 +1077,10 @@ const handler: DoContainersActionHandler = async (req, reply) => {
     reply.send({
       success: false,
       error: 'Another container action is in progress',
-      details: `"${running.action}" started at ${running.since}; try again when it has finished`,
+      details:
+        running.action === STARTUP_HEAL_ACTION
+          ? `Conductor is finishing its startup checks (started at ${running.since}); try again shortly`
+          : `"${running.action}" started at ${running.since}; try again when it has finished`,
     });
     return;
   }
