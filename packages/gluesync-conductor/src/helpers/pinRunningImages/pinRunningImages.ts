@@ -20,7 +20,7 @@ const isCoreHub = (service: Readonly<RawComposeService>): boolean => {
 // The service when its container runs another tag of the same image than the
 // compose file names. A container that exists but has stopped counts too: its
 // data (CoreHub's database above all) was already migrated by that image.
-const findPin = async (
+export const findPin = async (
   docker: Parameters<PinRunningImages>[0],
   id: string,
   service: Readonly<RawComposeService>,

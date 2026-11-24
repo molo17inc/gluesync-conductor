@@ -49,6 +49,9 @@ type Options = {
   restartRuns?: Promise<void>;
   // What pinRunningImages finds, or how it fails
   pins?: ReadonlyArray<unknown> | Error;
+  // reconcileRunningImages: fails, or moves the compose file the update reads
+  reconcileError?: unknown;
+  reconciled?: unknown;
   availableBytes?: number;
   // Compose unless told otherwise; `null` is "Docker not answering"
   orchestrator?: unknown;
@@ -99,6 +102,7 @@ const load = (options: Options = {}) => {
     swarmForceUpdates: [] as string[],
     swarmStackRestarts: [] as Call[],
     pinned: 0,
+    order: [] as string[],
   };
   const log =
     (level: string) =>
@@ -115,181 +119,195 @@ const load = (options: Options = {}) => {
   };
 
   const actions = options.actions ?? {};
-  const handler = loadWithStubs<{ default: DoContainersActionHandler }>(
-    here('./doContainersAction'),
-    {
-      [helper('dockerode/createActions/createActions')]: {
-        default: (...args: unknown[]) => {
-          calls.createActions.push(args);
-          return {
-            ...actions,
-            update: actions.update ?? (async () => 'updated'),
-            restart: actions.restart ?? (async () => 'restarted'),
-          };
-        },
+  const subject = loadWithStubs<{
+    default: DoContainersActionHandler;
+    enterContainerAction: (
+      key: { action: string; ids: readonly string[] },
+      perform: () => Promise<{ statusCode: number; body: unknown }>,
+    ) => { kind: string; outcome: Promise<unknown> };
+  }>(here('./doContainersAction'), {
+    [helper('dockerode/createActions/createActions')]: {
+      default: (...args: unknown[]) => {
+        calls.createActions.push(args);
+        return {
+          ...actions,
+          update: actions.update ?? (async () => 'updated'),
+          restart: actions.restart ?? (async () => 'restarted'),
+        };
       },
-      [helper('composeFile/readComposeFile/readComposeFile')]: {
-        readComposeFile: async () => {
-          if (options.composeError) {
-            throw options.composeError;
-          }
-          return options.compose ?? { services: {} };
-        },
-      },
-      [helper('checkModuleUpdate/checkModuleUpdate')]: {
-        default: async (
-          _d: unknown,
-          _c: unknown,
-          _r: unknown,
-          name: string,
-        ) => {
-          calls.checked.push(name);
-          const info =
-            options.modules && name in options.modules
-              ? options.modules[name]
-              : ok(name);
-          if (info instanceof Error) {
-            throw info;
-          }
-          return info;
-        },
-      },
-      [here('./handleUpdate/updateConductorOnly')]: {
-        default: async (...args: unknown[]) => {
-          calls.conductorOnly.push(args);
-          return (
-            options.conductorOnly ?? {
-              id: 'gluesync-conductor',
-              results: [{ status: 'fulfilled', value: 'conductor updated' }],
-            }
-          );
-        },
-      },
-      [here('./handleUpdate/updateNormalBulk')]: {
-        default: async (...args: unknown[]) => {
-          calls.bulk.push(args);
-          if (options.bulkError) {
-            throw options.bulkError;
-          }
-          return (
-            options.bulk ?? {
-              orderedIds: ['a'],
-              results: [{ status: 'fulfilled', value: 'a updated' }],
-            }
-          );
-        },
-      },
-      [here('./migrationWithUpdate/migrationWithUpdate')]: {
-        default: async (...args: unknown[]) => {
-          calls.migration.push(args);
-          if (options.migrationError) {
-            throw options.migrationError;
-          }
-        },
-      },
-      [path.join(root, 'plugins/apiBlockerAsUpdating')]: {
-        enableUpdateMode: () => {
-          calls.updateMode += 1;
-        },
-        isUpdateMode: () => options.updateMode ?? false,
-      },
-      [helper('conductorRestartAfterUpdate/conductorRestartAfterUpdate')]: {
-        conductorRestartRequested: () => options.conductorRestart ?? false,
-        takeConductorRestart: () => options.conductorRestart ?? false,
-      },
-      [helper('autoReboot/autoReboot')]: {
-        autoReboot: async (...args: unknown[]) => {
-          calls.reboot.push(args);
-          if (options.rebootError) {
-            throw options.rebootError;
-          }
-        },
-      },
-      [helper('getRootPath/getRootPath')]: { default: () => '/host/project' },
-      [helper('composeFile/composeBackup/composeBackup')]: {
-        composeFilePath: () => '/host/project/docker-compose.yml',
-      },
-      [helper('file/ensureFreeSpace/ensureFreeSpace')]: {
-        getUpdateMinFreeBytes: () => 1000,
-        default: async (paths: readonly string[], needed: number) => {
-          calls.freeSpace.push([paths, needed]);
-          const available = options.availableBytes ?? 1e12;
-          if (available < needed) {
-            throw new DiskFullError(paths[0], needed, available);
-          }
-        },
-      },
-      [helper('restartAllServices/windowsRestart')]: {
-        default: async (...args: unknown[]) => {
-          calls.restartWindows.push(args);
-          if (options.restartError) {
-            throw options.restartError;
-          }
-        },
-      },
-      [helper('restartAllServices/linuxRestart')]: {
-        default: async (...args: unknown[]) => {
-          calls.restartLinux.push(args);
-          await options.restartRuns;
-          if (options.restartError) {
-            throw options.restartError;
-          }
-        },
-      },
-      // Fresh per load: whether a full restart runs is module state
-      [helper('restartAllServices/fullRestartInProgress')]: loadWithStubs(
-        helper('restartAllServices/fullRestartInProgress'),
-        {},
-      ),
-      [helper('pinRunningImages/pinRunningImages')]: {
-        default: async () => {
-          calls.pinned += 1;
-          if (options.pins instanceof Error) {
-            throw options.pins;
-          }
-          return options.pins ?? [];
-        },
-      },
-      [helper('migrationNeeded/migrationNeeded')]: {
-        migrationNeeded: async () => options.needsMigration ?? false,
-      },
-      [helper('handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard')]:
-        {
-          default: async (...args: unknown[]) => {
-            calls.grafana.push(args);
-            return options.grafana ?? { applied: false };
-          },
-        },
-      [helper('orchestrator/getOrchestrator/getOrchestrator')]: {
-        getDecidedOrchestrator: async () =>
-          'orchestrator' in options
-            ? (options.orchestrator ?? undefined)
-            : { mode: 'compose' },
-      },
-      [helper('swarm/forceUpdateService/forceUpdateService')]: {
-        default: async (_docker: unknown, name: string) => {
-          calls.swarmForceUpdates.push(name);
-        },
-      },
-      [helper('swarm/restartSwarmStack/restartSwarmStack')]: {
-        default: async (...args: unknown[]) => {
-          calls.swarmStackRestarts.push(args);
-          await options.restartRuns;
-          if (options.restartError) {
-            throw options.restartError;
-          }
-          return [];
-        },
-      },
-      [helper('pipelineMaintenance/pipelineMaintenance')]: {
-        default: () => 'pipeline maintenance',
-        isPipelineMaintenanceEnabled: () => options.pipelineMaintenance ?? true,
-      },
-      [path.join(root, 'utils/logger')]: { getLogger: () => logger },
     },
-  ).default;
+    [helper('composeFile/readComposeFile/readComposeFile')]: {
+      readComposeFile: async () => {
+        calls.order.push('read compose');
+        if (options.composeError) {
+          throw options.composeError;
+        }
+        // What the reconcile wrote, once it has run
+        return calls.order.includes('reconcile') && options.reconciled
+          ? options.reconciled
+          : (options.compose ?? { services: {} });
+      },
+    },
+    [helper('checkModuleUpdate/checkModuleUpdate')]: {
+      default: async (_d: unknown, _c: unknown, _r: unknown, name: string) => {
+        calls.checked.push(name);
+        const info =
+          options.modules && name in options.modules
+            ? options.modules[name]
+            : ok(name);
+        if (info instanceof Error) {
+          throw info;
+        }
+        return info;
+      },
+    },
+    [here('./handleUpdate/updateConductorOnly')]: {
+      default: async (...args: unknown[]) => {
+        calls.conductorOnly.push(args);
+        return (
+          options.conductorOnly ?? {
+            id: 'gluesync-conductor',
+            results: [{ status: 'fulfilled', value: 'conductor updated' }],
+          }
+        );
+      },
+    },
+    [here('./handleUpdate/updateNormalBulk')]: {
+      default: async (...args: unknown[]) => {
+        calls.bulk.push(args);
+        if (options.bulkError) {
+          throw options.bulkError;
+        }
+        return (
+          options.bulk ?? {
+            orderedIds: ['a'],
+            results: [{ status: 'fulfilled', value: 'a updated' }],
+          }
+        );
+      },
+    },
+    [here('./migrationWithUpdate/migrationWithUpdate')]: {
+      default: async (...args: unknown[]) => {
+        calls.migration.push(args);
+        if (options.migrationError) {
+          throw options.migrationError;
+        }
+      },
+    },
+    [path.join(root, 'plugins/apiBlockerAsUpdating')]: {
+      enableUpdateMode: () => {
+        calls.updateMode += 1;
+      },
+      isUpdateMode: () => options.updateMode ?? false,
+    },
+    [helper('conductorRestartAfterUpdate/conductorRestartAfterUpdate')]: {
+      conductorRestartRequested: () => options.conductorRestart ?? false,
+      takeConductorRestart: () => options.conductorRestart ?? false,
+    },
+    [helper('autoReboot/autoReboot')]: {
+      autoReboot: async (...args: unknown[]) => {
+        calls.reboot.push(args);
+        if (options.rebootError) {
+          throw options.rebootError;
+        }
+      },
+    },
+    [helper('getRootPath/getRootPath')]: { default: () => '/host/project' },
+    [helper('composeFile/composeBackup/composeBackup')]: {
+      composeFilePath: () => '/host/project/docker-compose.yml',
+    },
+    [helper('file/ensureFreeSpace/ensureFreeSpace')]: {
+      getUpdateMinFreeBytes: () => 1000,
+      default: async (paths: readonly string[], needed: number) => {
+        calls.freeSpace.push([paths, needed]);
+        const available = options.availableBytes ?? 1e12;
+        if (available < needed) {
+          throw new DiskFullError(paths[0], needed, available);
+        }
+      },
+    },
+    [helper('restartAllServices/windowsRestart')]: {
+      default: async (...args: unknown[]) => {
+        calls.restartWindows.push(args);
+        if (options.restartError) {
+          throw options.restartError;
+        }
+      },
+    },
+    [helper('restartAllServices/linuxRestart')]: {
+      default: async (...args: unknown[]) => {
+        calls.restartLinux.push(args);
+        await options.restartRuns;
+        if (options.restartError) {
+          throw options.restartError;
+        }
+      },
+    },
+    // Fresh per load: whether a full restart runs is module state
+    [helper('restartAllServices/fullRestartInProgress')]: loadWithStubs(
+      helper('restartAllServices/fullRestartInProgress'),
+      {},
+    ),
+    [helper('composeFile/reconcileRunningImages/reconcileRunningImages')]: {
+      default: async () => {
+        calls.order.push('reconcile');
+        if (options.reconcileError) {
+          throw options.reconcileError;
+        }
+        return [];
+      },
+    },
+    [helper('pinRunningImages/pinRunningImages')]: {
+      default: async () => {
+        calls.pinned += 1;
+        if (options.pins instanceof Error) {
+          throw options.pins;
+        }
+        return options.pins ?? [];
+      },
+    },
+    [helper('migrationNeeded/migrationNeeded')]: {
+      migrationNeeded: async () => options.needsMigration ?? false,
+    },
+    [helper('handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard')]: {
+      default: async (...args: unknown[]) => {
+        calls.grafana.push(args);
+        return options.grafana ?? { applied: false };
+      },
+    },
+    [helper('orchestrator/getOrchestrator/getOrchestrator')]: {
+      getDecidedOrchestrator: async () =>
+        'orchestrator' in options
+          ? (options.orchestrator ?? undefined)
+          : { mode: 'compose' },
+    },
+    [helper('swarm/forceUpdateService/forceUpdateService')]: {
+      default: async (_docker: unknown, name: string) => {
+        calls.swarmForceUpdates.push(name);
+      },
+    },
+    [helper('swarm/restartSwarmStack/restartSwarmStack')]: {
+      default: async (...args: unknown[]) => {
+        calls.swarmStackRestarts.push(args);
+        await options.restartRuns;
+        if (options.restartError) {
+          throw options.restartError;
+        }
+        return [];
+      },
+    },
+    [helper('pipelineMaintenance/pipelineMaintenance')]: {
+      default: () => 'pipeline maintenance',
+      isPipelineMaintenanceEnabled: () => options.pipelineMaintenance ?? true,
+    },
+    [path.join(root, 'utils/logger')]: { getLogger: () => logger },
+  });
 
-  return { handler, calls };
+  return {
+    handler: subject.default,
+    calls,
+    enter: subject.enterContainerAction,
+  };
 };
 
 type Reply = {
@@ -543,6 +561,26 @@ describe('doContainersAction action gate', () => {
 
     const after = await run(loaded, { action: 'start', ids: ['a'] });
     assert.equal(after.statusCode, 200);
+  });
+
+  it('says that the startup checks are running when they hold the gate', async () => {
+    const { promise, state } = deferred();
+    const loaded = load();
+    const startup = loaded.enter({ action: 'startup-heal', ids: [] }, () =>
+      promise.then(() => ({ statusCode: 200, body: {} })),
+    );
+    const refused = await run(loaded, { action: 'update', ids: [] });
+
+    assert.equal(startup.kind, 'started');
+    assert.equal(refused.statusCode, 409);
+    assert.equal(refused.headers['Retry-After'], '30');
+    assert.match(
+      body(refused).details,
+      /^Conductor is finishing its startup checks \(started at .*\); try again shortly$/,
+    );
+
+    state.release();
+    await startup.outcome;
   });
 
   it('lets the same action on the same ids join the running one', async () => {
@@ -803,6 +841,55 @@ describe('doContainersAction restart', () => {
 
 describe('doContainersAction update', () => {
   const prune = (result: unknown) => ({ pruneImages: async () => result });
+
+  it('reconciles the compose file with the running images before taking the rollback images (GS-1485)', async () => {
+    const loaded = load({
+      compose: {
+        services: { 'gluesync-core-hub': { image: 'molo17/core:2.3.2.0' } },
+      },
+      reconciled: {
+        services: { 'gluesync-core-hub': { image: 'molo17/core:2.3.2.1' } },
+      },
+    });
+    await run(loaded, { action: 'update', ids: [] });
+
+    assert.deepEqual(loaded.calls.order.slice(0, 2), [
+      'reconcile',
+      'read compose',
+    ]);
+    const [withImages] = loaded.calls.createActions[1] as [
+      { previousImages: unknown },
+    ];
+    assert.deepEqual(withImages.previousImages, {
+      'gluesync-core-hub': 'molo17/core:2.3.2.1',
+    });
+    const [, composeForBulk] = loaded.calls.bulk[0] as [unknown, unknown];
+    assert.deepEqual(composeForBulk, {
+      services: { 'gluesync-core-hub': { image: 'molo17/core:2.3.2.1' } },
+    });
+  });
+
+  it('updates anyway when the reconcile fails', async () => {
+    const loaded = load({ reconcileError: new Error('disk') });
+    const reply = await run(loaded, { action: 'update', ids: [] });
+
+    assert.equal(reply.statusCode, 200);
+    assert.equal(loaded.calls.bulk.length, 1);
+    assert.ok(
+      loaded.calls.logs.some(
+        l => l.startsWith('error: ') && l.includes('compose-reconcile'),
+      ),
+    );
+  });
+
+  it('does not reconcile on Swarm: the stack file is the source of truth', async () => {
+    const loaded = load({
+      orchestrator: { mode: 'swarm', isManager: true, namespace: 'gs' },
+    });
+    await run(loaded, { action: 'update', ids: [] });
+
+    assert.equal(loaded.calls.order.includes('reconcile'), false);
+  });
 
   it('updates the requested ids and keeps the previous images for rollback', async () => {
     const loaded = load({

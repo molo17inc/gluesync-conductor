@@ -41,6 +41,8 @@ import syncCollectLogsScripts from './helpers/syncCollectLogsScripts/syncCollect
 import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
 import healProxyErrorPages from './helpers/healProxyErrorPages/healProxyErrorPages';
 import watchProxyStartEvents from './helpers/healProxyErrorPages/watchProxyStartEvents';
+import reconcileRunningImages from './helpers/composeFile/reconcileRunningImages/reconcileRunningImages';
+import runStartupHeals from './helpers/startupHeals/runStartupHeals';
 import healCourierInbound from './helpers/healCourierInbound/healCourierInbound';
 import { takeConductorRestart } from './helpers/conductorRestartAfterUpdate/conductorRestartAfterUpdate';
 import { findProxyServiceName } from './helpers/healTraefikConf/healTraefikConf';
@@ -174,6 +176,39 @@ const healProxyErrorPagesAtStartup = async (
   }
 };
 
+// Everything at startup that rewrites the compose file or recreates services,
+// as one container action: the server listens already, and an update started
+// by a user must not recreate the same services at the same time (GS-1485).
+// The running tags go into the compose file first, so that nothing below
+// recreates a service from a tag older than the one it runs.
+const healComposeAtStartup = async (
+  docker: Readonly<Docker>,
+  logger: Readonly<ReturnType<typeof getLogger>>,
+): Promise<void> => {
+  await runStartupHeals(
+    [
+      async () => {
+        await runStartupStep(
+          'compose reconcile',
+          () => reconcileRunningImages(docker),
+          [],
+        );
+      },
+      () => adoptServicesAtStartup(docker, logger),
+      () => healProxyErrorPagesAtStartup(docker),
+    ],
+    {
+      enter: enterContainerAction,
+      idleBody: () => ({ success: true as const, data: { containers: [] } }),
+      onWait: running =>
+        logger.info(
+          { running },
+          '[startup] a container action is running: the startup checks wait for it',
+        ),
+    },
+  );
+};
+
 type DecidedOrchestrator = Awaited<ReturnType<typeof awaitDecidedOrchestrator>>;
 
 const prepareForOrchestrator = async (
@@ -202,8 +237,7 @@ const prepareForOrchestrator = async (
       '[orchestrator] Docker did not answer, so compose or swarm is unknown: not adopting services nor healing the Conductor configuration',
     );
   } else {
-    await adoptServicesAtStartup(docker, logger);
-    await healProxyErrorPagesAtStartup(docker);
+    await healComposeAtStartup(docker, logger);
   }
 };
 

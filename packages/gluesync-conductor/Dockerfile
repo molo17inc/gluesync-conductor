@@ -1,11 +1,27 @@
 FROM node:24.22.1-alpine
 
+# ALPINE_MIRROR (optional, set by CI): an Alpine package mirror (for example a Nexus proxy of
+# https://dl-cdn.alpinelinux.org/alpine) to download from instead of the Alpine CDN. Only this
+# build uses it: the image keeps the default /etc/apk/repositories, and a mirror that fails falls
+# back to the default repositories.
+ARG ALPINE_MIRROR=
+
 # Upgrade base OS packages, then install Docker CLI and tzdata for timezone support.
 # The runtime only runs `node index.js`: drop npm, npx, corepack and yarn (and
 # their bundled dependencies) to remove their CVE surface from the image.
 # Create Gluesync data and logs directory structure with proper permissions.
-RUN apk upgrade --no-cache \
-  && apk add --no-cache docker-cli docker-cli-compose curl bash zip tar tzdata yq zstd xz pigz \
+RUN apk_install() { \
+      apk upgrade --no-cache "$@" \
+      && apk add --no-cache "$@" docker-cli docker-cli-compose curl bash zip tar tzdata yq zstd xz pigz; \
+    } \
+  && if [ -n "$ALPINE_MIRROR" ]; then \
+      sed -E "s#^https?://[^/]+/alpine#${ALPINE_MIRROR%/}#" /etc/apk/repositories > /tmp/apk-mirror \
+      && { apk_install --repositories-file /tmp/apk-mirror \
+        || { echo "Alpine mirror $ALPINE_MIRROR failed: using the default repositories"; apk_install; }; } \
+      && rm -f /tmp/apk-mirror; \
+    else \
+      apk_install; \
+    fi \
   && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
     /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
     /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-* \

@@ -14,6 +14,7 @@
 #
 #   CI_NODE_INDEX / CI_NODE_TOTAL   the shard (default 1/1: everything)
 #   SANDBOX_IMAGE_MIRROR            registry/repo holding the sandbox's images (see sandbox/lib/env.mjs)
+#   ALPINE_MIRROR                   Alpine package mirror for the conductor image's `apk add`
 #   SANDBOX_*                       name and port overrides, see sandbox/lib/env.mjs
 set -eu
 
