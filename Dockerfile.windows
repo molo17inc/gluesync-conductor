@@ -5,7 +5,7 @@ ARG WINDOWS_VERSION=nanoserver
 ARG WINDOWS_YEAR=2019
 
 # Builder stage
-FROM molo17/node:24.22.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG} AS builder
+FROM molo17/node:24.22.3.develop-win-${WINDOWS_VERSION}-${WINDOWS_TAG} AS builder
 
 WORKDIR C:\opt\gluesync-conductor
 
@@ -17,7 +17,7 @@ RUN yarn install --immutable --immutable-cache
 RUN yarn build
 
 # Final stage: runtime image
-FROM molo17/node:24.22.1-win-${WINDOWS_VERSION}-${WINDOWS_TAG}
+FROM molo17/node:24.22.3.develop-win-${WINDOWS_VERSION}-${WINDOWS_TAG}
 
 ARG WINDOWS_TAG
 ARG WINDOWS_YEAR
@@ -86,7 +86,7 @@ ENV GLUESYNC_CONFIG_DIR=.\shared
 ENV IS_WINDOWS=true
 ENV CONDUCTOR_VERSION=${CONDUCTOR_VERSION}
 ENV WINDOWS_YEAR=${WINDOWS_YEAR}
-ENV HELPER_IMAGE_BASE=molo17/docker:29.9.2-win-nanoserver-${WINDOWS_TAG}
+ENV HELPER_IMAGE_BASE=molo17/docker:29.9.3.develop-win-nanoserver-${WINDOWS_TAG}
 
 
 # Copy build artifacts
