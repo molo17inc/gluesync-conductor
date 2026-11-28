@@ -40,7 +40,11 @@ const environmentOf = (
     ? Object.fromEntries(
         Object.entries(env as Record<string, unknown>).map(([k, v]) => [
           k,
-          v === null || v === undefined ? '' : String(v),
+          typeof v === 'string' ||
+          typeof v === 'number' ||
+          typeof v === 'boolean'
+            ? String(v)
+            : '',
         ]),
       )
     : {};
@@ -65,6 +69,12 @@ export const chronosTarget = (
     host: serviceName,
     port: Number.isInteger(port) && port > 0 ? port : DEFAULT_CHRONOS_PORT,
   };
+};
+
+/** Drop the spaces and tabs at the end of the text (not its line breaks), without a backtracking regex. */
+const trimTrailingBlanks = (text: string): string => {
+  const keep = [...text].reverse().findIndex(c => c !== ' ' && c !== '\t');
+  return keep < 0 ? '' : text.slice(0, text.length - keep);
 };
 
 const jobBlock = (indent: string, target: ChronosTarget, eol: string): string =>
@@ -112,7 +122,7 @@ const planChronosScrape = (
   }
 
   const jobs = configs.items.filter(isMap);
-  const existing = jobs.find(
+  const existing = jobs.some(
     job =>
       job.get('job_name') === CHRONOS_JOB_NAME ||
       JSON.stringify(job.toJSON()).includes(`${target.host}:`),
@@ -140,7 +150,7 @@ const planChronosScrape = (
 
   const indent = prefix.slice(0, dash);
   const end = last.range[1];
-  const before = prometheusYml.slice(0, end).replace(/[ \t]+$/, '');
+  const before = trimTrailingBlanks(prometheusYml.slice(0, end));
   const after = prometheusYml.slice(end);
   const separator = before.endsWith('\n') ? '' : eol;
 

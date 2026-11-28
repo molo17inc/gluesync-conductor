@@ -45,6 +45,16 @@ describe('chronosTarget', () => {
       chronosTarget('c', { environment: { SSL_ENABLED: 'False' } } as never),
       { scheme: 'http', host: 'c', port: 1717 },
     );
+    assert.deepEqual(
+      chronosTarget('c', {
+        environment: { SSL_ENABLED: true, PORT: 1819, X: { y: 1 } },
+      } as never),
+      { scheme: 'https', host: 'c', port: 1819 },
+    );
+    assert.equal(
+      planChronosScrape('scrape_configs:\n  - job_name: a   \n', HTTPS).action,
+      'add',
+    );
     assert.deepEqual(chronosTarget('c', {}), {
       scheme: 'http',
       host: 'c',
