@@ -36,6 +36,7 @@ import { migrationNeeded } from '../../../helpers/migrationNeeded/migrationNeede
 import handleGrafanaEmbeddedDashboard from '../../../helpers/handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard';
 import { HandleGrafanaEmbeddedDashboardResult } from '../../../helpers/handleGrafanaEmbeddedDashboard/handleGrafanaEmbeddedDashboard.model';
 import healProxyErrorPages from '../../../helpers/healProxyErrorPages/healProxyErrorPages';
+import healChronosScrape from '../../../helpers/healChronosScrape/healChronosScrape';
 import healCourierInbound from '../../../helpers/healCourierInbound/healCourierInbound';
 import { getLogger } from '../../../utils/logger';
 import describeFailure from '../../../helpers/describeFailure/describeFailure';
@@ -358,6 +359,27 @@ const COREHUB_RECREATE_MESSAGE: Readonly<Record<string, string>> = {
 
 // The Courier inbound port 8090 of the kits (see healCourierInbound), added
 // when an install still lacks part of it. Compose only; it never fails the update.
+// An update can bring a Chronos that serves /metrics: make Prometheus scrape it
+const healChronosScrapeAfterUpdate = async (
+  orchestrator: Readonly<Orchestrator>,
+): Promise<ReadonlyArray<DoContainersActionItem>> => {
+  if (orchestrator.mode !== 'compose') {
+    return [];
+  }
+
+  const outcome = await healChronosScrape();
+
+  return outcome.action === 'add' && outcome.prometheus
+    ? [
+        {
+          id: outcome.prometheus,
+          status: 'OK',
+          message: `Prometheus now scrapes Chronos metrics (${outcome.reason}).`,
+        },
+      ]
+    : [];
+};
+
 const healCourierInboundAfterUpdate = async (
   req: Readonly<Request>,
   orchestrator: Readonly<Orchestrator>,
@@ -648,6 +670,7 @@ const performUpdate = async (
   const grafanaItems = await recreateGrafanaIfEmbedded(req, orchestrator);
   const proxyItems = await healProxyErrorPagesAfterUpdate(req, orchestrator);
   const courierItems = await healCourierInboundAfterUpdate(req, orchestrator);
+  const chronosScrapeItems = await healChronosScrapeAfterUpdate(orchestrator);
   const pruneOutcome = swarm
     ? skipPruneOnSwarm()
     : await pruneImages(req.server.docker);
@@ -662,6 +685,7 @@ const performUpdate = async (
         ...grafanaItems,
         ...proxyItems,
         ...courierItems,
+        ...chronosScrapeItems,
       ],
     },
   });

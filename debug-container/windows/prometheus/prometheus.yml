@@ -14,3 +14,11 @@ scrape_configs:
     static_configs:
       - targets:
           - gluesync-core-hub:1717
+  - job_name: gluesync-chronos
+    # Chronos (scheduler) /metrics, read by the Chronos dashboard
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true
+    static_configs:
+      - targets:
+          - gluesync-chronos:1717

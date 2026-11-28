@@ -42,6 +42,7 @@ import upAdoptedServices from './helpers/upAdoptedServices/upAdoptedServices';
 import healProxyErrorPages from './helpers/healProxyErrorPages/healProxyErrorPages';
 import watchProxyStartEvents from './helpers/healProxyErrorPages/watchProxyStartEvents';
 import reconcileRunningImages from './helpers/composeFile/reconcileRunningImages/reconcileRunningImages';
+import healChronosScrape from './helpers/healChronosScrape/healChronosScrape';
 import runStartupHeals from './helpers/startupHeals/runStartupHeals';
 import healCourierInbound from './helpers/healCourierInbound/healCourierInbound';
 import { takeConductorRestart } from './helpers/conductorRestartAfterUpdate/conductorRestartAfterUpdate';
@@ -196,6 +197,11 @@ const healComposeAtStartup = async (
       },
       () => adoptServicesAtStartup(docker, logger),
       () => healProxyErrorPagesAtStartup(docker),
+      // The Chronos dashboard of the molo17/grafana image needs Prometheus to
+      // scrape Chronos: kits installed before Chronos had /metrics do not
+      async () => {
+        await runStartupStep('chronos scrape', healChronosScrape, undefined);
+      },
     ],
     {
       enter: enterContainerAction,
