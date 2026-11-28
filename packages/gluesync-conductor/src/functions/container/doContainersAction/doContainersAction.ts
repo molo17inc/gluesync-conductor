@@ -357,8 +357,6 @@ const COREHUB_RECREATE_MESSAGE: Readonly<Record<string, string>> = {
     'Core Hub still lacks the Courier route labels after a recreate; not tried again yet.',
 };
 
-// The Courier inbound port 8090 of the kits (see healCourierInbound), added
-// when an install still lacks part of it. Compose only; it never fails the update.
 // An update can bring a Chronos that serves /metrics: make Prometheus scrape it
 const healChronosScrapeAfterUpdate = async (
   orchestrator: Readonly<Orchestrator>,
@@ -380,6 +378,8 @@ const healChronosScrapeAfterUpdate = async (
     : [];
 };
 
+// The Courier inbound port 8090 of the kits (see healCourierInbound), added
+// when an install still lacks part of it. Compose only; it never fails the update.
 const healCourierInboundAfterUpdate = async (
   req: Readonly<Request>,
   orchestrator: Readonly<Orchestrator>,
