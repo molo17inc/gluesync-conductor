@@ -197,11 +197,6 @@ const healComposeAtStartup = async (
       },
       () => adoptServicesAtStartup(docker, logger),
       () => healProxyErrorPagesAtStartup(docker),
-      // The Chronos dashboard of the molo17/grafana image needs Prometheus to
-      // scrape Chronos: kits installed before Chronos had /metrics do not
-      async () => {
-        await runStartupStep('chronos scrape', healChronosScrape, undefined);
-      },
     ],
     {
       enter: enterContainerAction,
@@ -244,6 +239,15 @@ const prepareForOrchestrator = async (
     );
   } else {
     await healComposeAtStartup(docker, logger);
+    // The Chronos dashboard of the molo17/grafana image needs Prometheus to
+    // scrape Chronos, and kits installed before Chronos had /metrics do not.
+    // Outside the startup gate and not awaited: it changes neither the
+    // compose file nor a service definition (only prometheus.yml, then a
+    // Prometheus restart), and probing Chronos must not keep an update the
+    // user starts waiting on the startup checks.
+    runStartupStep('chronos scrape', healChronosScrape, undefined).catch(
+      () => undefined,
+    );
   }
 };
 
